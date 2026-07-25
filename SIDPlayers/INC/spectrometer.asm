@@ -869,8 +869,16 @@ InitializeBarArrays:
 //;                                 value for entry `index` is at base + b*256 + index,
 //;                                 read as `lda base_b,X` (X=index): no multiply, and a
 //;                                 consistent 4-cycle access thanks to the page align.
-//;   bakedIndexStart    ($52/$53)  interleaved index; keyframe k occupies bytes
-//;                                 [k*SEG .. k*SEG+SEG-1], byte s = segment s index
+//;   bakedIndexStart    ($52/$53)  index streams, PLANAR: segment s owns the whole
+//;                                 run of bakedNumKeyframes bytes starting at
+//;                                 bakedIndexStart + s*bakedNumKeyframes, so its
+//;                                 index for keyframe k is at +k within that run.
+//;                                 (Planar rather than one interleaved record per
+//;                                 keyframe: each segment's indices then sit next
+//;                                 to each other, which is what the PRG cruncher
+//;                                 can find matches in - worth ~9% of the index
+//;                                 stream. The decoder keeps one pointer per
+//;                                 segment instead of one striding pointer.)
 //;   bakedNumKeyframes  ($54/$55)  number of 25 Hz keyframes
 //;   bakedLoopStart     ($56/$57)  keyframe to wrap to at end of stream
 //;   bakedNumSegments   ($58)      segment count (1,2,4,5)
@@ -885,13 +893,19 @@ InitializeBarArrays:
 
 bakedKfCountLo:   .byte $00
 bakedKfCountHi:   .byte $00
-bakedLoopByteLo:  .byte $00              //; bakedIndexStart + loopStart*segments (precomputed)
-bakedLoopByteHi:  .byte $00
+bakedLoopBaseLo:  .byte $00              //; bakedIndexStart + loopStart = segment 0's loop point
+bakedLoopBaseHi:  .byte $00
 bakedSegCtr:      .byte $00              //; current segment (0..segments-1) during decode
 bakedBarsLeft:    .byte $00              //; bars remaining in the current segment
 bakedFrameCtr:    .byte $00              //; frames until the next keyframe (see TickBakedFrame)
 bakedJustLooped:  .byte $00              //; set to 1 when the stream wraps; player consumes it
 segIdx:           .fill BAKED_MAX_SEGMENTS, $00
+//; One read pointer per segment, each walking its own planar stream one byte per
+//; keyframe. Rebuilt by SetIndexPointers at init and on every wrap.
+bakedIdxPtrLo:    .fill BAKED_MAX_SEGMENTS, $00
+bakedIdxPtrHi:    .fill BAKED_MAX_SEGMENTS, $00
+bakedPtrBaseLo:   .byte $00              //; SetIndexPointers argument (segment 0's address)
+bakedPtrBaseHi:   .byte $00
 
 //; Call once per frame. Decodes the next keyframe every bakedFrameDivisor frames
 //; (1/2/3 = 50/25/16.66 Hz) and holds between; UpdateBars interpolates the rest.
@@ -905,44 +919,69 @@ TickBakedFrame:
     dec bakedFrameCtr
     rts
 
+//; Point every segment at keyframe 0 of its own stream, given segment 0's address
+//; in bakedPtrBase: segment s starts one whole stream (bakedNumKeyframes bytes)
+//; after segment s-1. Consumes bakedPtrBase (the caller reloads it each time).
+SetIndexPointers:
+    ldx #$00
+!loop:
+    lda bakedPtrBaseLo
+    sta bakedIdxPtrLo, x
+    lda bakedPtrBaseHi
+    sta bakedIdxPtrHi, x
+    clc
+    lda bakedPtrBaseLo
+    adc bakedNumKeyframes
+    sta bakedPtrBaseLo
+    lda bakedPtrBaseHi
+    adc bakedNumKeyframes + 1
+    sta bakedPtrBaseHi
+    inx
+    cpx bakedNumSegments
+    bne !loop-
+    rts
+
 InitBaked:
-    lda bakedIndexStart
-    sta bakedIdxRead + 1
-    lda bakedIndexStart + 1
-    sta bakedIdxRead + 2
     lda #$00
     sta bakedKfCountLo
     sta bakedKfCountHi
     sta bakedFrameCtr                    //; 0 -> decode on the very first frame
 
-    //; precompute the loop-point byte = bakedIndexStart + loopStart*bakedNumSegments,
-    //; by adding loopStart bakedNumSegments times (segment count is small: 1,2,4,5).
-    lda bakedIndexStart
-    sta bakedLoopByteLo
-    lda bakedIndexStart + 1
-    sta bakedLoopByteHi
-    ldx bakedNumSegments
-!add:
+    //; Segment 0's loop point. Every other segment's is one stream length further
+    //; on, which is exactly what SetIndexPointers walks - so the wrap costs one
+    //; 16-bit add here and nothing per keyframe.
     clc
-    lda bakedLoopByteLo
+    lda bakedIndexStart
     adc bakedLoopStart
-    sta bakedLoopByteLo
-    lda bakedLoopByteHi
+    sta bakedLoopBaseLo
+    lda bakedIndexStart + 1
     adc bakedLoopStart + 1
-    sta bakedLoopByteHi
-    dex
-    bne !add-
-    rts
+    sta bakedLoopBaseHi
+
+    lda bakedIndexStart
+    sta bakedPtrBaseLo
+    lda bakedIndexStart + 1
+    sta bakedPtrBaseHi
+    jmp SetIndexPointers                 //; tail call: its rts returns to our caller
 
 DecodeBakedFrame:
-    //; read this keyframe's bakedNumSegments interleaved index bytes into segIdx
-    ldy bakedNumSegments
-    dey
+    //; read this keyframe's index byte from each segment's own planar stream,
+    //; then step that segment's pointer on by one keyframe
+    ldx bakedNumSegments
+    dex
 !read:
-bakedIdxRead:
-    lda $ffff, y                    //; operand = base of this keyframe's index bytes
-    sta segIdx, y
-    dey
+    lda bakedIdxPtrLo, x
+    sta !fetch+ + 1
+    lda bakedIdxPtrHi, x
+    sta !fetch+ + 2
+!fetch:
+    lda $ffff                       //; operand = &stream[segment x][keyframe]
+    sta segIdx, x
+    inc bakedIdxPtrLo, x
+    bne !noCarry+
+    inc bakedIdxPtrHi, x
+!noCarry:
+    dex
     bpl !read-
 
     //; codebook read pointer starts at the (page-aligned) codebook base; the high
@@ -974,14 +1013,7 @@ bakedRead:
     cmp bakedNumSegments
     bne !segLoop-
 
-    //; advance the interleaved read pointer by bakedNumSegments
-    clc
-    lda bakedIdxRead + 1
-    adc bakedNumSegments
-    sta bakedIdxRead + 1
-    bcc !noHi+
-    inc bakedIdxRead + 2
-!noHi:
+    //; (the per-segment read pointers were stepped as they were read, above)
 
     //; advance keyframe counter; wrap back to the loop point at end of stream
     inc bakedKfCountLo
@@ -1000,12 +1032,13 @@ bakedRead:
     sta bakedKfCountLo
     lda bakedLoopStart + 1
     sta bakedKfCountHi
-    lda bakedLoopByteLo
-    sta bakedIdxRead + 1
-    lda bakedLoopByteHi
-    sta bakedIdxRead + 2
     lda #$01                        //; flag the wrap so the player can re-sync its timer
     sta bakedJustLooped
+    lda bakedLoopBaseLo             //; re-point every segment at its loop keyframe
+    sta bakedPtrBaseLo
+    lda bakedLoopBaseHi
+    sta bakedPtrBaseHi
+    jmp SetIndexPointers            //; tail call: its rts returns to our caller
 !done:
     rts
 #endif // SPECTROMETER_BAKED
