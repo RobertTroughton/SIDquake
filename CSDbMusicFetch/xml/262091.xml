@@ -1,0 +1,674 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<CSDbData><Release><ID>262091</ID>
+<Name>Wanted or Needed?</Name>
+<Type>C64 Music</Type>
+<ReleaseDay>5</ReleaseDay>
+<ReleaseMonth>6</ReleaseMonth>
+<ReleaseYear>2026</ReleaseYear>
+<ReleasedAt><Event><ID>3485</ID>
+<Name>X'2026</Name>
+<EventType>C64 Only Party</EventType>
+<AKA>X 2026 X2026 X-2026 X'26 X26 X-26</AKA>
+<StartDay>5</StartDay>
+<StartMonth>6</StartMonth>
+<StartYear>2026</StartYear>
+<EndDay>7</EndDay>
+<EndMonth>6</EndMonth>
+<EndYear>2026</EndYear>
+<Address>De Hoof 18</Address>
+<Zip>5712LM</Zip>
+<City>Someren</City>
+<State>NB</State>
+<Country>Netherlands</Country>
+<Website>https://xparty.net/</Website>
+</Event>
+</ReleasedAt>
+<Achievement><Compo>C64 Music</Compo>
+<Place>15</Place>
+</Achievement>
+<Rating>9.6</Rating>
+<ScreenShot>https://csdb.dk/gfx/releases/262000/262091.png</ScreenShot>
+<ReleasedBy><Group><ID>16</ID>
+<Name>Pretzel Logic</Name>
+<Short>P.L</Short>
+<BaseCountry>Sweden</BaseCountry>
+<FoundMonth>11</FoundMonth>
+<FoundYear>1988</FoundYear>
+<Website>http://www.instagram.com/pretzellogic64</Website>
+<Rating>9.11</Rating>
+<Grouptypes><Grouptype>Game Development Group</Grouptype>
+<Grouptype>Demo Group</Grouptype>
+</Grouptypes>
+</Group>
+</ReleasedBy>
+<Credits><Credit><CreditType>Music</CreditType>
+<Handle><ID>1028</ID>
+<Handle>The Syndrom</Handle>
+<AKA>Syndrom</AKA>
+<CurrentlyUsedHandle>true</CurrentlyUsedHandle>
+<HandleStory>picked it off the game-title "alien syndrome", though never even played that ;-)</HandleStory>
+<Scener><ID>1012</ID>
+<Country>Germany</Country>
+<Handles><Handle><ID>1028</ID>
+</Handle>
+</Handles>
+</Scener>
+<FreelanceFunctions><Function>Coder</Function>
+<Function>Graphician</Function>
+<Function>Musician</Function>
+<Function>Organizer</Function>
+<Function>Swapper</Function>
+</FreelanceFunctions>
+</Handle>
+</Credit>
+</Credits>
+<UsedSIDs><SID><ID>65987</ID>
+<HVSCPath>/MUSICIANS/T/The_Syndrom/Wanted_or_Needed.sid</HVSCPath>
+<Name>Wanted or Needed?</Name>
+<Author>Matthias Hartung (The Syndrom)</Author>
+<Released>2026 Pretzel Logic</Released>
+<LoadAddr>4096</LoadAddr>
+<InitAddr>4096</InitAddr>
+<PlayAddr>4102</PlayAddr>
+<NOSongs>1</NOSongs>
+<DefaultSong>1</DefaultSong>
+<SIDModel>8580</SIDModel>
+<ClockSpeed>PAL</ClockSpeed>
+<DataSize>4329</DataSize>
+</SID>
+</UsedSIDs>
+<DownloadLinks><DownloadLink><Link>https://csdb.dk/getinternalfile.php/280459/wantedorneeded.prg</Link>
+<CounterLink>https://csdb.dk/release/download.php?id=322465</CounterLink>
+<Downloads>281</Downloads>
+<Status>Ok</Status>
+</DownloadLink>
+<DownloadLink><Link>https://csdb.dk/getinternalfile.php/280595/wanted or needed.sid</Link>
+<CounterLink>https://csdb.dk/release/download.php?id=322607</CounterLink>
+<Downloads>49</Downloads>
+<Status>Ok</Status>
+</DownloadLink>
+</DownloadLinks>
+<Comments><UserComment><CSDbUser><ID>481</ID>
+<Login>Duck LaRock</Login>
+<Handle>Duck LaRock</Handle>
+<RegisteredDate>1970-01-01T01:00:00+01:00</RegisteredDate>
+<CSDbEntry><Handle><ID>1821</ID>
+<Handle>Duck LaRock</Handle>
+<AKA>Duck La Rock</AKA>
+<CurrentlyUsedHandle>true</CurrentlyUsedHandle>
+<Scener><ID>1809</ID>
+<Country>Denmark</Country>
+<Trivia>music author of http://csdb.dk/release/?id=79211
+later renamed to https://csdb.dk/scener/?id=1821</Trivia>
+<Handles><Handle><ID>23625</ID>
+<Handle>Andrik</Handle>
+<CurrentlyUsedHandle>false</CurrentlyUsedHandle>
+<Scener><ID>1809</ID>
+</Scener>
+<FreelanceFunctions><Function>Musician</Function>
+</FreelanceFunctions>
+</Handle>
+<Handle><ID>1821</ID>
+</Handle>
+</Handles>
+</Scener>
+<FreelanceFunctions><Function>Musician</Function>
+</FreelanceFunctions>
+</Handle>
+</CSDbEntry>
+</CSDbUser>
+<Date>11.07.2026</Date>
+<Text>Such a lovely piece of music.</Text>
+</UserComment>
+<UserComment><CSDbUser><ID>3353</ID>
+<Login>The_Shocker</Login>
+<Handle>El Jefe</Handle>
+<RegisteredDate>1970-01-01T01:00:00+01:00</RegisteredDate>
+<CSDbEntry><Handle><ID>39084</ID>
+<Handle>El Jefe</Handle>
+<AKA>El Hefe</AKA>
+<CurrentlyUsedHandle>true</CurrentlyUsedHandle>
+<HandleStory>- Suits me even better than Shocker.
+- No cerveza, no trabajo!</HandleStory>
+<Scener><ID>896</ID>
+<Country>Germany</Country>
+<Trivia>- &amp;lt;group id="1371"&amp;gt;
+After swapping around with local lamers for a year or so I got in touch with SD in late 1990 and was admitted to the group.
+
+- &amp;lt;group id="1342"&amp;gt;
+The only contact I had in MTC was my good friend &amp;lt;scener id="3488"&amp;gt;. He invited me to join the group although I did not have contact to any other member of the group back then.
+
+- &amp;lt;group id="1108"&amp;gt;
+Shortly after that I joined CPS. Dont remember when and under which circumstances ...
+
+-  &amp;lt;group id="156"&amp;gt;
+This is the only group I was ever kicked from AFAIR. I joined them after one member confirmed that I was allowed to join the group (unfortunately I dont remember who it was) BUT some days later one of the leaders (I think it was &amp;lt;scener id="2340"&amp;gt; or &amp;lt;scener id="3998"&amp;gt;) called me, in order to let me know that he did not think I am as perfect, as my handle might promise, and that I was kicked from the group. He expressed it in such a funny way that I hardly could  hold back laughing and was not too sad about it in the end.
+
+-  &amp;lt;group id="1084"&amp;gt;
+Then I joined HYS and while beeing a member, I was busted by the post for stamp cheating after my holliday in Spain. It was like getting back from holiday one day and being interrogated by (rather stupid) post office staff the next day. As a result I had to quit my activities and HYS for the time being. After my return to the scene I was not readmitted to the group because they had found some new swappers. 
+
+-  &amp;lt;group id="913"&amp;gt;/&amp;lt;group id="133"&amp;gt;
+But so I had the great opportunity to join SCS (and later SCS+TRC), in order to take over former member &amp;lt;scener id="5333"&amp;gt;'s swapping activities. A close friendship to most other members developed over the years!
+
+- &amp;lt;group id="148"&amp;gt;
+AFAIR I left SCS for some time to join F4CG and later rejoined SCS. Not too sure about that though. Maybe someone can help with that.
+
+-  &amp;lt;group id="853"&amp;gt;, &amp;lt;group id="853"&amp;gt;+&amp;lt;group id="184"&amp;gt; and later &amp;lt;group id="184"&amp;gt;
+After some (infact a very long) time of inactivity, most german members of SCS*TRC felt, that they wanted to try something new ... so we left The Ruling Coop, and formed Hardcore ... in order to continue our inactivity there :-)
+But somehow we managed to attract the attention of our fellow scener buddies in Onslaught and a new Coop was born. Later Hardcore fell apart when most members left the group and the scene for good. The rest of the groups was absorbed by Onslaught.
+
+-  &amp;lt;group id="176"&amp;gt;:
+I remember, that I joined a late rebuild of Legend (roundabout 1998?) when my interest in the scene had nearly completely vanished. When I was asked to join, I thought, that it would be a nice ending to my time in the scene and I joined ... but it turned out to be a nightmare, as most of the releases were lousy re-releases. :-(
+
+- &amp;lt;group id="184"&amp;gt; (again):
+While still lying in bed at 7 am in 2019 one morning, I got very excited when I saw this on German public television :D
+https://www.youtube.com/watch?v=3zpw4NeLQq0
+
+That video sparked my interest for the c64 scene again. I got in touch with Jazzcat after 23 years and soon I became a member of Onslaught again.
+
+If you want to get to know me a bit closer dont miss to check:
+&amp;lt;release id="219574"&amp;gt;, &amp;lt;release id="203363"&amp;gt;, &amp;lt;release id="256305"&amp;gt; or &amp;lt;release id="256565"&amp;gt; ;-)</Trivia>
+<Handles><Handle><ID>39084</ID>
+</Handle>
+<Handle><ID>6812</ID>
+<Handle>Mr Perfect</Handle>
+<CurrentlyUsedHandle>false</CurrentlyUsedHandle>
+<HandleStory>I was much into wrestling in the middle of the 80s and the coolest dude around was without doubt Mr. Perfect.</HandleStory>
+<Scener><ID>896</ID>
+</Scener>
+<FreelanceFunctions><Function>Swapper</Function>
+</FreelanceFunctions>
+</Handle>
+<Handle><ID>5024</ID>
+<Handle>Buddha</Handle>
+<CurrentlyUsedHandle>false</CurrentlyUsedHandle>
+<HandleStory>It was the premise of Communist, that I rename to Buddha in order to join the Fantastics. He liked my belly too much and he thought, that it was worth a reference. As usual I could not reject any of his wishes.</HandleStory>
+<Scener><ID>896</ID>
+</Scener>
+<FreelanceFunctions><Function>Swapper</Function>
+</FreelanceFunctions>
+</Handle>
+<Handle><ID>912</ID>
+<Handle>Shocker</Handle>
+<AKA>The Shocker</AKA>
+<CurrentlyUsedHandle>false</CurrentlyUsedHandle>
+<HandleStory>From the (crappy) Wes Craven movie. I somehow liked the idea of travelling through the power grid!</HandleStory>
+<Scener><ID>896</ID>
+</Scener>
+<FreelanceFunctions><Function>Co-Organizer</Function>
+<Function>Coder</Function>
+<Function>Diskmag Editor</Function>
+<Function>Graphician</Function>
+<Function>Modem Trader</Function>
+<Function>Original Supplier</Function>
+<Function>Phreaker</Function>
+<Function>Public Relations Manager</Function>
+<Function>Swapper</Function>
+<Function>Translator</Function>
+</FreelanceFunctions>
+</Handle>
+</Handles>
+</Scener>
+<FreelanceFunctions><Function>Organizer</Function>
+</FreelanceFunctions>
+</Handle>
+</CSDbEntry>
+</CSDbUser>
+<Date>21.06.2026</Date>
+<Text>Love the lead! Awesome tune!</Text>
+</UserComment>
+<UserComment><CSDbUser><ID>2234</ID>
+<Login>xiny</Login>
+<Handle>Xiny6581</Handle>
+<RegisteredDate>1970-01-01T01:00:00+01:00</RegisteredDate>
+<CSDbEntry><Handle><ID>12697</ID>
+<Handle>Xiny6581</Handle>
+<AKA>xiny, Gräddglipan</AKA>
+<CurrentlyUsedHandle>true</CurrentlyUsedHandle>
+<HandleStory>I made a typo once I coded some junk and I liked the "handle" and 6581 was added later on, since it responds the SID soundchip.
+...known to like sisters :)</HandleStory>
+<Scener><ID>11382</ID>
+<Country>Sweden</Country>
+<Trivia>Most recognized for my HQ SID Recordings. Recorded from real hardware.
+http://www.youtube.com/demoscenes
+
+Involved in "Preservation", to preserve the demoscene and unreleased releases for the future generation of data-sceners, basically to pass that time-capsule and legacy.
+Where other quiet, that is where I begin to tackle the hard-cases of floppies and tapes. To bring out as much data as possible! "The challenge is always accepted"
+
+http://sidpreservation.6581.org
+-Read about all the work and what is going on-
+
+Fulltime musician:
+http://www.soundcloud.com/dees-productions</Trivia>
+<Handles><Handle><ID>12697</ID>
+</Handle>
+<Handle><ID>12694</ID>
+<Handle>xiny</Handle>
+<CurrentlyUsedHandle>false</CurrentlyUsedHandle>
+<HandleStory>For a time I only used xiny, as came up from a typo I made while coding but the "nick" had a nice touch so I dropped my old nick and started to use this one instead and the numbers 6581, well they are from the SID chip, since I am a musican. End of story :D</HandleStory>
+<Scener><ID>11382</ID>
+</Scener>
+<FreelanceFunctions><Function>Cracker</Function>
+<Function>Graphician</Function>
+<Function>Musician</Function>
+<Function>Net Trader</Function>
+<Function>Phreaker</Function>
+<Function>Webmaster</Function>
+</FreelanceFunctions>
+</Handle>
+</Handles>
+</Scener>
+<FreelanceFunctions><Function>Hardware-Guru</Function>
+<Function>Musician</Function>
+<Function>Original Supplier</Function>
+<Function>Tester</Function>
+</FreelanceFunctions>
+</Handle>
+</CSDbEntry>
+</CSDbUser>
+<Date>14.06.2026</Date>
+<Text>What an amazing song &amp;lt;3 Totally my kind of tune. Yes it's wanted and needed.</Text>
+</UserComment>
+<UserComment><CSDbUser><ID>5252</ID>
+<Login>NecroPolo</Login>
+<Handle>NecroPolo</Handle>
+<RegisteredDate>1970-01-01T01:00:00+01:00</RegisteredDate>
+<CSDbEntry><Handle><ID>20082</ID>
+<Handle>NecroPolo</Handle>
+<CurrentlyUsedHandle>true</CurrentlyUsedHandle>
+<HandleStory>"NP" reflects my original initials.</HandleStory>
+<Scener><ID>17905</ID>
+<Country>Hungary</Country>
+<Trivia>*** All of my tunes are SID8580 only. If they do anything on a SID6581 chip, it's a mere coincidence. ***
+
+As a C64 composer I was born in 1989, died in 1994 and re-born in 2009 because of C64 remix album "rakBIT".
+
+For everything, big thanks to all my friends. You know who you are and I do, too!
+
+
+___Albums and side projects___
+
+- NECROLEPSY (2025): https://necropolo.bandcamp.com/album/necrolepsy-deluxe-edition
+
+- SCOPEKILLERS compilation (2022): https://necropolo.bandcamp.com/album/scopekillers-compilation
+
+- DESTRONNAUTH (2019): https://necropolo.bandcamp.com/album/destronnauth
+
+- HYPERGAME (2017): https://necropolo.bandcamp.com/album/hypergame
+
+- AENTHERA (2016): https://necropolo.bandcamp.com/album/aenthera
+
+- Bleep and Destroy (2014) by StrayWorx: https://strayboom.bandcamp.com/album/bleep-and-destroy
+
+
+___C64 music collections___
+
+- Darth SIDe: https://necropolo.bandcamp.com/album/darth-side
+
+- V8bit: https://necropolo.bandcamp.com/album/v8bit 
+
+- Zeros as Ones: https://necropolo.bandcamp.com/album/zeros-as-ones
+
+- Voyage Eclectique: https://necropolo.bandcamp.com/album/voyage-eclectique
+
+
+___SID remix releases___
+
+- Re:ReLive (2024) by SIDRIP Alliance: https://sidrip.bandcamp.com/album/re-relive
+
+- ReLive (2015) by SIDRIP Alliance: https://sidrip.bandcamp.com/releases
+
+- Johannes Bjerregaard tribute album: https://johannesbjerregaard.bandcamp.com/album/jb
+
+- rakBIT by NP: https://necropolo.bandcamp.com/album/rakbit
+
+- Dark Flow by NP: https://necropolo.bandcamp.com/album/dark-flow-the-expanding-ep
+
+
+***
+
+Youtube channel: https://www.youtube.com/user/NecroPolo8580/videos
+
+Facebook: https://www.facebook.com/NecroPolo-138733566144931/?ref=tn_tnmn
+
+Remix64: http://www.remix64.com/member/necropolo/
+
+BandCamp: https://necropolo.bandcamp.com/music</Trivia>
+<Handles><Handle><ID>20082</ID>
+</Handle>
+<Handle><ID>27574</ID>
+<Handle>Yummes</Handle>
+<CurrentlyUsedHandle>false</CurrentlyUsedHandle>
+<HandleStory>An another old handle that I used when I started to make SIDs for games. None became released and some time after the developer's house burned down during the development of Geister in 1994 with all the sources I stopped making C64 music.</HandleStory>
+<Scener><ID>17905</ID>
+</Scener>
+<FreelanceFunctions><Function>Musician</Function>
+</FreelanceFunctions>
+</Handle>
+<Handle><ID>27573</ID>
+<Handle>PsychoPet</Handle>
+<CurrentlyUsedHandle>false</CurrentlyUsedHandle>
+<HandleStory>My very first scene handle that brought me an ample of finished tunes that I made for stuff that folks did not finish at the end in the early '90s.</HandleStory>
+<Scener><ID>17905</ID>
+</Scener>
+<FreelanceFunctions><Function>Musician</Function>
+</FreelanceFunctions>
+</Handle>
+</Handles>
+</Scener>
+<FreelanceFunctions><Function>Musician</Function>
+</FreelanceFunctions>
+</Handle>
+</CSDbEntry>
+</CSDbUser>
+<Date>13.06.2026</Date>
+<Text>@TLF:
+Not my kind of tune. Love it.</Text>
+</UserComment>
+<UserComment><CSDbUser><ID>7661</ID>
+<Login>Leaf</Login>
+<Handle>Leaf</Handle>
+<RegisteredDate>1970-01-01T01:00:00+01:00</RegisteredDate>
+<CSDbEntry><Handle><ID>40096</ID>
+<Handle>Leaf</Handle>
+<CurrentlyUsedHandle>true</CurrentlyUsedHandle>
+<Scener><ID>36724</ID>
+<Country>Sweden</Country>
+<Trivia>Leaf is my last name</Trivia>
+<Handles><Handle><ID>40096</ID>
+</Handle>
+</Handles>
+</Scener>
+<FreelanceFunctions><Function>Musician</Function>
+</FreelanceFunctions>
+</Handle>
+</CSDbEntry>
+</CSDbUser>
+<Date>12.06.2026</Date>
+<Text>I really liked this one. To use the filter on the lead like that really gives it so much personality. Great tune Syn!</Text>
+</UserComment>
+<UserComment><CSDbUser><ID>7018</ID>
+<Login>TLF</Login>
+<Handle>TLF</Handle>
+<RegisteredDate>1970-01-01T01:00:00+01:00</RegisteredDate>
+<CSDbEntry><Handle><ID>3771</ID>
+<Handle>T.L.F.</Handle>
+<CurrentlyUsedHandle>true</CurrentlyUsedHandle>
+<Scener><ID>3761</ID>
+<Country>United Kingdom</Country>
+<Handles><Handle><ID>3771</ID>
+</Handle>
+<Handle><ID>17269</ID>
+<Handle>Dr. Bass</Handle>
+<CurrentlyUsedHandle>false</CurrentlyUsedHandle>
+<Scener><ID>3761</ID>
+</Scener>
+<FreelanceFunctions><Function>Coder</Function>
+<Function>Graphician</Function>
+<Function>Musician</Function>
+</FreelanceFunctions>
+</Handle>
+<Handle><ID>9736</ID>
+<Handle>Chris</Handle>
+<CurrentlyUsedHandle>false</CurrentlyUsedHandle>
+<Scener><ID>3761</ID>
+</Scener>
+<FreelanceFunctions><Function>Musician</Function>
+</FreelanceFunctions>
+</Handle>
+</Handles>
+</Scener>
+<FreelanceFunctions><Function>Coder</Function>
+<Function>Graphician</Function>
+<Function>Musician</Function>
+</FreelanceFunctions>
+</Handle>
+</CSDbEntry>
+</CSDbUser>
+<Date>11.06.2026</Date>
+<Text>My kind of tune. Love it.</Text>
+</UserComment>
+<UserComment><CSDbUser><ID>6878</ID>
+<Login>mibri</Login>
+<Handle>Mibri</Handle>
+<RegisteredDate>1970-01-01T01:00:00+01:00</RegisteredDate>
+<CSDbEntry><Handle><ID>30573</ID>
+<Handle>Mibri</Handle>
+<CurrentlyUsedHandle>true</CurrentlyUsedHandle>
+<Scener><ID>27533</ID>
+<Country>United Kingdom</Country>
+<Handles><Handle><ID>30573</ID>
+</Handle>
+</Handles>
+</Scener>
+<FreelanceFunctions><Function>Musician</Function>
+</FreelanceFunctions>
+</Handle>
+</CSDbEntry>
+</CSDbUser>
+<Date>10.06.2026</Date>
+<Text>This was a very welcome change of pace (and indeed time signature) during the compo, and I love how the leads ride those moody chords and changes. Wanted or needed? Yes. :D</Text>
+</UserComment>
+<UserComment><CSDbUser><ID>1803</ID>
+<Login>vincenzo</Login>
+<Handle>Vincenzo</Handle>
+<RegisteredDate>1970-01-01T01:00:00+01:00</RegisteredDate>
+<CSDbEntry><Handle><ID>4559</ID>
+<Handle>Vincenzo</Handle>
+<AKA>Padre Vincenzo</AKA>
+<CurrentlyUsedHandle>true</CurrentlyUsedHandle>
+<Scener><ID>4535</ID>
+<Country>Hungary</Country>
+<Handles><Handle><ID>4559</ID>
+</Handle>
+</Handles>
+</Scener>
+<FreelanceFunctions><Function>Musician</Function>
+</FreelanceFunctions>
+</Handle>
+</CSDbEntry>
+</CSDbUser>
+<Date>09.06.2026</Date>
+<Text>I have no words, so I just leave this here: &amp;lt;3
+Thank you for this great track.</Text>
+</UserComment>
+<UserComment><CSDbUser><ID>7579</ID>
+<Login>tubesockor</Login>
+<Handle>tubesockor</Handle>
+<RegisteredDate>1970-01-01T01:00:00+01:00</RegisteredDate>
+<CSDbEntry><Handle><ID>39452</ID>
+<Handle>tubesockor</Handle>
+<CurrentlyUsedHandle>true</CurrentlyUsedHandle>
+<Scener><ID>36102</ID>
+<Country>Sweden</Country>
+<Handles><Handle><ID>39452</ID>
+</Handle>
+</Handles>
+</Scener>
+<FreelanceFunctions><Function>Musician</Function>
+</FreelanceFunctions>
+</Handle>
+</CSDbEntry>
+</CSDbUser>
+<Date>09.06.2026</Date>
+<Text>Liked it a lot, this was my top vote in the compo. So nice chord progressions (I'm always a fan of 7b9's...) and really fitting melodies that constantly let me wonder where it will go. Great work!</Text>
+</UserComment>
+<UserComment><CSDbUser><ID>5905</ID>
+<Login>Stinsen</Login>
+<Handle>Stinsen</Handle>
+<RegisteredDate>1970-01-01T01:00:00+01:00</RegisteredDate>
+<CSDbEntry><Handle><ID>23584</ID>
+<Handle>Stinsen</Handle>
+<CurrentlyUsedHandle>true</CurrentlyUsedHandle>
+<Scener><ID>21086</ID>
+<Handles><Handle><ID>23584</ID>
+</Handle>
+</Handles>
+</Scener>
+<FreelanceFunctions><Function>Musician</Function>
+</FreelanceFunctions>
+</Handle>
+</CSDbEntry>
+</CSDbUser>
+<Date>08.06.2026</Date>
+<Text>Wanted AND needed! Every compo needs a bit of sweet, heavy melancholy. &amp;lt;3</Text>
+</UserComment>
+<UserComment><CSDbUser><ID>2785</ID>
+<Login>spider-j</Login>
+<RegisteredDate>1970-01-01T01:00:00+01:00</RegisteredDate>
+<CSDbEntry><Handle><ID>18945</ID>
+<Handle>Spider Jerusalem</Handle>
+<CurrentlyUsedHandle>true</CurrentlyUsedHandle>
+<Scener><ID>16889</ID>
+<Country>Germany</Country>
+<Handles><Handle><ID>18945</ID>
+</Handle>
+</Handles>
+</Scener>
+<FreelanceFunctions><Function>Coder</Function>
+<Function>Cracker</Function>
+<Function>Musician</Function>
+</FreelanceFunctions>
+</Handle>
+</CSDbEntry>
+</CSDbUser>
+<Date>08.06.2026</Date>
+<Text>What Randall said. Also: waltz always works for me, love it!</Text>
+</UserComment>
+<UserComment><CSDbUser><ID>712</ID>
+<Login>randall</Login>
+<Handle>gegegege gugugugu</Handle>
+<RegisteredDate>1970-01-01T01:00:00+01:00</RegisteredDate>
+<CSDbEntry><Handle><ID>8501</ID>
+<Handle>Randall</Handle>
+<AKA>srandall</AKA>
+<CurrentlyUsedHandle>true</CurrentlyUsedHandle>
+<HandleStory>generic enough to match Jammer and Sidder, my only groupmates at the time :)</HandleStory>
+<Scener><ID>3723</ID>
+<Country>Poland</Country>
+<Trivia>to further inflate my sack of nicks, i'm also (un)known as glebogryzarka and afrojax elsewhere</Trivia>
+<Handles><Handle><ID>8501</ID>
+</Handle>
+<Handle><ID>3733</ID>
+<Handle>Smalltown Boy</Handle>
+<CurrentlyUsedHandle>false</CurrentlyUsedHandle>
+<HandleStory>I named myself after one of my favourite songs (by Bronski Beat ofc).</HandleStory>
+<Scener><ID>3723</ID>
+</Scener>
+<FreelanceFunctions><Function>Musician</Function>
+</FreelanceFunctions>
+</Handle>
+<Handle><ID>34031</ID>
+<Handle>Chuinho</Handle>
+<CurrentlyUsedHandle>false</CurrentlyUsedHandle>
+<HandleStory>chuj = obscene description of penis in polish, but with a much broader meaning than just that, frequently used as an insult.
+-inho, because i hail from minas gerais ;)</HandleStory>
+<Scener><ID>3723</ID>
+</Scener>
+<FreelanceFunctions><Function>Musician</Function>
+</FreelanceFunctions>
+</Handle>
+<Handle><ID>33500</ID>
+<Handle>Vaginae Supremacy</Handle>
+<CurrentlyUsedHandle>false</CurrentlyUsedHandle>
+<HandleStory>Valerie Solanas meets C64 coverbands, chaos ensues</HandleStory>
+<Scener><ID>3723</ID>
+</Scener>
+<FreelanceFunctions><Function>Musician</Function>
+</FreelanceFunctions>
+</Handle>
+<Handle><ID>36518</ID>
+<Handle>Hate Bush</Handle>
+<CurrentlyUsedHandle>false</CurrentlyUsedHandle>
+<HandleStory>a miserable wordplay on my favourite female singer's name. also a bit outdated political statement.</HandleStory>
+<Scener><ID>3723</ID>
+</Scener>
+<FreelanceFunctions><Function>Musician</Function>
+</FreelanceFunctions>
+</Handle>
+</Handles>
+</Scener>
+<FreelanceFunctions><Function>Musician</Function>
+</FreelanceFunctions>
+</Handle>
+</CSDbEntry>
+</CSDbUser>
+<Date>08.06.2026</Date>
+<Text>excellent composition &amp;lt;3</Text>
+</UserComment>
+<UserComment><CSDbUser><ID>856</ID>
+<Login>katon</Login>
+<Handle>Katon</Handle>
+<RegisteredDate>1970-01-01T01:00:00+01:00</RegisteredDate>
+<CSDbEntry><Handle><ID>1578</ID>
+<Handle>Katon</Handle>
+<CurrentlyUsedHandle>true</CurrentlyUsedHandle>
+<Scener><ID>1566</ID>
+<Country>Poland</Country>
+<Handles><Handle><ID>1578</ID>
+</Handle>
+</Handles>
+</Scener>
+<FreelanceFunctions><Function>Fullscreen Graphician</Function>
+<Function>Graphician</Function>
+<Function>Logo Graphician</Function>
+<Function>Organizer</Function>
+</FreelanceFunctions>
+</Handle>
+</CSDbEntry>
+</CSDbUser>
+<Date>07.06.2026</Date>
+<Text>Great !</Text>
+</UserComment>
+<UserComment><CSDbUser><ID>2061</ID>
+<Login>GF</Login>
+<Handle>G-Fellow</Handle>
+<RegisteredDate>1970-01-01T01:00:00+01:00</RegisteredDate>
+<CSDbEntry><Handle><ID>7995</ID>
+<Handle>G-Fellow</Handle>
+<AKA>GFellow</AKA>
+<CurrentlyUsedHandle>true</CurrentlyUsedHandle>
+<HandleStory>My first nickname was Short-Circuit and I did use this one in the demo group 'Future Technologics 2009'. My second handle was G-Force. 
+But when the graphics card 'Nvidia GeForce' came out, i decided to search a new handle and this was G-Fellow. The G and F represent my first and family name.</HandleStory>
+<Scener><ID>7285</ID>
+<Country>Germany</Country>
+<Trivia>I had contact with the C64 Scene since 1984 and I was in the demo group 'Future Technologics 2009' from 1987-1991 as swapper. In 1988 I did start to compose music, first in the Future Composer. 
+After this I used Voicetracker. I did teach myself composing learning by doing. I play not any music instrument, that I did not learn any music instrument can sometimes be a advantage but sometimes also a pain.
+
+In 1991 I stopped with the C64 and I moved to the PC. I made quite alot tunes on the PC with the Scream Tracker, some Scream Tracker tunes was uploaded on some Mailboxes.
+
+1998 I found my C64 in a hidden place and I made some tunes for my own pleasure in the Soundbooster from Midas. Between 1998 - 2003 I made some PC-Songs with a other music-editor. 
+
+Around 2003 I found in the net some Scene pages and finally in 2004 I rejoined the C64 Scene as Musician. 
+I was very happy that the JCH Editor was now free available and I must say that JCH was with his JCH Editor miles before its time (maybe Time-Machine).</Trivia>
+<Handles><Handle><ID>7995</ID>
+</Handle>
+<Handle><ID>13663</ID>
+<Handle>Lazy Jones</Handle>
+<CurrentlyUsedHandle>false</CurrentlyUsedHandle>
+<Scener><ID>7285</ID>
+</Scener>
+<FreelanceFunctions><Function>Cracker</Function>
+</FreelanceFunctions>
+</Handle>
+<Handle><ID>7696</ID>
+<Handle>Short Circuit</Handle>
+<CurrentlyUsedHandle>false</CurrentlyUsedHandle>
+<Scener><ID>7285</ID>
+</Scener>
+<FreelanceFunctions><Function>Swapper</Function>
+</FreelanceFunctions>
+</Handle>
+</Handles>
+</Scener>
+<FreelanceFunctions><Function>Musician</Function>
+</FreelanceFunctions>
+</Handle>
+</CSDbEntry>
+</CSDbUser>
+<Date>06.06.2026</Date>
+<Text>A very laid back tune and a perfect loop. I like this tune.</Text>
+</UserComment>
+</Comments>
+</Release>
+</CSDbData>

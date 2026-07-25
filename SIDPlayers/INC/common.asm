@@ -1,0 +1,95 @@
+// =============================================================================
+//                              COMMON MODULE
+//          Shared data layout, NMI fix, VSync and raster timing helpers
+// =============================================================================
+
+#importonce
+
+// =============================================================================
+// DATA BLOCK LAYOUT
+// Fields populated at build time by prg-builder.js at fixed offsets from
+// DATA_ADDRESS so the JS side and the C64 player agree on the contract.
+// =============================================================================
+
+.var SIDInit						= DATA_ADDRESS + $00 // 3-byte JMP
+.var SIDPlay						= DATA_ADDRESS + $03 // 3-byte JMP
+.var BackupSIDMemory				= DATA_ADDRESS + $06 // 3-byte JMP
+.var RestoreSIDMemory				= DATA_ADDRESS + $09 // 3-byte JMP
+.var NumCallsPerFrame				= DATA_ADDRESS + $0c // 1 byte
+.var BorderColour					= DATA_ADDRESS + $0d // 1 byte
+.var BitmapScreenColour				= DATA_ADDRESS + $0e // 1 byte
+.var SongNumber						= DATA_ADDRESS + $0f // 1 byte
+.var SongName						= DATA_ADDRESS + $10 // 32-byte string
+.var ArtistName						= DATA_ADDRESS + $30 // 32-byte string
+.var CopyrightInfo					= DATA_ADDRESS + $50 // 32-byte string
+
+.var LoadAddress					= DATA_ADDRESS + $c0 // 2-byte vector
+.var InitAddress					= DATA_ADDRESS + $c2 // 2-byte vector
+.var PlayAddress					= DATA_ADDRESS + $c4 // 2-byte vector
+.var EndAddress						= DATA_ADDRESS + $c6 // 2-byte vector
+.var NumSongs						= DATA_ADDRESS + $c8 // 1 byte
+.var ClockType						= DATA_ADDRESS + $c9 // 1 byte, 0=PAL, 1=NTSC
+.var SIDModel						= DATA_ADDRESS + $ca // 1 byte, 0=6581, 1=8580
+// $CB-$CC reserved for modifiedCount (written by prg-builder.js)
+.var NumSIDChips					= DATA_ADDRESS + $cd // 1 byte, 1-4 SID chips supported
+.var IntroScreenHi					= DATA_ADDRESS + $ce // 1 byte, high byte of the bank-0 intro screen page
+.var IntroD018						= DATA_ADDRESS + $cf // 1 byte, $d018 value for the intro screen + lowercase ROM
+.var BitmapMode						= DATA_ADDRESS + $70 // 1 byte, logo mode: 0=MC bitmap, 1=hires bitmap, 2=hires text, 3=MC/mixed text, 4=ECM
+// Forced song loop (see INC/musicplayback.asm): 24-bit little-endian raster
+// frame count after which the tune is restarted from the top. 0 = disabled.
+// The exporter sets this for tunes that fade out and stop instead of looping.
+.var MusicLoopFrames				= DATA_ADDRESS + $d0 // 3 bytes, frames until forced restart (0 = off)
+.var LogoD022						= DATA_ADDRESS + $71 // 1 byte, charset-logo $d022 (multicolour 1 / ECM bg2)
+.var LogoD023						= DATA_ADDRESS + $72 // 1 byte, charset-logo $d023 (multicolour 2 / ECM bg3)
+.var LogoD024						= DATA_ADDRESS + $73 // 1 byte, charset-logo $d024 (ECM bg4)
+.var ZPUsageData					= DATA_ADDRESS + $e0 // 32-byte string
+
+// Graphics-donor builds (-define GFX_DONOR) carry no code: the data-block
+// contract above stays visible, the helpers below are compiled out.
+#if !GFX_DONOR
+
+// =============================================================================
+// NMIFix - point NMI vector at a bare RTI and silence CIA2 NMI sources
+// so pressing RESTORE cannot crash the player.
+// =============================================================================
+
+NMIFix:
+
+		lda #$35
+		sta $01
+		lda #<!JustRTI+
+		sta $FFFA
+		lda #>!JustRTI+
+		sta $FFFB
+		lda #$00
+		sta $DD0E
+		sta $DD04
+		sta $DD05
+		lda #$81
+		sta $DD0D
+		lda #$01
+		sta $DD0E
+
+		rts
+
+	!JustRTI:
+
+		rti
+
+// =============================================================================
+// VSync - busy-wait until raster passes the top of the visible frame.
+// Spins on bit 7 of $D011 (which mirrors bit 8 of the 9-bit raster line).
+// =============================================================================
+
+VSync:
+    bit $d011
+    bpl *-3
+    bit $d011
+    bmi *-3
+    rts
+
+
+// Multi-call music scheduling lives in INC/multicallirq.asm: call 0 is
+// raster-driven at the player's MUSIC_SYNC_LINE, the remaining calls are CIA
+// Timer B driven at FRAME_CYCLES/N, so no per-call raster tables are needed.
+#endif // !GFX_DONOR

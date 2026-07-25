@@ -1,0 +1,84 @@
+{
+  "name": "Scrap Columns",
+  "maxCallsPerFrame": 8,
+  "needsSaveRestore": true,
+  "fontType": "1x1",
+  "layouts": {
+    "bank4000": {
+      "binary": "prg/ScrapColumns-4000.bin",
+      "size": "0x4000",
+      "baseAddress": "0x4000",
+      "dataAddress": "0x4000",
+      "sysAddress": "0x4100",
+      "binaryDataStart": "0x4000",
+      "binaryDataEnd": "0x7FFF",
+      "borderColor": "0x400D",
+      "backgroundColor": "0x400E",
+      "fontModeAddress": "0x4071",
+      "songNameColorAddress": "0x4072",
+      "artistNameColorAddress": "0x4073",
+      "charsetAddress": "0x6000",
+      "charsetSize": "0x300",
+      "scrollTextAddress": "0x6400",
+      "saveRestoreLocation": "before",
+      "saveRestoreEndAddress": "0x4000",
+      "saveRestoreMaxSize": "0x3800"
+    },
+    "bank8000": {
+      "binary": "prg/ScrapColumns-8000.bin",
+      "size": "0x4000",
+      "baseAddress": "0x8000",
+      "dataAddress": "0x8000",
+      "sysAddress": "0x8100",
+      "binaryDataStart": "0x8000",
+      "binaryDataEnd": "0xBFFF",
+      "borderColor": "0x800D",
+      "backgroundColor": "0x800E",
+      "fontModeAddress": "0x8071",
+      "songNameColorAddress": "0x8072",
+      "artistNameColorAddress": "0x8073",
+      "charsetAddress": "0xA000",
+      "charsetSize": "0x300",
+      "scrollTextAddress": "0xA400",
+      "saveRestoreLocation": "before",
+      "saveRestoreEndAddress": "0x8000",
+      "saveRestoreMaxSize": "0x7800"
+    }
+  },
+  "options": [
+    {
+      "id": "bgColor",
+      "label": "Background Colour",
+      "type": "colorPicker",
+      "default": 0
+    },
+    {
+      "id": "songNameColor",
+      "label": "Text Colour",
+      "type": "colorPicker",
+      "default": 1
+    },
+    {
+      "id": "scrollText",
+      "label": "Scroll Text",
+      "type": "textarea",
+      "default": "",
+      "maxLength": 1000,
+      "dataField": "scrollTextAddress",
+      "prependSpaces": 8,
+      "description": "Optional. If set, it scrolls across the song-name line a few seconds after the tune starts. Leave blank to just show the artist and song name.",
+      "loadSave": true
+    },
+    {
+      "id": "font",
+      "label": "Font",
+      "type": "fontSelector",
+      "default": 1,
+      "excludeROM": true
+    }
+  ],
+  "relocatable": true,
+  "relocBase": "prg/ScrapColumns-4000.bin",
+  "relocTable": "prg/scrapcolumns.reloc.json",
+  "relocBaseLayout": "bank4000"
+}

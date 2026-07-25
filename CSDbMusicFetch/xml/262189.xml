@@ -1,0 +1,224 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<CSDbData><Release><ID>262189</ID>
+<Name>Digital Dreams</Name>
+<Type>C64 Music</Type>
+<ReleaseDay>5</ReleaseDay>
+<ReleaseMonth>6</ReleaseMonth>
+<ReleaseYear>2026</ReleaseYear>
+<ReleasedAt><Event><ID>3485</ID>
+<Name>X'2026</Name>
+<EventType>C64 Only Party</EventType>
+<AKA>X 2026 X2026 X-2026 X'26 X26 X-26</AKA>
+<StartDay>5</StartDay>
+<StartMonth>6</StartMonth>
+<StartYear>2026</StartYear>
+<EndDay>7</EndDay>
+<EndMonth>6</EndMonth>
+<EndYear>2026</EndYear>
+<Address>De Hoof 18</Address>
+<Zip>5712LM</Zip>
+<City>Someren</City>
+<State>NB</State>
+<Country>Netherlands</Country>
+<Website>https://xparty.net/</Website>
+</Event>
+</ReleasedAt>
+<Achievement><Compo>C64 Music</Compo>
+<Place>17</Place>
+</Achievement>
+<ScreenShot>https://csdb.dk/gfx/releases/262000/262189.png</ScreenShot>
+<ReleasedBy><Group><ID>6614</ID>
+<Name>Desire</Name>
+<Short>DSR</Short>
+<BaseCountry>Netherlands</BaseCountry>
+<Grouptypes><Grouptype>Demo Group</Grouptype>
+</Grouptypes>
+<Slogan>You make us sick</Slogan>
+<Slogan>We make demos</Slogan>
+<Slogan>Tested on Animals</Slogan>
+</Group>
+</ReleasedBy>
+<Credits><Credit><CreditType>Music</CreditType>
+<Handle><ID>787</ID>
+<Handle>No-XS</Handle>
+<AKA>No-Excess</AKA>
+<CurrentlyUsedHandle>true</CurrentlyUsedHandle>
+<Scener><ID>771</ID>
+<Country>Netherlands</Country>
+<Handles><Handle><ID>787</ID>
+</Handle>
+</Handles>
+</Scener>
+<FreelanceFunctions><Function>Musician</Function>
+</FreelanceFunctions>
+</Handle>
+</Credit>
+</Credits>
+<UsedSIDs><SID><ID>65787</ID>
+<HVSCPath>/MUSICIANS/N/No-XS/Digital_Dreams.sid</HVSCPath>
+<Name>Digital Dreams</Name>
+<Author>Marc van den Bovenkamp (No-XS)</Author>
+<Released>2026 Desire</Released>
+<LoadAddr>4096</LoadAddr>
+<InitAddr>4096</InitAddr>
+<PlayAddr>4099</PlayAddr>
+<NOSongs>1</NOSongs>
+<DefaultSong>1</DefaultSong>
+<SIDModel>8580</SIDModel>
+<ClockSpeed>PAL</ClockSpeed>
+<DataSize>3877</DataSize>
+</SID>
+</UsedSIDs>
+<DownloadLinks><DownloadLink><Link>https://csdb.dk/getinternalfile.php/280593/Digital_Dreams.prg</Link>
+<CounterLink>https://csdb.dk/release/download.php?id=322605</CounterLink>
+<Downloads>150</Downloads>
+<Status>Ok</Status>
+</DownloadLink>
+<DownloadLink><Link>https://csdb.dk/getinternalfile.php/280594/Digital Dreams.sid</Link>
+<CounterLink>https://csdb.dk/release/download.php?id=322606</CounterLink>
+<Downloads>50</Downloads>
+<Status>Ok</Status>
+</DownloadLink>
+</DownloadLinks>
+<Comments><UserComment><CSDbUser><ID>2234</ID>
+<Login>xiny</Login>
+<Handle>Xiny6581</Handle>
+<RegisteredDate>1970-01-01T01:00:00+01:00</RegisteredDate>
+<CSDbEntry><Handle><ID>12697</ID>
+<Handle>Xiny6581</Handle>
+<AKA>xiny, Gräddglipan</AKA>
+<CurrentlyUsedHandle>true</CurrentlyUsedHandle>
+<HandleStory>I made a typo once I coded some junk and I liked the "handle" and 6581 was added later on, since it responds the SID soundchip.
+...known to like sisters :)</HandleStory>
+<Scener><ID>11382</ID>
+<Country>Sweden</Country>
+<Trivia>Most recognized for my HQ SID Recordings. Recorded from real hardware.
+http://www.youtube.com/demoscenes
+
+Involved in "Preservation", to preserve the demoscene and unreleased releases for the future generation of data-sceners, basically to pass that time-capsule and legacy.
+Where other quiet, that is where I begin to tackle the hard-cases of floppies and tapes. To bring out as much data as possible! "The challenge is always accepted"
+
+http://sidpreservation.6581.org
+-Read about all the work and what is going on-
+
+Fulltime musician:
+http://www.soundcloud.com/dees-productions</Trivia>
+<Handles><Handle><ID>12697</ID>
+</Handle>
+<Handle><ID>12694</ID>
+<Handle>xiny</Handle>
+<CurrentlyUsedHandle>false</CurrentlyUsedHandle>
+<HandleStory>For a time I only used xiny, as came up from a typo I made while coding but the "nick" had a nice touch so I dropped my old nick and started to use this one instead and the numbers 6581, well they are from the SID chip, since I am a musican. End of story :D</HandleStory>
+<Scener><ID>11382</ID>
+</Scener>
+<FreelanceFunctions><Function>Cracker</Function>
+<Function>Graphician</Function>
+<Function>Musician</Function>
+<Function>Net Trader</Function>
+<Function>Phreaker</Function>
+<Function>Webmaster</Function>
+</FreelanceFunctions>
+</Handle>
+</Handles>
+</Scener>
+<FreelanceFunctions><Function>Hardware-Guru</Function>
+<Function>Musician</Function>
+<Function>Original Supplier</Function>
+<Function>Tester</Function>
+</FreelanceFunctions>
+</Handle>
+</CSDbEntry>
+</CSDbUser>
+<Date>14.06.2026</Date>
+<Text>Such a happy jolly tune! Filled with glitter and joy :)</Text>
+</UserComment>
+<UserComment><CSDbUser><ID>1667</ID>
+<Login>youth</Login>
+<Handle>Youth</Handle>
+<RegisteredDate>1970-01-01T01:00:00+01:00</RegisteredDate>
+<CSDbEntry><Handle><ID>1130</ID>
+<Handle>Youth</Handle>
+<AKA>youtH</AKA>
+<CurrentlyUsedHandle>true</CurrentlyUsedHandle>
+<HandleStory>Saw the name on an Orb album</HandleStory>
+<Scener><ID>1114</ID>
+<Country>Netherlands</Country>
+<Handles><Handle><ID>35839</ID>
+<Handle>Animal</Handle>
+<CurrentlyUsedHandle>false</CurrentlyUsedHandle>
+<Scener><ID>1114</ID>
+</Scener>
+<FreelanceFunctions><Function>Musician</Function>
+</FreelanceFunctions>
+</Handle>
+<Handle><ID>1130</ID>
+</Handle>
+<Handle><ID>4750</ID>
+<Handle>Mad B</Handle>
+<CurrentlyUsedHandle>false</CurrentlyUsedHandle>
+<HandleStory>They are my initials: M.A.D.B.</HandleStory>
+<Scener><ID>1114</ID>
+</Scener>
+<FreelanceFunctions><Function>Coder</Function>
+<Function>Diskmag Editor</Function>
+<Function>Musician</Function>
+</FreelanceFunctions>
+</Handle>
+</Handles>
+</Scener>
+<FreelanceFunctions><Function>Coder</Function>
+<Function>Musician</Function>
+</FreelanceFunctions>
+</Handle>
+</CSDbEntry>
+</CSDbUser>
+<Date>09.06.2026</Date>
+<Text>One of my favorite in the compo, the bouncy energy and original melodies really make me smile.</Text>
+</UserComment>
+<UserComment><CSDbUser><ID>1803</ID>
+<Login>vincenzo</Login>
+<Handle>Vincenzo</Handle>
+<RegisteredDate>1970-01-01T01:00:00+01:00</RegisteredDate>
+<CSDbEntry><Handle><ID>4559</ID>
+<Handle>Vincenzo</Handle>
+<AKA>Padre Vincenzo</AKA>
+<CurrentlyUsedHandle>true</CurrentlyUsedHandle>
+<Scener><ID>4535</ID>
+<Country>Hungary</Country>
+<Handles><Handle><ID>4559</ID>
+</Handle>
+</Handles>
+</Scener>
+<FreelanceFunctions><Function>Musician</Function>
+</FreelanceFunctions>
+</Handle>
+</CSDbEntry>
+</CSDbUser>
+<Date>09.06.2026</Date>
+<Text>Jolly good and melodic track. To me this would be the example in the chapter of a book at the "chiptune" phrase.</Text>
+</UserComment>
+<UserComment><CSDbUser><ID>2785</ID>
+<Login>spider-j</Login>
+<RegisteredDate>1970-01-01T01:00:00+01:00</RegisteredDate>
+<CSDbEntry><Handle><ID>18945</ID>
+<Handle>Spider Jerusalem</Handle>
+<CurrentlyUsedHandle>true</CurrentlyUsedHandle>
+<Scener><ID>16889</ID>
+<Country>Germany</Country>
+<Handles><Handle><ID>18945</ID>
+</Handle>
+</Handles>
+</Scener>
+<FreelanceFunctions><Function>Coder</Function>
+<Function>Cracker</Function>
+<Function>Musician</Function>
+</FreelanceFunctions>
+</Handle>
+</CSDbEntry>
+</CSDbUser>
+<Date>08.06.2026</Date>
+<Text>Lovely "Gedudel" at a great pace! Very danceable imho.</Text>
+</UserComment>
+</Comments>
+</Release>
+</CSDbData>

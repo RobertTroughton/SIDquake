@@ -1,0 +1,144 @@
+/* Genesis Project common header — shared across Genesis Project sites */
+
+.genesis-header {
+	background-color: #161616;
+	border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+	padding: 0;
+	margin: 0;
+	font-family: 'Montserrat', -apple-system, system-ui, sans-serif;
+	position: relative;
+	z-index: 1000;
+	display: flex;
+	justify-content: center;
+	width: 100%;
+	box-sizing: border-box;
+}
+
+.genesis-header-inner {
+	max-width: 80em;
+	margin: 0 auto;
+	display: flex;
+	justify-content: flex-start;
+	align-items: center;
+	padding: 0.5rem 2rem;
+	box-sizing: border-box;
+}
+
+.genesis-nav {
+	display: flex;
+	gap: 1.5rem;
+	align-items: center;
+}
+
+.genesis-nav-label {
+	color: #858585;
+	font-size: 0.65rem;
+	text-transform: uppercase;
+	letter-spacing: 0.2em;
+	margin-right: -0.5rem;
+	font-weight: 600;
+}
+
+.genesis-nav-links {
+	display: flex;
+	gap: 0.25rem;
+	list-style: none;
+	margin: 0;
+	padding: 0;
+}
+
+	.genesis-nav-links li {
+		margin: 0;
+	}
+
+.genesis-header .genesis-nav-links a[href],
+.genesis-header .genesis-nav-links a[href]:link,
+.genesis-header .genesis-nav-links a[href]:visited {
+	color: #909090;
+	text-decoration: none;
+	font-weight: 500;
+	font-size: 0.8rem;
+	text-transform: uppercase;
+	letter-spacing: 0.06em;
+	transition: color 0.2s ease, background-color 0.2s ease;
+	padding: 0.3rem 0.65rem;
+	border-radius: 6px;
+	display: block;
+	position: relative;
+}
+
+	.genesis-header .genesis-nav-links a[href]:hover,
+	.genesis-header .genesis-nav-links a[href]:active {
+		color: #e0e0e0;
+		background-color: rgba(255, 255, 255, 0.06);
+	}
+
+	.genesis-header .genesis-nav-links a[href].active,
+	.genesis-header .genesis-nav-links a[href].active:link,
+	.genesis-header .genesis-nav-links a[href].active:visited,
+	.genesis-header .genesis-nav-links a[href].active:hover {
+		color: #ffffff;
+		background-color: rgba(255, 255, 255, 0.1);
+	}
+
+.genesis-nav-links a.active::after {
+	content: '';
+	position: absolute;
+	bottom: -2px;
+	left: 50%;
+	transform: translateX(-50%);
+	width: 60%;
+	height: 2px;
+	background: linear-gradient(90deg, transparent, #ffcc00, transparent);
+	border-radius: 1px;
+}
+
+@media (max-width: 768px) {
+	.genesis-header-inner {
+		flex-direction: column;
+		padding: 0.6rem 1rem;
+		gap: 0.4rem;
+	}
+
+	.genesis-nav {
+		flex-direction: column;
+		gap: 0.25rem;
+		width: 100%;
+	}
+
+	.genesis-nav-label {
+		margin-right: 0;
+		margin-bottom: 0.15rem;
+	}
+
+	.genesis-nav-links {
+		gap: 0.25rem;
+		flex-wrap: wrap;
+		justify-content: center;
+	}
+
+	.genesis-header .genesis-nav-links a[href],
+	.genesis-header .genesis-nav-links a[href]:link,
+	.genesis-header .genesis-nav-links a[href]:visited {
+		font-size: 0.75rem;
+		padding: 0.3rem 0.5rem;
+	}
+
+	.genesis-nav-links a.active::after {
+		display: none;
+	}
+}
+
+@media (max-width: 480px) {
+	.genesis-nav-links {
+		width: 100%;
+	}
+
+	.genesis-header .genesis-nav-links a[href],
+	.genesis-header .genesis-nav-links a[href]:link,
+	.genesis-header .genesis-nav-links a[href]:visited {
+		flex: 1;
+		text-align: center;
+		min-width: 72px;
+	}
+}

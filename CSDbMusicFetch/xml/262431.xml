@@ -1,0 +1,352 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<CSDbData><Release><ID>262431</ID>
+<Name>Separate Ways</Name>
+<Type>C64 Music</Type>
+<ReleaseDay>18</ReleaseDay>
+<ReleaseMonth>6</ReleaseMonth>
+<ReleaseYear>2026</ReleaseYear>
+<Rating>9.56</Rating>
+<Website>https://m.youtube.com/watch?v=-_dprE3xcNs</Website>
+<ScreenShot>https://csdb.dk/gfx/releases/262000/262431.png</ScreenShot>
+<ReleasedBy><Group><ID>435</ID>
+<Name>Hokuto Force</Name>
+<AKA>Digital Monastery (DM)</AKA>
+<Short>HF</Short>
+<Trivia>The name of this group is inspired by a postatomic japanese cartoon of martial arts called Hokuto No Ken. Probably you know it as "Fist of the north star".
+29/10/06: For many reasons I (The Overkiller) decided to put HF in inactive status.
+2009 A.D: Hokuto Force is back fully in activity!
+30/11/2012: &amp;lt;group id=10014&amp;gt;, the game developing division of Hokuto Force is born!
+
+
+[IMG]https://i.ibb.co/Lp1MxGv/245.png[/img]
+
+During its activity, Hokuto Force was in coop with: &amp;lt;group id=3416&amp;gt; , &amp;lt;group id=215&amp;gt; , &amp;lt;group id=8337&amp;gt; , &amp;lt;group id=7190&amp;gt; , &amp;lt;group id=4874&amp;gt; , &amp;lt;group id=185&amp;gt; (more than 50 1st releases were done and still counting) , &amp;lt;group id=13371&amp;gt;</Trivia>
+<BaseCountry>Italy</BaseCountry>
+<FoundYear>1988</FoundYear>
+<Website>http://www.hokutoforce.c64.org</Website>
+<Rating>9.08</Rating>
+<Grouptypes><Grouptype>Cracker Group</Grouptype>
+<Grouptype>Demo Group</Grouptype>
+<Grouptype>Game Development Group</Grouptype>
+<Grouptype>Swapping Group</Grouptype>
+</Grouptypes>
+<Slogan>Accuracy makes the difference!</Slogan>
+<Slogan>We give dignity even to the lamest games !!</Slogan>
+<Slogan>The fist of the north star !!</Slogan>
+<Slogan>Save 'em from the dust of time!!</Slogan>
+<Slogan>The power of the seven stars !!</Slogan>
+<Slogan>To serve and preserve !!</Slogan>
+<Slogan>We don't whine... we do facts !!</Slogan>
+</Group>
+</ReleasedBy>
+<Credits><Credit><CreditType>Music</CreditType>
+<Handle><ID>38402</ID>
+<Handle>DJ Space</Handle>
+<CurrentlyUsedHandle>true</CurrentlyUsedHandle>
+<HandleStory>I am a music composer/producer from Greece. Commodore 64 user/lover since the early-mid 80s. SID music was and still is fascinating/kinda addicting to me and I always wanted to be a part of it and contribute to the scene with my own SID music and also my pixel art and PETSCII creations. I never thought as a child that one day I will be testing/listening to my own SID files on my childhood C64 but here we are!
+
+https://www.youtube.com/@DJSpaceRetrotunes
+https://www.facebook.com/djspace.music
+http://www.retroperks.com</HandleStory>
+<Scener><ID>35085</ID>
+<Country>Greece</Country>
+<Handles><Handle><ID>38402</ID>
+</Handle>
+</Handles>
+</Scener>
+<FreelanceFunctions><Function>Graphician</Function>
+<Function>Musician</Function>
+</FreelanceFunctions>
+</Handle>
+</Credit>
+</Credits>
+<DownloadLinks><DownloadLink><Link>https://csdb.dk/getinternalfile.php/280899/separate ways.prg</Link>
+<CounterLink>https://csdb.dk/release/download.php?id=322935</CounterLink>
+<Downloads>152</Downloads>
+<Status>Ok</Status>
+</DownloadLink>
+<DownloadLink><Link>https://csdb.dk/getinternalfile.php/280900/separate ways.sid</Link>
+<CounterLink>https://csdb.dk/release/download.php?id=322936</CounterLink>
+<Downloads>71</Downloads>
+<Status>Ok</Status>
+</DownloadLink>
+</DownloadLinks>
+<Comments><UserComment><CSDbUser><ID>1701</ID>
+<Login>yogibear/ptv</Login>
+<Handle>Yogibear</Handle>
+<RegisteredDate>1970-01-01T01:00:00+01:00</RegisteredDate>
+<CSDbEntry><Handle><ID>1129</ID>
+<Handle>Yogibear</Handle>
+<CurrentlyUsedHandle>true</CurrentlyUsedHandle>
+<Scener><ID>1113</ID>
+<Country>Netherlands</Country>
+<Trivia>Listen to my published SID tunes at The High Voltage SID Collection, www.hvsc.c64.org, under the name Wijnhoven_Joachim.</Trivia>
+<Handles><Handle><ID>13337</ID>
+<Handle>Joachim Wijnhoven</Handle>
+<CurrentlyUsedHandle>false</CurrentlyUsedHandle>
+<Scener><ID>1113</ID>
+</Scener>
+<FreelanceFunctions><Function>Musician</Function>
+</FreelanceFunctions>
+</Handle>
+<Handle><ID>5386</ID>
+<Handle>Banana Joachim</Handle>
+<AKA>B.J.</AKA>
+<CurrentlyUsedHandle>false</CurrentlyUsedHandle>
+<Scener><ID>1113</ID>
+</Scener>
+<FreelanceFunctions><Function>Coder</Function>
+<Function>Graphician</Function>
+</FreelanceFunctions>
+</Handle>
+<Handle><ID>5388</ID>
+<Handle>Jack</Handle>
+<CurrentlyUsedHandle>false</CurrentlyUsedHandle>
+<Scener><ID>1113</ID>
+</Scener>
+<FreelanceFunctions><Function>Musician</Function>
+</FreelanceFunctions>
+</Handle>
+<Handle><ID>5387</ID>
+<Handle>CBJ</Handle>
+<AKA>Colonel Blood &amp; Jaws</AKA>
+<CurrentlyUsedHandle>false</CurrentlyUsedHandle>
+<Scener><ID>1113</ID>
+</Scener>
+<FreelanceFunctions><Function>Coder</Function>
+<Function>Musician</Function>
+</FreelanceFunctions>
+</Handle>
+<Handle><ID>1129</ID>
+</Handle>
+</Handles>
+</Scener>
+<FreelanceFunctions><Function>Musician</Function>
+</FreelanceFunctions>
+</Handle>
+</CSDbEntry>
+</CSDbUser>
+<Date>28.06.2026</Date>
+<Text>Nice!</Text>
+</UserComment>
+<UserComment><CSDbUser><ID>4203</ID>
+<Login>dtperson</Login>
+<Handle>Isildur</Handle>
+<RegisteredDate>1970-01-01T01:00:00+01:00</RegisteredDate>
+<CSDbEntry><Handle><ID>3864</ID>
+<Handle>Isildur</Handle>
+<CurrentlyUsedHandle>true</CurrentlyUsedHandle>
+<HandleStory>I was reading A LOT of J.R.R. Tolkien when I was teenager :)</HandleStory>
+<Scener><ID>3854</ID>
+<Country>Poland</Country>
+<Handles><Handle><ID>3864</ID>
+</Handle>
+</Handles>
+</Scener>
+<FreelanceFunctions><Function>Coder</Function>
+<Function>Cover Designer</Function>
+<Function>Fullscreen Graphician</Function>
+<Function>Graphician</Function>
+<Function>Logo Graphician</Function>
+<Function>Musician</Function>
+<Function>Organizer</Function>
+</FreelanceFunctions>
+</Handle>
+</CSDbEntry>
+</CSDbUser>
+<Date>19.06.2026</Date>
+<Text>Legend :D</Text>
+</UserComment>
+<UserComment><CSDbUser><ID>538</ID>
+<Login>iAN CooG</Login>
+<Handle>iAN CooG</Handle>
+<RegisteredDate>1970-01-01T01:00:00+01:00</RegisteredDate>
+<CSDbEntry><Handle><ID>6662</ID>
+<Handle>Ian Coog</Handle>
+<AKA>iAN CooG</AKA>
+<CurrentlyUsedHandle>true</CurrentlyUsedHandle>
+<HandleStory>Name of the main character of the anime "SF Saiyuki Starzinger" by Leiji Matsumoto. At least here in italy, since in japanese is written Jan Kugo. I've chosen the handle "IAN" to sign my high scores on arcade games ^_^, then changed to Ian7102 in the late 80's, and finally iAN CooG from 1999 or so.</HandleStory>
+<Scener><ID>6145</ID>
+<Country>Italy</Country>
+<Handles><Handle><ID>7474</ID>
+<Handle>IAN*7102</Handle>
+<CurrentlyUsedHandle>false</CurrentlyUsedHandle>
+<Scener><ID>6145</ID>
+</Scener>
+<FreelanceFunctions><Function>Cracker</Function>
+</FreelanceFunctions>
+</Handle>
+<Handle><ID>6662</ID>
+</Handle>
+</Handles>
+</Scener>
+<FreelanceFunctions><Function>Coder</Function>
+<Function>Cracker</Function>
+<Function>Organizer</Function>
+</FreelanceFunctions>
+</Handle>
+</CSDbEntry>
+</CSDbUser>
+<Date>18.06.2026</Date>
+<Text>Listened: Yep, very good arrangement.</Text>
+</UserComment>
+<UserComment><CSDbUser><ID>7220</ID>
+<Login>Nordischsound</Login>
+<Handle>Nordischsound</Handle>
+<RegisteredDate>1970-01-01T01:00:00+01:00</RegisteredDate>
+<CSDbEntry><Handle><ID>34546</ID>
+<Handle>Nordischsound</Handle>
+<CurrentlyUsedHandle>true</CurrentlyUsedHandle>
+<HandleStory>I'm a Scener since I've began to make SID's tunes in 2020. My first scene contact was LMan. I'm a digital music producer from north germany. 
+
+I've made a lot of covers and more will follow but I also write original tunes.
+
+https://www.youtube.com/c/Nordischsound
+https://linktr.ee/Nordischsound
+https://www.facebook.com/Nordischsound</HandleStory>
+<Scener><ID>31338</ID>
+<Country>Germany</Country>
+<Trivia>[url=https://csdb.dk/search/?seinsel=sids&amp;search=nordischsound&amp;all=1]Link to all his SID-Tunes (HVSC)[/url]</Trivia>
+<Handles><Handle><ID>34546</ID>
+</Handle>
+</Handles>
+</Scener>
+<FreelanceFunctions><Function>Graphician</Function>
+<Function>Musician</Function>
+</FreelanceFunctions>
+</Handle>
+</CSDbEntry>
+</CSDbUser>
+<Date>18.06.2026</Date>
+<Text>🤘😎🤘</Text>
+</UserComment>
+<UserComment><CSDbUser><ID>7573</ID>
+<Login>megasoftargentina</Login>
+<Handle>Juanete</Handle>
+<RegisteredDate>1970-01-01T01:00:00+01:00</RegisteredDate>
+<CSDbEntry><Handle><ID>39377</ID>
+<Handle>Juanete</Handle>
+<CurrentlyUsedHandle>true</CurrentlyUsedHandle>
+<HandleStory>Megasoft Argentina was one of the first computer and video game stores founded by Juan Jose (juanete) and one of the most well-known and productive C64, Amiga, Zx Spectrum, MSX, Pc Computers cracking groups in today's Argentina, formed in late 1982, where they remain active to this day, selling hardware from the best brands on the market.
+
+Added to the info : The store opened around 1986, and it all started with the help of my parents (Kike and Cata)... Megasoft came to mind in 1982, when it all began as a hobby on the beloved C64... and then I delved into the glorious world of machine code. I was a huge fan of Micromania magazine, where I could see all the new releases. Things arrived a bit late in my country, but it was the only way we had to get an idea of ​​what was coming out, until the BBS world arrived. My huge collection of magazines decorated the store walls in a unique style, making that beautiful place unforgettable for my friends and customers.
+
+(This is dedicated especially to Kike and Cata, mis viejos !! ... who trusted where we wanted to go currently.)</HandleStory>
+<Scener><ID>31826</ID>
+<Country>Argentina</Country>
+<Trivia>Megasoft were Argentinian crackers, they also made intros for other groups and computer stores in Argentina in the '80s.
+
+Currently active from 1982 - 2026, coding intros and art on c64/amiga/PC Computers.
+
+https://www.megasoftretro.com
+https://www.youtube.com/@Megasoftretro
+https://www.pouet.net/groups.php?which=15004
+https://defacto2.net/p/juanete?output=card&amp;platform=-&amp;section=-..
+https://tegperu.org/tegperu/default.jsp</Trivia>
+<Handles><Handle><ID>39377</ID>
+</Handle>
+<Handle><ID>40720</ID>
+<Handle>Juan Jose SCG</Handle>
+<CurrentlyUsedHandle>false</CurrentlyUsedHandle>
+<Scener><ID>31826</ID>
+</Scener>
+<FreelanceFunctions><Function>Cracker</Function>
+</FreelanceFunctions>
+</Handle>
+<Handle><ID>40719</ID>
+<Handle>Mr JJ</Handle>
+<CurrentlyUsedHandle>false</CurrentlyUsedHandle>
+<Scener><ID>31826</ID>
+</Scener>
+<FreelanceFunctions><Function>Cracker</Function>
+</FreelanceFunctions>
+</Handle>
+</Handles>
+</Scener>
+<FreelanceFunctions><Function>Coder</Function>
+<Function>Cracker</Function>
+</FreelanceFunctions>
+</Handle>
+</CSDbEntry>
+</CSDbUser>
+<Date>18.06.2026</Date>
+<Text>Excellent done, and one of my favorite bands JOURNEY, I congratulate you, well done!</Text>
+</UserComment>
+<UserComment><CSDbUser><ID>5840</ID>
+<Login>didi</Login>
+<Handle>Didi</Handle>
+<RegisteredDate>1970-01-01T01:00:00+01:00</RegisteredDate>
+<CSDbEntry><Handle><ID>11313</ID>
+<Handle>Didi</Handle>
+<CurrentlyUsedHandle>true</CurrentlyUsedHandle>
+<HandleStory>Inspired by german comedian and actor [url=http://en.wikipedia.org/wiki/Dieter_Hallervorden]Dieter "Didi" Hallervorden[/url] which I considered quite funny in my teenage days.</HandleStory>
+<Scener><ID>10179</ID>
+<Country>Germany</Country>
+<Trivia>Took a long scene break from January 2002 until October 2011.</Trivia>
+<Handles><Handle><ID>11313</ID>
+</Handle>
+<Handle><ID>23255</ID>
+<Handle>Rainbowman</Handle>
+<CurrentlyUsedHandle>false</CurrentlyUsedHandle>
+<Scener><ID>10179</ID>
+</Scener>
+<FreelanceFunctions><Function>Coder</Function>
+<Function>Cracker</Function>
+<Function>Original Supplier</Function>
+<Function>Swapper</Function>
+</FreelanceFunctions>
+</Handle>
+<Handle><ID>23296</ID>
+<Handle>Mister Magic</Handle>
+<CurrentlyUsedHandle>false</CurrentlyUsedHandle>
+<Scener><ID>10179</ID>
+</Scener>
+<FreelanceFunctions><Function>Coder</Function>
+<Function>Cracker</Function>
+<Function>Original Supplier</Function>
+</FreelanceFunctions>
+</Handle>
+<Handle><ID>25275</ID>
+<Handle>Uncle Fritz</Handle>
+<CurrentlyUsedHandle>false</CurrentlyUsedHandle>
+<HandleStory>Uncle Fritz (german: Onkel Fritz) was a strange person mentioned in some very poor german jokes in the past.</HandleStory>
+<Scener><ID>10179</ID>
+</Scener>
+<FreelanceFunctions><Function>Coder</Function>
+<Function>Cracker</Function>
+</FreelanceFunctions>
+</Handle>
+</Handles>
+</Scener>
+<FreelanceFunctions><Function>Coder</Function>
+<Function>Cracker</Function>
+<Function>Diskmag Editor</Function>
+<Function>Logo Graphician</Function>
+<Function>Modem Trader</Function>
+<Function>Net Trader</Function>
+<Function>NTSC-Fixer</Function>
+<Function>Organizer</Function>
+<Function>Original Supplier</Function>
+<Function>PAL-Fixer</Function>
+<Function>Swapper</Function>
+<Function>Translator</Function>
+</FreelanceFunctions>
+</Handle>
+</CSDbEntry>
+</CSDbUser>
+<Date>18.06.2026</Date>
+<Text>Stinsen's is a great cover, too. But I love the dynanic and power of this one. Different approach IMO. Re-listened to the original by Journey for comparison. ;-)</Text>
+</UserComment>
+<UserComment><CSDbUser><ID>538</ID>
+</CSDbUser>
+<Date>18.06.2026</Date>
+<Text>let's hear how it compares to https://csdb.dk/release/?id=116481</Text>
+</UserComment>
+<UserComment><CSDbUser><ID>5840</ID>
+</CSDbUser>
+<Date>18.06.2026</Date>
+<Text>Great cover of one of my favourite songs! &amp;lt;3</Text>
+</UserComment>
+</Comments>
+</Release>
+</CSDbData>

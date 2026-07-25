@@ -1,0 +1,240 @@
+{
+  "name": "Raistlin Mirror Bars (FFT)",
+  "version": "1.0",
+  "maxCallsPerFrame": 8,
+  "needsSaveRestore": false,
+  "barStyleType": "mirror",
+  "colorPaletteType": "mirror",
+  "colorEffectType": "mirror",
+  "fontType": "1x2",
+  "layouts": {
+    "bank4000": {
+      "baseAddress": "0x4000",
+      "size": "0x4000",
+      "dataAddress": "0x4000",
+      "sysAddress": "0x4100",
+      "binaryDataStart": "0x4000",
+      "binaryDataEnd": "0x7FFF",
+      "barCharsAddress": "0x7F00",
+      "charsetAddress": "0x7800",
+      "charsetSize": "0x700",
+      "colorTableAddress": "0x6E00",
+      "colorEffectModeAddress": "0x4060",
+      "lineGradientColorsAddress": "0x4061",
+      "songNameColorAddress": "0x4073",
+      "artistNameColorAddress": "0x4074",
+      "borderColor": "0x400D",
+      "backgroundColor": "0x400E",
+      "saveRestoreLocation": "before",
+      "saveRestoreEndAddress": "0x4000",
+      "saveRestoreMaxSize": "0x3800",
+      "bakedCodebookPtrAddress": "0x4050",
+      "bakedIndexStartAddress": "0x4052",
+      "bakedNumKeyframesAddress": "0x4054",
+      "bakedLoopStartAddress": "0x4056",
+      "bakedNumSegmentsAddress": "0x4058",
+      "bakedSegWidthAddress": "0x4059",
+      "bakedFrameDivisorAddress": "0x405A",
+      "bakedLoopMinAddress": "0x405B",
+      "bakedLoopSecAddress": "0x405C",
+      "bakedLoopFrameRemAddress": "0x404F",
+      "bakedLenMinAddress": "0x405D",
+      "bakedLenSecAddress": "0x405E",
+      "bakedHasLengthAddress": "0x405F",
+      "graphicsSegments": [
+        {
+          "name": "Graphics: colour table \u2192 $D800",
+          "off": "0x0000",
+          "len": "0x0050"
+        },
+        {
+          "name": "Graphics: screen RAM 0 + sprite pointers",
+          "off": "0x0200",
+          "len": "0x0400"
+        },
+        {
+          "name": "Graphics: screen RAM 1",
+          "off": "0x0600",
+          "len": "0x0400"
+        },
+        {
+          "name": "Graphics: charset",
+          "off": "0x0A00",
+          "len": "0x0700"
+        },
+        {
+          "name": "Graphics: bar chars",
+          "off": "0x1100",
+          "len": "0x00A0"
+        }
+      ],
+      "barGradientColorsAddress": "0x4080"
+    },
+    "bank8000": {
+      "baseAddress": "0x8000",
+      "size": "0x4000",
+      "dataAddress": "0x8000",
+      "sysAddress": "0x8100",
+      "binaryDataStart": "0x8000",
+      "binaryDataEnd": "0xBFFF",
+      "barCharsAddress": "0xBF00",
+      "charsetAddress": "0xB800",
+      "charsetSize": "0x700",
+      "colorTableAddress": "0xAE00",
+      "colorEffectModeAddress": "0x8060",
+      "lineGradientColorsAddress": "0x8061",
+      "songNameColorAddress": "0x8073",
+      "artistNameColorAddress": "0x8074",
+      "borderColor": "0x800D",
+      "backgroundColor": "0x800E",
+      "saveRestoreLocation": "before",
+      "saveRestoreEndAddress": "0x8000",
+      "saveRestoreMaxSize": "0x7800",
+      "bakedCodebookPtrAddress": "0x8050",
+      "bakedIndexStartAddress": "0x8052",
+      "bakedNumKeyframesAddress": "0x8054",
+      "bakedLoopStartAddress": "0x8056",
+      "bakedNumSegmentsAddress": "0x8058",
+      "bakedSegWidthAddress": "0x8059",
+      "bakedFrameDivisorAddress": "0x805A",
+      "bakedLoopMinAddress": "0x805B",
+      "bakedLoopSecAddress": "0x805C",
+      "bakedLoopFrameRemAddress": "0x804F",
+      "bakedLenMinAddress": "0x805D",
+      "bakedLenSecAddress": "0x805E",
+      "bakedHasLengthAddress": "0x805F",
+      "barGradientColorsAddress": "0x8080"
+    }
+  },
+  "options": [
+    {
+      "id": "font",
+      "label": "Font",
+      "type": "fontSelector",
+      "default": 0
+    },
+    {
+      "id": "barStyle",
+      "label": "Bar Style",
+      "type": "imageGrid",
+      "default": 5,
+      "values": [
+        {
+          "value": 0,
+          "label": "Curved - Rounded with highlights",
+          "shortLabel": "curved"
+        },
+        {
+          "value": 1,
+          "label": "Box - Full solid bars",
+          "shortLabel": "box"
+        },
+        {
+          "value": 2,
+          "label": "Thin Box - Narrow 4-pixel bars",
+          "shortLabel": "thin box"
+        },
+        {
+          "value": 3,
+          "label": "Outline - Hollow bars",
+          "shortLabel": "outline"
+        },
+        {
+          "value": 4,
+          "label": "Doubles - Blocky pixel bars",
+          "shortLabel": "doubles"
+        },
+        {
+          "value": 5,
+          "label": "Shine - Rounded without highlights",
+          "shortLabel": "shine"
+        },
+        {
+          "value": 6,
+          "label": "Pointed - Pointed top",
+          "shortLabel": "pointed"
+        },
+        {
+          "value": 7,
+          "label": "Dashed - Solid with scanlines",
+          "shortLabel": "dashed"
+        }
+      ]
+    },
+    {
+      "id": "colorEffect",
+      "label": "Colour Effect",
+      "type": "imageGrid",
+      "default": 0,
+      "values": [
+        {
+          "value": 0,
+          "label": "Dynamic Pulse",
+          "shortLabel": "Dynamic Pulse",
+          "image": "PNG/Effects/effect-height.png"
+        },
+        {
+          "value": 1,
+          "label": "Fixed Gradient",
+          "shortLabel": "Fixed Gradient",
+          "image": "PNG/Effects/effect-gradient.png"
+        },
+        {
+          "value": 2,
+          "label": "Rainbow Columns",
+          "shortLabel": "Columns",
+          "image": "PNG/Effects/effect-columns.png"
+        }
+      ]
+    },
+    {
+      "id": "colorFade",
+      "label": "Colour Fade",
+      "type": "paletteEditor",
+      "kind": "fade",
+      "showWhen": {
+        "colorEffect": [
+          0,
+          1
+        ]
+      }
+    },
+    {
+      "id": "barColumns",
+      "label": "Column Colours",
+      "type": "paletteEditor",
+      "kind": "columns",
+      "showWhen": {
+        "colorEffect": [
+          2
+        ]
+      }
+    },
+    {
+      "id": "songNameColor",
+      "label": "Song Name Colour",
+      "type": "colorPicker",
+      "default": 1
+    },
+    {
+      "id": "artistNameColor",
+      "label": "Artist Name Colour",
+      "type": "colorPicker",
+      "default": 15
+    },
+    {
+      "id": "bgColor",
+      "label": "Background Colour",
+      "type": "colorPicker",
+      "default": 0
+    }
+  ],
+  "spectrometerBake": true,
+  "bakedNumBars": 40,
+  "bakedMaxHeight": 71,
+  "relocatable": true,
+  "gfxManifest": "prg/raistlinmirrorbars.gfx.json",
+  "relocBaseLayout": "bank4000",
+  "relocCodeBase": "prg/RaistlinMirrorBarsFFT-code.bin",
+  "relocCodeTable": "prg/raistlinmirrorbarsfft.codereloc.json"
+}

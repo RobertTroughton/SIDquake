@@ -1,0 +1,178 @@
+{
+  "name": "Simple Bitmap",
+  "maxCallsPerFrame": 8,
+  "version": "1.0",
+  "needsSaveRestore": false,
+  "fontType": "1x1",
+  "layouts": {
+    "bank4000": {
+      "binary": "prg/SimpleBitmapWithScroller-4000.bin",
+      "baseAddress": "0x4000",
+      "size": "0x4000",
+      "dataAddress": "0x5000",
+      "sysAddress": "0x5100",
+      "binaryDataStart": "0x2800",
+      "binaryDataEnd": "0x7FFF",
+      "borderColor": "0x500D",
+      "backgroundColor": "0x500E",
+      "scrollTextAddr": "0x2800",
+      "scrollColor": "0x5080",
+      "charsetAddress": "0x4400",
+      "charsetSize": "0x300",
+      "fontModeAddress": "0x5071"
+    },
+    "bank8000": {
+      "binary": "prg/SimpleBitmapWithScroller-8000.bin",
+      "baseAddress": "0x8000",
+      "size": "0x4000",
+      "dataAddress": "0x9000",
+      "sysAddress": "0x9100",
+      "binaryDataStart": "0x6800",
+      "binaryDataEnd": "0xBFFF",
+      "borderColor": "0x900D",
+      "backgroundColor": "0x900E",
+      "scrollTextAddr": "0x6800",
+      "scrollColor": "0x9080",
+      "charsetAddress": "0x8400",
+      "charsetSize": "0x300",
+      "fontModeAddress": "0x9071"
+    }
+  },
+  "inputs": [
+    {
+      "id": "bitmap-input",
+      "label": "Bitmap Image",
+      "type": "file",
+      "accept": ".png",
+      "required": false,
+      "default": "PNG/Bitmaps/0-default.png",
+      "description": "C64 format PNG image",
+      "galleryFiles": [
+        "prg/galleries/bitmaps.json"
+      ],
+      "gallery": [
+        {
+          "name": "Zebra (by redcrab)",
+          "file": "PNG/Bitmaps/redcrab-Zebra.png"
+        }
+      ],
+      "memory": {
+        "bank4000": [
+          {
+            "name": "bitmap",
+            "sourceOffset": "0x0002",
+            "targetAddress": "0x6000",
+            "size": "0x1F40",
+            "mapLabel": "Graphics: bitmap (MAP)"
+          },
+          {
+            "name": "screen",
+            "sourceOffset": "0x1F42",
+            "targetAddress": "0x4800",
+            "size": "0x03E8",
+            "mapLabel": "Graphics: bitmap (SCR)"
+          },
+          {
+            "name": "color",
+            "sourceOffset": "0x232A",
+            "targetAddress": "0x4C00",
+            "size": "0x03E8",
+            "mapLabel": "Graphics: bitmap (COL)"
+          },
+          {
+            "name": "background",
+            "sourceOffset": "0x2712",
+            "targetAddress": "0x500E",
+            "size": "0x0001"
+          },
+          {
+            "name": "bitmapMode",
+            "sourceOffset": "0x2713",
+            "targetAddress": "0x5070",
+            "size": "0x0001"
+          }
+        ],
+        "bank8000": [
+          {
+            "name": "bitmap",
+            "sourceOffset": "0x0002",
+            "targetAddress": "0xA000",
+            "size": "0x1F40",
+            "mapLabel": "Graphics: bitmap (MAP)"
+          },
+          {
+            "name": "screen",
+            "sourceOffset": "0x1F42",
+            "targetAddress": "0x8800",
+            "size": "0x03E8",
+            "mapLabel": "Graphics: bitmap (SCR)"
+          },
+          {
+            "name": "color",
+            "sourceOffset": "0x232A",
+            "targetAddress": "0x8C00",
+            "size": "0x03E8",
+            "mapLabel": "Graphics: bitmap (COL)"
+          },
+          {
+            "name": "background",
+            "sourceOffset": "0x2712",
+            "targetAddress": "0x900E",
+            "size": "0x0001"
+          },
+          {
+            "name": "bitmapMode",
+            "sourceOffset": "0x2713",
+            "targetAddress": "0x9070",
+            "size": "0x0001"
+          }
+        ]
+      }
+    }
+  ],
+  "options": [
+    {
+      "id": "borderColor",
+      "label": "Border Color",
+      "type": "number",
+      "default": 0,
+      "min": 0,
+      "max": 15,
+      "dataField": "borderColor"
+    },
+    {
+      "id": "scrollText",
+      "label": "Scroll Text",
+      "type": "textarea",
+      "default": "",
+      "maxLength": 6144,
+      "dataField": "scrollTextAddr",
+      "mapLabel": "Scroll text",
+      "prependSpaces": 8,
+      "description": "Optional. If set, it scrolls across the bottom of the bitmap. Leave blank for just the bitmap.",
+      "loadSave": true
+    },
+    {
+      "id": "scrollColor",
+      "label": "Scroll Color",
+      "type": "number",
+      "default": 1,
+      "min": 0,
+      "max": 15,
+      "dataField": "scrollColor",
+      "showWhen": {
+        "scrollText": "nonempty"
+      }
+    },
+    {
+      "id": "font",
+      "label": "Font",
+      "type": "fontSelector",
+      "default": 1,
+      "excludeROM": true,
+      "showWhen": {
+        "scrollText": "nonempty"
+      }
+    }
+  ]
+}

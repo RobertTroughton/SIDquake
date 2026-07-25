@@ -1,0 +1,36 @@
+{
+  "player": "DefaultWithLogo.asm",
+  "variants": [
+    "DefaultWithLogo"
+  ],
+  "base": "0x4000",
+  "size": "0x4000",
+  "segments": [
+    {
+      "name": "Data Block",
+      "addr": "0x4000",
+      "size": "0x0100"
+    },
+    {
+      "name": "Logo Graphics RAM",
+      "addr": "0x6000",
+      "size": "0x0B40"
+    },
+    {
+      "name": "Curtain Sprite",
+      "addr": "0x6C00",
+      "size": "0x0040",
+      "data": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA////////AA=="
+    },
+    {
+      "name": "Screen RAM",
+      "addr": "0x7000",
+      "size": "0x0400"
+    },
+    {
+      "name": "Info Charset RAM",
+      "addr": "0x7800",
+      "size": "0x0800"
+    }
+  ]
+}

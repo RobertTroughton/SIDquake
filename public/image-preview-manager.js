@@ -1,0 +1,875 @@
+class ImageSelectorModal {
+    constructor() {
+        this.modal = null;
+        this.currentConfig = null;
+        this.currentContainer = null;
+        this.dropZone = null;
+        this.initialized = false;
+    }
+
+    init() {
+        if (this.initialized) return;
+
+        this.createModalHTML();
+        this.attachEventListeners();
+        this.initialized = true;
+    }
+
+    createModalHTML() {
+        const modalHTML = `
+            <div class="image-selector-modal" id="imageSelectorModal">
+                <div class="image-selector-modal-content">
+                    <button class="image-selector-modal-close" id="imageSelectorModalClose"><i class="fas fa-times"></i></button>
+                    <div class="image-selector-modal-body">
+                        <h3 class="image-selector-title" id="imageSelectorTitle">Select Image</h3>
+                        
+                        <div class="image-selector-drop-zone" id="imageSelectorDropZone">
+                            <i class="fas fa-cloud-upload-alt" style="font-size: 48px; color: var(--accent); margin-bottom: 15px;"></i>
+                            <div class="drop-zone-text">Drag and drop an image here</div>
+                            <div class="drop-zone-subtext">or use the options below</div>
+                        </div>
+
+                        <div class="image-selector-options">
+                            <button class="selector-option-btn" id="selectorBrowseBtn">
+                                <i class="fas fa-folder-open"></i>
+                                <span>Browse Files</span>
+                            </button>
+                            <button class="selector-option-btn" id="selectorGalleryBtn">
+                                <i class="fas fa-images"></i>
+                                <span>Choose from Gallery</span>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        `;
+
+        const tempDiv = document.createElement('div');
+        tempDiv.innerHTML = modalHTML;
+        document.body.appendChild(tempDiv.firstElementChild);
+
+        this.modal = document.getElementById('imageSelectorModal');
+        this.dropZone = document.getElementById('imageSelectorDropZone');
+    }
+
+    attachEventListeners() {
+        const closeBtn = document.getElementById('imageSelectorModalClose');
+        if (closeBtn) {
+            closeBtn.addEventListener('click', () => this.close());
+        }
+
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape' && this.modal && this.modal.classList.contains('visible')) {
+                this.close();
+            }
+        });
+
+        this.modal.addEventListener('click', (e) => {
+            if (e.target === this.modal) {
+                this.close();
+            }
+        });
+
+        const browseBtn = document.getElementById('selectorBrowseBtn');
+        if (browseBtn) {
+            browseBtn.addEventListener('click', () => {
+                this.handleBrowse();
+            });
+        }
+
+        const galleryBtn = document.getElementById('selectorGalleryBtn');
+        if (galleryBtn) {
+            galleryBtn.addEventListener('click', () => {
+                this.handleGallery();
+            });
+        }
+
+        this.attachDropZoneHandlers();
+    }
+
+    attachDropZoneHandlers() {
+        ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
+            this.dropZone.addEventListener(eventName, (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+            });
+        });
+
+        ['dragenter', 'dragover'].forEach(eventName => {
+            this.dropZone.addEventListener(eventName, () => {
+                this.dropZone.classList.add('drag-active');
+            });
+        });
+
+        ['dragleave', 'drop'].forEach(eventName => {
+            this.dropZone.addEventListener(eventName, () => {
+                this.dropZone.classList.remove('drag-active');
+            });
+        });
+
+        this.dropZone.addEventListener('drop', (e) => {
+            const files = e.dataTransfer.files;
+            if (files.length > 0) {
+                const file = files[0];
+                if (this.isValidImageFile(file)) {
+                    const fileInput = this.currentContainer.querySelector(`#${this.currentConfig.id}`);
+                    if (fileInput) {
+                        delete fileInput.dataset.gallerySelected;
+                        delete fileInput.dataset.galleryFile;
+                    }
+                    window.imagePreviewManager.handleFileChange({ target: { files: [file] } }, this.currentConfig);
+                    this.close();
+                } else {
+                    if (window.showWarning) {
+                        window.showWarning('Please drop a valid image file (PNG format required)');
+                    } else {
+                        console.warn('Please drop a valid image file');
+                    }
+                }
+            }
+        });
+    }
+
+    isValidImageFile(file) {
+        if (!this.currentConfig || !this.currentConfig.accept) return true;
+
+        const acceptTypes = this.currentConfig.accept.split(',').map(t => t.trim());
+
+        for (const acceptType of acceptTypes) {
+            if (acceptType.startsWith('.')) {
+                if (file.name.toLowerCase().endsWith(acceptType.toLowerCase())) {
+                    return true;
+                }
+            } else if (acceptType.includes('*')) {
+                const [type] = acceptType.split('/');
+                if (file.type.startsWith(type + '/')) {
+                    return true;
+                }
+            } else if (file.type === acceptType) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    open(config, container) {
+        if (!this.initialized) this.init();
+        if (!this.modal) return;
+
+        this.currentConfig = config;
+        this.currentContainer = container;
+
+        const title = document.getElementById('imageSelectorTitle');
+        if (title) {
+            title.textContent = config.label || 'Select Image';
+        }
+
+        const galleryBtn = document.getElementById('selectorGalleryBtn');
+        if (galleryBtn) {
+            if (config.gallery && config.gallery.length > 0) {
+                galleryBtn.style.display = 'flex';
+            } else {
+                galleryBtn.style.display = 'none';
+            }
+        }
+
+        this.modal.classList.add('visible');
+        document.body.style.overflow = 'hidden';
+    }
+
+    close() {
+        if (this.modal) {
+            this.modal.classList.remove('visible');
+            document.body.style.overflow = '';
+        }
+    }
+
+    handleBrowse() {
+        const fileInput = this.currentContainer.querySelector(`#${this.currentConfig.id}`);
+        if (fileInput) {
+            fileInput.click();
+            this.close();
+        }
+    }
+
+    handleGallery() {
+        this.close();
+        const galleryModal = window.imagePreviewManager.initGalleryModal();
+        galleryModal.open(this.currentConfig, this.currentContainer);
+    }
+}
+
+class GalleryModal {
+    constructor() {
+        this.modal = null;
+        this.currentConfig = null;
+        this.currentContainer = null;
+        this.selectedItem = null;
+        this.initialized = false;
+    }
+
+    init() {
+        if (this.initialized) return;
+
+        this.modal = document.getElementById('galleryModal');
+        if (!this.modal) {
+            console.warn('Gallery modal element not found in DOM');
+            return;
+        }
+
+        const closeBtn = document.getElementById('galleryModalClose');
+        if (closeBtn) {
+            closeBtn.addEventListener('click', () => this.close());
+        }
+
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape' && this.modal && this.modal.classList.contains('visible')) {
+                this.close();
+            }
+        });
+
+        this.modal.addEventListener('click', (e) => {
+            if (e.target === this.modal) {
+                this.close();
+            }
+        });
+
+        this.initialized = true;
+    }
+
+    open(config, container) {
+        if (!this.initialized) this.init();
+        if (!this.modal) return;
+
+        this.currentConfig = config;
+        this.currentContainer = container;
+        this.selectedItem = null;
+        this.populateGeneration = (this.populateGeneration || 0) + 1;
+
+        const subtitle = document.getElementById('gallerySubtitle');
+        if (subtitle) {
+            subtitle.textContent = `Select ${config.label || 'an image'}`;
+        }
+
+        this.populateGallery(config.gallery);
+
+        this.modal.classList.add('visible');
+        document.body.style.overflow = 'hidden';
+    }
+
+    close() {
+        // Stop any in-flight badge classification loop (annotateLogoTypes checks
+        // this generation) so it doesn't keep churning after the modal is gone.
+        this.populateGeneration = (this.populateGeneration || 0) + 1;
+        if (this.modal) {
+            this.modal.classList.remove('visible');
+            document.body.style.overflow = '';
+        }
+    }
+
+    populateGallery(gallery) {
+        const gridContainer = document.getElementById('galleryGridContainer');
+        const itemCount = document.getElementById('galleryItemCount');
+
+        if (!gridContainer) return;
+
+        gridContainer.innerHTML = '';
+
+        if (!gallery || gallery.length === 0) {
+            gridContainer.innerHTML = '<div class="gallery-loading">No images available</div>';
+            if (itemCount) {
+                itemCount.textContent = '0 items';
+            }
+            return;
+        }
+
+        gallery.forEach((item, index) => {
+            const card = document.createElement('div');
+            card.className = 'gallery-item-card';
+            card.dataset.file = item.file;
+            card.dataset.name = item.name;
+            card.dataset.index = index;
+
+            // Build with DOM APIs rather than interpolated innerHTML: name/file
+            // come from remote gallery JSON, so a quote or markup in them must
+            // never break the attribute or inject HTML.
+            const preview = document.createElement('div');
+            preview.className = 'gallery-item-preview';
+            const img = document.createElement('img');
+            img.src = item.file;
+            img.alt = item.name;
+            preview.appendChild(img);
+
+            const info = document.createElement('div');
+            info.className = 'gallery-item-info';
+            const nameEl = document.createElement('div');
+            nameEl.className = 'gallery-item-name';
+            nameEl.textContent = item.name;
+            info.appendChild(nameEl);
+
+            const badge = document.createElement('div');
+            badge.className = 'gallery-item-selected-badge';
+            badge.innerHTML = '<i class="fas fa-check"></i> Selected';
+
+            card.append(preview, info, badge);
+
+            card.addEventListener('click', () => {
+                document.querySelectorAll('.gallery-item-card').forEach(c => {
+                    c.classList.remove('selected');
+                });
+                card.classList.add('selected');
+                this.selectedItem = item;
+
+                setTimeout(() => {
+                    this.selectImage();
+                }, 200);
+            });
+
+            gridContainer.appendChild(card);
+        });
+
+        if (itemCount) {
+            itemCount.textContent = `${gallery.length} ${gallery.length === 1 ? 'item' : 'items'}`;
+        }
+
+        // Logo inputs: classify each image with the CharSet Lab engine and
+        // badge its type (MC BMP / MIXED / ECM / ...); images this player
+        // can't convert are dimmed with the reason in the tooltip.
+        this.annotateLogoTypes(gallery);
+    }
+
+    // Sequentially badge the gallery cards with each logo's detected type.
+    // Runs only for logo-converted inputs; a reopen (new generation) or a
+    // different input config stops a stale pass.
+    async annotateLogoTypes(gallery) {
+        const config = this.currentConfig;
+        if (!config || !gallery || !window.imagePreviewManager.isLogoInput(config)) return;
+        const generation = this.populateGeneration;
+        for (const item of gallery) {
+            // Yield a macrotask before each image so the analysis (even at ~38ms
+            // apiece) never queues up ahead of user input - clicks on cards and the
+            // close button stay responsive while the badges fill in progressively.
+            await new Promise(r => setTimeout(r, 0));
+            if (generation !== this.populateGeneration) return;
+            const info = await window.imagePreviewManager.classifyLogoFile(item.file, config);
+            if (generation !== this.populateGeneration) return;
+            if (!info) continue;
+            const card = document.querySelector(`.gallery-item-card[data-file="${CSS.escape(item.file)}"]`);
+            if (!card) continue;
+            const preview = card.querySelector('.gallery-item-preview');
+            if (!preview || preview.querySelector('.gallery-item-type-badge')) continue;
+            const badge = document.createElement('div');
+            badge.className = 'gallery-item-type-badge' + (info.ok ? '' : ' unusable');
+            badge.textContent = info.label;
+            badge.title = info.title;
+            preview.appendChild(badge);
+            if (!info.ok) {
+                card.classList.add('gallery-item-unusable');
+                card.title = info.title;
+            }
+        }
+    }
+
+    async selectImage() {
+        if (!this.selectedItem) return;
+
+        await window.imagePreviewManager.loadGalleryImage(
+            this.currentContainer,
+            this.currentConfig,
+            this.selectedItem.file,
+            this.selectedItem.name
+        );
+
+        this.close();
+    }
+}
+
+class ImagePreviewManager {
+    constructor() {
+        this.previewCache = new Map();
+        this.galleryModal = null;
+        this.selectorModal = null;
+        this.logoTypeCache = new Map();
+    }
+
+    // ─── Logo type classification (badges) ───
+
+    // Inputs converted by the CharSet Lab engine get type badges.
+    isLogoInput(config) {
+        return !!config && (config.convertType === 'logo' || config.convertType === 'charset');
+    }
+
+    // Classify a gallery/default logo by path (cached per path + input
+    // constraints). Resolves to { ok, label, title } or null on any failure.
+    classifyLogoFile(filepath, inputConfig) {
+        const key = [filepath, (inputConfig.charsetModes || []).join(','),
+            inputConfig.charsetRows || 25, inputConfig.charsetMaxChars || 256].join('|');
+        if (!this.logoTypeCache.has(key)) {
+            const promise = this.loadDefaultFile(filepath)
+                .then(data => this.classifyLogoData(data, inputConfig))
+                .catch(() => null);
+            this.logoTypeCache.set(key, promise);
+        }
+        return this.logoTypeCache.get(key);
+    }
+
+    // Classify raw PNG bytes with the same analysis the export runs: the
+    // badge shows exactly what this input would convert the image to.
+    async classifyLogoData(pngData, inputConfig) {
+        if (typeof CharsetLabCore === 'undefined') {
+            await window.loadScript('charsetlab-core.js');
+        }
+        if (typeof C64Fonts === 'undefined') {
+            await window.loadScript('c64fonts.js');   // enables the PET badge for ROM-glyph art
+        }
+        const imageData = await this.pngDataToImageData(pngData);
+        let report;
+        try {
+            // shift:false skips the ±7px alignment search (the dominant cost -
+            // ~450ms vs ~38ms per image), which the badge doesn't need: the search
+            // only refines alignment/char-count, never the mode class the badge
+            // shows. The export still runs the full search for the real conversion.
+            report = CharsetLabCore.analyse(imageData.data, imageData.width, imageData.height, {
+                modes: inputConfig.charsetModes,
+                rowLimit: inputConfig.charsetRows,
+                shift: false
+            });
+        } catch (err) {
+            return { ok: false, label: '?', title: err.message || String(err) };
+        }
+        const LABELS = {
+            'PETSCII': 'PET', 'Hires': 'HI CHAR', 'Multicolour': 'MC CHAR', 'Mixed': 'MIXED',
+            'ECM': 'ECM', 'Hires Bitmap': 'HI BMP', 'Multicolour Bitmap': 'MC BMP'
+        };
+        let r = report.chosen;
+        if (!r) {
+            return { ok: false, label: '✗', title: 'Not usable here: ' + CharsetLabCore.failureReason(report) };
+        }
+        const maxChars = inputConfig.charsetMaxChars || 256;
+        if (!r.isBitmap && r.charCount > maxChars) {
+            // Mirror the exporter: an over-budget charset result falls back to
+            // a fitted bitmap attempt when this input's modes allow one.
+            const bmp = (report.attempts || []).find(a => a.ok && a.isBitmap);
+            if (bmp) r = bmp;
+            else return { ok: false, label: '✗ ' + (LABELS[r.label] || r.label), title: `Needs ${r.charCount} unique characters; this player only has room for ${maxChars}.` };
+        }
+        return {
+            ok: true,
+            label: LABELS[r.label] || r.label,
+            title: r.label + (r.charCount != null ? ` — ${r.charCount} chars` : '') + (r.isBitmap ? ' bitmap' : '')
+        };
+    }
+
+    async pngDataToImageData(pngData) {
+        return new Promise((resolve, reject) => {
+            const blob = new Blob([pngData], { type: 'image/png' });
+            const url = URL.createObjectURL(blob);
+            const img = new Image();
+            img.onload = () => {
+                URL.revokeObjectURL(url);
+                try {
+                    const canvas = document.createElement('canvas');
+                    canvas.width = img.naturalWidth;
+                    canvas.height = img.naturalHeight;
+                    const ctx = canvas.getContext('2d', { willReadFrequently: true });
+                    ctx.drawImage(img, 0, 0);
+                    resolve(ctx.getImageData(0, 0, canvas.width, canvas.height));
+                } catch (err) { reject(err); }
+            };
+            img.onerror = () => { URL.revokeObjectURL(url); reject(new Error('Could not decode PNG')); };
+            img.src = url;
+        });
+    }
+
+    // Update (or hide) the type badge in the corner of an input's preview.
+    // `classified` is a promise from classifyLogoFile/classifyLogoData.
+    async updatePreviewBadge(config, classified) {
+        if (!this.isLogoInput(config)) return;
+        const wrapper = document.querySelector(`[data-input-id="${config.id}"]`);
+        if (!wrapper) return;
+        const badgeEl = wrapper.querySelector('.logo-type-badge');
+        if (!badgeEl) return;
+        badgeEl.classList.remove('show', 'unusable');
+        const info = await classified.catch(() => null);
+        if (!info) return;
+        badgeEl.textContent = info.label;
+        badgeEl.title = info.title;
+        badgeEl.classList.add('show');
+        if (!info.ok) badgeEl.classList.add('unusable');
+    }
+
+    initGalleryModal() {
+        if (!this.galleryModal) {
+            this.galleryModal = new GalleryModal();
+            this.galleryModal.init();
+        }
+        return this.galleryModal;
+    }
+
+    initSelectorModal() {
+        if (!this.selectorModal) {
+            this.selectorModal = new ImageSelectorModal();
+            this.selectorModal.init();
+        }
+        return this.selectorModal;
+    }
+
+    createImagePreview(config) {
+        const container = document.createElement('div');
+        container.className = 'image-preview-container';
+
+        const hasGallery = config.gallery && config.gallery.length > 0;
+
+        container.innerHTML = `
+            <div class="image-preview-wrapper" data-input-id="${config.id}">
+                <div class="image-preview-drop-zone">
+                    <div class="image-preview-frame">
+                        <img class="image-preview-img"
+                             src=""
+                             alt="${config.label} preview"
+                             width="320"
+                             height="200">
+                        <div class="image-preview-overlay">
+                            <div class="preview-overlay-content">
+                                <i class="fas fa-upload"></i>
+                                <div class="preview-click-hint">Drag &amp; drop, or click</div>
+                            </div>
+                        </div>
+                        <div class="image-preview-loading">
+                            <div class="preview-spinner"></div>
+                            <div>Loading...</div>
+                        </div>
+                        <div class="logo-type-badge"></div>
+                    </div>
+                </div>
+                <div class="image-preview-hint"><i class="fas fa-hand-pointer"></i> Drag &amp; drop an image here, or:</div>
+                <div class="image-preview-actions">
+                    <button type="button" class="file-button" data-act="browse"><i class="fas fa-folder-open"></i> Browse Files</button>
+                </div>
+                ${hasGallery ? '<div class="image-inline-gallery gallery-grid-container"></div>' : ''}
+            </div>
+            <input type="file"
+                   id="${config.id}"
+                   accept="${config.accept}"
+                   style="display: none;">
+        `;
+
+        const wrapper = container.querySelector('.image-preview-wrapper');
+        const fileInput = container.querySelector('input[type="file"]');
+        const previewFrame = wrapper.querySelector('.image-preview-frame');
+
+        // Clicking the preview (or Browse) opens the native file picker; the
+        // gallery is inline below, so there's no popup selector anymore.
+        previewFrame.addEventListener('click', () => fileInput.click());
+        wrapper.querySelector('[data-act="browse"]').addEventListener('click', () => fileInput.click());
+
+        // Inline gallery grid (matches the font picker's grid on the tab).
+        if (hasGallery) {
+            const gridEl = wrapper.querySelector('.image-inline-gallery');
+            this.populateInlineGallery(gridEl, config, container);
+        }
+
+        // Drop an image straight onto the preview frame.
+        ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(ev =>
+            previewFrame.addEventListener(ev, e => { e.preventDefault(); e.stopPropagation(); }));
+        ['dragenter', 'dragover'].forEach(ev =>
+            previewFrame.addEventListener(ev, () => previewFrame.classList.add('drag-active')));
+        ['dragleave', 'drop'].forEach(ev =>
+            previewFrame.addEventListener(ev, () => previewFrame.classList.remove('drag-active')));
+        previewFrame.addEventListener('drop', e => {
+            const f = e.dataTransfer.files && e.dataTransfer.files[0];
+            if (!f) return;
+            delete fileInput.dataset.gallerySelected;
+            delete fileInput.dataset.galleryFile;
+            this.handleFileChange({ target: { files: [f] } }, config);
+        });
+
+        fileInput.addEventListener('change', (e) => {
+            this.handleFileChange(e, config);
+        });
+
+        return container;
+    }
+
+    // Build the inline gallery grid on the tab (same cards/badges as the old
+    // popup gallery, minus the modal). Clicking a card loads that image.
+    populateInlineGallery(gridEl, config, container) {
+        if (!gridEl) return;
+        const gallery = config.gallery || [];
+        gridEl.innerHTML = '';
+
+        gallery.forEach((item) => {
+            const card = document.createElement('div');
+            card.className = 'gallery-item-card';
+            card.dataset.file = item.file;
+            card.dataset.name = item.name;
+            if (config.default && item.file === config.default) card.classList.add('selected');
+
+            // DOM APIs (not innerHTML): name/file come from gallery JSON.
+            const preview = document.createElement('div');
+            preview.className = 'gallery-item-preview';
+            const img = document.createElement('img');
+            img.src = item.file;
+            img.alt = item.name;
+            img.loading = 'lazy';
+            preview.appendChild(img);
+
+            const info = document.createElement('div');
+            info.className = 'gallery-item-info';
+            const nameEl = document.createElement('div');
+            nameEl.className = 'gallery-item-name';
+            nameEl.textContent = item.name;
+            info.appendChild(nameEl);
+
+            const badge = document.createElement('div');
+            badge.className = 'gallery-item-selected-badge';
+            badge.innerHTML = '<i class="fas fa-check"></i> Selected';
+
+            card.append(preview, info, badge);
+            card.addEventListener('click', () => {
+                gridEl.querySelectorAll('.gallery-item-card').forEach(c => c.classList.remove('selected'));
+                card.classList.add('selected');
+                this.loadGalleryImage(container, config, item.file, item.name);
+            });
+            gridEl.appendChild(card);
+        });
+
+        this.annotateInlineLogoTypes(gridEl, gallery, config);
+    }
+
+    // Badge each inline gallery card with its detected logo type (scoped to
+    // this grid). Stops early if the grid is torn down by a re-render.
+    async annotateInlineLogoTypes(gridEl, gallery, config) {
+        if (!this.isLogoInput(config)) return;
+        for (const item of gallery) {
+            await new Promise(r => setTimeout(r, 0));
+            if (!gridEl.isConnected) return;
+            const info = await this.classifyLogoFile(item.file, config);
+            if (!gridEl.isConnected || !info) continue;
+            const card = gridEl.querySelector(`.gallery-item-card[data-file="${CSS.escape(item.file)}"]`);
+            if (!card) continue;
+            const preview = card.querySelector('.gallery-item-preview');
+            if (!preview || preview.querySelector('.gallery-item-type-badge')) continue;
+            const badge = document.createElement('div');
+            badge.className = 'gallery-item-type-badge' + (info.ok ? '' : ' unusable');
+            badge.textContent = info.label;
+            badge.title = info.title;
+            preview.appendChild(badge);
+            if (!info.ok) { card.classList.add('gallery-item-unusable'); card.title = info.title; }
+        }
+    }
+
+    showError(container, message) {
+        console.error(message);
+        if (window.showError) {
+            window.showError(message, { duration: 4000 });
+        }
+    }
+
+    async loadDefaultImage(config) {
+        const wrapper = document.querySelector(`[data-input-id="${config.id}"]`);
+        if (!wrapper) return;
+
+        const img = wrapper.querySelector('.image-preview-img');
+        const loadingDiv = wrapper.querySelector('.image-preview-loading');
+
+        try {
+            loadingDiv.style.display = 'flex';
+
+            if (config.default) {
+                if (this.previewCache.has(config.default)) {
+                    const cached = this.previewCache.get(config.default);
+                    img.src = cached.dataUrl;
+                    loadingDiv.style.display = 'none';
+                    if (this.isLogoInput(config)) this.updatePreviewBadge(config, this.classifyLogoFile(config.default, config));
+                    return;
+                }
+
+                const fileData = await this.loadDefaultFile(config.default);
+                if (this.isLogoInput(config)) this.updatePreviewBadge(config, this.classifyLogoFile(config.default, config));
+
+                if (config.default.toLowerCase().endsWith('.png') && this.isPNGFile(fileData)) {
+                    const preview = await this.createPreviewFromPNGData(fileData);
+                    this.previewCache.set(config.default, preview);
+                    img.src = preview.dataUrl;
+                } else {
+                    const preview = await this.createPreviewFromData(fileData, config.default);
+                    this.previewCache.set(config.default, preview);
+                    img.src = preview.dataUrl;
+                }
+            }
+        } catch (error) {
+            console.error('Error loading default image:', error);
+            this.showErrorPlaceholder(img);
+        } finally {
+            loadingDiv.style.display = 'none';
+        }
+    }
+
+    async loadGalleryImage(container, config, filepath, name) {
+        const wrapper = container.querySelector(`[data-input-id="${config.id}"]`);
+        if (!wrapper) return;
+
+        const img = wrapper.querySelector('.image-preview-img');
+        const loadingDiv = wrapper.querySelector('.image-preview-loading');
+
+        try {
+            loadingDiv.style.display = 'flex';
+            if (this.isLogoInput(config)) this.updatePreviewBadge(config, this.classifyLogoFile(filepath, config));
+
+            const response = await fetch(filepath);
+            if (!response.ok) {
+                throw new Error(`Failed to load gallery image: ${filepath}`);
+            }
+
+            const arrayBuffer = await response.arrayBuffer();
+            const fileData = new Uint8Array(arrayBuffer);
+
+            if (filepath.toLowerCase().endsWith('.png') && this.isPNGFile(fileData)) {
+                const preview = await this.createPreviewFromPNGData(fileData);
+                img.src = preview.dataUrl;
+
+                const blob = new Blob([fileData], { type: 'image/png' });
+                const file = new File([blob], name + '.png', { type: 'image/png' });
+
+                const dataTransfer = new DataTransfer();
+                dataTransfer.items.add(file);
+                const fileInput = container.querySelector(`#${config.id}`);
+                if (fileInput) {
+                    fileInput.files = dataTransfer.files;
+                    fileInput.dataset.gallerySelected = 'true';
+                    fileInput.dataset.galleryFile = filepath;
+                }
+            } else {
+                const preview = await this.createPreviewFromData(fileData, name);
+                img.src = preview.dataUrl;
+
+                const blob = new Blob([fileData], { type: 'image/png' });
+                const file = new File([blob], name, { type: 'image/png' });
+
+                const dataTransfer = new DataTransfer();
+                dataTransfer.items.add(file);
+                const fileInput = container.querySelector(`#${config.id}`);
+                if (fileInput) {
+                    fileInput.files = dataTransfer.files;
+                    fileInput.dataset.gallerySelected = 'true';
+                    fileInput.dataset.galleryFile = filepath;
+                }
+            }
+        } catch (error) {
+            console.error('Error loading gallery image:', error);
+            this.showErrorPlaceholder(img);
+        } finally {
+            loadingDiv.style.display = 'none';
+        }
+    }
+
+    async handleFileChange(e, config) {
+        const files = e.target.files;
+        if (!files || files.length === 0) return;
+
+        const file = files[0];
+        const wrapper = document.querySelector(`[data-input-id="${config.id}"]`);
+        if (!wrapper) return;
+
+        const img = wrapper.querySelector('.image-preview-img');
+        const loadingDiv = wrapper.querySelector('.image-preview-loading');
+
+        try {
+            loadingDiv.style.display = 'flex';
+
+            const fileData = await this.readFileAsArrayBuffer(file);
+            if (this.isLogoInput(config)) this.updatePreviewBadge(config, this.classifyLogoData(fileData, config));
+
+            if (file.name.toLowerCase().endsWith('.png') && this.isPNGFile(fileData)) {
+                const preview = await this.createPreviewFromPNGData(fileData);
+                img.src = preview.dataUrl;
+            } else {
+                const preview = await this.createPreviewFromData(fileData, file.name);
+                img.src = preview.dataUrl;
+            }
+
+            if (config.onChange) {
+                config.onChange(file);
+            }
+        } catch (error) {
+            console.error('Error loading file:', error);
+            this.showErrorPlaceholder(img);
+        } finally {
+            loadingDiv.style.display = 'none';
+        }
+    }
+
+    readFileAsArrayBuffer(file) {
+        return new Promise((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onload = (e) => resolve(new Uint8Array(e.target.result));
+            reader.onerror = reject;
+            reader.readAsArrayBuffer(file);
+        });
+    }
+
+    async loadDefaultFile(path) {
+        const response = await fetch(path);
+        if (!response.ok) {
+            throw new Error(`Failed to load default file: ${path}`);
+        }
+        const arrayBuffer = await response.arrayBuffer();
+        return new Uint8Array(arrayBuffer);
+    }
+
+    isPNGFile(data) {
+        return data.length >= 8 &&
+               data[0] === 0x89 && data[1] === 0x50 &&
+               data[2] === 0x4E && data[3] === 0x47 &&
+               data[4] === 0x0D && data[5] === 0x0A &&
+               data[6] === 0x1A && data[7] === 0x0A;
+    }
+
+    async createPreviewFromPNGData(pngData) {
+        return new Promise((resolve, reject) => {
+            const blob = new Blob([pngData], { type: 'image/png' });
+            const reader = new FileReader();
+            
+            reader.onload = (e) => {
+                const dataUrl = e.target.result;
+                resolve({
+                    dataUrl: dataUrl,
+                    sizeText: `${Math.round(pngData.length / 1024)}KB`
+                });
+            };
+            
+            reader.onerror = () => {
+                reject(new Error('Failed to load PNG'));
+            };
+            
+            reader.readAsDataURL(blob);
+        });
+    }
+
+    async createPreviewFromData(data, filename) {
+        return new Promise((resolve, reject) => {
+            const blob = new Blob([data], { type: 'application/octet-stream' });
+            const reader = new FileReader();
+            
+            reader.onload = (e) => {
+                const dataUrl = e.target.result;
+                resolve({
+                    dataUrl: dataUrl,
+                    sizeText: `${Math.round(data.length / 1024)}KB`
+                });
+            };
+            
+            reader.onerror = () => {
+                reject(new Error('Failed to load image'));
+            };
+            
+            reader.readAsDataURL(blob);
+        });
+    }
+
+    showErrorPlaceholder(img) {
+        img.src = 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMzIwIiBoZWlnaHQ9IjIwMCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48cmVjdCB3aWR0aD0iMzIwIiBoZWlnaHQ9IjIwMCIgZmlsbD0iIzMzMyIvPjx0ZXh0IHg9IjUwJSIgeT0iNTAlIiBmaWxsPSIjNjY2IiBmb250LWZhbWlseT0ic2Fucy1zZXJpZiIgZm9udC1zaXplPSIxNCIgdGV4dC1hbmNob3I9Im1pZGRsZSIgZHk9Ii4zZW0iPkVycm9yIGxvYWRpbmcgaW1hZ2U8L3RleHQ+PC9zdmc+';
+    }
+}

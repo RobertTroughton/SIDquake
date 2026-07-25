@@ -1,0 +1,325 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<CSDbData><Release><ID>263101</ID>
+<Name>In the Weeds</Name>
+<Type>C64 Music</Type>
+<ReleaseDay>18</ReleaseDay>
+<ReleaseMonth>7</ReleaseMonth>
+<ReleaseYear>2026</ReleaseYear>
+<ReleasedAt><Event><ID>3621</ID>
+<Name>Edison 2026</Name>
+<EventType>Demo Party</EventType>
+<Tagline>Hold yer horses, release your prods!</Tagline>
+<StartDay>17</StartDay>
+<StartMonth>7</StartMonth>
+<StartYear>2026</StartYear>
+<EndDay>19</EndDay>
+<EndMonth>7</EndMonth>
+<EndYear>2026</EndYear>
+<Address>M/S Borgila, Söder Mälarstrand</Address>
+<Zip>118 25</Zip>
+<City>Stockholm</City>
+<Country>Sweden</Country>
+<Website>https://www.edisonparty.com/</Website>
+</Event>
+</ReleasedAt>
+<Achievement><Compo>Mixed Music</Compo>
+<Place>2</Place>
+</Achievement>
+<ScreenShot>https://csdb.dk/gfx/releases/263000/263101.png</ScreenShot>
+<ReleasedBy><Group><ID>396</ID>
+<Name>Genesis Project</Name>
+<AKA>G*P</AKA>
+<Short>GP</Short>
+<Trivia>[IMG]https://i.imgur.com/xQ1uaEd.png [/IMG]
+Genesis Project is a multi platform demo group and one of the most well known and productive C64 cracking groups of all time, formed in late 1985 or early 1986 on the C64 by &amp;lt;scener id=6392&amp;gt; (TNT), later &amp;lt;scener id=315&amp;gt;. 
+
+in 1993 a lot of the members strated cracking for SNES/PC etc. (See &amp;lt;release id=261018&amp;gt;. - SNES: L.A.Style, Tyger, Red Skin, Airwolf, Lexi, Zammbo. PC: Snacky)
+
+A full detailed history 1986-2016 can be read in &amp;lt;release id=150629&amp;gt; (2016).
+
+[url=https://demozoo.org/groups/3170/]The history of Genesis Project and further information.[/url]
+
+
+Current (2024) G*P WHQ: &amp;lt;bbs id=103&amp;gt;, EHQ: &amp;lt;bbs id=1139&amp;gt;, and USHQ: &amp;lt;bbs id=320&amp;gt;. G*P also had
+ &amp;lt;bbs id=114&amp;gt;, &amp;lt;bbs id=221&amp;gt;, &amp;lt;bbs id=42&amp;gt;, &amp;lt;bbs id=182&amp;gt;, &amp;lt;bbs id=113&amp;gt;, &amp;lt;bbs id=286&amp;gt;, &amp;lt;bbs id=39&amp;gt;, &amp;lt;bbs id=68&amp;gt; and &amp;lt;bbs id=218&amp;gt; as HQs.
+
+G*P were the organizer of successful parties such as &amp;lt;event id=445&amp;gt;, &amp;lt;event id=128&amp;gt;, &amp;lt;event id=1846&amp;gt;, &amp;lt;event id=2316&amp;gt;, &amp;lt;event id=2879&amp;gt; and &amp;lt;event id=2756&amp;gt;.</Trivia>
+<FoundYear>1986</FoundYear>
+<Website>https://www.facebook.com/Genesis.Project.C64/</Website>
+<Rating>9.11</Rating>
+<Grouptypes><Grouptype>Cracker Group</Grouptype>
+<Grouptype>Demo Group</Grouptype>
+<Grouptype>Fixing Group</Grouptype>
+<Grouptype>Import Group</Grouptype>
+<Grouptype>Magazine Staff</Grouptype>
+</Grouptypes>
+<Slogan>Europe's No. 1</Slogan>
+<Slogan>Accept No Limits</Slogan>
+</Group>
+</ReleasedBy>
+<Credits><Credit><CreditType>Graphics</CreditType>
+<Handle><ID>1929</ID>
+<Handle>Scrap</Handle>
+<CurrentlyUsedHandle>true</CurrentlyUsedHandle>
+<Scener><ID>1918</ID>
+<Country>Germany</Country>
+<Trivia>Groupchange from &amp;lt;group id=411&amp;gt; to &amp;lt;group id=396&amp;gt; mentioned in &amp;lt;release id=10885&amp;gt;, and &amp;lt;release id=175316&amp;gt;.</Trivia>
+<Handles><Handle><ID>8786</ID>
+<Handle>Blade Runner</Handle>
+<CurrentlyUsedHandle>false</CurrentlyUsedHandle>
+<Scener><ID>1918</ID>
+</Scener>
+<FreelanceFunctions><Function>Coder</Function>
+<Function>Cracker</Function>
+<Function>Graphician</Function>
+</FreelanceFunctions>
+</Handle>
+<Handle><ID>6393</ID>
+<Handle>Shabby</Handle>
+<CurrentlyUsedHandle>false</CurrentlyUsedHandle>
+<Scener><ID>1918</ID>
+</Scener>
+</Handle>
+<Handle><ID>1929</ID>
+</Handle>
+<Handle><ID>9638</ID>
+<Handle>Manta</Handle>
+<CurrentlyUsedHandle>false</CurrentlyUsedHandle>
+<Scener><ID>1918</ID>
+</Scener>
+<FreelanceFunctions><Function>Coder</Function>
+<Function>Graphician</Function>
+</FreelanceFunctions>
+</Handle>
+</Handles>
+</Scener>
+<FreelanceFunctions><Function>Coder</Function>
+<Function>Cracker</Function>
+<Function>Graphician</Function>
+<Function>Logo Graphician</Function>
+<Function>Swapper</Function>
+</FreelanceFunctions>
+</Handle>
+</Credit>
+<Credit><CreditType>Music</CreditType>
+<Handle><ID>40096</ID>
+<Handle>Leaf</Handle>
+<CurrentlyUsedHandle>true</CurrentlyUsedHandle>
+<Scener><ID>36724</ID>
+<Country>Sweden</Country>
+<Trivia>Leaf is my last name</Trivia>
+<Handles><Handle><ID>40096</ID>
+</Handle>
+</Handles>
+</Scener>
+<FreelanceFunctions><Function>Musician</Function>
+</FreelanceFunctions>
+</Handle>
+</Credit>
+</Credits>
+<DownloadLinks><DownloadLink><Link>https://csdb.dk/getinternalfile.php/281707/In_The_Weeds-Leaf-GP.prg</Link>
+<CounterLink>https://csdb.dk/release/download.php?id=323769</CounterLink>
+<Downloads>74</Downloads>
+<Status>Ok</Status>
+</DownloadLink>
+<DownloadLink><Link>https://csdb.dk/getinternalfile.php/281706/In_The_Weeds.sid</Link>
+<CounterLink>https://csdb.dk/release/download.php?id=323768</CounterLink>
+<Downloads>49</Downloads>
+<Status>Ok</Status>
+</DownloadLink>
+</DownloadLinks>
+<Comments><ProductionNote><CSDbUser><ID>7661</ID>
+<Login>Leaf</Login>
+<Handle>Leaf</Handle>
+<RegisteredDate>1970-01-01T01:00:00+01:00</RegisteredDate>
+<CSDbEntry><Handle><ID>40096</ID>
+</Handle>
+</CSDbEntry>
+</CSDbUser>
+<Date>19.07.2026</Date>
+<Text>Thanks to Steel for helping shape the snare and kick/base-instruments in this tune.</Text>
+</ProductionNote>
+<UserComment><CSDbUser><ID>2061</ID>
+<Login>GF</Login>
+<Handle>G-Fellow</Handle>
+<RegisteredDate>1970-01-01T01:00:00+01:00</RegisteredDate>
+<CSDbEntry><Handle><ID>7995</ID>
+<Handle>G-Fellow</Handle>
+<AKA>GFellow</AKA>
+<CurrentlyUsedHandle>true</CurrentlyUsedHandle>
+<HandleStory>My first nickname was Short-Circuit and I did use this one in the demo group 'Future Technologics 2009'. My second handle was G-Force. 
+But when the graphics card 'Nvidia GeForce' came out, i decided to search a new handle and this was G-Fellow. The G and F represent my first and family name.</HandleStory>
+<Scener><ID>7285</ID>
+<Country>Germany</Country>
+<Trivia>I had contact with the C64 Scene since 1984 and I was in the demo group 'Future Technologics 2009' from 1987-1991 as swapper. In 1988 I did start to compose music, first in the Future Composer. 
+After this I used Voicetracker. I did teach myself composing learning by doing. I play not any music instrument, that I did not learn any music instrument can sometimes be a advantage but sometimes also a pain.
+
+In 1991 I stopped with the C64 and I moved to the PC. I made quite alot tunes on the PC with the Scream Tracker, some Scream Tracker tunes was uploaded on some Mailboxes.
+
+1998 I found my C64 in a hidden place and I made some tunes for my own pleasure in the Soundbooster from Midas. Between 1998 - 2003 I made some PC-Songs with a other music-editor. 
+
+Around 2003 I found in the net some Scene pages and finally in 2004 I rejoined the C64 Scene as Musician. 
+I was very happy that the JCH Editor was now free available and I must say that JCH was with his JCH Editor miles before its time (maybe Time-Machine).</Trivia>
+<Handles><Handle><ID>7995</ID>
+</Handle>
+<Handle><ID>13663</ID>
+<Handle>Lazy Jones</Handle>
+<CurrentlyUsedHandle>false</CurrentlyUsedHandle>
+<Scener><ID>7285</ID>
+</Scener>
+<FreelanceFunctions><Function>Cracker</Function>
+</FreelanceFunctions>
+</Handle>
+<Handle><ID>7696</ID>
+<Handle>Short Circuit</Handle>
+<CurrentlyUsedHandle>false</CurrentlyUsedHandle>
+<Scener><ID>7285</ID>
+</Scener>
+<FreelanceFunctions><Function>Swapper</Function>
+</FreelanceFunctions>
+</Handle>
+</Handles>
+</Scener>
+<FreelanceFunctions><Function>Musician</Function>
+</FreelanceFunctions>
+</Handle>
+</CSDbEntry>
+</CSDbUser>
+<Date>19.07.2026</Date>
+<Text>Leaf the new Drax &amp; Laxity, I love your tune! ❤️</Text>
+</UserComment>
+<UserComment><CSDbUser><ID>5175</ID>
+<Login>hedning</Login>
+<Handle>hedning</Handle>
+<RegisteredDate>1970-01-01T01:00:00+01:00</RegisteredDate>
+<CSDbEntry><Handle><ID>20879</ID>
+<Handle>hedning</Handle>
+<CurrentlyUsedHandle>true</CurrentlyUsedHandle>
+<HandleStory>Herman Hedning, nuff said.</HandleStory>
+<Scener><ID>18641</ID>
+<Country>Sweden</Country>
+<Trivia>Got his first c64 in 1986. Did some c64-swapping 89-91, until he followed Jack Tramiel to the Atari ST (handles Mr.Marvel and Julgran until 1993). 2009 c64 saved him back to the right path. In 2010 he joined Genesis Project as graphician and helped Sixx rebuilding the group. Quickly he was doing more original supplies than gfx, and became the main original supplier of GP the same year. In 2011 he became GP co-organizer and 2012 main organizer. 
+
+He is also into preserving old releases, and between 2010 and 2025 he uploaded ~28 000 releases, and added ~2400 sceners, ~100 BBSs, and about 1200 groups to CSDb.
+
+Organizer of the successful Gubbdata parties in Lund 2012-2022, Sweden. Also co-organized the Datastorm parties, and the last LCP.</Trivia>
+<Handles><Handle><ID>20879</ID>
+</Handle>
+<Handle><ID>24058</ID>
+<Handle>Mr. Marvel</Handle>
+<CurrentlyUsedHandle>false</CurrentlyUsedHandle>
+<Scener><ID>18641</ID>
+</Scener>
+<FreelanceFunctions><Function>Swapper</Function>
+</FreelanceFunctions>
+</Handle>
+</Handles>
+</Scener>
+<FreelanceFunctions><Function>Author</Function>
+<Function>Diskmag Editor</Function>
+<Function>Graphician</Function>
+<Function>Organizer</Function>
+<Function>Original Supplier</Function>
+<Function>Public Relations Manager</Function>
+<Function>Swapper</Function>
+</FreelanceFunctions>
+</Handle>
+</CSDbEntry>
+</CSDbUser>
+<Date>19.07.2026</Date>
+<Text>Funky and great! Great logo and visuals too! Good job!</Text>
+</UserComment>
+<UserComment><CSDbUser><ID>5791</ID>
+<Login>redcrab</Login>
+<RegisteredDate>1970-01-01T01:00:00+01:00</RegisteredDate>
+<CSDbEntry><Handle><ID>22995</ID>
+<Handle>redcrab</Handle>
+<CurrentlyUsedHandle>true</CurrentlyUsedHandle>
+<HandleStory>As I wanted a logo for my (nowadays part time) freelance illustration business I came up with a 15x5 pixel crab. I made it red, and Redcrab Studio was born. It was never ever meant as an alias for myself, but it somehow ended that way :)</HandleStory>
+<Scener><ID>20549</ID>
+<Country>Sweden</Country>
+<Handles><Handle><ID>22995</ID>
+</Handle>
+</Handles>
+</Scener>
+<FreelanceFunctions><Function>Graphician</Function>
+<Function>Musician</Function>
+</FreelanceFunctions>
+</Handle>
+</CSDbEntry>
+</CSDbUser>
+<Date>19.07.2026</Date>
+<Text>REALLY nice and funky with lots going on! Perfect vacation gift for my headphones. Thank you &amp;lt;3</Text>
+</UserComment>
+<UserComment><CSDbUser><ID>3133</ID>
+<Login>digger</Login>
+<Handle>Digger</Handle>
+<RegisteredDate>1970-01-01T01:00:00+01:00</RegisteredDate>
+<CSDbEntry><Handle><ID>2269</ID>
+<Handle>Digger</Handle>
+<AKA>Dejdżer/Diggr/DGGR</AKA>
+<CurrentlyUsedHandle>true</CurrentlyUsedHandle>
+<HandleStory>Derived from Amiga Lemmings game character.</HandleStory>
+<Scener><ID>2259</ID>
+<Country>Poland</Country>
+<Trivia>When I was around 7, my uncle Jasiek (RIP) bought Commodore C16, equipped with datasette (of course!) I instantly fell in love with that toy, but because I couldn't have it, I've nicked all his Bajtek magazines (polish equivalent of Byte Magazine) instead  I could hardly read but somehow all the listings of programs seem to look nice to me. Few years later my dad brought my very own Commodore C64 breadbox from Germany (actually, I still need to ask where did he get it from, I suppose fleamarket)  I've had played games for a few months but I quickly got bored with them. I felt it deeply in my gut  I needed to code.
+
+I begged my father again for weeks till he got me 1541-II disk drive; it costed something about 1,999,999 zł those days (yes, it was nearly 2 million polish zlotys!) I was in heaven  started swapping 5,25" disks with stangers on pirates' local markets, getting more stuff. It occasionally happened that a disk would contain a demo. Woah! Certainly that was far more interesting than some lousy shoot 'em ups. Also, I've bought absolutely every issue of C&amp;A (Commodore &amp; Amiga  hi Jetboy) and Kebab magazine (hi and thanks to Polonus and Silver Dream)  these were the best titles on the market  and I've learnt how to program in Basic 2.0.
+
+Few years later (I was about 13 then) I started exploring MOS 6502 and the whole world of assembler. I found about demoscene, called myself Digger and founded my own group called Atlantic and went to some crazy booze copy/demo parties to win/lose some demo competitions. I was also shown how to use tracker and write SID 6581 music (thanks Ivanhoe) for the first time. Exciting times they were, we've hardly slept for 3 days!
+Few people had a huge impact on me those days (thanks Carrion, Shogoon, Brush and Hain), few helped me a lot (thank you Toaster, Branzol, Morris and Druid). Please remember no one had heard about internet, BBS was a luxury so we had to swap disks via post (snailmail). I always used to attach a few pages written by hand, can't imagine how I've done that then  it's hard to find time to write an email nowadays! Sincere thanks to Wozio for giving me a hard lesson how not to be an arse!</Trivia>
+<Handles><Handle><ID>2269</ID>
+</Handle>
+<Handle><ID>20708</ID>
+<Handle>Gustek</Handle>
+<CurrentlyUsedHandle>false</CurrentlyUsedHandle>
+<Scener><ID>2259</ID>
+</Scener>
+<FreelanceFunctions><Function>Coder</Function>
+<Function>Graphician</Function>
+<Function>Logo Graphician</Function>
+<Function>Musician</Function>
+</FreelanceFunctions>
+</Handle>
+<Handle><ID>20707</ID>
+<Handle>Bufon</Handle>
+<CurrentlyUsedHandle>false</CurrentlyUsedHandle>
+<Scener><ID>2259</ID>
+</Scener>
+<FreelanceFunctions><Function>Coder</Function>
+<Function>Logo Graphician</Function>
+<Function>Musician</Function>
+</FreelanceFunctions>
+</Handle>
+<Handle><ID>24334</ID>
+<Handle>DGGR</Handle>
+<CurrentlyUsedHandle>false</CurrentlyUsedHandle>
+<Scener><ID>2259</ID>
+</Scener>
+<FreelanceFunctions><Function>Coder</Function>
+<Function>Graphician</Function>
+</FreelanceFunctions>
+</Handle>
+</Handles>
+</Scener>
+<FreelanceFunctions><Function>Coder</Function>
+<Function>Graphician</Function>
+<Function>Logo Graphician</Function>
+<Function>Musician</Function>
+<Function>Organizer</Function>
+<Function>Swapper</Function>
+</FreelanceFunctions>
+</Handle>
+</CSDbEntry>
+</CSDbUser>
+<Date>18.07.2026</Date>
+<Text>Very nice, M&amp;D league!</Text>
+</UserComment>
+<Trivia><CSDbUser><ID>7661</ID>
+</CSDbUser>
+<Date>19.07.2026</Date>
+<Text>Being “in the weeds” is an idiom that means either being completely overwhelmed by work or tasks, or getting too bogged down in tiny, trivial details to the point of losing sight of the big picture.</Text>
+</Trivia>
+</Comments>
+</Release>
+</CSDbData>

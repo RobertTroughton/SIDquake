@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<base href="../">
+<title>HVSC visualizer test</title>
+<style>
+body { background: #14151d; color: #ddd; font-family: monospace; }
+#viz { width: 640px; height: 160px; display: block; background: #0b0c12; }
+</style>
+</head>
+<body>
+<h1>HVSC visualizer test</h1>
+<p>Plays a SID (default engine) and runs the spectrum visualizer, reporting how
+many of the 64 bars sit near full height. <code>?sid=&lt;path&gt;</code> to choose the tune.</p>
+<canvas id="viz"></canvas>
+<pre id="log"></pre>
+<button id="go">Load &amp; play</button>
+<script>
+window.lazyScripts = {};
+window.loadScript = function(src) {
+    if (!window.lazyScripts[src]) {
+        window.lazyScripts[src] = new Promise((resolve, reject) => {
+            const s = document.createElement('script');
+            s.src = src;
+            s.onload = resolve;
+            s.onerror = reject;
+            document.head.appendChild(s);
+        });
+    }
+    return window.lazyScripts[src];
+};
+
+const log = (m) => { document.getElementById('log').textContent += m + '\n'; };
+window.testResult = { done: false };
+
+// Measure bar heights straight off the canvas: for each bar column, scan down
+// from the top for the first opaque pixel. Height fraction = 1 - y/H.
+function measureBars(canvas) {
+    const BARS = 64;
+    const c = canvas.getContext('2d');
+    const W = canvas.width, H = canvas.height;
+    const img = c.getImageData(0, 0, W, H).data;
+    const gapCss = Math.max(1, (canvas.clientWidth / BARS) * 0.18);
+    const bwCss = (canvas.clientWidth - gapCss * (BARS + 1)) / BARS;
+    const dpr = W / canvas.clientWidth;
+    const heights = [];
+    for (let b = 0; b < BARS; b++) {
+        const xCss = gapCss + b * (bwCss + gapCss) + bwCss / 2;
+        const x = Math.min(W - 1, Math.round(xCss * dpr));
+        let topY = H;
+        for (let y = 0; y < H; y++) {
+            if (img[(y * W + x) * 4 + 3] > 40) { topY = y; break; }
+        }
+        heights.push(1 - topY / H);
+    }
+    return heights;
+}
+
+async function run() {
+    const params = new URLSearchParams(location.search);
+    const sidUrl = params.get('sid') || 'HVSC/C64Music/MUSICIANS/H/Hubbard_Rob/Commando.sid';
+    const seconds = parseInt(params.get('seconds') || '8', 10);
+    try {
+        await window.loadScript('sid-playback.js');
+        if (SIDPlayback.engineName() === 'resid') await window.loadScript('sidquake.js');
+        await window.loadScript('hvsc-visualizer.js');
+
+        const pb = new SIDPlayback(4096);
+        await pb.init();
+        await pb.loadFromUrl(sidUrl);
+        pb.setSubtune(pb.getStartSong() > 0 ? pb.getStartSong() - 1 : 0);
+
+        const canvas = document.getElementById('viz');
+        window.hvscVisualizer.init(canvas, pb.getAnalyser(), () => pb.playing);
+        pb.play();
+        window.hvscVisualizer.start();
+
+        // Sample bar heights over the run.
+        const samples = [];
+        const t0 = performance.now();
+        while (performance.now() - t0 < seconds * 1000) {
+            await new Promise(r => setTimeout(r, 100));
+            samples.push(measureBars(canvas));
+        }
+
+        // Stats: per-sample fraction of bars >= 95% height, and mean height.
+        let pegged = 0, height = 0, n = 0;
+        for (const s of samples) {
+            for (const h of s) { if (h >= 0.95) pegged++; height += h; n++; }
+        }
+        const stats = {
+            done: true, ok: true,
+            title: pb.getTitle(),
+            samples: samples.length,
+            peggedPct: +(100 * pegged / n).toFixed(1),
+            meanHeightPct: +(100 * height / n).toFixed(1),
+        };
+        window.testResult = stats;
+        log('RESULT ' + JSON.stringify(stats));
+    } catch (e) {
+        window.testResult = { done: true, ok: false, error: String(e) };
+        log('ERROR ' + String(e && e.stack || e));
+    }
+}
+
+document.getElementById('go').addEventListener('click', run);
+if (new URLSearchParams(location.search).get('auto') === '1') run();
+</script>
+</body>
+</html>

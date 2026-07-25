@@ -1,0 +1,64 @@
+{
+  "player": "MusicalBlobs.asm",
+  "variants": [
+    "MusicalBlobs"
+  ],
+  "base": "0x4000",
+  "size": "0x4000",
+  "segments": [
+    {
+      "name": "Data Block",
+      "addr": "0x4000",
+      "size": "0x0100"
+    },
+    {
+      "name": "Screen RAM",
+      "addr": "0x5800",
+      "size": "0x01B8"
+    },
+    {
+      "name": "Screen RAM",
+      "addr": "0x59B8",
+      "size": "0x0050",
+      "data": "wMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwJ+fn5+fn5+fn5+fn5+fn5+fn5+fn5+fn5+fn5+fn5+fn5+fn5+fn58="
+    },
+    {
+      "name": "Screen RAM",
+      "addr": "0x5A08",
+      "size": "0x01F8"
+    },
+    {
+      "name": "Logo Colour Staging",
+      "addr": "0x5C00",
+      "size": "0x01B8"
+    },
+    {
+      "name": "Logo Colour Staging",
+      "addr": "0x5DB8",
+      "size": "0x0048",
+      "data": "AQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+    },
+    {
+      "name": "Logo Charset",
+      "addr": "0x6000",
+      "size": "0x0500"
+    },
+    {
+      "name": "Song Name Font",
+      "addr": "0x6500",
+      "size": "0x0300"
+    },
+    {
+      "name": "Curtain Sprite",
+      "addr": "0x6E00",
+      "size": "0x0040",
+      "data": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA////////AA=="
+    },
+    {
+      "name": "Spectrum Bitmap",
+      "addr": "0x6F00",
+      "size": "0x1100",
+      "data": "/////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////3fdd9133f//d9133Xfd//933Xfdd93//3fdd9133f//d9133Xfd//933Xfdd93//3fdd9133f//d9133Xfd//933Xfdd93//3fdd9133f//d9133Xfd//933Xfdd93//3fdd9133f//d9133Xfd//933Xfdd93//3fdd9133f//d9133Xfd//933Xfdd93//3fdd9133f//d9133Xfd//933Xfdd93//3fdd9133f//d9133Xfd//933Xfdd93//3fdd9133f//d9133Xfd//933Xfdd93//3fdd9133f//d9133Xfd//933Xfdd93//3fdd9133f//d9133Xfd//933Xfdd93//3fdd9133f//d9133Xfd//933Xfdd93//3fdd9133f//d9133Xfd//933Xfdd93//3fdd9133f//ZplmmWaZ//9mmWaZZpn//2aZZplmmf//ZplmmWaZ//9mmWaZZpn//2aZZplmmf//ZplmmWaZ//9mmWaZZpn//2aZZplmmf//ZplmmWaZ//9mmWaZZpn//2aZZplmmf//ZplmmWaZ//9mmWaZZpn//2aZZplmmf//ZplmmWaZ//9mmWaZZpn//2aZZplmmf//ZplmmWaZ//9mmWaZZpn//2aZZplmmf//ZplmmWaZ//9mmWaZZpn//2aZZplmmf//ZplmmWaZ//9mmWaZZpn//2aZZplmmf//ZplmmWaZ//9mmWaZZpn//2aZZplmmf//ZplmmWaZ//9mmWaZZpn//2aZZplmmf//ZplmmWaZ//9mmWaZZpn//2aZZplmmf//ZplmmWaZ//9mmWaZZpn//2aZZplmmf//ZplmmWaZ//9mmWaZZpn//2aZZplmmf//ZplmmWaZ//9mmWaZZpn//2aZZplmmf//ZplmmWaZ//9mmWaZZpn//2aZZplmmf//ZplmmWaZ//9mmWaZZpn//2aZZplmmf//ZplmmWaZ//9mmWaZZpn//2aZZplmmf//ZplmmWaZ//9mmWaZZpn//2aZZplmmf//ZplmmWaZ//9mmWaZZpn//2aZZplmmf//ZplmmWaZ//9mmWaZZpn//2aZZplmmf//ZplmmWaZ//9mmWaZZpn//2aZZplmmf//ZplmmWaZ//9mmWaZZpn//2aZZplmmf//ZplmmWaZ//9mmWaZZpn//2aZZplmmf//ZplmmWaZ//9mmWaZZpn//2aZZplmmf//ZplmmWaZ//9mmWaZZpn//2aZZplmmf//ZplmmWaZ//9mmWaZZpn//3fdd9133f//d9133Xfd//933Xfdd93//3fdd9133f//d9133Xfd//933Xfdd93//3fdd9133f//d9133Xfd//933Xfdd93//3fdd9133f//d9133Xfd//933Xfdd93//3fdd9133f//d9133Xfd//933Xfdd93//3fdd9133f//d9133Xfd//933Xfdd93//3fdd9133f//d9133Xfd//933Xfdd93//3fdd9133f//d9133Xfd//933Xfdd93//3fdd9133f//d9133Xfd//933Xfdd93//3fdd9133f//d9133Xfd//933Xfdd93//3fdd9133f//d9133Xfd//933Xfdd93//3fdd9133f//d9133Xfd//933Xfdd93//3fdd9133f//d9133Xfd//933Xfdd93//3fdd9133f//d9133Xfd//933Xfdd93//3fdd9133f//d9133Xfd//933Xfdd93//3fdd9133f//d9133Xfd//933Xfdd93//3fdd9133f//d9133Xfd//933Xfdd93//3fdd9133f//d9133Xfd//933Xfdd93//3fdd9133f//d9133Xfd//933Xfdd93//3fdd9133f//d9133Xfd//933Xfdd93//3fdd9133f//d9133Xfd//933Xfdd93//3fdd9133f//d9133Xfd//933Xfdd93//3fdd9133f//d9133Xfd//933Xfdd93//3fdd9133f//d9133Xfd//933Xfdd93//3fdd9133f//d9133Xfd//933Xfdd93//3fdd9133f//d9133Xfd//933Xfdd93//3fdd9133f//d9133Xfd//9mmWaZZpn//2aZZplmmf//ZplmmWaZ//9mmWaZZpn//2aZZplmmf//ZplmmWaZ//9mmWaZZpn//2aZZplmmf//ZplmmWaZ//9mmWaZZpn//2aZZplmmf//ZplmmWaZ//9mmWaZZpn//2aZZplmmf//ZplmmWaZ//9mmWaZZpn//2aZZplmmf//ZplmmWaZ//9mmWaZZpn//2aZZplmmf//ZplmmWaZ//9mmWaZZpn//2aZZplmmf//ZplmmWaZ//9mmWaZZpn//2aZZplmmf//ZplmmWaZ//9mmWaZZpn//2aZZplmmf//ZplmmWaZ//9mmWaZZpn//2aZZplmmf//ZplmmWaZ//9mmWaZZpn//2aZZplmmf//ZplmmWaZ//9mmWaZZpn//2aZZplmmf//ZplmmWaZ//9mmWaZZpn//2aZZplmmf//ZplmmWaZ//9mmWaZZpn//2aZZplmmf//ZplmmWaZ//9mmWaZZpn//2aZZplmmf//ZplmmWaZ//9mmWaZZpn//2aZZplmmf//ZplmmWaZ//9mmWaZZpn//2aZZplmmf//ZplmmWaZ//9mmWaZZpn//2aZZplmmf//ZplmmWaZ//9mmWaZZpn//2aZZplmmf//ZplmmWaZ//9mmWaZZpn//2aZZplmmf//ZplmmWaZ//9mmWaZZpn//2aZZplmmf//ZplmmWaZ//9mmWaZZpn//2aZZplmmf//ZplmmWaZ//9mmWaZZpn//2aZZplmmf//ZplmmWaZ//9mmWaZZpn//2aZZplmmf//ZplmmWaZ//9mmWaZZpn//2aZZplmmf//ZplmmWaZ//9mmWaZZpn//2aZZplmmf//d9133Xfd//933Xfdd93//3fdd9133f//d9133Xfd//933Xfdd93//3fdd9133f//d9133Xfd//933Xfdd93//3fdd9133f//d9133Xfd//933Xfdd93//3fdd9133f//d9133Xfd//933Xfdd93//3fdd9133f//d9133Xfd//933Xfdd93//3fdd9133f//d9133Xfd//933Xfdd93//3fdd9133f//d9133Xfd//933Xfdd93//3fdd9133f//d9133Xfd//933Xfdd93//3fdd9133f//d9133Xfd//933Xfdd93//3fdd9133f//d9133Xfd//933Xfdd93//3fdd9133f//d9133Xfd//933Xfdd93//3fdd9133f//d9133Xfd//933Xfdd93//3fdd9133f//d9133Xfd//933Xfdd93//3fdd9133f//d9133Xfd//933Xfdd93//3fdd9133f//d9133Xfd//933Xfdd93//3fdd9133f//d9133Xfd//933Xfdd93//3fdd9133f//d9133Xfd//933Xfdd93//3fdd9133f//d9133Xfd//933Xfdd93//3fdd9133f//d9133Xfd//933Xfdd93//3fdd9133f//d9133Xfd//933Xfdd93//3fdd9133f//d9133Xfd//933Xfdd93//3fdd9133f//d9133Xfd//933Xfdd93//3fdd9133f//d9133Xfd//933Xfdd93//3fdd9133f//d9133Xfd//933Xfdd93//3fdd9133f//d9133Xfd//933Xfdd93//3fdd9133f//d9133Xfd//933Xfdd93//2aZZplmmf//ZplmmWaZ//9mmWaZZpn//2aZZplmmf//ZplmmWaZ//9mmWaZZpn//2aZZplmmf//ZplmmWaZ//9mmWaZZpn//2aZZplmmf//ZplmmWaZ//9mmWaZZpn//2aZZplmmf//ZplmmWaZ//9mmWaZZpn//2aZZplmmf//ZplmmWaZ//9mmWaZZpn//2aZZplmmf//ZplmmWaZ//9mmWaZZpn//2aZZplmmf//ZplmmWaZ//9mmWaZZpn//2aZZplmmf//ZplmmWaZ//9mmWaZZpn//2aZZplmmf//ZplmmWaZ//9mmWaZZpn//2aZZplmmf//ZplmmWaZ//9mmWaZZpn//2aZZplmmf//ZplmmWaZ//9mmWaZZpn//2aZZplmmf//ZplmmWaZ//9mmWaZZpn//2aZZplmmf//ZplmmWaZ//9mmWaZZpn//2aZZplmmf//ZplmmWaZ//9mmWaZZpn//2aZZplmmf//ZplmmWaZ//9mmWaZZpn//2aZZplmmf//ZplmmWaZ//9mmWaZZpn//2aZZplmmf//ZplmmWaZ//9mmWaZZpn//2aZZplmmf//ZplmmWaZ//9mmWaZZpn//2aZZplmmf//ZplmmWaZ//9mmWaZZpn//2aZZplmmf//ZplmmWaZ//9mmWaZZpn//2aZZplmmf//ZplmmWaZ//9mmWaZZpn//2aZZplmmf//ZplmmWaZ//9mmWaZZpn//2aZZplmmf//ZplmmWaZ//9mmWaZZpn//2aZZplmmf//ZplmmWaZ//9mmWaZZpn//2aZZplmmf//ZplmmWaZ//9mmWaZZpn//2aZZplmmf//ZplmmWaZ//933Xfdd93//3fdd9133f//d9133Xfd//933Xfdd93//3fdd9133f//d9133Xfd//933Xfdd93//3fdd9133f//d9133Xfd//933Xfdd93//3fdd9133f//d9133Xfd//933Xfdd93//3fdd9133f//d9133Xfd//933Xfdd93//3fdd9133f//d9133Xfd//933Xfdd93//3fdd9133f//d9133Xfd//933Xfdd93//3fdd9133f//d9133Xfd//933Xfdd93//3fdd9133f//d9133Xfd//933Xfdd93//3fdd9133f//d9133Xfd//933Xfdd93//3fdd9133f//d9133Xfd//933Xfdd93//3fdd9133f//d9133Xfd//933Xfdd93//3fdd9133f//d9133Xfd//933Xfdd90AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="
+    }
+  ]
+}

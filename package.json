@@ -1,0 +1,18 @@
+{
+  "name": "sidquake",
+  "version": "2.0.0",
+  "scripts": {
+    "extract-hvsc": "node scripts/extract-hvsc.js",
+    "build-hvsc-index": "node tools/build-hvsc-index.js",
+    "build-seo-pages": "node scripts/build-seo-pages.js",
+    "build": "node scripts/extract-hvsc.js && node scripts/build-seo-pages.js && node scripts/build-share-meta.js",
+    "netlify-build": "npm run build",
+    "build-share-meta": "node scripts/build-share-meta.js"
+  },
+  "devDependencies": {
+    "pngjs": "^7.0.0"
+  },
+  "dependencies": {
+    "7zip-bin": "^5.2.0"
+  }
+}

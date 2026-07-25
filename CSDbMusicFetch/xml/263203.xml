@@ -1,0 +1,74 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<CSDbData><Release><ID>263203</ID>
+<Name>I'll Wait</Name>
+<Type>C64 Music</Type>
+<ReleaseDay>23</ReleaseDay>
+<ReleaseMonth>7</ReleaseMonth>
+<ReleaseYear>2026</ReleaseYear>
+<Website>https://www.youtube.com/watch?v=t5zLdMIjrNo</Website>
+<ScreenShot>https://csdb.dk/gfx/releases/263000/263203.png</ScreenShot>
+<ReleasedBy><Group><ID>435</ID>
+<Name>Hokuto Force</Name>
+<AKA>Digital Monastery (DM)</AKA>
+<Short>HF</Short>
+<Trivia>The name of this group is inspired by a postatomic japanese cartoon of martial arts called Hokuto No Ken. Probably you know it as "Fist of the north star".
+29/10/06: For many reasons I (The Overkiller) decided to put HF in inactive status.
+2009 A.D: Hokuto Force is back fully in activity!
+30/11/2012: &amp;lt;group id=10014&amp;gt;, the game developing division of Hokuto Force is born!
+
+
+[IMG]https://i.ibb.co/Lp1MxGv/245.png[/img]
+
+During its activity, Hokuto Force was in coop with: &amp;lt;group id=3416&amp;gt; , &amp;lt;group id=215&amp;gt; , &amp;lt;group id=8337&amp;gt; , &amp;lt;group id=7190&amp;gt; , &amp;lt;group id=4874&amp;gt; , &amp;lt;group id=185&amp;gt; (more than 50 1st releases were done and still counting) , &amp;lt;group id=13371&amp;gt;</Trivia>
+<BaseCountry>Italy</BaseCountry>
+<FoundYear>1988</FoundYear>
+<Website>http://www.hokutoforce.c64.org</Website>
+<Rating>9.08</Rating>
+<Grouptypes><Grouptype>Cracker Group</Grouptype>
+<Grouptype>Demo Group</Grouptype>
+<Grouptype>Game Development Group</Grouptype>
+<Grouptype>Swapping Group</Grouptype>
+</Grouptypes>
+<Slogan>Accuracy makes the difference!</Slogan>
+<Slogan>We give dignity even to the lamest games !!</Slogan>
+<Slogan>The fist of the north star !!</Slogan>
+<Slogan>Save 'em from the dust of time!!</Slogan>
+<Slogan>The power of the seven stars !!</Slogan>
+<Slogan>To serve and preserve !!</Slogan>
+<Slogan>We don't whine... we do facts !!</Slogan>
+</Group>
+</ReleasedBy>
+<Credits><Credit><CreditType>Music</CreditType>
+<Handle><ID>38402</ID>
+<Handle>DJ Space</Handle>
+<CurrentlyUsedHandle>true</CurrentlyUsedHandle>
+<HandleStory>I am a music composer/producer from Greece. Commodore 64 user/lover since the early-mid 80s. SID music was and still is fascinating/kinda addicting to me and I always wanted to be a part of it and contribute to the scene with my own SID music and also my pixel art and PETSCII creations. I never thought as a child that one day I will be testing/listening to my own SID files on my childhood C64 but here we are!
+
+https://www.youtube.com/@DJSpaceRetrotunes
+https://www.facebook.com/djspace.music
+http://www.retroperks.com</HandleStory>
+<Scener><ID>35085</ID>
+<Country>Greece</Country>
+<Handles><Handle><ID>38402</ID>
+</Handle>
+</Handles>
+</Scener>
+<FreelanceFunctions><Function>Graphician</Function>
+<Function>Musician</Function>
+</FreelanceFunctions>
+</Handle>
+</Credit>
+</Credits>
+<DownloadLinks><DownloadLink><Link>https://csdb.dk/getinternalfile.php/281823/ill wait.sid</Link>
+<CounterLink>https://csdb.dk/release/download.php?id=323888</CounterLink>
+<Downloads>12</Downloads>
+<Status>Ok</Status>
+</DownloadLink>
+<DownloadLink><Link>https://csdb.dk/getinternalfile.php/281822/ill wait.prg</Link>
+<CounterLink>https://csdb.dk/release/download.php?id=323887</CounterLink>
+<Downloads>21</Downloads>
+<Status>Ok</Status>
+</DownloadLink>
+</DownloadLinks>
+</Release>
+</CSDbData>

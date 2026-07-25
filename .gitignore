@@ -1,0 +1,35 @@
+CMakeLists.txt.user
+CMakeCache.txt
+CMakeFiles
+CMakeScripts
+Testing
+Makefile
+cmake_install.cmake
+install_manifest.txt
+compile_commands.json
+CTestTestfile.cmake
+_deps
+/.vs
+/build
+/out
+SIDquake.log
+/temp
+FileLayout.txt
+/Reloc
+SIDquake
+node_modules/
+/CSDbMusicFetch/out
+
+# Extracted HVSC mirror. The raw ~61k .sid files are NOT committed; instead the
+# HVSC archive under hvsc-data/ is committed and extracted here at build time
+# (npm run extract-hvsc). Keep this folder locally for offline dev + index builds.
+/public/HVSC/
+
+# Per-composer SEO pages + sitemap: generated from hvsc-index.json at build
+# (npm run build-seo-pages). Derived output, not committed.
+/public/music/
+/public/sitemap.xml
+
+# Per-tune share metadata shards for the tune-og edge function: generated
+# from hvsc-index.json at build time (npm run build-share-meta).
+/public/share-meta/

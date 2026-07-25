@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<base href="../">
+<title>SID playback engine test</title>
+</head>
+<body>
+<h1>SID playback engine test</h1>
+<p>Loads a SID over the selected engine (default: libsidplayfp; <code>?engine=resid</code> for the legacy engine),
+plays it through the normal SIDPlayback audio graph, and reports what the
+AnalyserNode sees. Use it manually (listen!) or via the automated check.
+Note the <code>&lt;base href="../"&gt;</code>: all asset paths resolve from the
+site root, exactly as on the real pages.</p>
+<pre id="log"></pre>
+<div class="sid-player-credit">Playback by <a href="https://github.com/libsidplayfp/libsidplayfp" target="_blank" rel="noopener">libsidplayfp</a> + reSIDfp</div>
+<button id="go">Load &amp; play</button>
+<script>
+window.lazyScripts = {};
+window.loadScript = function(src) {
+    if (!window.lazyScripts[src]) {
+        window.lazyScripts[src] = new Promise((resolve, reject) => {
+            const s = document.createElement('script');
+            s.src = src;
+            s.onload = resolve;
+            s.onerror = reject;
+            document.head.appendChild(s);
+        });
+    }
+    return window.lazyScripts[src];
+};
+
+const log = (m) => {
+    document.getElementById('log').textContent += m + '\n';
+    console.log('[engine-test]', m);
+};
+
+// Results the automated driver polls for.
+window.testResult = { done: false };
+
+async function run() {
+    const params = new URLSearchParams(location.search);
+    const sidUrl = params.get('sid') || 'HVSC/C64Music/MUSICIANS/H/Hubbard_Rob/Commando.sid';
+    const engine = params.get('engine') === 'resid' ? 'resid' : 'fp';
+    try {
+        if (engine !== 'fp') await window.loadScript('sidquake.js');
+        await window.loadScript('sid-playback.js');
+
+        const pb = new SIDPlayback(4096);
+        await pb.init();
+        log('engine: ' + SIDPlayback.engineName());
+
+        await pb.loadFromUrl(sidUrl);
+        log('loaded: ' + pb.getTitle() + ' by ' + pb.getAuthor() +
+            ' | subtunes=' + pb.getSubtuneCount() + ' model=' + pb.getSIDModel() +
+            ' sids=' + pb.getSIDCount() + ' ntsc=' + pb.isNTSC());
+
+        pb.setSubtune(pb.getStartSong() > 0 ? pb.getStartSong() - 1 : 0);
+        pb.play();
+
+        // Let it play, then read the analyser a few times.
+        const analyser = pb.getAnalyser();
+        const buf = new Uint8Array(analyser.frequencyBinCount);
+        let peakBin = 0, energy = 0;
+        for (let i = 0; i < 20; i++) {
+            await new Promise(r => setTimeout(r, 150));
+            analyser.getByteFrequencyData(buf);
+            for (let b = 0; b < buf.length; b++) {
+                if (buf[b] > peakBin) peakBin = buf[b];
+                energy += buf[b];
+            }
+        }
+        log('analyser peak=' + peakBin + ' energySum=' + energy);
+        window.testResult = {
+            done: true, ok: true, engine: SIDPlayback.engineName(),
+            title: pb.getTitle(), author: pb.getAuthor(),
+            subtunes: pb.getSubtuneCount(), model: pb.getSIDModel(),
+            sids: pb.getSIDCount(), ntsc: pb.isNTSC(),
+            analyserPeak: peakBin, analyserEnergy: energy,
+            playTime: pb.getPlayTime(),
+            credit: document.querySelector('.sid-player-credit').textContent,
+        };
+        log('RESULT ' + JSON.stringify(window.testResult));
+    } catch (e) {
+        window.testResult = { done: true, ok: false, error: String(e) };
+        log('ERROR ' + String(e && e.stack || e));
+    }
+}
+
+document.getElementById('go').addEventListener('click', run);
+// Auto-run for the automated driver (autoplay must be allowed).
+if (new URLSearchParams(location.search).get('auto') === '1') run();
+</script>
+</body>
+</html>

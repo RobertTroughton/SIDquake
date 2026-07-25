@@ -1,0 +1,413 @@
+/* ==========================================================================
+   SIDquake Studio modal
+   Near-fullscreen workspace: load -> configure -> export, as tabs.
+   Sits below the message modal (1000), busy overlay (2000) and the
+   HVSC/gallery modals (10000) so all of those can open above it.
+   ========================================================================== */
+
+.studio-modal {
+    position: fixed;
+    inset: 0;
+    background: rgba(6, 6, 9, 0.72);
+    z-index: 900;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    padding: 20px;
+}
+
+.studio-modal.visible {
+    display: flex;
+}
+
+.studio-modal-content {
+    width: min(1160px, 96vw);
+    height: min(820px, 92vh);
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-light);
+    border-radius: var(--radius-xl);
+    box-shadow: var(--shadow-lg);
+    display: grid;
+    grid-template-rows: auto 1fr auto;
+    overflow: hidden;
+}
+
+/* ---------- header ---------- */
+
+.studio-head {
+    display: flex;
+    align-items: center;
+    gap: var(--space-md);
+    padding: 10px 18px;
+    border-bottom: 1px solid var(--border);
+    background: var(--bg-surface);
+    min-height: 54px;
+}
+
+.studio-head-icon {
+    color: var(--accent);
+    font-size: 1.1em;
+}
+
+.studio-head-song {
+    min-width: 0;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.studio-head-song b {
+    font-weight: 600;
+    color: var(--text-primary);
+}
+
+.studio-head-song span {
+    color: var(--text-secondary);
+    margin-left: 6px;
+}
+
+.studio-player-mount {
+    margin-left: auto;
+    min-width: 0;
+    display: flex;
+    justify-content: flex-end;
+}
+
+.studio-player-mount .sid-player-container {
+    margin: 0;
+}
+
+.studio-close {
+    width: 32px;
+    height: 32px;
+    flex: 0 0 auto;
+    border: none;
+    border-radius: var(--radius-md);
+    background: none;
+    color: var(--text-muted);
+    font-size: 15px;
+    cursor: pointer;
+    transition: all var(--transition-fast);
+}
+
+.studio-close:hover {
+    background: var(--bg-hover);
+    color: var(--text-primary);
+}
+
+/* ---------- body: rail + panels ---------- */
+
+.studio-body {
+    display: grid;
+    grid-template-columns: 200px 1fr;
+    min-height: 0;
+}
+
+.studio-rail {
+    border-right: 1px solid var(--border);
+    padding: 14px 10px;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    overflow-y: auto;
+}
+
+.studio-rail-sep {
+    margin: 8px 6px;
+    border-top: 1px dashed var(--border-light);
+}
+
+.studio-tab {
+    display: flex;
+    align-items: center;
+    gap: 9px;
+    text-align: left;
+    width: 100%;
+    padding: 9px 11px;
+    border: none;
+    border-radius: var(--radius-md);
+    background: none;
+    color: var(--text-secondary);
+    font-family: var(--font-sans);
+    font-size: 0.95em;
+    cursor: pointer;
+    position: relative;
+    transition: background var(--transition-fast), color var(--transition-fast);
+}
+
+.studio-tab i {
+    width: 16px;
+    text-align: center;
+    font-size: 0.85em;
+    opacity: 0.8;
+}
+
+.studio-tab:hover {
+    background: var(--bg-hover);
+    color: var(--text-primary);
+}
+
+.studio-tab.active {
+    background: var(--accent-dim);
+    color: var(--accent-light);
+}
+
+.studio-tab.active::before {
+    content: '';
+    position: absolute;
+    left: 0;
+    top: 7px;
+    bottom: 7px;
+    width: 2px;
+    border-radius: 2px;
+    background: var(--accent);
+}
+
+.studio-tab .studio-tab-status {
+    margin-left: auto;
+    font-family: var(--font-mono);
+    font-size: 0.8em;
+}
+
+.studio-tab-status.st-done { color: var(--success); }
+.studio-tab-status.st-default { color: var(--text-muted); }
+.studio-tab-status.st-attn { color: var(--warning); }
+
+.studio-tab.entering {
+    animation: studioTabIn 0.18s ease;
+}
+
+@keyframes studioTabIn {
+    from { opacity: 0; transform: translateX(-8px); }
+    to { opacity: 1; transform: none; }
+}
+
+.studio-panels {
+    overflow-y: auto;
+    min-height: 0;
+    padding: 22px 28px 40px;
+}
+
+.studio-panel {
+    display: none;
+    max-width: 820px;
+}
+
+.studio-panel.active {
+    display: block;
+}
+
+.studio-panel-title {
+    font-size: 1.15em;
+    color: var(--text-primary);
+    margin: 0 0 2px;
+}
+
+.studio-panel-sub {
+    color: var(--text-secondary);
+    font-size: 0.85em;
+    margin: 0 0 var(--space-md);
+}
+
+/* Reveal caption shown above showWhen-gated controls that just appeared. */
+.studio-reveal-note {
+    display: flex;
+    gap: 8px;
+    align-items: baseline;
+    font-size: 0.82em;
+    color: var(--text-accent);
+    margin: 2px 0 10px;
+}
+
+.studio-reveal-note::before {
+    content: '\21b3';
+    color: var(--accent);
+}
+
+/* Option rows revealed by showWhen get a short unfold. */
+@media (prefers-reduced-motion: no-preference) {
+    .studio-panel .option-row[data-show-when] {
+        animation: studioRevealIn 0.25s ease;
+    }
+}
+
+@keyframes studioRevealIn {
+    from { opacity: 0; transform: translateY(-4px); }
+    to { opacity: 1; transform: none; }
+}
+
+/* Existing option-panel chrome, adapted to live inside a tab panel. */
+.studio-panel .visualizer-options-panel {
+    margin: 0 0 var(--space-md);
+    max-width: none;
+}
+
+.studio-panel .section-group {
+    margin-bottom: var(--space-md);
+}
+
+/* Song panel: single column reads better inside the modal at narrow widths. */
+@media (max-width: 900px) {
+    .studio-panel .info-panels {
+        grid-template-columns: 1fr;
+    }
+}
+
+/* ---------- export manifest ---------- */
+
+.studio-manifest {
+    background: var(--bg-surface);
+    border: 1px solid var(--border);
+    margin-bottom: var(--space-md);
+}
+
+.studio-manifest table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.88em;
+}
+
+.studio-manifest td {
+    padding: 8px 12px;
+    border-bottom: 1px solid var(--border);
+    vertical-align: top;
+}
+
+.studio-manifest tr:last-child td {
+    border-bottom: none;
+}
+
+.studio-manifest td:first-child {
+    color: var(--text-secondary);
+    width: 110px;
+    white-space: nowrap;
+}
+
+.studio-manifest .mf-val {
+    font-family: var(--font-mono);
+    font-size: 0.92em;
+    color: var(--text-primary);
+    overflow-wrap: anywhere;
+}
+
+.studio-manifest .mf-tag {
+    font-family: var(--font-mono);
+    font-size: 0.75em;
+    border-radius: 999px;
+    padding: 1px 9px;
+    white-space: nowrap;
+}
+
+.studio-manifest td:last-child {
+    text-align: right;
+    width: 150px;
+}
+
+.mf-tag.inc { color: var(--success); border: 1px solid rgba(92, 184, 122, 0.4); }
+.mf-tag.skip { color: var(--text-muted); border: 1px solid var(--border-light); }
+.mf-tag.pend { color: var(--warning); border: 1px solid rgba(232, 168, 56, 0.4); }
+.mf-tag.warn { color: var(--error); border: 1px solid rgba(212, 85, 85, 0.4); }
+
+.studio-manifest .mf-go {
+    background: none;
+    border: none;
+    color: var(--accent-light);
+    font-size: 0.85em;
+    cursor: pointer;
+    padding: 0 0 0 6px;
+}
+
+.studio-manifest .mf-go:hover {
+    text-decoration: underline;
+}
+
+/* ---------- footer ---------- */
+
+.studio-foot {
+    display: flex;
+    align-items: center;
+    gap: var(--space-md);
+    padding: 10px 18px;
+    border-top: 1px solid var(--border);
+    background: var(--bg-surface);
+}
+
+.studio-foot-sum {
+    font-family: var(--font-mono);
+    font-size: 0.75em;
+    color: var(--text-secondary);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    flex: 0 1 auto;
+}
+
+.studio-foot .export-status {
+    margin: 0;
+    padding: 4px 10px;
+    flex: 1 1 auto;
+    min-width: 0;
+    font-size: 0.8em;
+}
+
+.studio-foot .export-button {
+    margin-left: auto;
+    flex: 0 0 auto;
+}
+
+/* ---------- landing card ---------- */
+
+.open-studio-btn {
+    margin-top: var(--space-md);
+}
+
+/* ---------- narrow screens: fullscreen, rail on top ---------- */
+
+@media (max-width: 720px) {
+    .studio-modal {
+        padding: 0;
+    }
+
+    .studio-modal-content {
+        width: 100vw;
+        height: 100dvh;
+        border-radius: 0;
+        border: none;
+    }
+
+    .studio-body {
+        grid-template-columns: 1fr;
+        grid-template-rows: auto 1fr;
+    }
+
+    .studio-rail {
+        flex-direction: row;
+        overflow-x: auto;
+        border-right: none;
+        border-bottom: 1px solid var(--border);
+        padding: 8px 10px;
+    }
+
+    .studio-rail-sep {
+        display: none;
+    }
+
+    .studio-tab {
+        white-space: nowrap;
+        width: auto;
+    }
+
+    .studio-panels {
+        padding: 16px 14px 32px;
+    }
+
+    .studio-player-mount {
+        display: none;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .studio-tab.entering {
+        animation: none;
+    }
+}

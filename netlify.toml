@@ -1,0 +1,84 @@
+[build]
+  publish = "public"
+  functions = "netlify/functions"
+  # Extract the committed HVSC archive (hvsc-data/*.7z) into public/HVSC/ so the
+  # raw .sid files are served statically, then generate the per-composer SEO
+  # pages + sitemap from the committed index. (The index itself is committed and
+  # does not need rebuilding here.)
+  command = "npm install && npm run build"
+
+# Short cache for font and bar-style assets so new additions appear quickly
+[[headers]]
+  for = "/PNG/Fonts/*"
+  [headers.values]
+    Cache-Control = "public, max-age=300, must-revalidate"
+
+[[headers]]
+  for = "/PNG/BarStyles/*"
+  [headers.values]
+    Cache-Control = "public, max-age=300, must-revalidate"
+
+# Short cache for JS files to pick up code changes quickly
+[[headers]]
+  for = "/*.js"
+  [headers.values]
+    Cache-Control = "public, max-age=300, must-revalidate"
+
+# JSON configs also need short cache
+[[headers]]
+  for = "/prg/*.json"
+  [headers.values]
+    Cache-Control = "public, max-age=300, must-revalidate"
+
+# Keep the raw HVSC mirror and its index out of search indexes: results should
+# point at SIDquake pages, not raw .sid download links.
+[[headers]]
+  for = "/HVSC/*"
+  [headers.values]
+    X-Robots-Tag = "noindex, nofollow"
+
+[[headers]]
+  for = "/hvsc-index.json"
+  [headers.values]
+    X-Robots-Tag = "noindex"
+
+# The embed is meant to be iframed from SIDquake pages, not indexed on its own.
+[[headers]]
+  for = "/hvsc-embed.html"
+  [headers.values]
+    X-Robots-Tag = "noindex"
+
+# Baseline security headers for every response. Deliberately conservative: no
+# site-wide Content-Security-Policy here, because the app loads Font Awesome from
+# a CDN, uses inline bootstrap scripts and blob/worklet workers, and compiles
+# WebAssembly — a strict CSP needs to be authored and tested against all of that
+# before it can be turned on without breaking the app.
+[[headers]]
+  for = "/*"
+  [headers.values]
+    X-Content-Type-Options = "nosniff"
+    Referrer-Policy = "strict-origin-when-cross-origin"
+    Permissions-Policy = "geolocation=(), camera=(), microphone=(), payment=(), usb=()"
+    Strict-Transport-Security = "max-age=31536000"
+
+# Clickjacking protection for the main app pages: they must not be framed by
+# other sites. Applied per-page by explicit path (Netlify does not reliably
+# match extension globs like /*.html) and DELIBERATELY excluding
+# /hvsc-embed.html, which is designed to be iframed by embedders.
+[[headers]]
+  for = "/"
+  [headers.values]
+    X-Frame-Options = "SAMEORIGIN"
+    Content-Security-Policy = "frame-ancestors 'self'"
+
+[[headers]]
+  for = "/index.html"
+  [headers.values]
+    X-Frame-Options = "SAMEORIGIN"
+    Content-Security-Policy = "frame-ancestors 'self'"
+
+[[headers]]
+  for = "/hvsc-browser.html"
+  [headers.values]
+    X-Frame-Options = "SAMEORIGIN"
+    Content-Security-Policy = "frame-ancestors 'self'"

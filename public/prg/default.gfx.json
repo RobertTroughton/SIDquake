@@ -1,0 +1,25 @@
+{
+  "player": "Default.asm",
+  "variants": [
+    "Default"
+  ],
+  "base": "0x4000",
+  "size": "0x3000",
+  "segments": [
+    {
+      "name": "Data Block",
+      "addr": "0x4000",
+      "size": "0x0100"
+    },
+    {
+      "name": "Screen RAM",
+      "addr": "0x6000",
+      "size": "0x0400"
+    },
+    {
+      "name": "Charset RAM",
+      "addr": "0x6800",
+      "size": "0x0800"
+    }
+  ]
+}

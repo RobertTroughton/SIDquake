@@ -1,0 +1,256 @@
+/**
+ * PETSCII Text Sanitizer Module
+ * Converts modern text to C64-compatible PETSCII format
+ * Ensures one byte per character output
+ */
+
+class PETSCIISanitizer {
+    constructor() {
+        // Map of Unicode/extended characters to PETSCII equivalents
+        // Using Unicode values to avoid quote escaping issues
+        this.charMap = {
+            // Smart quotes - all convert to standard ASCII quote (34)
+            0x201C: 34,  // " Left double quotation mark
+            0x201D: 34,  // " Right double quotation mark  
+            0x201E: 34,  // „ Double low-9 quotation mark
+
+            // Smart apostrophes - all convert to standard ASCII apostrophe (39)
+            0x2018: 39,  // ' Left single quotation mark
+            0x2019: 39,  // ' Right single quotation mark
+            0x201A: 39,  // ‚ Single low-9 quotation mark
+
+            // Dashes - all convert to standard ASCII hyphen-minus (45)
+            0x2010: 45,  // ‐ Hyphen
+            0x2011: 45,  // ‑ Non-breaking hyphen
+            0x2012: 45,  // ‒ Figure dash
+            0x2013: 45,  // – En dash
+            0x2014: 45,  // — Em dash
+            0x2015: 45,  // ― Horizontal bar
+            0x2212: 45,  // − Minus sign
+
+            // Space variants - all convert to standard space (32)
+            0x00A0: 32,  // Non-breaking space
+            0x2000: 32,  // En quad
+            0x2001: 32,  // Em quad
+            0x2002: 32,  // En space
+            0x2003: 32,  // Em space
+            0x2004: 32,  // Three-per-em space
+            0x2005: 32,  // Four-per-em space
+            0x2006: 32,  // Six-per-em space
+            0x2007: 32,  // Figure space
+            0x2008: 32,  // Punctuation space
+            0x2009: 32,  // Thin space
+            0x200A: 32,  // Hair space
+            0x202F: 32,  // Narrow no-break space
+            0x205F: 32,  // Medium mathematical space
+
+            // Other punctuation - Note: ellipsis handled separately
+            0x2022: 42,  // • Bullet to asterisk
+            0x00B7: 46,  // · Middle dot to period
+        };
+
+        this.warnings = [];
+    }
+
+    /**
+     * Sanitize text for PETSCII compatibility
+     * @param {string} text - Input text to sanitize
+     * @param {Object} options - Options for sanitization
+     * @returns {Object} - Sanitized text and any warnings
+     */
+    sanitize(text, options = {}) {
+        const {
+            maxLength = null,
+            padToLength = null,
+            center = false,
+            reportUnknown = true
+        } = options;
+
+        this.warnings = [];
+        if (!text) {
+            return {
+                text: padToLength ? ' '.repeat(padToLength) : '',
+                warnings: [],
+                hasWarnings: false,
+                originalLength: 0,
+                sanitizedLength: padToLength || 0
+            };
+        }
+
+        const unknownChars = new Set();
+        const result = [];
+
+        // Process each character
+        for (let i = 0; i < text.length; i++) {
+            const char = text[i];
+            const code = char.charCodeAt(0);
+
+            // Ellipsis expands to three periods
+            if (code === 0x2026) {
+                result.push(46, 46, 46);
+            }
+            else if (this.charMap[code] !== undefined) {
+                result.push(this.charMap[code]);
+            }
+            // Newlines and carriage returns collapse to space
+            else if (code === 10 || code === 13) {
+                result.push(32);
+            }
+            // Tab collapses to space
+            else if (code === 9) {
+                result.push(32);
+            }
+            // Standard printable ASCII passes through unchanged
+            else if (code >= 32 && code <= 126) {
+                result.push(code);
+            }
+            // Latin-1 lowercase: strip diacritics to base ASCII letter
+            else if (code >= 0x00E0 && code <= 0x00FF) {
+                if ((code >= 0x00E0 && code <= 0x00E6) || code === 0x00E0) result.push(97);   // a
+                else if (code >= 0x00E8 && code <= 0x00EB) result.push(101);                  // e
+                else if (code >= 0x00EC && code <= 0x00EF) result.push(105);                  // i
+                else if ((code >= 0x00F2 && code <= 0x00F6) || code === 0x00F8) result.push(111); // o
+                else if (code >= 0x00F9 && code <= 0x00FC) result.push(117);                  // u
+                else if (code === 0x00F1) result.push(110);                                   // n-tilde -> n
+                else if (code === 0x00E7) result.push(99);                                    // c-cedilla -> c
+                else if (code === 0x00FD || code === 0x00FF) result.push(121);                // y
+                else result.push(32);
+            }
+            // Latin-1 uppercase: strip diacritics to base ASCII letter
+            else if (code >= 0x00C0 && code <= 0x00DF) {
+                if (code >= 0x00C0 && code <= 0x00C6) result.push(65);                        // A
+                else if (code >= 0x00C8 && code <= 0x00CB) result.push(69);                   // E
+                else if (code >= 0x00CC && code <= 0x00CF) result.push(73);                   // I
+                else if ((code >= 0x00D2 && code <= 0x00D6) || code === 0x00D8) result.push(79); // O
+                else if (code >= 0x00D9 && code <= 0x00DC) result.push(85);                   // U
+                else if (code === 0x00D1) result.push(78);                                    // N
+                else if (code === 0x00C7) result.push(67);                                    // C
+                else if (code === 0x00DD) result.push(89);                                    // Y
+                else result.push(32);
+            }
+            // Anything else: replace with space and report
+            else {
+                unknownChars.add(char);
+                result.push(32);
+            }
+        }
+
+        // Build final string from bytes. Convert in bounded chunks: spreading the
+        // whole array as arguments overflows the engine's argument limit (~65k)
+        // and throws RangeError for large inputs (e.g. a dropped text file).
+        let sanitized = '';
+        const CHUNK = 0x8000;
+        for (let i = 0; i < result.length; i += CHUNK) {
+            sanitized += String.fromCharCode.apply(null, result.slice(i, i + CHUNK));
+        }
+
+        // Report unknown characters
+        if (reportUnknown && unknownChars.size > 0) {
+            const charList = Array.from(unknownChars).map(c => {
+                const code = c.charCodeAt(0);
+                if (code >= 32 && code < 127) {
+                    return `"${c}"`;
+                } else {
+                    return `U+${code.toString(16).toUpperCase().padStart(4, '0')}`;
+                }
+            });
+
+            this.warnings.push({
+                type: 'unknown_characters',
+                message: `Replaced ${unknownChars.size} incompatible character(s) with spaces`,
+                characters: charList
+            });
+        }
+
+        // Handle length constraints
+        if (maxLength && sanitized.length > maxLength) {
+            sanitized = sanitized.substring(0, maxLength);
+            this.warnings.push({
+                type: 'truncated',
+                message: `Text truncated to ${maxLength} characters`,
+                originalLength: text.length
+            });
+        }
+
+        // Handle padding
+        if (padToLength && sanitized.length < padToLength) {
+            if (center) {
+                const totalPadding = padToLength - sanitized.length;
+                const leftPad = Math.floor(totalPadding / 2);
+                const rightPad = totalPadding - leftPad;
+                sanitized = ' '.repeat(leftPad) + sanitized + ' '.repeat(rightPad);
+            } else {
+                sanitized = sanitized.padEnd(padToLength, ' ');
+            }
+        }
+
+        return {
+            text: sanitized,
+            warnings: this.warnings,
+            hasWarnings: this.warnings.length > 0,
+            originalLength: text.length,
+            sanitizedLength: sanitized.length
+        };
+    }
+
+    /**
+     * Convert sanitized text to C64 screen codes
+     * @param {string} text - Already sanitized ASCII text
+     * @param {boolean} useSystemFont - If true, use C64 system font mapping (lowercase at 1-26);
+     *                                  if false, use custom font mapping (uppercase at 1-26)
+     * @returns {Uint8Array} - Screen code byte array
+     */
+    toPETSCIIBytes(text, useSystemFont = false) {
+        const bytes = [];
+
+        for (let i = 0; i < text.length; i++) {
+            const code = text.charCodeAt(i);
+            let screenCode;
+
+            if (useSystemFont) {
+                // C64 system font, lowercase mode: a-z at codes 1-26, A-Z at 65-90
+                if (code >= 65 && code <= 90) {
+                    screenCode = code;
+                } else if (code >= 97 && code <= 122) {
+                    screenCode = code - 96;
+                } else if (code >= 32 && code <= 63) {
+                    screenCode = code;
+                } else if (code === 64) {
+                    screenCode = 0;  // @ -> 0
+                } else {
+                    screenCode = 32;
+                }
+            } else {
+                // Custom font layout: A-Z at codes 1-26, a-z at 65-90
+                if (code >= 65 && code <= 90) {
+                    screenCode = code - 64;
+                } else if (code >= 97 && code <= 122) {
+                    screenCode = code - 32;
+                } else if (code >= 32 && code <= 63) {
+                    screenCode = code;
+                } else if (code === 64) {
+                    screenCode = 0;  // @ -> 0
+                } else {
+                    screenCode = 32;
+                }
+            }
+
+            bytes.push(screenCode & 0xFF);
+        }
+
+        return new Uint8Array(bytes);
+    }
+
+    /**
+     * Show warning dialog to user (console only, doesn't modify text)
+     * @param {Array} warnings - Array of warning objects
+     */
+    showWarningDialog(warnings) {
+        if (!warnings || warnings.length === 0) return;
+
+        console.warn('PETSCII Sanitization Warnings:');
+        warnings.forEach(w => console.warn(`  - ${w.message}`));
+    }
+}
+
+window.PETSCIISanitizer = PETSCIISanitizer;

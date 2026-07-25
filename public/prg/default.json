@@ -1,0 +1,78 @@
+{
+  "name": "Default",
+  "description": "Text-based information display",
+  "maxCallsPerFrame": 8,
+  "needsSaveRestore": false,
+  "fontType": "1x1",
+  "layouts": {
+    "bank4000": {
+      "name": "Bank 1 ($4000)",
+      "size": "0x3000",
+      "baseAddress": "0x4000",
+      "dataAddress": "0x4000",
+      "sysAddress": "0x4100",
+      "binaryDataStart": "0x4000",
+      "binaryDataEnd": "0x6FFF",
+      "charsetAddress": "0x4E00",
+      "charsetSize": "0x300",
+      "graphicsBase": "0x6000",
+      "relocSplit": "0x6000",
+      "fontModeAddress": "0x4071",
+      "bakedLenMinAddress": "0x4072",
+      "bakedLenSecAddress": "0x4073",
+      "bakedHasLengthAddress": "0x4074",
+      "bakedLoopMinAddress": "0x4075",
+      "bakedLoopSecAddress": "0x4076",
+      "bakedLoopFrameRemAddress": "0x4077",
+      "bakedLoopEndMinAddress": "0x4078",
+      "bakedLoopEndSecAddress": "0x4079",
+      "bakedLoopEndFrameRemAddress": "0x407A",
+      "graphicsSegments": [
+        {
+          "name": "Graphics: screen RAM + sprite pointers",
+          "off": "0x0000",
+          "len": "0x0400"
+        },
+        {
+          "name": "Graphics: charset",
+          "off": "0x0800",
+          "len": "0x0800"
+        }
+      ]
+    },
+    "bank8000": {
+      "name": "Bank 2 ($8000)",
+      "size": "0x3000",
+      "baseAddress": "0x8000",
+      "dataAddress": "0x8000",
+      "sysAddress": "0x8100",
+      "binaryDataStart": "0x8000",
+      "binaryDataEnd": "0xAFFF",
+      "charsetAddress": "0x8E00",
+      "charsetSize": "0x300",
+      "fontModeAddress": "0x8071",
+      "bakedLenMinAddress": "0x8072",
+      "bakedLenSecAddress": "0x8073",
+      "bakedHasLengthAddress": "0x8074",
+      "bakedLoopMinAddress": "0x8075",
+      "bakedLoopSecAddress": "0x8076",
+      "bakedLoopFrameRemAddress": "0x8077",
+      "bakedLoopEndMinAddress": "0x8078",
+      "bakedLoopEndSecAddress": "0x8079",
+      "bakedLoopEndFrameRemAddress": "0x807A"
+    }
+  },
+  "options": [
+    {
+      "id": "font",
+      "label": "Font",
+      "type": "fontSelector",
+      "default": 0
+    }
+  ],
+  "relocatable": true,
+  "gfxManifest": "prg/default.gfx.json",
+  "relocBaseLayout": "bank4000",
+  "relocCodeBase": "prg/Default-code.bin",
+  "relocCodeTable": "prg/default.codereloc.json"
+}

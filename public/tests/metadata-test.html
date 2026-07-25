@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<base href="../">
+<title>SID metadata charset test</title>
+</head>
+<body>
+<h1>SID metadata charset test</h1>
+<p>SID header strings are Latin-1. This loads a tune with a non-ASCII author
+("Søren Lund (Jeff)") through both the playback engine and the analyzer, and
+round-trips an edit through <code>sid_set_header_string</code> /
+<code>sid_create_modified</code>, checking nothing gets mangled or dropped.</p>
+<pre id="log"></pre>
+<script>
+window.lazyScripts = {};
+window.loadScript = function(src) {
+    if (!window.lazyScripts[src]) {
+        window.lazyScripts[src] = new Promise((resolve, reject) => {
+            const s = document.createElement('script');
+            s.src = src;
+            s.onload = resolve;
+            s.onerror = reject;
+            document.head.appendChild(s);
+        });
+    }
+    return window.lazyScripts[src];
+};
+
+const log = (m) => { document.getElementById('log').textContent += m + '\n'; };
+window.testResult = { done: false };
+
+const SID_URL = 'HVSC/C64Music/MUSICIANS/J/Jeff/Blowing.sid';
+const WANT_AUTHOR = 'Søren Lund (Jeff)';   // Søren
+
+async function run() {
+    const results = {};
+    try {
+        // 1. Playback engine path (default engine).
+        await window.loadScript('sid-playback.js');
+        if (SIDPlayback.engineName() === 'resid') await window.loadScript('sidquake.js');
+        const pb = new SIDPlayback(4096);
+        await pb.init();
+        await pb.loadFromUrl(SID_URL);
+        results.playbackAuthor = pb.getAuthor();
+        results.playbackOk = results.playbackAuthor === WANT_AUTHOR;
+        log(`playback author: "${results.playbackAuthor}" ${results.playbackOk ? 'OK' : 'MISMATCH'}`);
+
+        // 2. Analyzer path.
+        await window.loadScript('sidquake.js');
+        await window.loadScript('sidquake-core.js');
+        const analyzer = new SIDAnalyzer();
+        const buf = await (await fetch(SID_URL)).arrayBuffer();
+        const header = await analyzer.loadSID(buf);
+        results.analyzerAuthor = header.author;
+        results.analyzerOk = results.analyzerAuthor === WANT_AUTHOR;
+        log(`analyzer author: "${results.analyzerAuthor}" ${results.analyzerOk ? 'OK' : 'MISMATCH'}`);
+
+        // 3. Edit round-trip: write a Latin-1 string, export, re-parse.
+        const edited = 'Sören Tëst ÄØ';   // Sören Tëst ÄØ
+        analyzer.updateMetadata('author', edited);
+        const modified = analyzer.createModifiedSID();
+        const reparsed = await analyzer.loadSID(modified.buffer.slice(
+            modified.byteOffset, modified.byteOffset + modified.byteLength));
+        results.roundtripAuthor = reparsed.author;
+        results.roundtripOk = results.roundtripAuthor === edited;
+        log(`round-trip author: "${results.roundtripAuthor}" ${results.roundtripOk ? 'OK' : 'MISMATCH'}`);
+
+        results.done = true;
+        results.ok = results.playbackOk && results.analyzerOk && results.roundtripOk;
+        window.testResult = results;
+        log('RESULT ' + JSON.stringify(results));
+    } catch (e) {
+        window.testResult = { done: true, ok: false, error: String(e) };
+        log('ERROR ' + String(e && e.stack || e));
+    }
+}
+
+run();
+</script>
+</body>
+</html>
