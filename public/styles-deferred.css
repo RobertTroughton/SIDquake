@@ -3353,6 +3353,116 @@
     line-height: 1.4;
 }
 
+/* Credits: role on the left, who did it on the right. */
+.about-credits {
+    margin: var(--space-lg) 0 0;
+    padding: 0;
+    border-top: 1px solid var(--border);
+}
+
+.about-credit {
+    display: grid;
+    grid-template-columns: 240px 1fr;
+    gap: var(--space-md);
+    padding: var(--space-sm) 0;
+    border-bottom: 1px solid var(--border);
+}
+
+.about-credit dt {
+    font-family: var(--font-mono);
+    font-size: 0.8em;
+    letter-spacing: 0.5px;
+    color: var(--accent);
+    opacity: 0.85;
+}
+
+.about-credit dd {
+    margin: 0;
+    font-size: 0.9em;
+    color: var(--text-secondary);
+}
+
+.about-credits-note {
+    margin-top: var(--space-md);
+    font-size: 0.8em;
+    color: var(--text-muted);
+}
+
+.about-credits-note a {
+    color: var(--accent);
+    text-decoration: none;
+}
+
+.about-credits-note a:hover {
+    color: var(--accent-light);
+    text-decoration: underline;
+}
+
+/* Open-source callout: full-width link to the GitHub repo, sits in the
+   Genesis Project section next to the "get involved" invitation. */
+.about-github-cta {
+    display: flex;
+    align-items: center;
+    gap: var(--space-lg);
+    margin-top: var(--space-lg);
+    padding: var(--space-lg);
+    background: var(--bg-elevated);
+    border: 1px solid var(--border);
+    text-decoration: none;
+    transition: all var(--transition-base);
+}
+
+.about-github-cta:hover {
+    border-color: var(--accent);
+    transform: translateY(-2px);
+    box-shadow: var(--shadow-md);
+}
+
+.about-github-icon {
+    font-size: 2em;
+    line-height: 1;
+    color: var(--accent);
+    opacity: 0.6;
+    transition: opacity var(--transition-base);
+}
+
+.about-github-cta:hover .about-github-icon {
+    opacity: 1;
+}
+
+.about-github-text {
+    flex: 1;
+    min-width: 0;
+}
+
+.about-github-text h4 {
+    font-family: var(--font-mono);
+    font-size: 0.9em;
+    font-weight: 700;
+    color: var(--text-primary);
+    margin: 0 0 var(--space-xs) 0;
+    letter-spacing: 0.5px;
+}
+
+.about-github-text p {
+    font-size: 0.8em;
+    color: var(--text-muted);
+    margin: 0;
+    line-height: 1.4;
+    overflow-wrap: break-word;
+}
+
+.about-github-arrow {
+    color: var(--accent);
+    opacity: 0.5;
+    transition: opacity var(--transition-base), transform var(--transition-base);
+}
+
+.about-github-cta:hover .about-github-arrow {
+    opacity: 1;
+    transform: translateX(3px);
+}
+
 /* Footer */
 /* Common footer, shared across every tab. Placed as the last child of
    .container (a flex column with min-height:100vh); the sticky-footer rule
@@ -3758,6 +3868,20 @@
 
     .about-links-grid {
         grid-template-columns: 1fr;
+    }
+
+    .about-github-cta {
+        gap: var(--space-md);
+        padding: var(--space-md);
+    }
+
+    .about-credit {
+        grid-template-columns: 1fr;
+        gap: 2px;
+    }
+
+    .about-github-arrow {
+        display: none;
     }
 }
 

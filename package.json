@@ -7,7 +7,8 @@
     "build-seo-pages": "node scripts/build-seo-pages.js",
     "build": "node scripts/extract-hvsc.js && node scripts/build-seo-pages.js && node scripts/build-share-meta.js",
     "netlify-build": "npm run build",
-    "build-share-meta": "node scripts/build-share-meta.js"
+    "build-share-meta": "node scripts/build-share-meta.js",
+    "build-social-card": "node scripts/build-social-card.js"
   },
   "devDependencies": {
     "pngjs": "^7.0.0"

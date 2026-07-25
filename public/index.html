@@ -14,14 +14,21 @@
     <meta property="og:url" content="https://sidquake.c64demo.com/">
     <meta property="og:title" content="SIDquake - C64 SID Music Analyzer, Linker & Tool Suite">
     <meta property="og:description" content="The easiest way for C64 artists to bundle and ship their SID music. Analyze SID files, browse the HVSC collection, and export executable PRG files with stunning visualizer effects.">
-    <meta property="og:image" content="https://sidquake.c64demo.com/SIDquake.png">
+    <!-- 1200x630 card built from Pepto's logo by scripts/build-social-card.js.
+         Scrapers won't render an SVG, so the logo is baked into this PNG. -->
+    <meta property="og:image" content="https://sidquake.c64demo.com/social-card.png">
+    <meta property="og:image:type" content="image/png">
+    <meta property="og:image:width" content="1200">
+    <meta property="og:image:height" content="630">
+    <meta property="og:image:alt" content="SIDquake - analyse SID tunes, browse HVSC, export C64 PRGs with visualiser effects">
     <meta property="og:site_name" content="SIDquake">
 
     <!-- Twitter Card -->
     <meta name="twitter:card" content="summary_large_image">
     <meta name="twitter:title" content="SIDquake - C64 SID Music Analyzer, Linker & Tool Suite">
     <meta name="twitter:description" content="The easiest way for C64 artists to bundle and ship their SID music. Analyze, browse HVSC, and export PRG files with visualizer effects.">
-    <meta name="twitter:image" content="https://sidquake.c64demo.com/SIDquake.png">
+    <meta name="twitter:image" content="https://sidquake.c64demo.com/social-card.png">
+    <meta name="twitter:image:alt" content="SIDquake - analyse SID tunes, browse HVSC, export C64 PRGs with visualiser effects">
 
     <!-- Additional SEO -->
     <meta name="keywords" content="C64, SID, Commodore 64, SID music, chiptune, demoscene, HVSC, PRG export, SID analyzer, visualizer, retro computing, 6510, MOS 6581, MOS 8580, Genesis Project">
@@ -58,7 +65,7 @@
             "Multiple C64 visualizer styles",
             "TSCrunch compression for exports"
         ],
-        "screenshot": "https://sidquake.c64demo.com/SIDquake.png"
+        "screenshot": "https://sidquake.c64demo.com/social-card.png"
     }
     </script>
     <link rel="preconnect" href="https://fonts.googleapis.com" crossorigin>
@@ -621,6 +628,14 @@
                         <p>Got questions, feedback, or want to get involved? Drop us a line at <a href="mailto:raistlin@c64demo.com">raistlin@c64demo.com</a></p>
                     </div>
                 </div>
+                <a class="about-github-cta" href="https://github.com/RobertTroughton/SIDquake" target="_blank" rel="noopener">
+                    <div class="about-github-icon"><i class="fab fa-github" aria-hidden="true"></i></div>
+                    <div class="about-github-text">
+                        <h4>SIDquake is open source</h4>
+                        <p>Browse the code, report a bug or send a pull request &mdash; github.com/RobertTroughton/SIDquake</p>
+                    </div>
+                    <div class="about-github-arrow"><i class="fas fa-arrow-right" aria-hidden="true"></i></div>
+                </a>
                 <div class="about-links-grid">
                     <a href="https://c64gfx.com" class="about-link-card" target="_blank" rel="noopener">
                         <div class="about-link-icon"><i class="fas fa-paint-brush"></i></div>
@@ -693,6 +708,54 @@
                         <p>Curated SID music collection</p>
                     </a>
                 </div>
+            </section>
+
+            <!-- Credits -->
+            <section class="about-section">
+                <div class="about-section-header">
+                    <span class="about-section-number">09</span>
+                    <h2>Credits</h2>
+                </div>
+                <div class="about-text-block">
+                    <div class="about-text-content about-text-full">
+                        <p>SIDquake is written and maintained by <strong>Robert Troughton</strong> (Raistlin of Genesis Project) &mdash; the web app, the WebAssembly analysis tools and the C64 player and visualizer routines are all his own code, apart from the third-party components listed below.</p>
+                    </div>
+                </div>
+                <dl class="about-credits">
+                    <div class="about-credit">
+                        <dt>Code, design &amp; C64 routines</dt>
+                        <dd>Robert Troughton (Raistlin / Genesis Project)</dd>
+                    </div>
+                    <div class="about-credit">
+                        <dt>SIDquake logo</dt>
+                        <dd>Philip Timmermann (Pepto)</dd>
+                    </div>
+                    <div class="about-credit">
+                        <dt>Scrap Columns visualizer</dt>
+                        <dd>Scrap &mdash; adapted for SIDquake</dd>
+                    </div>
+                    <div class="about-credit">
+                        <dt>Logo &amp; bitmap galleries</dt>
+                        <dd>Artwork by C64 graphicians &mdash; each piece is credited by name in the gallery</dd>
+                    </div>
+                    <div class="about-credit">
+                        <dt>Playback engine</dt>
+                        <dd>libsidplayfp &amp; reSIDfp &mdash; Simon White, Antti Lankila, Leandro Nini, Dag Lem and contributors</dd>
+                    </div>
+                    <div class="about-credit">
+                        <dt>PRG compression</dt>
+                        <dd>TSCrunch &mdash; Antonio Savona</dd>
+                    </div>
+                    <div class="about-credit">
+                        <dt>Toolchain</dt>
+                        <dd>KickAssembler (Mads Nielsen) &middot; Emscripten</dd>
+                    </div>
+                    <div class="about-credit">
+                        <dt>SID music</dt>
+                        <dd>The HVSC Crew, the STIL editors, and the composers of every tune in the collection</dd>
+                    </div>
+                </dl>
+                <p class="about-credits-note">Full license details for the third-party components are on the <a href="licenses.html">open-source licenses</a> page.</p>
             </section>
         </div>
 
@@ -841,6 +904,8 @@
                 <p class="site-footer-tech">Powered by WebAssembly &middot; libsidplayfp &middot; reSIDfp &middot; KickAssembler &middot; TSCrunch</p>
                 <nav class="site-footer-links" aria-label="Footer">
                     <a href="mailto:raistlin@c64demo.com"><i class="fas fa-envelope" aria-hidden="true"></i> raistlin@c64demo.com</a>
+                    <span class="site-footer-sep" aria-hidden="true">&middot;</span>
+                    <a href="https://github.com/RobertTroughton/SIDquake" target="_blank" rel="noopener"><i class="fab fa-github" aria-hidden="true"></i> Source on GitHub</a>
                     <span class="site-footer-sep" aria-hidden="true">&middot;</span>
                     <a href="licenses.html">Open-source licenses</a>
                 </nav>

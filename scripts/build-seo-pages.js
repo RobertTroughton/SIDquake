@@ -289,6 +289,14 @@ function pageHtml(composer) {
 <meta property="og:title" content="C64 SID music by ${escapeHtml(name)}">
 <meta property="og:description" content="${escapeHtml(desc)}">
 <meta property="og:url" content="${escapeHtml(canonical)}">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="SIDquake">
+<meta property="og:image" content="https://sidquake.c64demo.com/social-card.png">
+<meta property="og:image:type" content="image/png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:image" content="https://sidquake.c64demo.com/social-card.png">
 <link rel="stylesheet" href="/styles.css">
 <link rel="stylesheet" href="/styles-deferred.css">
 <style>
