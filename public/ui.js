@@ -1455,13 +1455,22 @@ class UIController {
                     </div>
                 </label>
                 <label class="compression-radio-option">
-                    <input type="radio" 
-                           name="compression-type" 
+                    <input type="radio"
+                           name="compression-type"
                            value="tscrunch"
                            checked>
                     <div class="compression-details">
                         <span class="compression-name">TSCrunch</span>
-                        <span class="compression-desc">Best compression ratio</span>
+                        <span class="compression-desc">Fast to depack on the C64</span>
+                    </div>
+                </label>
+                <label class="compression-radio-option">
+                    <input type="radio"
+                           name="compression-type"
+                           value="exomizer">
+                    <div class="compression-details">
+                        <span class="compression-name">Exomizer</span>
+                        <span class="compression-desc">Smaller file, slower to depack</span>
                     </div>
                 </label>
             </div>

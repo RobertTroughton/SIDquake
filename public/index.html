@@ -63,7 +63,7 @@
             "PRG export with visualizer effects",
             "In-browser SID playback via libsidplayfp (reSIDfp) emulation",
             "Multiple C64 visualizer styles",
-            "TSCrunch compression for exports"
+            "TSCrunch and Exomizer compression for exports"
         ],
         "screenshot": "https://sidquake.c64demo.com/social-card.png"
     }
@@ -416,7 +416,7 @@
                     <article class="about-card">
                         <div class="about-card-icon"><i class="fas fa-download"></i></div>
                         <h3>Export PRG</h3>
-                        <p>Generate executable C64 PRG files bundled with beautiful visualizer effects. Choose from multiple visualizer styles, customize colors, add logos, and compress with TSCrunch &mdash; all in the browser.</p>
+                        <p>Generate executable C64 PRG files bundled with beautiful visualizer effects. Choose from multiple visualizer styles, customize colors, add logos, and compress with TSCrunch or Exomizer &mdash; all in the browser.</p>
                     </article>
                 </div>
             </section>
@@ -606,8 +606,8 @@
                         <p>In-browser SID playback is powered by <strong>libsidplayfp</strong> with the <strong>reSIDfp</strong> chip emulator: a full cycle-accurate C64 environment (CPU, CIA, VIC-II and real ROMs), so even RSID tunes, sample players and raster-timed effects sound exactly as they would on real hardware.</p>
                     </article>
                     <article class="about-card about-card-tech">
-                        <h3><i class="fas fa-compress-arrows-alt"></i> TSCrunch Compression</h3>
-                        <p>Exported PRG files can be compressed using <strong>TSCrunch</strong>, an efficient C64 packer. This creates self-extracting executables that fit more into the C64's 64KB of RAM.</p>
+                        <h3><i class="fas fa-compress-arrows-alt"></i> PRG Compression</h3>
+                        <p>Exported PRG files can be compressed into self-extracting executables that fit more into the C64's 64KB of RAM. <strong>TSCrunch</strong> depacks fastest; <strong>Exomizer</strong> squeezes a typical export around 9-16% smaller in exchange for a longer depack.</p>
                     </article>
                     <article class="about-card about-card-tech">
                         <h3><i class="fas fa-code"></i> KickAssembler Players</h3>
@@ -744,7 +744,7 @@
                     </div>
                     <div class="about-credit">
                         <dt>PRG compression</dt>
-                        <dd>TSCrunch &mdash; Antonio Savona</dd>
+                        <dd>TSCrunch &mdash; Antonio Savona &middot; Exomizer &mdash; Magnus Lind</dd>
                     </div>
                     <div class="about-credit">
                         <dt>Toolchain</dt>
@@ -901,7 +901,7 @@
             <div class="site-footer-inner">
                 <div class="site-footer-logo">SIDquake</div>
                 <p class="site-footer-tagline">Made with <span class="heart">&hearts;</span> for the C64 community</p>
-                <p class="site-footer-tech">Powered by WebAssembly &middot; libsidplayfp &middot; reSIDfp &middot; KickAssembler &middot; TSCrunch</p>
+                <p class="site-footer-tech">Powered by WebAssembly &middot; libsidplayfp &middot; reSIDfp &middot; KickAssembler &middot; TSCrunch &middot; Exomizer</p>
                 <nav class="site-footer-links" aria-label="Footer">
                     <a href="mailto:raistlin@c64demo.com"><i class="fas fa-envelope" aria-hidden="true"></i> raistlin@c64demo.com</a>
                     <span class="site-footer-sep" aria-hidden="true">&middot;</span>

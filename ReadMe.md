@@ -70,7 +70,7 @@ SIDquake includes 9 visualizer templates that can be linked with any SID tune to
 ### PRG Export
 - Automatic memory layout planning to avoid collisions between music and player code
 - Multiple load address options ($4000, $8000, $C000) with automatic selection
-- TSCrunch compression for smaller executables
+- TSCrunch or Exomizer compression for smaller executables (TSCrunch depacks fastest; Exomizer packs ~9-16% tighter)
 - Custom metadata: edit song title, author, and copyright before export
 - Custom logos: import PNG or Koala images, or use PETSCII text art
 - Bar style and colour effect customization for spectrum visualizers (height pulse, fixed gradients, rainbow columns, per-waveform colouring)
@@ -137,7 +137,7 @@ See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for detailed component document
 - **Frontend**: Vanilla JavaScript with ES6 classes - no framework, no bundler, no build step for JS
 - **Emulation**: MOS 6510 CPU emulator compiled to WebAssembly via Emscripten
 - **Assembly**: KickAss assembler for C64 player routines
-- **Compression**: TSCrunch (JavaScript port) for self-extracting C64 executables
+- **Compression**: TSCrunch (JavaScript port) and Exomizer (WebAssembly) for self-extracting C64 executables
 - **Hosting**: Netlify; the HVSC collection is self-hosted, with edge functions gating raw SID access
 
 ## Acknowledgements
@@ -146,6 +146,7 @@ See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for detailed component document
 - **reSID** (Dag Lem) — the original SID emulation the above build on, and the legacy playback path
 - Mads Nielsen for KickAss assembler
 - Antonio Savona for the TSCrunch compression algorithm
+- Magnus Lind for Exomizer
 - The VICE team for the C64 ROM images used by the playback engine
 - Adam Dunkels (Trident), Andy Zeidler (Shine), Burglar and Magnar Harestad for help and testing
 - The HVSC team for maintaining the High Voltage SID Collection

@@ -506,8 +506,9 @@ class StudioModal {
         }
 
         const comp = document.querySelector('input[name="compression-type"]:checked');
+        const compNames = { none: 'none (raw PRG)', tscrunch: 'TSCrunch', exomizer: 'Exomizer' };
         rows.push(this.manifestRow('Compression',
-            comp && comp.value === 'none' ? 'none (raw PRG)' : 'TSCrunch', 'ok', 'inc', 'export'));
+            compNames[comp && comp.value] || 'TSCrunch', 'ok', 'inc', 'export'));
 
         this.manifestEl.innerHTML = `<table><tbody>${rows.join('')}</tbody></table>`;
         for (const btn of this.manifestEl.querySelectorAll('.mf-go')) {
