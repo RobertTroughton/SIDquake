@@ -93,14 +93,13 @@ Use `--redo` to throw the journal away and start over.
 | `--hvsc <dir>` | `public/HVSC/C64Music` | folder holding `DEMOS/`, `MUSICIANS/`, … |
 | `--out <dir>` | `tools/songlengths/out` | journal + outputs |
 | `--jobs <n>` | CPU count − 1 | worker threads |
-| `--engine <name>` | `resid` | `resid` (fast) or `fp` (libsidplayfp) |
+| `--engine <name>` | `fp` | `fp` (libsidplayfp) or `resid` (faster, less accurate) |
 | `--limit <n>` | all | measure at most n songs **this session** — already-finished songs don't count towards it, so re-running with `--limit 20` does the *next* 20 |
 | `--shuffle` | off | sample across the whole collection instead of taking the first n — pair with `--limit` for a representative trial |
 | `--redo` | off | ignore the existing journal |
 | `--min-loop <s>` | 2 | shortest repeat counted as a loop |
 | `--budget-mult <x>` | 2.5 | **first** attempt scans HVSC's length × this, plus 15 s |
-| `--max-budget <s>` | 900 | ceiling for any single scan |
-| `--no-escalate` | off | don't retry a capped scan at the ceiling |
+| `--max-budget <s>` | 1200 | ceiling for any single scan |
 | `--only <classes>` | — | re-measure entries **already in the journal** whose class is in this comma-separated list, e.g. `--only capped,error` |
 | `--budget <s>` | `--max-budget` | fixed scan window for an `--only` pass |
 | `--exclude-rsid` | off | drop RSID tunes (they are measured by default) |
@@ -116,18 +115,15 @@ Use `--redo` to throw the journal away and start over.
 
 ## Using HVSC's own numbers to help us
 
-HVSC's length is a **hint, not a ceiling**. It drives the scan in three stages:
+HVSC's length is a **hint, not a ceiling**. It drives the scan in two stages:
 
-1. **First attempt** scans `--budget-mult` × HVSC's length + 15 s. Confirming a
-   loop needs a bit over two passes of it, so 2.5× is enough for a tune whose
-   published length is about right — and it avoids burning 15 minutes on every
-   tune that never repeats.
-2. **Automatic escalation.** If that attempt runs out without resolving anything,
-   it is retried once at `--max-budget`. Their list is hand-curated and can be
-   short, and some tunes simply have a longer period than what was timed. (The
-   retry re-renders from the start, which is why it's one big jump rather than
-   several small steps.)
-3. **Manual recheck**, for whatever still hasn't resolved:
+1. **Scan** renders `--budget-mult` × HVSC's length + 15 s, capped at
+   `--max-budget`. Confirming a loop needs a bit over two passes of it, so 2.5×
+   is enough for a tune whose published length is about right — and it avoids
+   burning the full budget on every tune that never repeats. There is no retry:
+   a scan that hits the cap without resolving anything is just reported
+   `capped`, a lower bound rather than a measurement.
+2. **Manual recheck**, for whatever didn't resolve:
 
    ```
    node tools\songlengths\scan.mjs --only capped --budget 1800
@@ -136,11 +132,6 @@ HVSC's length is a **hint, not a ceiling**. It drives the scan in three stages:
    This re-measures only the `capped` rows from the journal at a 30-minute window.
    Results are appended; the newest line for a subtune wins, so just re-run
    `report.mjs` afterwards. Repeat with a bigger budget as far as you care to.
-
-This works. On a deliberately starved test (60 s budget) all six tunes capped;
-rechecking at 240 s resolved three of them — two found real loops, one found its
-ending — and the automatic escalation produced identical numbers to the manual
-two-pass.
 
 ## What gets excluded, and what doesn't
 
@@ -196,19 +187,17 @@ rendered) ÷ (engine speed) ÷ (cores)*.
 
 Two things dominate:
 
-- **`--engine resid`** (the default here) renders about 2.1× faster than
-  libsidplayfp. It is *not* the default in the app, because it bakes different
-  bars on roughly a quarter of tunes and cannot play some at all — but for
-  measuring lengths in bulk that trade is worth making, and tunes it renders
-  silent are detected and re-scanned on libsidplayfp automatically. Watch the
-  `fp-rescue` counter: if it is high, `--engine fp` throughout may be no slower.
+- **`--engine`** defaults to `fp` (libsidplayfp), matching the app: it plays
+  every tune. `resid` renders about 2.1× faster but bakes different bars on
+  roughly a quarter of tunes and cannot play some at all — worth trying only if
+  a trial run's `fp-rescue` counter (tunes resid rendered silent and had to be
+  re-scanned on libsidplayfp) comes back low for your sample.
 - **`--budget-mult`** decides how much audio gets rendered per tune — see
-  [Using HVSC's own numbers](#using-hvscs-own-numbers-to-help-us) above. Lower it
-  and the first pass is quicker but more tunes escalate; raise it and fewer do.
-  Tunes that neither loop nor fade are the expensive ones: they burn the first
-  budget *and* the escalation. If a trial run shows a lot of escalation, either
-  raise `--budget-mult` (fewer wasted first passes) or `--no-escalate` the bulk
-  run and mop up afterwards with `--only capped`.
+  [Using HVSC's own numbers](#using-hvscs-own-numbers-to-help-us) above. Lower
+  it and tunes that never resolve get marked `capped` sooner (cheaper, but more
+  lower-bound results); raise it and fewer get capped, at the cost of burning
+  more time on tunes that were never going to resolve anyway. There is no
+  retry, so pick a value once per run rather than tuning around escalation.
 
 ## Notes
 

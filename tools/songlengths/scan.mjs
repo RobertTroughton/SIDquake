@@ -15,14 +15,13 @@
  *                    (default: public/HVSC/C64Music)
  *   --out <dir>      where the journal + outputs go (default: tools/songlengths/out)
  *   --jobs <n>       worker threads (default: CPU count - 1)
- *   --engine <name>  resid (fast, the default here) or fp (libsidplayfp)
+ *   --engine <name>  fp (libsidplayfp, the default here) or resid (faster, less accurate)
  *   --limit <n>      stop after n songs - use this for a trial run
  *   --shuffle        sample across the whole collection instead of the first n
  *   --redo           ignore the existing journal and start over
  *   --min-loop <s>   shortest repeat counted as a loop (default 2)
  *   --budget-mult <x>  first attempt scans HVSC's length x this, plus 15 s (2.5)
- *   --max-budget <s>   ceiling for any single scan (default 900)
- *   --no-escalate    don't retry a capped scan at the ceiling
+ *   --max-budget <s>   ceiling for any single scan (default 1200)
  *   --only <classes> re-measure entries ALREADY in the journal whose class is in
  *                    this comma-separated list, e.g. --only capped,error
  *   --budget <s>     fixed scan window for a --only pass (default: --max-budget)
@@ -31,10 +30,11 @@
  *
  * USING HVSC'S OWN NUMBERS. Their length tells us roughly how much audio to
  * render: confirming a loop needs a bit over two passes of it, so the first
- * attempt scans 2.5x their figure. It is a HINT, not a ceiling - their list is
- * hand-curated and can be short, so a scan that runs out without resolving
- * anything is automatically retried once at --max-budget. Beyond that, come back
- * later with --only capped --budget 1800 and spend real time on the stragglers.
+ * attempt scans 2.5x their figure, capped at --max-budget. It is a HINT, not a
+ * ceiling - their list is hand-curated and can be short. There is no retry: a
+ * scan that runs out without resolving anything is just reported as capped.
+ * Come back later with --only capped --budget 1800 and spend real time on the
+ * stragglers.
  *
  * RESUMING. Every result is appended to out/results-<worker>.jsonl the moment it
  * lands, so an interrupted run loses at most whatever was in flight (seconds).
@@ -68,15 +68,12 @@ const MD5 = path.resolve(flags.md5 || path.join(HVSC, 'DOCUMENTS', 'Songlengths.
 const OUT = path.resolve(flags.out || path.join(HERE, 'out'));
 const PUBLIC = path.join(REPO, 'public');
 const JOBS = Math.max(1, parseInt(flags.jobs, 10) || Math.max(1, os.cpus().length - 1));
-const ENGINE = flags.engine === 'fp' ? 'fp' : 'resid';
+const ENGINE = flags.engine === 'resid' ? 'resid' : 'fp';
 const LIMIT = parseInt(flags.limit, 10) || 0;
 const MIN_LOOP = Number(flags['min-loop']) || 2;
 const BUDGET_MULT = Number(flags['budget-mult']) || 2.5;
-const MAX_BUDGET = Number(flags['max-budget']) || 900;
+const MAX_BUDGET = Number(flags['max-budget']) || 1200;
 const SAMPLE_RATE = 44100;
-// On by default: a first attempt that runs out of budget without resolving
-// anything gets one retry at --max-budget. HVSC's figure is a hint, not a limit.
-const ESCALATE = flags['no-escalate'] ? false : true;
 // Recheck mode: instead of measuring what's missing, RE-measure entries already in
 // the journal whose class is in this list (e.g. --only capped,error). Pair with
 // --budget to give them a fixed, bigger scan window.
@@ -240,14 +237,13 @@ if (!queue.length) {
                      : '\nNothing left to do. Run report.mjs to build the outputs.\n');
     process.exit(0);
 }
-console.log(`  ${queue.length.toLocaleString()} to go, ${JOBS} worker${JOBS > 1 ? 's' : ''}, engine ${ENGINE}` +
-    `${ESCALATE && !ONLY ? `, escalating capped scans to ${MAX_BUDGET}s` : ''}\n`);
+console.log(`  ${queue.length.toLocaleString()} to go, ${JOBS} worker${JOBS > 1 ? 's' : ''}, engine ${ENGINE}\n`);
 
 fs.writeFileSync(path.join(OUT, 'run-meta.json'), JSON.stringify({
     startedAt: new Date().toISOString(),
     md5: MD5, hvsc: HVSC, engine: ENGINE, jobs: JOBS,
     minLoopSeconds: MIN_LOOP, budgetMultiple: BUDGET_MULT, maxBudgetSeconds: MAX_BUDGET,
-    escalate: ESCALATE, only: ONLY, forceBudget: FORCE_BUDGET || null,
+    only: ONLY, forceBudget: FORCE_BUDGET || null,
     includeRsid: INCLUDE_RSID, includeBasic: INCLUDE_BASIC, excluded: skipCounts,
     sampleRate: SAMPLE_RATE, totalSubtunes: tasks.length,
 }, null, 2));
@@ -260,7 +256,7 @@ fs.writeFileSync(path.join(OUT, 'run-meta.json'), JSON.stringify({
 const journals = Array.from({ length: JOBS }, (_, i) =>
     fs.createWriteStream(path.join(OUT, `results-${i}.jsonl`), { flags: 'a' }));
 
-let next = 0, completed = 0, errors = 0, fellBack = 0, escalated = 0;
+let next = 0, completed = 0, errors = 0, fellBack = 0;
 const started = Date.now();
 const stats = { match: 0, close: 0, half: 0, double: 0, off: 0, wild: 0, noloop: 0, capped: 0 };
 
@@ -269,7 +265,7 @@ const workers = journals.map((journal, slot) => {
         workerData: {
             publicDir: PUBLIC, hvscDir: HVSC, engine: ENGINE, sampleRate: SAMPLE_RATE,
             minLoopSeconds: MIN_LOOP, budgetMultiple: BUDGET_MULT,
-            minBudgetSeconds: 45, maxBudgetSeconds: MAX_BUDGET, escalate: ESCALATE,
+            minBudgetSeconds: 45, maxBudgetSeconds: MAX_BUDGET,
         },
     });
     w.on('message', (msg) => {
@@ -279,7 +275,6 @@ const workers = journals.map((journal, slot) => {
             completed++;
             if (r.error) errors++;
             if (r.fellBack) fellBack++;
-            if (r.escalated) escalated++;
             const cls = classify(r);
             if (stats[cls] != null) stats[cls]++;
         }
@@ -311,7 +306,6 @@ function draw(force) {
         `${completed.toLocaleString()}/${queue.length.toLocaleString()} | ${hms(elapsed)} ` +
         `| match ${stats.match} close ${stats.close} off ${stats.off} wild ${stats.wild} ` +
         `half ${stats.half + stats.double} noloop ${stats.noloop} capped ${stats.capped}` +
-        (escalated ? ` | rescan ${escalated}` : '') +
         (errors ? ` | err ${errors}` : '') + (fellBack ? ` | fp-rescue ${fellBack}` : '');
     if (isTTY) {
         process.stdout.write('\r' + line.slice(0, (process.stdout.columns || 200) - 1).padEnd(0));
@@ -352,7 +346,6 @@ async function finish() {
         `(${(completed / Math.max(mins * 60, 1e-6)).toFixed(1)}/s)`);
     console.log(`  match ${stats.match}  close ${stats.close}  off ${stats.off}  wild ${stats.wild}` +
         `  noloop ${stats.noloop}  capped ${stats.capped}  errors ${errors}`);
-    if (escalated) console.log(`  ${escalated} tune(s) ran out of the HVSC-derived budget and were re-scanned at ${MAX_BUDGET}s`);
     if (fellBack) console.log(`  ${fellBack} tune(s) rendered silent on ${ENGINE} and were re-scanned on libsidplayfp`);
     progressLog.write(`${new Date().toISOString()} DONE ${completed}/${queue.length}\n`);
     progressLog.end();

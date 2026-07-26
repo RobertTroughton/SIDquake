@@ -29,7 +29,7 @@ process.on('warning', (w) => {
 
 const require = createRequire(import.meta.url);
 const { publicDir, engine: defaultEngine, sampleRate, minBudgetSeconds, budgetMultiple,
-        maxBudgetSeconds, minLoopSeconds, escalate } = workerData;
+        maxBudgetSeconds, minLoopSeconds } = workerData;
 
 // The Emscripten glue is built with -sENVIRONMENT="web", so it tries to fetch its
 // .wasm over HTTP. Handing it the bytes directly is all it needs to run under Node.
@@ -61,15 +61,10 @@ const core = createBakeCore(loadEngine);
 
 // How much audio to render looking for the loop. HVSC already tells us roughly
 // how long the tune is, and confirming a loop needs a bit over two passes of it,
-// so the FIRST attempt scans a multiple of HVSC's figure rather than a flat
-// 20-minute cap. That is the single biggest saving in the run: without it every
-// tune that never repeats burns the maximum.
-//
-// HVSC's figure is a hint, not a ceiling. Their list is hand-curated and can be
-// short (or the tune's real period may simply be longer than what they timed), so
-// a first attempt that runs out of budget without resolving anything is retried
-// once at the full --max-budget. One big jump rather than several small ones: the
-// retry re-renders from the beginning, so every extra step repeats work.
+// so the scan renders a multiple of HVSC's figure rather than a flat cap for
+// every tune. It is a hint, not a ceiling - their list is hand-curated and can be
+// short - but there is no retry: a scan that hits --max-budget without resolving
+// anything is just reported as capped, a lower bound rather than a measurement.
 function firstBudget(hvscMs) {
     const hvscSeconds = (hvscMs || 0) / 1000;
     if (!hvscSeconds) return Math.min(maxBudgetSeconds, 300);
@@ -97,17 +92,10 @@ async function analyzeOne(task) {
     const isRsid = sidBytes.length >= 4 &&
         sidBytes[0] === 0x52 && sidBytes[1] === 0x53 && sidBytes[2] === 0x49 && sidBytes[3] === 0x44;
     // An explicit budget (a --only recheck pass) overrides the HVSC-derived one.
-    let maxSeconds = task.forceBudget || firstBudget(task.hvscMs);
-    let r = await runAnalysis(sidBytes, task, maxSeconds);
-    let escalated = 0;
-    if (escalate && !task.forceBudget && r.cappedAtMaxSeconds && maxSeconds < maxBudgetSeconds) {
-        maxSeconds = maxBudgetSeconds;
-        r = await runAnalysis(sidBytes, task, maxSeconds);
-        escalated = 1;
-    }
+    const maxSeconds = task.forceBudget || firstBudget(task.hvscMs);
+    const r = await runAnalysis(sidBytes, task, maxSeconds);
     const frameHz = r.frameHzExact || r.frameHz;
     return {
-        escalated,
         rsid: isRsid ? 1 : 0,
         md5: task.md5,
         sidPath: task.sidPath,
