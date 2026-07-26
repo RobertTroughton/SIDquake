@@ -1398,6 +1398,11 @@ class UIController {
                 scanLenText: typeof s.scanLenText === 'string' ? s.scanLenText : '',
                 minLoopSeconds: Number.isFinite(s.minLoopSeconds) ? Math.min(60, Math.max(1, s.minLoopSeconds)) : 2,
                 framesPerKeyframe: (s.framesPerKeyframe === 'best' || [1, 2, 3].includes(s.framesPerKeyframe)) ? s.framesPerKeyframe : 'best',
+                // Seconds of bars stored for a tune with NO detected loop. The
+                // index costs `segments` bytes per keyframe out of a fixed RAM
+                // budget, so a shorter stream buys back spectral detail - see
+                // UIController.STORED_LENGTH_CHOICES.
+                storedSeconds: Number.isFinite(s.storedSeconds) ? Math.min(600, Math.max(30, s.storedSeconds)) : 480,
                 open: !!s.open,
             };
         }
@@ -1406,13 +1411,16 @@ class UIController {
         return { ...this._advanced, maxLoopSeconds: this._parseMMSS(this._advanced.scanLenText) || undefined };
     }
 
-    // The one export knob spectrometer players still expose: the output frame
-    // rate. The scan window and min-loop length are no longer user-facing (they
-    // sit at sensible defaults in getAdvancedSettings).
+    // Two export knobs spectrometer players expose: the output frame rate, and how
+    // much of a non-looping tune to store. The scan window and min-loop length are
+    // not user-facing (they sit at sensible defaults in getAdvancedSettings).
     createFrameRateOptionHTML() {
         const a = this.getAdvancedSettings();
         const fpk = (v, label) => `<option value="${v}"${a.framesPerKeyframe === v ? ' selected' : ''}>${label}</option>`;
         const bestSel = a.framesPerKeyframe === 'best' ? ' selected' : '';
+        const len = UIController.STORED_LENGTH_CHOICES
+            .map(c => `<option value="${c.secs}"${a.storedSeconds === c.secs ? ' selected' : ''}>${c.label}</option>`)
+            .join('');
         return `
         <div class="option-group">
             <div class="option-row">
@@ -1425,18 +1433,46 @@ class UIController {
                 </div>
             </div>
             <p class="flow-note">Higher rates animate more smoothly; an export drops to the highest rate that fits C64 memory if the chosen one is too big.</p>
+            <div class="option-row">
+                <label class="option-label" for="advStoredLen">Max stored bars (no-loop tunes)</label>
+                <div class="option-control">
+                    <select id="advStoredLen" class="number-input">${len}</select>
+                </div>
+            </div>
+            <p class="flow-note">The bars are quantized in up to 5 independent slices across the spectrum, and each slice costs a byte per keyframe out of a fixed C64 memory budget &mdash; so the longer the stored stream, the fewer slices fit, and past about 3 minutes all 40 bars end up sharing one index and freeze together. Capping the length keeps the slices. Only affects tunes with no detected loop; a looping tune stores exactly one cycle either way.</p>
         </div>`;
     }
 
-    // Persist the frame-rate control; called after the options HTML is (re)rendered.
+    // Stored-length choices for a non-looping tune, labelled with the spectral
+    // detail each one buys. The thresholds are where chooseSegments() (see
+    // spectrometer-bake.js) drops a level: the index budget is budgetBytes minus
+    // the fixed 10 KB codebook, spent at segments x 50 bytes per second.
+    static STORED_LENGTH_CHOICES = [
+        { secs: 70,  label: '1:10 \u2014 5 slices (finest)' },
+        { secs: 90,  label: '1:30 \u2014 4 slices' },
+        { secs: 180, label: '3:00 \u2014 2 slices' },
+        { secs: 480, label: '8:00 \u2014 1 slice (longest, the default)' },
+    ];
+
+    // Persist the frame-rate + stored-length controls; called after the options
+    // HTML is (re)rendered.
     _wireAdvancedSettings() {
+        const save = () => {
+            try { localStorage.setItem('sidquakeAdvanced', JSON.stringify(this._advanced)); } catch (e) { /* storage blocked */ }
+        };
         const fps = document.getElementById('advFps');
-        if (!fps) return;
-        fps.addEventListener('change', () => {
+        if (fps) fps.addEventListener('change', () => {
             const cur = this._advanced || {};
             cur.framesPerKeyframe = fps.value === 'best' ? 'best' : (parseInt(fps.value, 10) || 2);
             this._advanced = cur;
-            try { localStorage.setItem('sidquakeAdvanced', JSON.stringify(cur)); } catch (e) { /* storage blocked */ }
+            save();
+        });
+        const len = document.getElementById('advStoredLen');
+        if (len) len.addEventListener('change', () => {
+            const cur = this._advanced || {};
+            cur.storedSeconds = parseInt(len.value, 10) || 480;
+            this._advanced = cur;
+            save();
         });
     }
 
@@ -1455,13 +1491,22 @@ class UIController {
                     </div>
                 </label>
                 <label class="compression-radio-option">
-                    <input type="radio" 
-                           name="compression-type" 
+                    <input type="radio"
+                           name="compression-type"
                            value="tscrunch"
                            checked>
                     <div class="compression-details">
                         <span class="compression-name">TSCrunch</span>
-                        <span class="compression-desc">Best compression ratio</span>
+                        <span class="compression-desc">Fast to depack on the C64</span>
+                    </div>
+                </label>
+                <label class="compression-radio-option">
+                    <input type="radio"
+                           name="compression-type"
+                           value="exomizer">
+                    <div class="compression-details">
+                        <span class="compression-name">Exomizer</span>
+                        <span class="compression-desc">Smaller file, slower to depack</span>
                     </div>
                 </label>
             </div>
@@ -2892,6 +2937,7 @@ class UIController {
                 framesPerKeyframe: resolved.rate.fpk,
                 maxLoopSeconds: adv.maxLoopSeconds,
                 minLoopSeconds: adv.minLoopSeconds,
+                outputMaxSeconds: adv.storedSeconds,
             };
         } else if (!multiSong && !this.tuneAnalysis) {
             // Every visualizer benefits from knowing how the song ends: players with
@@ -3475,7 +3521,9 @@ class UIController {
             frameHz: hz * fpk,
             bars: true,
             title: 'Spectrometer timeline',
-            subtitle: `${hz} fps · ${kb(info.totalBytes)}`,
+            // Segment count is the spectral detail: 5 slices animate independently,
+            // 1 means all 40 bars share an index and move (or freeze) together.
+            subtitle: `${hz} fps · ${info.segments || 1}\u00d7${info.segmentWidth || 40} bars · ${kb(info.totalBytes)}`,
             analyzedSeconds: info.analyzedSeconds,
             cappedAtMaxSeconds: info.cappedAtMaxSeconds,
         });
@@ -3766,6 +3814,9 @@ class UIController {
                 subtune: defaultSong, numBars: 40, maxHeight: 111,
                 maxSeconds: Math.max(30, maxLoopSeconds * 2),
                 minLoopSeconds,
+                // Same cap the export will bake with, or the length/segment/memory
+                // figures shown here would not be the ones the PRG ends up storing.
+                outputMaxSeconds: adv.storedSeconds,
                 onProgress,
                 signal: opts.signal,
             });

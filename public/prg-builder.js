@@ -1557,6 +1557,11 @@ class SIDquakePRGExporter {
         // that counts as the tune having looped. Must match the value the
         // on-load analysis used, or the bake could resolve a different loop.
         const minLoopSeconds = (bakeParams && bakeParams.minLoopSeconds) || 2;
+        // How much of a NON-looping tune to store (Advanced setting). A shorter
+        // stream costs fewer index bytes per keyframe, which is what buys back the
+        // 5-way spectral split - see chooseSegments in spectrometer-bake.js. No
+        // effect on a tune with a real loop: that stores exactly one cycle.
+        const outputMaxSeconds = (bakeParams && bakeParams.outputMaxSeconds) || 480;
 
         // Spectrometer always bakes the tune's DEFAULT song, never a hard-coded song 0
         // and never a different pick from the multi-song selector: the baked stream is
@@ -1568,7 +1573,7 @@ class SIDquakePRGExporter {
         const baked = await renderAndBakeSpectrometer(sidBytes, {
             subtune: defaultSong,
             maxSeconds: analysisSeconds,   // render up to 2x the max loop length (stops early when a loop is found)
-            outputMaxSeconds: 480,  // if none, store at most 8 min of bars, then fade off
+            outputMaxSeconds,       // if no loop is found, store at most this many seconds of bars, then fade off
             numBars: vizConfig.bakedNumBars,
             maxHeight: vizConfig.bakedMaxHeight,
             framesPerKeyframe,
@@ -1698,6 +1703,11 @@ class SIDquakePRGExporter {
             analyzedSeconds: baked.analyzedSeconds,
             cappedAtMaxSeconds: baked.cappedAtMaxSeconds,
             K: baked.K,
+            // Spectral split: how many independently-quantized slices the 40 bars
+            // were cut into, and how wide each is. Surfaced in the bake timeline -
+            // 1x40 is the "everything freezes together" case.
+            segments: baked.segments,
+            segmentWidth: baked.segmentWidth,
             codebookBytes: baked.codebook.length,
             indexBytes: baked.indices.length,
             totalBytes: baked.totalBytes,

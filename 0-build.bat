@@ -223,11 +223,67 @@ if %ERRORLEVEL% NEQ 0 (
 )
 
 echo.
+echo Compiling exomizer WASM module (Exomizer 3 PRG cruncher)...
+echo.
+
+REM Keep sources and flags in sync with scripts/build-exomizer-wasm.sh
+set EXOSRC=wasm\exomizer\src
+call emcc -O3 ^
+    -D_XOPEN_SOURCE=600 ^
+    -DEXO_OPTIMAL_STATS_SIZE=65536 ^
+    -I%EXOSRC% ^
+    wasm\exomizer_wrap.c ^
+    %EXOSRC%\exo_main.c ^
+    %EXOSRC%\exo_helper.c ^
+    %EXOSRC%\exo_util.c ^
+    %EXOSRC%\exodec.c ^
+    %EXOSRC%\match.c ^
+    %EXOSRC%\search.c ^
+    %EXOSRC%\optimal.c ^
+    %EXOSRC%\output.c ^
+    %EXOSRC%\buf.c ^
+    %EXOSRC%\buf_io.c ^
+    %EXOSRC%\chunkpool.c ^
+    %EXOSRC%\radix.c ^
+    %EXOSRC%\progress.c ^
+    %EXOSRC%\getflag.c ^
+    %EXOSRC%\log.c ^
+    %EXOSRC%\vec.c ^
+    %EXOSRC%\map.c ^
+    %EXOSRC%\named_buffer.c ^
+    %EXOSRC%\parse.c ^
+    %EXOSRC%\expr.c ^
+    %EXOSRC%\pc.c ^
+    %EXOSRC%\table.c ^
+    %EXOSRC%\perf.c ^
+    %EXOSRC%\desfx.c ^
+    %EXOSRC%\areatrace.c ^
+    %EXOSRC%\6502emu.c ^
+    %EXOSRC%\asm.tab.c ^
+    %EXOSRC%\lex.yy.c ^
+    %EXOSRC%\sfxdecr.c ^
+    -o public\exomizer.js ^
+    -sMODULARIZE=1 ^
+    -sEXPORT_NAME=ExomizerModule ^
+    -sINVOKE_RUN=0 ^
+    -sALLOW_MEMORY_GROWTH=1 ^
+    -sEXPORTED_FUNCTIONS="['_exo_compress_sfx','_exo_output_ptr','_exo_output_len','_exo_free','_malloc','_free']" ^
+    -sEXPORTED_RUNTIME_METHODS="['cwrap','HEAPU8']"
+
+if %ERRORLEVEL% NEQ 0 (
+    echo.
+    echo exomizer WASM build FAILED! See errors above.
+    goto :error
+)
+
+echo.
 echo WASM modules built successfully:
 echo   - public\sidquake.js
 echo   - public\sidquake.wasm
 echo   - public\sidplayfp.js
 echo   - public\sidplayfp.wasm
+echo   - public\exomizer.js
+echo   - public\exomizer.wasm
 echo.
 
 :done

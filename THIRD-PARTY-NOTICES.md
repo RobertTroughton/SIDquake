@@ -24,6 +24,7 @@ GPL, so:
 | reSIDfp (bundled in libsidplayfp) | — | GPL v2-or-later | Dag Lem; reSIDfp fork by Antti Lankila, ported by Leandro Nini | https://github.com/libsidplayfp/libsidplayfp |
 | reSID (classic; legacy `?engine=resid` path) | 0.16 | GPL v2-or-later | Dag Lem | https://github.com/daglem/reSID |
 | TSCrunch (JavaScript port) | — | Apache-2.0 (upstream); port credits Antonio Savona | Original algorithm © Antonio Savona | https://github.com/tonysavon/TSCrunch |
+| Exomizer | 3.1.3b0 (hg/git ba91318) | zlib | Magnus Lind | https://bitbucket.org/magli143/exomizer |
 | C64 KERNAL / BASIC / CHARGEN ROMs | VICE 3.10 | Proprietary (Commodore; rights held by Cloanto) — **not** covered by SIDquake's licence | Commodore International / Cloanto | see `roms/README.md` |
 | High Voltage SID Collection (SID tunes) | HVSC #85 | Free redistribution under the HVSC terms; individual tunes © their composers | HVSC Crew and composers | https://hvsc.c64.org/ (bundled `DOCUMENTS/HVSC.txt`) |
 
@@ -46,3 +47,11 @@ GPL, so:
 - **TSCrunch.** The upstream TSCrunch by Antonio Savona is Apache-2.0. The
   JavaScript port shipped in `public/lib/` credits the original author; retain
   that attribution.
+
+- **Exomizer.** The C sources under `wasm/exomizer/` are upstream Exomizer 3,
+  vendored verbatim except for `src/optimal.c`, which is marked as altered in
+  its own header (a hard-coded table size was made a compile-time macro so the
+  WebAssembly build does not have to reserve 68 MB of static data; the default
+  is the upstream value). The zlib licence requires that the origin is not
+  misrepresented, that altered sources are plainly marked, and that the notices
+  in each file are left intact - see `wasm/exomizer/README.md`.

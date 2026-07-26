@@ -9,7 +9,9 @@
 │  index.html ──► ui.js (orchestrator)                     │
 │                  ├── sidquake-core.js ──► sidquake.wasm │
 │                  ├── prg-builder.js                       │
-│                  │    └── compressor-manager.js (TSCrunch) │
+│                  │    └── compressor-manager.js            │
+│                  │         ├── lib/ (TSCrunch, JS)          │
+│                  │         └── exomizer.js ──► exomizer.wasm │
 │                  ├── png-converter.js ──► sidquake.wasm  │
 │                  ├── petscii-converter.js                 │
 │                  ├── hvsc-browser.js ──► hvsc-index.json  │
@@ -125,10 +127,16 @@ Compiled into `sidplayfp.wasm` (playback only, lazily loaded):
 - Multi-SID support, save/restore routines
 - Compression integration via CompressorManager
 
-**`compressor-manager.js`** (144 lines) - Compression abstraction
+**`compressor-manager.js`** - Compression abstraction
 - `CompressorManager`: Unified interface for compression options
-- Currently supports: none, TSCrunch (self-extracting 6502 format)
-- TSCrunch library loaded from `lib/index.js`
+- Supports: none, TSCrunch, Exomizer (both self-extracting 6502 formats)
+- TSCrunch is a JS port loaded from `lib/index.js`
+- Exomizer is a WASM module (`exomizer.js` + `exomizer.wasm`) fetched on first
+  use; a fresh module instance is created per compression because upstream keeps
+  global state it never resets
+- The pair is a ratio/speed trade: Exomizer is ~9-16% smaller on a typical
+  export, TSCrunch roughly 4x faster to decrunch on the C64 (~33 vs ~129 cycles
+  per byte)
 
 **`png-converter.js`** (244 lines) - WASM bridge for image conversion
 - `PNGConverter` class wrapping PNG converter WASM functions
@@ -201,9 +209,14 @@ version is whatever we ship.
 **`color-palettes-data.js`** - Spectrometer colour tables (luminance-ladder height/row gradients + waveform-family ramps) injected at PRG build time
 **`font-data.js`** - PETSCII font bitmaps (uppercase + lowercase, 256 chars x 8 bytes)
 
-### Compression Library (`public/lib/`)
+### Compression Libraries
 
-JavaScript port of TSCrunch 1.3.1:
+**Exomizer** - `wasm/exomizer/` (vendored upstream C, see its README) compiled to
+`public/exomizer.wasm` by `scripts/build-exomizer-wasm.sh`. `wasm/exomizer_wrap.c`
+drives exomizer's own `main()` over MEMFS, so the crunched image is exactly what
+the command line tool emits.
+
+**TSCrunch** - `public/lib/`, a JavaScript port of TSCrunch 1.3.1:
 - `index.js` - Main `Cruncher` class
 - `tokens.js` - Compression token types (ZERORUN, RLE, LZ, LIT)
 - `graph.js` - Dijkstra optimal path for encoding decisions
@@ -261,7 +274,7 @@ User selects visualizer + options
   → Patches SID data + metadata into player template
   → Optional: image conversion (PNG → C64 bitmap via WASM)
   → Optional: PETSCII conversion for text logos
-  → Optional: TSCrunch compression (self-extracting)
+  → Optional: TSCrunch or Exomizer compression (self-extracting)
   → Downloads .prg file
 ```
 

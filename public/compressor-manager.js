@@ -1,12 +1,18 @@
 // compressor-manager.js - Unified compression manager for SIDquake.
-// Wraps optional compressors (currently TSCrunch) behind a single async API
+// Wraps optional compressors (TSCrunch and Exomizer) behind a single async API
 // and lazy-loads them on first use to keep startup cost low.
+//
+// The two are a deliberate ratio/speed pair, measured on real exports:
+//   TSCrunch  ~33 cycles/byte to decrunch (a 27 KB image in ~0.9 s on a PAL C64)
+//   Exomizer  ~9-16% smaller, ~129 cycles/byte (the same image in ~3.6 s)
+// Neither dominates, so both are offered; TSCrunch stays the default.
 
 class CompressorManager {
     constructor() {
         this.compressors = {
             'none': null,
-            'tscrunch': null
+            'tscrunch': null,
+            'exomizer': null
         };
 
         this.initialized = false;
@@ -27,6 +33,13 @@ class CompressorManager {
                 console.warn('TSCrunch initialization failed:', error);
             }
         }
+
+        // Exomizer lives in a ~180 KB WASM module, so it is NOT fetched here -
+        // constructing the wrapper is free and the module loads inside
+        // compressPRG(), only for an export that actually asks for it. A load
+        // failure surfaces as a throw from compress(), which the exporter
+        // already handles by falling back to an uncompressed image.
+        this.compressors.exomizer = new ExomizerCompressor();
 
         this.initialized = true;
     }
@@ -130,6 +143,83 @@ class TSCrunchCompressor {
         } catch (error) {
             console.error('TSCrunch compression failed:', error);
             throw error;
+        }
+    }
+}
+
+/**
+ * Exomizer 3 wrapper (public/exomizer.js + .wasm, built from wasm/exomizer by
+ * scripts/build-exomizer-wasm.sh). Like TSCrunch it takes PRG-format input and
+ * produces a self-extracting executable - here via exomizer's own
+ * `sfx <jmpaddress>` command, so the crunched image is exactly what the
+ * command line tool would emit.
+ */
+class ExomizerCompressor {
+    constructor() {
+        this.originalSize = 0;
+        this.compressedSize = 0;
+    }
+
+    /**
+     * Exomizer's C sources keep global state they never tear down (named
+     * buffers, chunk pools, the sfx assembler's symbol table), so one module
+     * instance may serve exactly one compression. Instantiating is a few
+     * milliseconds and an export compresses once, so we simply make a fresh
+     * instance per call rather than teaching upstream to reset itself.
+     */
+    async createModule() {
+        if (typeof ExomizerModule !== 'function') {
+            if (!window.loadScript) throw new Error('Exomizer: script loader unavailable');
+            await window.loadScript('exomizer.js');
+        }
+        if (typeof ExomizerModule !== 'function') {
+            throw new Error('Exomizer: exomizer.js did not define ExomizerModule');
+        }
+        // eslint-disable-next-line no-undef
+        return ExomizerModule();
+    }
+
+    async compressPRG(data, uncompressedStart, executeAddress) {
+        this.originalSize = data.length;
+
+        // Ensure prgData carries the expected load address as its first two bytes.
+        let prgData;
+        if (data.length >= 2 && (data[0] | (data[1] << 8)) === uncompressedStart) {
+            prgData = data;
+        } else {
+            prgData = new Uint8Array(data.length + 2);
+            prgData[0] = uncompressedStart & 0xFF;
+            prgData[1] = (uncompressedStart >> 8) & 0xFF;
+            prgData.set(data, 2);
+        }
+
+        const module = await this.createModule();
+        let inPtr = 0;
+        try {
+            inPtr = module._malloc(prgData.length);
+            module.HEAPU8.set(prgData, inPtr);
+
+            const size = module._exo_compress_sfx(inPtr, prgData.length, executeAddress & 0xFFFF, 0);
+            if (size <= 0) throw new Error(`Exomizer: compression failed (code ${size})`);
+
+            // Re-read HEAPU8 through the module: crunching a large image can grow
+            // the WASM heap, which detaches any view captured beforehand.
+            const outPtr = module._exo_output_ptr();
+            const compressed = new Uint8Array(module.HEAPU8.subarray(outPtr, outPtr + size));
+            module._exo_free();
+
+            this.compressedSize = compressed.length;
+            return {
+                data: compressed,
+                originalSize: this.originalSize,
+                compressedSize: this.compressedSize,
+                ratio: this.compressedSize / this.originalSize
+            };
+        } catch (error) {
+            console.error('Exomizer compression failed:', error);
+            throw error;
+        } finally {
+            if (inPtr && module._free) module._free(inPtr);
         }
     }
 }

@@ -109,7 +109,10 @@ export async function renderAndBakeSpectrometer(sidBytes, options = {}) {
     // holding dark), so it must be part of the key too or toggling the option
     // between exports would silently reuse the wrong stream.
     const framesPerKeyframe = Math.max(1, Math.round(options.framesPerKeyframe || 2));
-    const geomKey = `${numBars}x${maxHeight}x${framesPerKeyframe}${options.forceLoop ? '-loop' : ''}`;
+    // outputMaxSeconds caps a non-looping tune's stored length, which changes both
+    // the keyframe count and the segment split, so it has to key the cache too.
+    const geomKey = `${numBars}x${maxHeight}x${framesPerKeyframe}x${options.outputMaxSeconds || 0}` +
+        `${options.forceLoop ? '-loop' : ''}`;
     if (_cache.bakes.has(geomKey)) return _cache.bakes.get(geomKey);
 
     const result = await bake.bakeRows(_cache.rows.rows, {
@@ -137,6 +140,7 @@ export async function analyzeSpectrometer(sidBytes, options = {}) {
         numBars: options.numBars, maxHeight: options.maxHeight,
         frameHz: _cache.rows.frameHz, framesPerKeyframe: options.framesPerKeyframe,
         minLoopSeconds: options.minLoopSeconds,
+        outputMaxSeconds: options.outputMaxSeconds,
         analyzedSeconds: _cache.rows.renderedSeconds, hitCap: _cache.rows.hitCap,
     });
     return {
