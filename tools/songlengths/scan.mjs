@@ -307,12 +307,8 @@ function draw(force) {
     if (!force && now - lastDraw < 250) return;
     lastDraw = now;
     const elapsed = (now - started) / 1000;
-    const rate = completed / Math.max(elapsed, 0.001);
-    const left = queue.length - completed;
-    const pct = (100 * completed / queue.length);
     const line =
-        `${bar(pct)} ${completed.toLocaleString()}/${queue.length.toLocaleString()} (${pct.toFixed(1)}%) ` +
-        `| ${rate.toFixed(1)}/s | ETA ${completed ? hms(left / Math.max(rate, 1e-6)) : '--'} ` +
+        `${completed.toLocaleString()}/${queue.length.toLocaleString()} | ${hms(elapsed)} ` +
         `| match ${stats.match} close ${stats.close} off ${stats.off} wild ${stats.wild} ` +
         `half ${stats.half + stats.double} noloop ${stats.noloop} capped ${stats.capped}` +
         (escalated ? ` | rescan ${escalated}` : '') +
@@ -325,15 +321,10 @@ function draw(force) {
     }
 }
 let lastLogLine = 0;
-const bar = (pct) => {
-    const w = 20, n = Math.round(w * pct / 100);
-    return `[${'#'.repeat(n)}${'-'.repeat(w - n)}]`;
-};
 const hms = (s) => {
-    if (!isFinite(s)) return '--';
     s = Math.round(s);
-    const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60);
-    return h ? `${h}h${String(m).padStart(2, '0')}m` : `${m}m${String(s % 60).padStart(2, '0')}s`;
+    const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), sec = s % 60;
+    return h ? `${h}:${String(m).padStart(2, '0')}:${String(sec).padStart(2, '0')}` : `${m}:${String(sec).padStart(2, '0')}`;
 };
 const ticker = setInterval(() => draw(false), 250);
 
