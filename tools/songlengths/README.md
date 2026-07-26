@@ -147,7 +147,6 @@ so you can see at a glance whether RSID entries behave differently as a group.
 
 The filter runs **before** `--limit`, so `--limit 100` measures 100 real tunes
 rather than 100 candidates minus whatever got dropped.
-
 ## Can we match HVSC exactly?
 
 Partly, and it's worth being clear about where the ceiling is.

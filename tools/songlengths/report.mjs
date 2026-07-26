@@ -75,7 +75,6 @@ try {
     const c = JSON.parse(fs.readFileSync(path.join(OUT, 'sid-kinds.json'), 'utf8'));
     if (c && c.kinds) kindByPath = c.kinds;
 } catch (e) { /* optional */ }
-
 const { lines: srcLines, entries } = parseSonglengths(fs.readFileSync(MD5, 'utf8'));
 console.log(`HVSC file: ${entries.length.toLocaleString()} entries`);
 
@@ -160,7 +159,6 @@ const fmtOf = (r, p) => {
     const k = kindByPath[p];
     return k && k.rsid != null ? (k.rsid ? 1 : 0) : -1;
 };
-
 const pathIds = new Map();
 const paths = [];
 const rows = [];
