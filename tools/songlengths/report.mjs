@@ -20,6 +20,9 @@
  *   --threshold <s>   how far apart the two values must be before we rewrite
  *                     HVSC's entry (default 1.0 s). Entries we couldn't measure
  *                     - capped, errored, no loop found - are NEVER rewritten.
+ *   --site-url <url>  where the report's Folder/File links point (default
+ *                     https://sidquake.c64demo.com) - the deployed HVSC Browser,
+ *                     not the local disk, so the report works when shared.
  */
 
 import fs from 'fs';
@@ -33,6 +36,7 @@ const REPO = path.resolve(HERE, '..', '..');
 const flags = parseArgs(process.argv.slice(2));
 const OUT = path.resolve(flags.out || path.join(HERE, 'out'));
 const THRESHOLD_MS = (Number(flags.threshold) || 1.0) * 1000;
+const SITE_URL = (flags['site-url'] || 'https://sidquake.c64demo.com').replace(/\/+$/, '');
 
 const meta = readJsonIfPresent(path.join(OUT, 'run-meta.json')) || {};
 const MD5 = path.resolve(flags.md5 || meta.md5 ||
@@ -213,15 +217,9 @@ const summary = CLASSES.map(c => `${c} ${counts[c]}`).join('  ');
 console.log(`3) songlengths-report.html   - ${rows.length.toLocaleString()} rows`);
 console.log(`   ${summary}`);
 
-// Relative path from the report to the HVSC tree, so the folder/file links work
-// when the page is opened straight off disk. Computed rather than hard-coded
-// because --out and --hvsc both move.
-const HVSC_DIR = meta.hvsc || path.join(REPO, 'public', 'HVSC', 'C64Music');
-const hvscHref = path.relative(OUT, HVSC_DIR).split(path.sep).join('/');
-
 const html = buildHtml({
-    folders, names, rows, counts, hvscHref,
-    meta: { ...meta, source: path.basename(MD5), generated: new Date().toISOString(), threshold: THRESHOLD_MS / 1000 },
+    folders, names, rows, counts,
+    meta: { ...meta, source: path.basename(MD5), generated: new Date().toISOString(), threshold: THRESHOLD_MS / 1000, siteUrl: SITE_URL },
 });
 const htmlPath = path.join(OUT, 'songlengths-report.html');
 fs.writeFileSync(htmlPath, html);
@@ -230,8 +228,8 @@ console.log(`Open ${path.basename(htmlPath)} in a browser (${(html.length / 1048
 
 // ---------------------------------------------------------------------------
 
-function buildHtml({ folders, names, rows, counts, hvscHref, meta }) {
-    const data = JSON.stringify({ folders, names, rows, counts, hvscHref, meta, classes: CLASSES });
+function buildHtml({ folders, names, rows, counts, meta }) {
+    const data = JSON.stringify({ folders, names, rows, counts, meta, classes: CLASSES });
     return `<!doctype html>
 <html lang="en"><head>
 <meta charset="utf-8">
@@ -306,20 +304,26 @@ function buildHtml({ folders, names, rows, counts, hvscHref, meta }) {
 <script id="d" type="application/json">${data.replace(/</g, '\\u003c')}</script>
 <script>
 const D = JSON.parse(document.getElementById('d').textContent);
-const { folders, names, rows, counts, hvscHref, meta, classes } = D;
-// hvscHref points at the HVSC root from wherever this file was written, so the
-// links resolve when the page is opened straight off disk.
-const href = (p) => hvscHref + '/' + p.split('/').map(encodeURIComponent).join('/');
-const link = (target, text, title) =>
-  '<a href="' + esc(href(target)) + '" title="' + esc(title) + '">' + esc(text) + '</a>';
+const { folders, names, rows, counts, meta, classes } = D;
+const SITE = meta.siteUrl;
+// Links point at the deployed HVSC Browser, not the local disk, so the report
+// still works wherever it's opened/shared. A file deep-links via the main
+// site's ?tune= (same encoding as hvsc-browser.js's own share links); a bare
+// folder has no such link on the main site, so it goes through the standalone
+// embed page instead, which supports ?start=<folder>.
+const encPath = (p) => p.replace(/^\/+/, '').split('/').map(encodeURIComponent).join('/');
+const tuneHref = (p) => SITE + '/?tune=' + encPath(p);
+const folderHref = (p) => SITE + '/hvsc-embed.html?start=' + encodeURIComponent('C64Music' + p);
+const link = (target, text, title, isFolder) =>
+  '<a href="' + esc(isFolder ? folderHref(target) : tuneHref(target)) + '" target="_blank" rel="noopener" title="' + esc(title) + '">' + esc(text) + '</a>';
 const ENDINGS = ['loop', 'fade', 'never', 'err'];
 
 const COLS = [
   { k:'Folder',    w:'minmax(150px,2fr)', cls:'pth', raw:1,
-    get:r=>link(folders[r[0]], folders[r[0]], folders[r[0]]),
+    get:r=>link(folders[r[0]], folders[r[0]], folders[r[0]], true),
     cmp:(a,b)=>folders[a[0]]<folders[b[0]]?-1:folders[a[0]]>folders[b[0]]?1:a[12]-b[12] },
   { k:'File',      w:'minmax(140px,2fr)', cls:'pth', raw:1,
-    get:r=>link(folders[r[0]] + '/' + names[r[12]], names[r[12]], folders[r[0]] + '/' + names[r[12]]),
+    get:r=>link(folders[r[0]] + '/' + names[r[12]], names[r[12]], folders[r[0]] + '/' + names[r[12]], false),
     cmp:(a,b)=>names[a[12]]<names[b[12]]?-1:names[a[12]]>names[b[12]]?1:a[1]-b[1] },
   { k:'#',         w:'46px',  get:r=>r[1],                          cls:'num', cmp:(a,b)=>a[1]-b[1] },
   { k:'HVSC',      w:'92px',  get:r=>r[2]<0?'—':ms(r[2]),           cls:'num', cmp:(a,b)=>a[2]-b[2] },
