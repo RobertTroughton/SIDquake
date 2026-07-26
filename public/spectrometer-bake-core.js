@@ -319,6 +319,15 @@ export function createBakeCore(loadEngine) {
                 loopSeconds: (r.numKeyframes - r.loopStart) / r.keyframeHz,
                 analyzedSeconds: r.analyzedSeconds,
                 cappedAtMaxSeconds: r.cappedAtMaxSeconds,
+                // Frame-exact loop / length, for the song-length tool.
+                frameHzExact: cache.rows.frameHz,
+                loopStartFrames: r.loopStartFrames,
+                loopEndFrames: r.loopEndFrames,
+                loopFrames: r.loopFrames,
+                lengthFrames: r.lengthFrames,
+                lengthSeconds: r.lengthSeconds,
+                // Set when the requested engine rendered silence and we re-scanned.
+                engineFallback: cache.rows.engineFallback || null,
             };
         },
 

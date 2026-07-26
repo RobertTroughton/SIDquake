@@ -739,8 +739,17 @@ function resolveKeyframes(store, o) {
     // exact result is rounded onto the keyframe grid afterwards; the worst-case
     // half-keyframe wrap drift per cycle is imperceptible next to "no loop found".
     const kfF = step === 1 ? kf : whitenQuantize(store, o.maxHeight, 1, nframes);
-    const loop = detectLoop(kfF, step === 1 ? nk : nframes, o.numBars, o.maxHeight, o.frameHz, o.minLoopSeconds);
+    const nkF = step === 1 ? nk : nframes;
+    const loop = detectLoop(kfF, nkF, o.numBars, o.maxHeight, o.frameHz, o.minLoopSeconds);
+    // Frame-exact loop bounds, kept alongside the keyframe-rounded ones. The C64
+    // stream only needs the keyframe grid, but the song-length tool
+    // (tools/songlengths) wants the raster-frame counts the detector actually found,
+    // because a SID player's period is an integer number of frames and rounding it
+    // onto the keyframe grid throws away up to half a keyframe per cycle.
+    let loopStartFrames = 0, loopEndFrames = 0, musicEndFrames = 0;
     if (loop) {
+        loopStartFrames = loop.loopStart;
+        loopEndFrames = loop.loopEnd;
         loopStart = Math.min(nk - 1, Math.round(loop.loopStart / step));
         const periodK = Math.max(1, Math.round((loop.loopEnd - loop.loopStart) / step));
         nk = Math.min(nk, loopStart + periodK);
@@ -771,8 +780,20 @@ function resolveKeyframes(store, o) {
         kf = faded;
         loopStart = forcedLoop ? 0 : musicEnd;     // forced: restart at the top; else fade off
         fadedOut = true;
+        // Frame-exact end of the music, found on the frame grid rather than by
+        // scaling musicEnd back up - same reason as the loop bounds above.
+        musicEndFrames = Math.min(nkF, musicEnd * step + step);
+        while (musicEndFrames > 0) {
+            let e = 0; const off = (musicEndFrames - 1) * NB;
+            for (let b = 0; b < NB; b++) e += kfF[off + b];
+            if (e > silent) break;
+            musicEndFrames--;
+        }
     }
-    return { kf, nk, step, loopStart, looped: !!loop, fadedOut, forcedLoop, analyzedKeyframes };
+    return {
+        kf, nk, step, loopStart, looped: !!loop, fadedOut, forcedLoop, analyzedKeyframes,
+        loopStartFrames, loopEndFrames, musicEndFrames,
+    };
 }
 
 // Lightweight analysis (#2 Analyse Tune): resolve the tune's loop / length WITHOUT
@@ -784,12 +805,22 @@ export function analyzeRows(rows, options = {}) {
     o.keyframeHz = o.frameHz / (o.framesPerKeyframe || 2);
     const store = asRowStore(rows, o.numBars);
     const analyzedSeconds = options.analyzedSeconds != null ? options.analyzedSeconds : store.count / o.frameHz;
-    const { nk, loopStart, looped, fadedOut, analyzedKeyframes } = resolveKeyframes(store, o);
+    const { nk, loopStart, looped, fadedOut, analyzedKeyframes,
+            loopStartFrames, loopEndFrames, musicEndFrames } = resolveKeyframes(store, o);
+    // The tune's playing length in raster frames, defined the way HVSC's
+    // Songlengths counts it: everything up to the point the music repeats, i.e.
+    // intro PLUS one full loop (not just the loop). A tune with no detected loop
+    // is measured to where the music actually stops.
+    const lengthFrames = looped ? loopEndFrames : musicEndFrames;
     return {
         keyframeHz: o.keyframeHz, numKeyframes: nk, loopStart, looped, fadedOut,
         analyzedKeyframes, analyzedSeconds,
         cappedAtMaxSeconds: !looped && !!options.hitCap,
         storedSeconds: nk / o.keyframeHz,
+        // Frame-exact figures (see resolveKeyframes).
+        loopStartFrames, loopEndFrames, musicEndFrames, lengthFrames,
+        lengthSeconds: lengthFrames / o.frameHz,
+        loopFrames: looped ? loopEndFrames - loopStartFrames : 0,
     };
 }
 

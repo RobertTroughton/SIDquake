@@ -8,6 +8,8 @@
     "build": "node scripts/extract-hvsc.js && node scripts/build-seo-pages.js && node scripts/build-share-meta.js",
     "netlify-build": "npm run build",
     "build-share-meta": "node scripts/build-share-meta.js",
+    "songlengths": "node tools/songlengths/scan.mjs",
+    "songlengths-report": "node tools/songlengths/report.mjs",
     "build-social-card": "node scripts/build-social-card.js"
   },
   "devDependencies": {
