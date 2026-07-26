@@ -872,7 +872,13 @@ void audio_set_subtune(int subtune) {
     S.a = S.x = S.y = subtune;
     S.totalCycles = 0;
 
-    cpu_jsr(S.initAddress, 1000000);
+    // Init gets a generous cycle budget - ~20 s of C64 time. A typical player's
+    // init returns in a few hundred cycles, but a tune that unpacks or builds
+    // tables in init needs far more (Julian_Jaymz/Slanted.sid: 2,040,135 cycles),
+    // and a truncated init leaves the tune half-built so playback comes out silent
+    // or garbled. Emulating 2 M cycles costs ~14 ms, so the budget is only a
+    // backstop against a tune that never returns at all.
+    cpu_jsr(S.initAddress, 20000000);
 
     // CIA-driven tunes (speed bit set) latch the play period in $DC04/$DC05.
     if (S.speed & (1 << (subtune & 31))) {

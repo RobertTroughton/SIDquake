@@ -197,9 +197,11 @@ function buildHtml({ paths, rows, counts, meta }) {
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>SIDquake vs HVSC song lengths</title>
 <style>
-  :root { color-scheme: light dark; --bg:#fff; --fg:#111; --mut:#666; --line:#d8d8d8; --head:#f2f2f2; --hover:#f7f9ff; }
+  :root { color-scheme: light dark; --bg:#fff; --fg:#111; --mut:#666; --line:#d8d8d8; --head:#f2f2f2;
+          --zebra:#00000008; --hover:#3b7ddd24; }
   @media (prefers-color-scheme: dark) {
-    :root { --bg:#14161a; --fg:#e8e8ea; --mut:#9aa0a8; --line:#2c3038; --head:#1c1f25; --hover:#1a1f2b; }
+    :root { --bg:#14161a; --fg:#e8e8ea; --mut:#9aa0a8; --line:#2c3038; --head:#1c1f25;
+            --zebra:#ffffff0a; --hover:#3b7ddd38; }
   }
   * { box-sizing: border-box; }
   body { margin:0; font:13px/1.45 ui-sans-serif,system-ui,"Segoe UI",Roboto,sans-serif; background:var(--bg); color:var(--fg); }
@@ -224,7 +226,15 @@ function buildHtml({ paths, rows, counts, meta }) {
   #spacer { position:relative; }
   #rows { position:absolute; left:0; right:0; top:0; }
   .r { display:grid; border-bottom:1px solid var(--line); }
-  .r:hover { background:var(--hover); }
+  /* Zebra striping keyed to the ABSOLUTE row index, not DOM position. The body is
+     virtualised, so plain nth-child would restripe on every scroll step and the
+     bands would visibly crawl. Flipping one class on the container inverts the
+     parity instead, which costs nothing per row - important at 80k rows. */
+  #rows      .r:nth-child(even) { background:var(--zebra); }
+  #rows.odd  .r:nth-child(even) { background:transparent; }
+  #rows.odd  .r:nth-child(odd)  { background:var(--zebra); }
+  /* Listed after the stripes so it wins on equal specificity. */
+  #rows .r:hover, #rows.odd .r:hover { background:var(--hover); }
   .r > div { padding:5px 9px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
   .num { text-align:right; font-variant-numeric:tabular-nums; }
   .pth { font-family:ui-monospace,Consolas,monospace; font-size:12px; }
@@ -325,6 +335,7 @@ function render(){
   const n = Math.ceil(scroll.clientHeight/ROW_H) + PAD*2;
   const slice = view.slice(first, first+n);
   body.style.transform = 'translateY('+(first*ROW_H)+'px)';
+  body.className = (first & 1) ? 'odd' : '';   // keep the stripes on absolute row parity
   let h = '';
   for (const r of slice) {
     h += '<div class="r" style="grid-template-columns:'+GRID+'">';

@@ -49,6 +49,10 @@ class SIDAnalyzer {
                 sid_get_modified_count: this.Module.cwrap('sid_get_modified_count', 'number', []),
                 sid_get_modified_address: this.Module.cwrap('sid_get_modified_address', 'number', ['number']),
                 sid_get_zp_count: this.Module.cwrap('sid_get_zp_count', 'number', []),
+                // Subtunes whose init never returned inside its cycle budget: a
+                // non-zero count means the maps below are INCOMPLETE, not empty.
+                sid_get_init_timeouts: this.Module.cwrap('sid_get_init_timeouts', 'number', []),
+                sid_get_longest_init_cycles: this.Module.cwrap('sid_get_longest_init_cycles', 'number', []),
                 sid_get_zp_address: this.Module.cwrap('sid_get_zp_address', 'number', ['number']),
                 sid_get_code_bytes: this.Module.cwrap('sid_get_code_bytes', 'number', []),
                 sid_get_data_bytes: this.Module.cwrap('sid_get_data_bytes', 'number', []),
@@ -275,7 +279,14 @@ class SIDAnalyzer {
                 ciaTimerValue,
                 maxCycles,
                 sidChipCount,
-                sidChipAddresses
+                sidChipAddresses,
+                // How many subtunes' init routines ran out of cycles. When this is
+                // non-zero those songs were skipped entirely, so an empty
+                // modifiedAddresses/zpAddresses means "we could not find out",
+                // NOT "the tune touches nothing" - and placing player routines on
+                // that assumption is what corrupts an export.
+                initTimeouts: this.api.sid_get_init_timeouts ? this.api.sid_get_init_timeouts() : 0,
+                longestInitCycles: this.api.sid_get_longest_init_cycles ? this.api.sid_get_longest_init_cycles() : 0
             };
         } finally {
             if (progressInterval) {

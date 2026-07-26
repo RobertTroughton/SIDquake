@@ -2775,6 +2775,19 @@ class UIController {
 
         // Update the value
         const countElement = document.getElementById('modifiedMemoryCount');
+        // An init routine that never returned means its subtune was skipped, so we
+        // have NO memory map for it. Saying "None" there is actively misleading -
+        // it reads as "this tune is easy to place around" when the truth is the
+        // opposite, and exports built on it overwrite memory the tune is using.
+        const initTimeouts = this.analysisResults?.initTimeouts || 0;
+        if (initTimeouts > 0 && modifiedCount === 0) {
+            countElement.textContent = 'Unknown (init did not finish)';
+            countElement.title = `${initTimeouts} subtune(s) had an init routine that never returned, ` +
+                `so their memory use could not be traced. Exports that need this information ` +
+                `(anything but the default player) may not work for this tune.`;
+            return;
+        }
+        countElement.title = '';
         if (modifiedCount === 0) {
             countElement.textContent = 'None';
         } else if (modifiedCount === 1) {
