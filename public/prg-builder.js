@@ -2287,7 +2287,7 @@ class SIDquakePRGExporter {
             sidPlayAddress = null,
             preferredAddress = null,
             visualizerFile = 'prg/TextInput.bin',
-            compressionType = 'tscrunch',
+            compressionType = 'exomizer',
             maxCallsPerFrame = null,
             visualizerId = null,
             selectedSong = 0,

@@ -1492,20 +1492,20 @@ class UIController {
                 <label class="compression-radio-option">
                     <input type="radio"
                            name="compression-type"
-                           value="tscrunch"
+                           value="exomizer"
                            checked>
                     <div class="compression-details">
-                        <span class="compression-name">TSCrunch</span>
-                        <span class="compression-desc">Fast to depack on the C64</span>
+                        <span class="compression-name">Exomizer</span>
+                        <span class="compression-desc">Smallest file, slower to depack</span>
                     </div>
                 </label>
                 <label class="compression-radio-option">
                     <input type="radio"
                            name="compression-type"
-                           value="exomizer">
+                           value="tscrunch">
                     <div class="compression-details">
-                        <span class="compression-name">Exomizer</span>
-                        <span class="compression-desc">Smaller file, slower to depack</span>
+                        <span class="compression-name">TSCrunch</span>
+                        <span class="compression-desc">Fast to depack on the C64</span>
                     </div>
                 </label>
             </div>
@@ -2984,7 +2984,7 @@ class UIController {
 
         // Get the selected compression type from radio buttons
         const compressionRadio = document.querySelector('input[name="compression-type"]:checked');
-        const compressionType = compressionRadio ? compressionRadio.value : 'tscrunch';
+        const compressionType = compressionRadio ? compressionRadio.value : 'exomizer';
 
         // Show busy overlay
         this.showBusy('Creating PRG File', 'Preparing components...');

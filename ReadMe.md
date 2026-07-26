@@ -70,7 +70,7 @@ SIDquake includes 9 visualizer templates that can be linked with any SID tune to
 ### PRG Export
 - Automatic memory layout planning to avoid collisions between music and player code
 - Multiple load address options ($4000, $8000, $C000) with automatic selection
-- TSCrunch or Exomizer compression for smaller executables (TSCrunch depacks fastest; Exomizer packs ~9-16% tighter)
+- Exomizer or TSCrunch compression for smaller executables (Exomizer is the default and packs ~9-16% tighter; TSCrunch depacks ~4x faster)
 - Custom metadata: edit song title, author, and copyright before export
 - Custom logos: import PNG or Koala images, or use PETSCII text art
 - Bar style and colour effect customization for spectrum visualizers (height pulse, fixed gradients, rainbow columns, per-waveform colouring)
