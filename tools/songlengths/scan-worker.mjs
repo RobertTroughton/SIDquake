@@ -92,6 +92,10 @@ async function runAnalysis(sidBytes, task, maxSeconds) {
 
 async function analyzeOne(task) {
     const sidBytes = new Uint8Array(await readFile(path.join(workerData.hvscDir, task.sidPath)));
+    // Record PSID vs RSID per result so the journal is self-describing - the report
+    // shouldn't have to go back to the files (or to scan.mjs's cache) to show it.
+    const isRsid = sidBytes.length >= 4 &&
+        sidBytes[0] === 0x52 && sidBytes[1] === 0x53 && sidBytes[2] === 0x49 && sidBytes[3] === 0x44;
     // An explicit budget (a --only recheck pass) overrides the HVSC-derived one.
     let maxSeconds = task.forceBudget || firstBudget(task.hvscMs);
     let r = await runAnalysis(sidBytes, task, maxSeconds);
@@ -104,6 +108,7 @@ async function analyzeOne(task) {
     const frameHz = r.frameHzExact || r.frameHz;
     return {
         escalated,
+        rsid: isRsid ? 1 : 0,
         md5: task.md5,
         sidPath: task.sidPath,
         subtune: task.subtune,

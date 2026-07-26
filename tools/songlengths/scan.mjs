@@ -26,8 +26,8 @@
  *   --only <classes> re-measure entries ALREADY in the journal whose class is in
  *                    this comma-separated list, e.g. --only capped,error
  *   --budget <s>     fixed scan window for a --only pass (default: --max-budget)
- *   --include-rsid   keep RSID tunes (excluded by default)
- *   --include-basic  keep C64-BASIC tunes (excluded by default)
+ *   --exclude-rsid   drop RSID tunes (kept by default - they render fine)
+ *   --include-basic  keep C64-BASIC tunes (excluded by default - they play nothing)
  *
  * USING HVSC'S OWN NUMBERS. Their length tells us roughly how much audio to
  * render: confirming a loop needs a bit over two passes of it, so the first
@@ -83,10 +83,12 @@ const ESCALATE = flags['no-escalate'] ? false : true;
 const ONLY = typeof flags.only === 'string'
     ? flags.only.split(',').map(s => s.trim()).filter(Boolean) : null;
 const FORCE_BUDGET = Number(flags.budget) || 0;
-// RSID and C64-BASIC tunes are excluded by default - see sid-kind.mjs. The filter
+// C64-BASIC tunes are excluded by default: nothing drives the SID, so they measure
+// as nothing. Plain RSID tunes are KEPT - measured against libsidplayfp they render
+// perfectly well, and dropping them would lose ~3,300 tunes for no gain. The filter
 // runs BEFORE --limit, so asking for 100 songs still measures 100 real ones rather
 // than 100 candidates of which some are dropped.
-const INCLUDE_RSID = !!flags['include-rsid'];
+const INCLUDE_RSID = !flags['exclude-rsid'];
 const INCLUDE_BASIC = !!flags['include-basic'];
 
 for (const [label, p] of [['Songlengths.md5', MD5], ['HVSC folder', HVSC]]) {
@@ -123,10 +125,10 @@ console.log(`  ${tasks.length.toLocaleString()} subtunes listed`);
 // journal and reused until the source list changes.
 const kindCachePath = path.join(OUT, 'sid-kinds.json');
 const md5Stat = fs.statSync(MD5);
-// The cache stores the skip DECISION, which depends on the include flags, so those
-// belong in the key too - otherwise --include-rsid would reuse verdicts made
-// without it and quietly change nothing.
-const kindKey = `${MD5}|${md5Stat.size}|${md5Stat.mtimeMs}|${HVSC}|r${INCLUDE_RSID ? 1 : 0}b${INCLUDE_BASIC ? 1 : 0}`;
+// The cache holds the header FACTS, not the skip decision - the decision depends on
+// the include flags and is recomputed each run, so toggling a flag can't be served a
+// stale verdict. report.mjs reads the same file for its Format column.
+const kindKey = `${MD5}|${md5Stat.size}|${md5Stat.mtimeMs}|${HVSC}`;
 let kinds = null;
 try {
     const cached = JSON.parse(fs.readFileSync(kindCachePath, 'utf8'));
@@ -140,7 +142,12 @@ if (!kinds) {
     for (let i = 0; i < paths.length; i += CONC) {
         const slice = paths.slice(i, i + CONC);
         const got = await Promise.all(slice.map(p => readSidKind(path.join(HVSC, p))));
-        slice.forEach((p, j) => { kinds[p] = skipReason(got[j], { includeRsid: INCLUDE_RSID, includeBasic: INCLUDE_BASIC }); });
+        // Store only the compact flags, not the header strings - this file has one
+        // entry per SID and is read back by report.mjs too.
+        slice.forEach((p, j) => {
+            const k = got[j];
+            kinds[p] = k ? { rsid: k.rsid, basic: k.basic, mus: k.mus } : null;
+        });
     }
     fs.writeFileSync(kindCachePath, JSON.stringify({ key: kindKey, kinds }));
     process.stdout.write('done\n');
@@ -148,7 +155,7 @@ if (!kinds) {
 
 const skipCounts = {};
 tasks = tasks.filter(t => {
-    const why = kinds[t.sidPath];
+    const why = skipReason(kinds[t.sidPath], { includeRsid: INCLUDE_RSID, includeBasic: INCLUDE_BASIC });
     if (!why) return true;
     skipCounts[why] = (skipCounts[why] || 0) + 1;
     return false;
@@ -157,7 +164,7 @@ const skipped = Object.entries(skipCounts);
 if (skipped.length) {
     console.log(`  excluded ${skipped.reduce((n, [, v]) => n + v, 0).toLocaleString()} subtunes: ` +
         skipped.map(([k, v]) => `${v.toLocaleString()} ${k}`).join(', ') +
-        `${INCLUDE_RSID || INCLUDE_BASIC ? '' : '  (--include-rsid / --include-basic to keep them)'}`);
+        `${INCLUDE_BASIC ? '' : '  (--include-basic to keep them)'}`);
 }
 console.log(`  ${tasks.length.toLocaleString()} subtunes to measure`);
 
