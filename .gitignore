@@ -33,3 +33,4 @@ node_modules/
 # Per-tune share metadata shards for the tune-og edge function: generated
 # from hvsc-index.json at build time (npm run build-share-meta).
 /public/share-meta/
+/CSDbMusicFetch/xml
