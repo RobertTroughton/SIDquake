@@ -146,6 +146,15 @@ async function renderAndAnalyze(sidBytes, loadEngine, options = {}) {
     // few silent seconds of intro can never trip it.
     const SILENCE_LEVEL = 0.004;                // |sample| under this ~= silence (~-48 dB)
     const SILENCE_STOP = Math.floor(sampleRate * 10);
+    // A tune that has not made a sound YET is a different case from one that has
+    // stopped, and it used to be handled by not handling it: the stop below was
+    // gated on sawSignal, so a render that was silent from the first sample never
+    // ended early, never qualified as a dead render, and never triggered the
+    // libsidplayfp rescue. It burned the whole scan budget and then reported a
+    // length of zero. Give it its own, more patient threshold - a tune really can
+    // open with a long quiet passage, and if we cut one short the rescue re-scans
+    // it on the accurate engine anyway.
+    const NEVER_SOUNDED_STOP = SILENCE_STOP * 2;
     let rendered = 0, sinceYield = 0, sinceCheck = 0, foundLoop = false;
     let silentRun = 0, sawSignal = false, stoppedOnSilence = false;
     // The Int16 view onto the engine's output buffer is re-derived only when the WASM
@@ -173,10 +182,11 @@ async function renderAndAnalyze(sidBytes, loadEngine, options = {}) {
             rendered += got;
             // Long-silence early exit (only after the tune has actually made sound).
             if (peak >= SILENCE_LEVEL) { sawSignal = true; silentRun = 0; }
-            else if (sawSignal && (silentRun += got) >= SILENCE_STOP) {
+            else if ((silentRun += got) >= (sawSignal ? SILENCE_STOP : NEVER_SOUNDED_STOP)) {
                 stoppedOnSilence = true;
-                onProgress('Silence detected — the tune has ended', 1,
-                    { seconds: rendered / sampleRate, totalSeconds: maxSeconds, loopFound: true });
+                onProgress(sawSignal ? 'Silence detected — the tune has ended'
+                                     : 'No audio from this engine — rescanning', 1,
+                    { seconds: rendered / sampleRate, totalSeconds: maxSeconds, loopFound: sawSignal });
                 break;
             }
             if ((sinceCheck += got) >= checkInterval(rendered)) {
@@ -231,8 +241,9 @@ async function renderAndAnalyze(sidBytes, loadEngine, options = {}) {
         rows: session.rows(),
         renderedSeconds: session.fedSeconds(),
         hitCap: !foundLoop && rendered >= total,
-        // The render went quiet almost immediately - see renderWithFallback.
-        deadRender: stoppedOnSilence && (rendered / sampleRate) < DEAD_RENDER_SECONDS,
+        // Nothing usable came out of this engine - see renderWithFallback. Either
+        // the tune never made a sound at all, or it went quiet almost immediately.
+        deadRender: !sawSignal || (stoppedOnSilence && (rendered / sampleRate) < DEAD_RENDER_SECONDS),
     };
 }
 
