@@ -1403,6 +1403,12 @@ class UIController {
                 // budget, so a shorter stream buys back spectral detail - see
                 // UIController.STORED_LENGTH_CHOICES.
                 storedSeconds: Number.isFinite(s.storedSeconds) ? Math.min(600, Math.max(30, s.storedSeconds)) : 480,
+                // SID engine the spectrometer analysis renders with. 'fp'
+                // (libsidplayfp) is the default because it plays every tune; 'resid'
+                // (the lightweight core in sidquake.wasm) is ~2.1x faster but gets a
+                // different bake on roughly a quarter of tunes and cannot play some
+                // at all. See spectrometer-bake-core.js for the measurements.
+                bakeEngine: (s.bakeEngine === 'fp' || s.bakeEngine === 'resid') ? s.bakeEngine : 'fp',
                 open: !!s.open,
             };
         }
@@ -1439,6 +1445,16 @@ class UIController {
                     <select id="advStoredLen" class="number-input">${len}</select>
                 </div>
             </div>
+            <div class="option-row">
+                <label class="option-label" for="advBakeEngine">Analysis SID engine</label>
+                <div class="option-control">
+                    <select id="advBakeEngine" class="number-input">
+                        <option value="fp"${a.bakeEngine === 'fp' ? ' selected' : ''}>libsidplayfp (accurate, the default)</option>
+                        <option value="resid"${a.bakeEngine === 'resid' ? ' selected' : ''}>reSID (about twice as fast)</option>
+                    </select>
+                </div>
+            </div>
+            <p class="flow-note">Which SID core renders the tune while the bars are analysed. libsidplayfp runs a full C64, so it plays everything. reSID scans about twice as fast, but it has no C64 environment — it bakes different bars on some tunes, and any it can't play at all are re-scanned on libsidplayfp automatically. Playback is unaffected either way.</p>
         </div>`;
     }
 
@@ -1471,6 +1487,17 @@ class UIController {
             const cur = this._advanced || {};
             cur.storedSeconds = parseInt(len.value, 10) || 480;
             this._advanced = cur;
+            save();
+        });
+        const eng = document.getElementById('advBakeEngine');
+        if (eng) eng.addEventListener('change', () => {
+            const cur = this._advanced || {};
+            cur.bakeEngine = eng.value === 'resid' ? 'resid' : 'fp';
+            this._advanced = cur;
+            // The rendered rows are engine-specific, so a previous analysis of this
+            // tune no longer describes what an export would bake. Drop it; the next
+            // analyse/export re-renders on the newly chosen engine.
+            this.tuneAnalysis = null;
             save();
         });
     }
@@ -2937,6 +2964,9 @@ class UIController {
                 maxLoopSeconds: adv.maxLoopSeconds,
                 minLoopSeconds: adv.minLoopSeconds,
                 outputMaxSeconds: adv.storedSeconds,
+                // Must match the engine the analysis above rendered with, or the
+                // export would re-render (and could resolve a different loop).
+                bakeEngine: adv.bakeEngine,
             };
         } else if (!multiSong && !this.tuneAnalysis) {
             // Every visualizer benefits from knowing how the song ends: players with
@@ -3813,6 +3843,7 @@ class UIController {
                 subtune: defaultSong, numBars: 40, maxHeight: 111,
                 maxSeconds: Math.max(30, maxLoopSeconds * 2),
                 minLoopSeconds,
+                engine: adv.bakeEngine,
                 // Same cap the export will bake with, or the length/segment/memory
                 // figures shown here would not be the ones the PRG ends up storing.
                 outputMaxSeconds: adv.storedSeconds,
