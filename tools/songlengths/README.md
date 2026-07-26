@@ -25,7 +25,7 @@ Everything lands in `tools/songlengths/out/`.
 |---|---|
 | `Songlengths.ours.md5` | HVSC's file byte-for-byte, except the times we disagree with by more than `--threshold` (default 1 s). Comments, ordering and CRLF line endings are all preserved, so `diff` against the original shows exactly what changed and nothing else. |
 | `Songlengths.frames.txt` | Our measurements with raster-frame counts as well as times: intro length, loop period, total length, and PAL/NTSC. Format is documented in the file's own header. |
-| `songlengths-report.html` | Sortable, filterable table of every subtune. Click a column to sort, click the class chips to filter, type to search paths. **Folder** and **File** are separate columns and both link into your local HVSC tree, so you can jump straight to a tune from a suspicious row. |
+| `songlengths-report.html` | Sortable, filterable table of every subtune. Click a column to sort, click the class chips to filter, type to search paths. **Folder** and **File** are separate columns and both link into the deployed HVSC Browser (`--site-url`, default `sidquake.c64demo.com`), so you can jump straight to a tune from a suspicious row even after sharing the report. |
 
 Entries we could not measure confidently — the scan budget ran out, the tune
 failed to render, no loop or ending was found — are **never** written into
@@ -112,6 +112,7 @@ Use `--redo` to throw the journal away and start over.
 | `--out <dir>` | `tools/songlengths/out` | where the journal is |
 | `--md5 <file>` | from `run-meta.json` | source list |
 | `--threshold <s>` | 1.0 | how far apart before we rewrite an entry |
+| `--site-url <url>` | `https://sidquake.c64demo.com` | where the Folder/File links point |
 
 ## Using HVSC's own numbers to help us
 
