@@ -1557,6 +1557,10 @@ class SIDquakePRGExporter {
         // that counts as the tune having looped. Must match the value the
         // on-load analysis used, or the bake could resolve a different loop.
         const minLoopSeconds = (bakeParams && bakeParams.minLoopSeconds) || 2;
+        // SID engine the analysis renders with (Advanced setting): 'fp' (libsidplayfp)
+        // is the accurate default, 'resid' the ~2x faster opt-in. It has to match what
+        // the on-load analysis used, or this export re-renders the tune from scratch.
+        const bakeEngine = (bakeParams && bakeParams.bakeEngine) === 'resid' ? 'resid' : 'fp';
         // How much of a NON-looping tune to store (Advanced setting). A shorter
         // stream costs fewer index bytes per keyframe, which is what buys back the
         // 5-way spectral split - see chooseSegments in spectrometer-bake.js. No
@@ -1578,6 +1582,7 @@ class SIDquakePRGExporter {
             maxHeight: vizConfig.bakedMaxHeight,
             framesPerKeyframe,
             minLoopSeconds,
+            engine: bakeEngine,
             // Forced song loop for fade-out tunes: the bake trims the silent tail
             // and wraps the stream to keyframe 0; the player restarts the music on
             // that wrap (no-op for tunes with a real detected loop).

@@ -10,7 +10,7 @@
 //   codebook[K][NUM_BARS]  : K prototype "column shapes", one byte per bar (0..maxHeight)
 //   indices[segments][numKeyframes] : one byte per 25 Hz keyframe per segment,
 //                            stored PLANAR (all of segment 0's indices, then all
-//                            of segment 1's, ...) - see bakeFromTargets
+//                            of segment 1's, ...) - see bakeFromStore
 //
 // On the C64, every other frame reads one index byte per segment, points at that
 // segment's codebook entries, and copies them into targetBarHeights; the player's
@@ -63,6 +63,13 @@ function softKnee(x) {
 //                  broadband moments sit below the top rows (matters most on the
 //                  short-display players, where 85% already looks full)
 const NORM_STRENGTH = 0.5, NORM_PCTL = 0.96, NORM_DEAD_FRAC = 0.18, NORM_HEADROOM = 0.72;
+
+// Buckets in the per-band value histogram (see createRowStore). Raw row values are
+// Math.pow(t, GAMMA) with t in [0,1], so the range is fixed at [0,1] and a plain
+// uniform histogram is exact to +/-1/(2*HIST_BUCKETS) ~= 0.00012 - two orders of
+// magnitude finer than the 1/111 step the values are eventually quantized to, so
+// the percentile it reports lands on the same bar height as an exact sort.
+const HIST_BUCKETS = 4096;
 
 const DEFAULTS = {
     numBars: 40,          // RaistlinBars NUM_FREQUENCY_BARS
@@ -187,6 +194,82 @@ export const yieldToEventLoop = (() => {
 })();
 const microYield = yieldToEventLoop;
 
+// Growable store for the analyzer's per-frame rows.
+//
+// The rows used to be an array of one Float64Array(numBars) per frame. A 10-minute
+// analysis is ~30k frames, so that is ~30k separate little heap objects scattered
+// across memory, and every later pass (whitening, quantizing) walks all of them.
+// One flat, geometrically-grown Float32Array instead keeps the whole set contiguous
+// and halves its footprint (9.6 MB -> 4.8 MB at 10 minutes): the values are 0..1 and
+// end up quantized to 0..111, so float32's ~7 digits are far more than enough.
+//
+// The store also carries a per-band histogram of the raw values, updated one row at
+// a time as frames arrive. That is what makes the whitening percentile cheap: see
+// bandRefs(). Sorting each band's column instead (the old approach) cost
+// O(numBars * n log n) AND read the column with a numBars-wide stride, i.e. a fresh
+// cache line for every single element - and the incremental render repeats the whole
+// thing at every loop poll, so it was quadratic in the tune's length.
+function createRowStore(numBars) {
+    return {
+        numBars,
+        count: 0,
+        data: new Float32Array(numBars * 1024),
+        hist: new Int32Array(numBars * HIST_BUCKETS),
+        push(row) {
+            const nb = this.numBars;
+            if ((this.count + 1) * nb > this.data.length) {
+                const grown = new Float32Array(this.data.length * 2);
+                grown.set(this.data);
+                this.data = grown;
+            }
+            const off = this.count * nb;
+            for (let b = 0; b < nb; b++) {
+                const v = row[b];
+                this.data[off + b] = v;
+                let bucket = (v * HIST_BUCKETS) | 0;
+                if (bucket < 0) bucket = 0; else if (bucket >= HIST_BUCKETS) bucket = HIST_BUCKETS - 1;
+                this.hist[b * HIST_BUCKETS + bucket]++;
+            }
+            this.count++;
+        },
+    };
+}
+
+// Accept either a row store or the legacy array-of-Float64Array form (the offline
+// harness and the unit tests still build rows that way), so every downstream stage
+// has exactly one shape to deal with.
+function asRowStore(rows, numBars) {
+    if (rows && rows.data instanceof Float32Array && typeof rows.count === 'number') return rows;
+    const nb = numBars || (rows.length ? rows[0].length : 0);
+    const store = createRowStore(nb);
+    for (let i = 0; i < rows.length; i++) store.push(rows[i]);
+    return store;
+}
+
+// Per-band "busy level" (the NORM_PCTL percentile of that band's values over the
+// whole tune) read straight off the histogram: one pass over HIST_BUCKETS per band,
+// independent of how many frames have been analysed. Returns { ref, floor }.
+function bandRefs(store) {
+    const nb = store.numBars, n = store.count;
+    const ref = new Float64Array(nb);
+    let globalRef = 0;
+    for (let b = 0; b < nb; b++) {
+        // Same rank the old col.sort() + index picked, resolved through cumulative
+        // bucket counts; the bucket's centre stands in for the exact sample.
+        const rank = Math.min(n - 1, Math.floor(n * NORM_PCTL));
+        const base = b * HIST_BUCKETS;
+        let cum = 0, bucket = HIST_BUCKETS - 1;
+        for (let k = 0; k < HIST_BUCKETS; k++) {
+            cum += store.hist[base + k];
+            if (cum > rank) { bucket = k; break; }
+        }
+        const p = (bucket + 0.5) / HIST_BUCKETS;
+        ref[b] = p;
+        if (p > globalRef) globalRef = p;
+    }
+    return { ref, floor: globalRef * NORM_DEAD_FRAC };
+}
+
 // Stateful per-frame FFT analyzer. Feed PCM chunks as they render; it computes
 // every frame whose Blackman window is fully covered, carrying the temporal-
 // smoothing state across chunks so a chunked (incremental) render yields exactly
@@ -205,9 +288,15 @@ function createFftAnalyzer(sampleRate, numBars, frameHz, fMin, fMax) {
     const re = new Float64Array(N), im = new Float64Array(N);
     const smoothed = new Float64Array(BINS);
     const byteBin = new Float64Array(BINS);
-    const rows = [];          // Float64Array(numBars) per frame, raw (pre-whitening)
+    const rows = createRowStore(numBars);   // raw per-frame values (pre-whitening)
+    const row = new Float64Array(numBars);  // scratch, copied into the store per frame
     let next = 0;             // index of the next frame to compute
-    let buf = new Float32Array(0);   // PCM tail not yet consumed
+    // PCM tail not yet consumed, held in a fixed buffer that is compacted in place.
+    // Only a window's worth (N) plus at most one fed chunk is ever live, so the
+    // buffer settles at a steady size instead of being reallocated and fully copied
+    // on every 8 K-sample chunk (~1600 allocations per 5 minutes of audio).
+    let buf = new Float32Array(N * 2);
+    let len = 0;              // valid samples in buf
     let base = 0;             // global sample index of buf[0]
 
     const computeRow = (off) => {     // off = start of the window within buf
@@ -220,7 +309,6 @@ function createFftAnalyzer(sampleRate, numBars, frameHz, fMin, fMax) {
             const byte = (db - MIN_DB) / (MAX_DB - MIN_DB);
             byteBin[i] = byte < 0 ? 0 : byte > 1 ? 255 : byte * 255;   // getByteFrequencyData
         }
-        const row = new Float64Array(numBars);
         for (let b = 0; b < numBars; b++) {
             let m = 0, sum = 0;
             for (let i = lo[b]; i < hi[b]; i++) { const v = byteBin[i]; if (v > m) m = v; sum += v; }
@@ -242,59 +330,110 @@ function createFftAnalyzer(sampleRate, numBars, frameHz, fMin, fMax) {
         // single-shot pass - so accumulating chunks yields exactly the same frames.
         feed(chunk) {
             if (chunk && chunk.length) {
-                const nb = new Float32Array(buf.length + chunk.length);
-                nb.set(buf); nb.set(chunk, buf.length); buf = nb;
+                if (len + chunk.length > buf.length) {
+                    let cap = buf.length;
+                    while (cap < len + chunk.length) cap *= 2;
+                    const grown = new Float32Array(cap);
+                    grown.set(buf.subarray(0, len));
+                    buf = grown;
+                }
+                buf.set(chunk, len);
+                len += chunk.length;
             }
-            const avail = base + buf.length;              // global samples in [base, avail)
+            const avail = base + len;                     // global samples in [base, avail)
             const limit = Math.floor((avail - N) / hop);  // frames whose window fits
             while (next < limit) { computeRow(Math.round(next * hop) - base); next++; }
-            // Drop PCM below the next unprocessed frame's window start.
+            // Drop PCM below the next unprocessed frame's window start, compacting in
+            // place (copyWithin) rather than allocating a fresh view each chunk.
             const keep = Math.min(Math.round(next * hop), avail - N);
-            if (keep > base) { buf = buf.subarray(keep - base); base = keep; }
+            if (keep > base) {
+                const drop = keep - base;
+                buf.copyWithin(0, drop, len);
+                len -= drop;
+                base = keep;
+            }
         },
     };
 }
 
-// Global per-band whitening over the raw rows -> flat Float64Array[frames*numBars].
-// Divides each band by its own busy-level (a high percentile over the whole tune)
-// so every band carrying signal reaches full height, flattening the constant
+// Global per-band whitening + quantization, fused into one sequential pass over the
+// row store and written straight into a 0..maxHeight byte grid.
+//
+// Whitening divides each band by its own busy-level (a high percentile over the whole
+// tune) so every band carrying signal reaches full height, flattening the constant
 // bass->treble ramp; a global floor keeps genuinely dead bands low.
-function whitenRows(rows, numBars) {
-    const nframes = rows.length;
-    const out = new Float64Array(nframes * numBars);
-    for (let fi = 0; fi < nframes; fi++) { const r = rows[fi], o = fi * numBars; for (let b = 0; b < numBars; b++) out[o + b] = r[b]; }
-    if (NORM_STRENGTH > 0 && nframes > 1) {
-        const ref = new Float64Array(numBars);
-        const col = new Float64Array(nframes);
-        let globalRef = 0;
-        for (let b = 0; b < numBars; b++) {
-            for (let fi = 0; fi < nframes; fi++) col[fi] = out[fi * numBars + b];
-            col.sort();   // typed-array sort is numeric ascending
-            const p = col[Math.min(nframes - 1, Math.floor(nframes * NORM_PCTL))];
-            ref[b] = p;
-            if (p > globalRef) globalRef = p;
-        }
-        const floor = globalRef * NORM_DEAD_FRAC;
-        for (let b = 0; b < numBars; b++) {
-            const denom = Math.max(ref[b], floor, 1e-6);
-            for (let fi = 0; fi < nframes; fi++) {
-                const raw = out[fi * numBars + b];
+//
+// Fusing matters because the loop poll runs this over the whole stream every ~15 s of
+// audio. Separately, the old shape allocated a Float64Array(frames*numBars) - 9.6 MB
+// at 10 minutes - handed it to quantizeGrid, which allocated the byte grid on top,
+// and did both the percentile gather and the normalize pass with a numBars-wide
+// stride (one cache line per element). This walks the rows in memory order, reads the
+// percentiles off the store's histogram, and writes bytes into a caller-owned buffer.
+//
+// `stride` decimates (1 = the full frame grid, `step` = the keyframe grid); `nRows`
+// is how many output rows to write; `out`, if given, is reused instead of allocated.
+function whitenQuantize(store, maxHeight, stride, nRows, out) {
+    const nb = store.numBars, src = store.data;
+    const need = nRows * nb;
+    if (!out || out.length < need) out = new Uint8Array(need);
+    const whiten = NORM_STRENGTH > 0 && store.count > 1;
+    // Per-band divisor, resolved once rather than per element.
+    let denom = null;
+    if (whiten) {
+        const { ref, floor } = bandRefs(store);
+        denom = new Float64Array(nb);
+        for (let b = 0; b < nb; b++) denom[b] = Math.max(ref[b], floor, 1e-6);
+    }
+    for (let k = 0; k < nRows; k++) {
+        const so = k * stride * nb, oo = k * nb;
+        for (let b = 0; b < nb; b++) {
+            const raw = src[so + b];
+            let v = raw;
+            if (whiten) {
                 // busy level -> NORM_HEADROOM; clamp so a quiet band's brief spike
                 // (divided by its tiny floor) can't explode past the ceiling and pin
                 // the bar to full white.
-                let norm = raw / denom * NORM_HEADROOM;
+                let norm = raw / denom[b] * NORM_HEADROOM;
                 if (norm > 1) norm = 1;
-                const blended = (1 - NORM_STRENGTH) * raw + NORM_STRENGTH * norm;
-                out[fi * numBars + b] = softKnee(blended); // roll off the top instead of clipping flat
+                v = softKnee((1 - NORM_STRENGTH) * raw + NORM_STRENGTH * norm);  // roll off the top instead of clipping flat
             }
+            const q = Math.round(v * maxHeight);
+            out[oo + b] = q < 0 ? 0 : q > maxHeight ? maxHeight : q;
         }
     }
     return out;
 }
 
-// Whole-PCM per-frame targets (non-incremental path: tests + the offline harness).
-// Thin wrapper over the analyzer + whitening so there's one source of truth.
-async function computeTargets(pcm, sampleRate, numBars, frameHz, onTick, fMin, fMax) {
+// Whitened per-frame targets as a flat Float64Array[frames*numBars]. Only the offline
+// harness and the tests want the un-quantized values now; the live paths all go
+// through whitenQuantize above.
+function whitenRows(rows, numBars) {
+    const store = asRowStore(rows, numBars);
+    const nb = store.numBars, n = store.count;
+    const out = new Float64Array(n * nb);
+    const whiten = NORM_STRENGTH > 0 && n > 1;
+    let denom = null;
+    if (whiten) {
+        const { ref, floor } = bandRefs(store);
+        denom = new Float64Array(nb);
+        for (let b = 0; b < nb; b++) denom[b] = Math.max(ref[b], floor, 1e-6);
+    }
+    for (let k = 0; k < n; k++) {
+        const o = k * nb;
+        for (let b = 0; b < nb; b++) {
+            const raw = store.data[o + b];
+            if (!whiten) { out[o + b] = raw; continue; }
+            let norm = raw / denom[b] * NORM_HEADROOM;
+            if (norm > 1) norm = 1;
+            out[o + b] = softKnee((1 - NORM_STRENGTH) * raw + NORM_STRENGTH * norm);
+        }
+    }
+    return out;
+}
+
+// Whole-PCM analysis (non-incremental path: tests + the offline harness). Thin
+// wrapper over the analyzer so there's one source of truth; returns the row store.
+async function computeRowStore(pcm, sampleRate, numBars, frameHz, onTick, fMin, fMax) {
     const an = createFftAnalyzer(sampleRate, numBars, frameHz, fMin, fMax);
     const hop = sampleRate / frameHz;
     const total = Math.max(0, Math.floor((pcm.length - N) / hop));
@@ -302,9 +441,15 @@ async function computeTargets(pcm, sampleRate, numBars, frameHz, onTick, fMin, f
     for (let s = 0; s < pcm.length; s += CHUNK) {
         const end = Math.min(pcm.length, s + CHUNK);
         an.feed(pcm.subarray(s, end));
-        if (onTick) await onTick(Math.min(1, an.rows.length / (total || 1)));
+        if (onTick) await onTick(Math.min(1, an.rows.count / (total || 1)));
     }
-    return { targets: whitenRows(an.rows, numBars), nframes: an.rows.length };
+    return an.rows;
+}
+
+// Back-compat shim for the offline harness: whitened targets + frame count.
+async function computeTargets(pcm, sampleRate, numBars, frameHz, onTick, fMin, fMax) {
+    const store = await computeRowStore(pcm, sampleRate, numBars, frameHz, onTick, fMin, fMax);
+    return { targets: whitenRows(store, numBars), nframes: store.count };
 }
 
 // deterministic PRNG so exports are reproducible (kmeans++ seeding)
@@ -504,7 +649,7 @@ function detectLoop(kf, nk, numBars, maxHeight, keyframeHz = 25, minLoopSeconds 
     return { loopStart: I, loopEnd: I + P };
 }
 
-// Main entry: mono PCM -> packed baked spectrometer data. See bakeFromTargets for
+// Main entry: mono PCM -> packed baked spectrometer data. See bakeFromStore for
 // the returned shape. (The incremental render path uses createBakeSession instead,
 // so it never buffers the whole tune; this stays for tests + the offline harness.)
 export async function bakeSpectrometer(pcm, sampleRate, options = {}) {
@@ -519,9 +664,9 @@ export async function bakeSpectrometer(pcm, sampleRate, options = {}) {
     const hitCap = pcm.length >= maxSamples;
     if (pcm.length > maxSamples) pcm = pcm.subarray ? pcm.subarray(0, maxSamples) : pcm.slice(0, maxSamples);
 
-    const { targets, nframes } = await computeTargets(pcm, sampleRate, o.numBars, o.frameHz,
+    const store = await computeRowStore(pcm, sampleRate, o.numBars, o.frameHz,
         async (f) => { prog('Analyzing spectrum', f); await microYield(); }, o.fMin, o.fMax);
-    return bakeFromTargets(targets, nframes, o, pcm.length / sampleRate, hitCap, prog);
+    return bakeFromStore(store, o, pcm.length / sampleRate, hitCap, prog);
 }
 
 // Incremental bake session: feed rendered PCM chunks, poll tryLoop() to stop the
@@ -533,6 +678,11 @@ export function createBakeSession(sampleRate, options = {}) {
     o.keyframeHz = o.frameHz / (o.framesPerKeyframe || 2);
     const an = createFftAnalyzer(sampleRate, o.numBars, o.frameHz, o.fMin, o.fMax);
     let fedSamples = 0;
+    // Scratch grid reused by every poll. It only ever grows, so after the first few
+    // polls a poll allocates nothing at all - previously each one threw away a
+    // Float64Array(frames*numBars) (9.6 MB at 10 minutes) plus a fresh byte grid,
+    // ~80 times over a full 20-minute scan.
+    let pollGrid = null;
     return {
         feed(chunk) { an.feed(chunk); fedSamples += chunk.length; },
         rows() { return an.rows; },
@@ -542,10 +692,10 @@ export function createBakeSession(sampleRate, options = {}) {
         // reason as resolveKeyframes: an odd-frame loop is invisible on the
         // keyframe grid. The caller only uses the truthiness to stop the render.
         tryLoop() {
-            const nframes = an.rows.length;
+            const nframes = an.rows.count;
             if (nframes < 8) return null;
-            const kfF = quantizeGrid(whitenRows(an.rows, o.numBars), nframes, 1, o.numBars, o.maxHeight);
-            return detectLoop(kfF, nframes, o.numBars, o.maxHeight, o.frameHz, o.minLoopSeconds);
+            pollGrid = whitenQuantize(an.rows, o.maxHeight, 1, nframes, pollGrid);
+            return detectLoop(pollGrid, nframes, o.numBars, o.maxHeight, o.frameHz, o.minLoopSeconds);
         },
     };
 }
@@ -557,21 +707,9 @@ export function createBakeSession(sampleRate, options = {}) {
 export async function bakeRows(rows, options = {}) {
     const o = { ...DEFAULTS, ...options };
     o.keyframeHz = o.frameHz / (o.framesPerKeyframe || 2);
-    const targets = whitenRows(rows, o.numBars);
-    const analyzedSeconds = options.analyzedSeconds != null ? options.analyzedSeconds : rows.length / o.frameHz;
-    return bakeFromTargets(targets, rows.length, o, analyzedSeconds, !!options.hitCap, o.onProgress || (() => {}));
-}
-
-// Quantize whitened targets to 0..maxHeight bar heights on a decimated grid
-// (one row per `stride` frames). stride=1 is the full frame-rate grid.
-function quantizeGrid(targets, nRows, stride, numBars, maxHeight) {
-    const out = new Uint8Array(nRows * numBars);
-    for (let k = 0; k < nRows; k++) {
-        const src = k * stride * numBars;
-        for (let b = 0; b < numBars; b++)
-            out[k * numBars + b] = Math.max(0, Math.min(maxHeight, Math.round(targets[src + b] * maxHeight)));
-    }
-    return out;
+    const store = asRowStore(rows, o.numBars);
+    const analyzedSeconds = options.analyzedSeconds != null ? options.analyzedSeconds : store.count / o.frameHz;
+    return bakeFromStore(store, o, analyzedSeconds, !!options.hitCap, o.onProgress || (() => {}));
 }
 
 // Shared front half: decimate the per-frame targets to keyframes and resolve the
@@ -579,11 +717,12 @@ function quantizeGrid(targets, nRows, stride, numBars, maxHeight) {
 // Both the full bake and the lightweight analysis (analyzeRows) run this - the loop /
 // length figures the UI shows must match what an export actually stores. Returns
 // { kf, nk, step, loopStart, looped, fadedOut, analyzedKeyframes }.
-function resolveKeyframes(targets, nframes, o) {
-    // decimate frameHz -> keyframeHz and quantize to 0..maxHeight
+function resolveKeyframes(store, o) {
+    const nframes = store.count;
+    // decimate frameHz -> keyframeHz, whiten and quantize to 0..maxHeight
     const step = Math.max(1, Math.round(o.frameHz / o.keyframeHz));
     let nk = Math.floor(nframes / step);
-    let kf = quantizeGrid(targets, nk, step, o.numBars, o.maxHeight);
+    let kf = whitenQuantize(store, o.maxHeight, step, nk);
 
     // Trim redundant loop repeats: store intro + one cycle, wrap to loopStart.
     const analyzedKeyframes = nk;   // keyframes analysed before any loop trim
@@ -599,7 +738,7 @@ function resolveKeyframes(targets, nframes, o) {
     // residual 4.1 on the keyframe grid vs 2.0 at frame resolution). The frame-
     // exact result is rounded onto the keyframe grid afterwards; the worst-case
     // half-keyframe wrap drift per cycle is imperceptible next to "no loop found".
-    const kfF = step === 1 ? kf : quantizeGrid(targets, nframes, 1, o.numBars, o.maxHeight);
+    const kfF = step === 1 ? kf : whitenQuantize(store, o.maxHeight, 1, nframes);
     const loop = detectLoop(kfF, step === 1 ? nk : nframes, o.numBars, o.maxHeight, o.frameHz, o.minLoopSeconds);
     if (loop) {
         loopStart = Math.min(nk - 1, Math.round(loop.loopStart / step));
@@ -643,9 +782,9 @@ function resolveKeyframes(targets, nframes, o) {
 export function analyzeRows(rows, options = {}) {
     const o = { ...DEFAULTS, ...options };
     o.keyframeHz = o.frameHz / (o.framesPerKeyframe || 2);
-    const targets = whitenRows(rows, o.numBars);
-    const analyzedSeconds = options.analyzedSeconds != null ? options.analyzedSeconds : rows.length / o.frameHz;
-    const { nk, loopStart, looped, fadedOut, analyzedKeyframes } = resolveKeyframes(targets, rows.length, o);
+    const store = asRowStore(rows, o.numBars);
+    const analyzedSeconds = options.analyzedSeconds != null ? options.analyzedSeconds : store.count / o.frameHz;
+    const { nk, loopStart, looped, fadedOut, analyzedKeyframes } = resolveKeyframes(store, o);
     return {
         keyframeHz: o.keyframeHz, numKeyframes: nk, loopStart, looped, fadedOut,
         analyzedKeyframes, analyzedSeconds,
@@ -658,9 +797,9 @@ export function analyzeRows(rows, options = {}) {
 // loop (or fade-off), vector-quantize, and pack. Returns { codebook, indices,
 // numBars, maxHeight, K, keyframeHz, numKeyframes, loopStart, looped, fadedOut,
 // totalBytes, reconstruct() }.
-async function bakeFromTargets(targets, nframes, o, analyzedSeconds, hitCap, prog) {
+async function bakeFromStore(store, o, analyzedSeconds, hitCap, prog) {
     const { kf, nk, step, loopStart, looped, fadedOut, forcedLoop, analyzedKeyframes } =
-        resolveKeyframes(targets, nframes, o);
+        resolveKeyframes(store, o);
 
     // --- Split (product) vector quantization -------------------------------
     // Split the numBars-wide column into `SEG` groups of `segW` bars and quantize
@@ -749,7 +888,7 @@ async function bakeFromTargets(targets, nframes, o, analyzedSeconds, hitCap, pro
 // Estimate the packed size of a bake at a chosen keyframe rate, without baking.
 // Drives the fps memory display (#4): the stored duration is fps-independent, so a
 // single analysis at any rate gives `durationSeconds`, and this reports what each
-// rate would cost. Mirrors bakeFromTargets' segment-count choice so the figure
+// rate would cost. Mirrors bakeFromStore' segment-count choice so the figure
 // matches an actual export.
 //   durationSeconds  : stored length (intro+loop for a looped tune, else the
 //                      fade-capped length).
@@ -774,4 +913,8 @@ export function estimateBakeBytes(durationSeconds, options = {}) {
     return { framesPerKeyframe: fpk, keyframeHz, keyframes, segments, codebookBytes, indexBytes, bytes, fits: bytes <= ceiling };
 }
 
-export const _internals = { fft, computeBands, computeTargets, kmeans, DEFAULTS, whitenRows, detectLoop, resolveKeyframes };
+export const _internals = {
+    fft, computeBands, computeTargets, computeRowStore, kmeans, DEFAULTS,
+    whitenRows, whitenQuantize, createRowStore, asRowStore, bandRefs,
+    detectLoop, resolveKeyframes,
+};

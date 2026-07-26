@@ -1,322 +1,228 @@
-// spectrometer-bake-runner.js - browser glue that renders a tune to PCM with
-// the libsidplayfp WASM engine (public/sidplayfp.js) and hands it to
-// bakeSpectrometer() to produce the compressed FFT bar-height stream that the
-// baked RaistlinBars (FFT) player replays on the C64.
+// spectrometer-bake-runner.js - browser entry point for the baked FFT spectrometer.
 //
-// This mirrors the offline Node render harness used to validate the codec: it
-// drives audio_init / audio_load_sid / audio_generate directly (no
-// AudioWorklet / realtime playback), so it can render the whole tune far
-// faster than realtime.
+// The actual work (SID render -> FFT rows -> loop detection -> vector quantization)
+// lives in spectrometer-bake-core.js. This file only decides WHERE it runs:
+//
+//   - normally, in a Web Worker (spectrometer-bake-worker.js), so a multi-minute
+//     bake never blocks the page;
+//   - if Workers, dynamic import() inside one, or importScripts() are unavailable,
+//     on the main thread instead, exactly as before.
+//
+// Both paths return the same shapes, so callers (ui.js, prg-builder.js) don't care
+// which one ran.
+//
+// The render cache lives with whichever core is in use. In the worker that is
+// naturally one instance for the whole page. On the fallback path it has to be a
+// stable global rather than a module variable: the dev cache-buster appends ?t=<now>
+// to every dynamic import, so ui.js (analyse) and prg-builder.js (export bake) load
+// DIFFERENT module instances, and a module-level cache would be empty in the second
+// one and re-render the tune.
 
-// Loaded lazily (dynamic import) so the dev cache-buster applies to the baker too
-// - a static import would resolve ./spectrometer-bake.js without the ?t= query and
-// could be served stale on a local dev server.
-let _bakeMod = null;
-async function getBakeModule() {
-    if (!_bakeMod) {
-        const cb = (typeof window !== 'undefined' && window.cacheBust) || (s => s);
-        _bakeMod = await import(cb('./spectrometer-bake.js'));
-    }
-    return _bakeMod;
+import { createBakeCore, DEFAULT_ENGINE, normalizeEngine, abortError } from './spectrometer-bake-core.js';
+
+export { DEFAULT_ENGINE, normalizeEngine };
+
+// Options are structured-cloned to the worker, so the two function-valued ones have
+// to be stripped; they're re-attached on the worker side from the message channel.
+function cloneableOptions(options) {
+    const { onProgress, signal, ...rest } = options || {};
+    return rest;
 }
 
-async function loadSidplayfpModule() {
-    if (typeof SIDPlayfpModule !== 'function') {
-        if (typeof window !== 'undefined' && window.loadScript) {
-            await window.loadScript('sidplayfp.js');
-        } else {
-            await new Promise((resolve, reject) => {
-                const s = document.createElement('script');
-                s.src = (window.cacheBust || (x => x))('sidplayfp.js');
-                s.onload = resolve;
-                s.onerror = () => reject(new Error('failed to load sidplayfp.js'));
-                document.head.appendChild(s);
-            });
-        }
-    }
-    // eslint-disable-next-line no-undef
-    return SIDPlayfpModule();
-}
+// ---------------------------------------------------------------------------
+// Worker transport
 
-// The render (SID -> per-frame FFT rows) is the expensive stage and depends only
-// on the tune + subtune + bar count, not on maxHeight. So we cache the analysed
-// rows for the last tune, plus each finalized bake keyed by bar geometry: a new
-// tune re-renders (stopping early once its loop is found); switching to another
-// visualizer with the same bars re-runs only the cheap re-bake, or nothing if
-// that geometry is already baked.
-//
-// The cache lives on a stable global, NOT in a module variable: the dev cache-buster
-// appends ?t=<now> to every dynamic import, so ui.js (analyse) and prg-builder.js
-// (export bake) load DIFFERENT module instances - a module-level cache would be empty
-// in the second one and the tune would render twice. A shared global is seen by every
-// instance, so the render happens once and is reused across visualizer switches.
-const _cache = (() => {
+// All of this lives on a global, not in module scope, for the same reason the render
+// cache does: with the dev cache-buster, ui.js and prg-builder.js hold DIFFERENT
+// instances of this module. They share one worker (it is reached through this
+// object), so the pending-job table has to be shared too - otherwise only the
+// instance that happened to create the worker would ever see a reply, and jobs
+// started from the other one would hang forever.
+const workerState = (() => {
     const g = (typeof globalThis !== 'undefined') ? globalThis : {};
-    if (!g.__spectrometerCache) g.__spectrometerCache = { rows: null, bakes: new Map() };
-    return g.__spectrometerCache;
-})();
-// _cache.rows : { key, numBars, rows, frameHz, isNtsc, renderedSeconds, hitCap }
-// _cache.bakes: Map geometryKey -> bake result (valid while _cache.rows.key holds)
-
-// Cheap FNV-1a content hash so a fresh Uint8Array of the same tune still hits.
-function tuneKey(bytes, subtune, sampleRate, maxSeconds, minLoopSeconds) {
-    let h = 0x811c9dc5;
-    for (let i = 0; i < bytes.length; i++) { h ^= bytes[i]; h = Math.imul(h, 0x01000193); }
-    // minLoopSeconds (x10 -> integer) is part of the key: it changes the render's
-    // loop early-exit point, so a different threshold must re-render, not reuse.
-    for (const e of [subtune, sampleRate, maxSeconds, bytes.length, Math.round((minLoopSeconds || 2) * 10)]) {
-        h ^= (e | 0); h = Math.imul(h, 0x01000193);
+    if (!g.__spectrometerWorker) {
+        g.__spectrometerWorker = { promise: null, worker: null, failed: false, jobs: new Map(), nextId: 1 };
     }
-    return (h >>> 0).toString(16);
+    return g.__spectrometerWorker;
+})();
+
+// Resolves to a live worker, or null if this browser can't run one (the caller then
+// uses the main-thread core). Only ever probed once per page.
+function getWorker() {
+    if (workerState.failed) return Promise.resolve(null);
+    if (workerState.promise) return workerState.promise;
+    workerState.promise = new Promise((resolve) => {
+        if (typeof Worker === 'undefined') { workerState.failed = true; resolve(null); return; }
+        let worker;
+        try {
+            worker = new Worker(new URL('./spectrometer-bake-worker.js', import.meta.url));
+        } catch (e) {
+            workerState.failed = true; resolve(null); return;
+        }
+        // The worker proves it can dynamic-import the bake module and importScripts
+        // the engine glue before we commit to it; anything else means fall back.
+        const settle = (ok) => {
+            worker.removeEventListener('message', onMessage);
+            worker.removeEventListener('error', onError);
+            if (ok) {
+                workerState.worker = worker;
+                worker.addEventListener('message', onJobMessage);
+                resolve(worker);
+            } else {
+                workerState.failed = true;
+                try { worker.terminate(); } catch (e) { /* already gone */ }
+                resolve(null);
+            }
+        };
+        const onMessage = (ev) => {
+            if (!ev.data) return;
+            if (ev.data.type === 'ready') settle(true);
+            else if (ev.data.type === 'unsupported') {
+                console.warn('Spectrometer bake worker unavailable, running on the main thread:', ev.data.message);
+                settle(false);
+            }
+        };
+        const onError = () => settle(false);
+        worker.addEventListener('message', onMessage);
+        worker.addEventListener('error', onError);
+        // The dev cache-buster is a page-side helper; hand the worker its token so it
+        // busts the URLs it loads too.
+        const cb = (typeof window !== 'undefined' && window.cacheBust) || null;
+        const token = cb ? (cb('x').split('?')[1] || '') : '';
+        worker.postMessage({ type: 'init', cacheBust: token });
+    });
+    return workerState.promise;
 }
+
+function onJobMessage(ev) {
+    const msg = ev.data || {};
+    const job = workerState.jobs.get(msg.id);
+    if (!job) return;
+    if (msg.type === 'progress') {
+        try { job.onProgress(msg.label, msg.fraction, msg.extra); } catch (e) { /* UI callback threw; keep baking */ }
+    } else if (msg.type === 'done') {
+        workerState.jobs.delete(msg.id);
+        job.resolve(msg.result);
+    } else if (msg.type === 'error') {
+        workerState.jobs.delete(msg.id);
+        const e = new Error(msg.message);
+        e.name = msg.name || 'Error';
+        job.reject(e);
+    }
+}
+
+function runInWorker(worker, op, sidBytes, options) {
+    const id = workerState.nextId++;
+    const onProgress = options.onProgress || (() => {});
+    const signal = options.signal;
+    return new Promise((resolve, reject) => {
+        if (signal && signal.aborted) { reject(abortError()); return; }
+        workerState.jobs.set(id, { resolve, reject, onProgress });
+        if (signal) {
+            signal.addEventListener('abort', () => {
+                worker.postMessage({ type: 'abort', id });
+            }, { once: true });
+        }
+        // Copy the SID bytes so the caller keeps its own array usable, and transfer
+        // the copy rather than structured-cloning it.
+        const copy = sidBytes.slice();
+        worker.postMessage({ type: 'run', id, op, sidBytes: copy.buffer, options: cloneableOptions(options) },
+            [copy.buffer]);
+    });
+}
+
+// ---------------------------------------------------------------------------
+// Main-thread fallback core (also the shape the worker path mirrors)
+
+const fallbackCore = (() => {
+    const g = (typeof globalThis !== 'undefined') ? globalThis : {};
+    if (!g.__spectrometerFallbackCore) {
+        g.__spectrometerFallbackCore = createBakeCore(async (name) => loadEngineOnPage(name));
+    }
+    return g.__spectrometerFallbackCore;
+})();
+
+// Page-side engine loader, used only on the fallback path. Mirrors the worker's
+// ENGINE_MODULES table; kept separate because loading a script into the page is
+// nothing like importScripts().
+const PAGE_ENGINES = {
+    resid: { script: 'sidquake.js',  global: 'SIDquakeModule' },
+    fp:    { script: 'sidplayfp.js', global: 'SIDPlayfpModule' },
+};
+const pageEngineInstances = new Map();
+
+async function loadEngineOnPage(name) {
+    const spec = PAGE_ENGINES[name] || PAGE_ENGINES.resid;
+    if (!pageEngineInstances.has(name)) {
+        pageEngineInstances.set(name, (async () => {
+            if (typeof self[spec.global] !== 'function') {
+                if (typeof window !== 'undefined' && window.loadScript) {
+                    await window.loadScript(spec.script);
+                } else {
+                    // Resolved against THIS module's URL, not the document's: the
+                    // engine glue sits next to it, and a page served from another
+                    // directory would otherwise miss it.
+                    const url = (window.cacheBust || (x => x))(new URL(spec.script, import.meta.url).href);
+                    await new Promise((resolve, reject) => {
+                        const s = document.createElement('script');
+                        s.src = url;
+                        s.onload = resolve;
+                        s.onerror = () => reject(new Error(`failed to load ${spec.script}`));
+                        document.head.appendChild(s);
+                    });
+                }
+            }
+            const factory = self[spec.global];
+            if (typeof factory !== 'function') throw new Error(`${spec.script} did not define ${spec.global}`);
+            // A dedicated instance for the bake, so it never disturbs the module the
+            // page is using for playback / analysis.
+            return factory();
+        })());
+    }
+    return pageEngineInstances.get(name);
+}
+
+// The worker sends a trimmed, structured-cloneable result; the fallback core returns
+// the baker's full object (which also carries a reconstruct() closure and the raw
+// keyframe grid). Normalize both to the same shape so callers can't accidentally
+// depend on something that only exists on one path.
+function pickBakeResult(r) {
+    return {
+        codebook: r.codebook, indices: r.indices,
+        numBars: r.numBars, maxHeight: r.maxHeight, K: r.K,
+        segments: r.segments, segmentWidth: r.segmentWidth,
+        keyframeHz: r.keyframeHz, numKeyframes: r.numKeyframes,
+        loopStart: r.loopStart, framesPerKeyframe: r.framesPerKeyframe,
+        looped: r.looped, fadedOut: r.fadedOut, forcedLoop: r.forcedLoop,
+        analyzedKeyframes: r.analyzedKeyframes, analyzedSeconds: r.analyzedSeconds,
+        cappedAtMaxSeconds: r.cappedAtMaxSeconds, totalBytes: r.totalBytes,
+        engine: r.engine,
+    };
+}
+
+// ---------------------------------------------------------------------------
+// Public API (unchanged for callers)
 
 // sidBytes: Uint8Array of a valid .sid file (e.g. analyzer.createModifiedSID()).
 // options: { subtune, sampleRate=44100, maxSeconds, outputMaxSeconds, numBars,
-//            maxHeight, onProgress(label, fraction, extra) } . extra (render stage
-//            only) = { seconds, totalSeconds, loopFound? } - elapsed tune time
+//            maxHeight, engine, onProgress(label, fraction, extra) } . extra (render
+//            stage only) = { seconds, totalSeconds, loopFound? } - elapsed tune time
 //            scanned vs the search cap, so the UI can show time instead of a %
 //            (the render stops early on a confirmed loop, making a bare % jumpy).
 // Returns the bake result { codebook, indices, K, numBars, ... }.
-// Render this tune to FFT rows once (incrementally, stopping as soon as a loop is
-// confirmed) and cache them. Re-render only for a new tune or a different bar count.
-// Both the full bake and the loop-only analysis share this - the render is ~90% of
-// the cost, so pricing the fps options and then exporting reuse one render.
-async function ensureRows(sidBytes, options = {}) {
-    const sampleRate = options.sampleRate || 44100;
-    const maxSeconds = options.maxSeconds || 720;
-    const numBars = options.numBars || 40;
-    const maxHeight = options.maxHeight || 111;
-    const subtune = options.subtune || 0;
-    const minLoopSeconds = options.minLoopSeconds || 2;
-    const onProgress = options.onProgress || (() => {});
-    const key = tuneKey(sidBytes, subtune, sampleRate, maxSeconds, minLoopSeconds);
-    const bake = await getBakeModule();
-    if (!_cache.rows || _cache.rows.key !== key || _cache.rows.numBars !== numBars) {
-        _cache.rows = await renderAndAnalyze(sidBytes, bake, { sampleRate, maxSeconds, subtune, numBars, maxHeight, minLoopSeconds, onProgress, signal: options.signal });
-        _cache.rows.key = key;
-        _cache.bakes.clear();
-    }
-    return { bake, numBars, maxHeight };
-}
-
 export async function renderAndBakeSpectrometer(sidBytes, options = {}) {
-    const onProgress = options.onProgress || (() => {});
-    const { bake, numBars, maxHeight } = await ensureRows(sidBytes, options);
-
-    // Cache the packed bake per geometry AND keyframe rate: the same rendered rows
-    // re-bake to different sizes at 50/25/16.66 Hz, so fps must be part of the key.
-    // forceLoop rewires a fade-out tune's stream (wrap to keyframe 0 instead of
-    // holding dark), so it must be part of the key too or toggling the option
-    // between exports would silently reuse the wrong stream.
-    const framesPerKeyframe = Math.max(1, Math.round(options.framesPerKeyframe || 2));
-    // outputMaxSeconds caps a non-looping tune's stored length, which changes both
-    // the keyframe count and the segment split, so it has to key the cache too.
-    const geomKey = `${numBars}x${maxHeight}x${framesPerKeyframe}x${options.outputMaxSeconds || 0}` +
-        `${options.forceLoop ? '-loop' : ''}`;
-    if (_cache.bakes.has(geomKey)) return _cache.bakes.get(geomKey);
-
-    const result = await bake.bakeRows(_cache.rows.rows, {
-        numBars, maxHeight, frameHz: _cache.rows.frameHz, framesPerKeyframe,
-        outputMaxSeconds: options.outputMaxSeconds,
-        minLoopSeconds: options.minLoopSeconds,
-        forceLoop: !!options.forceLoop,
-        analyzedSeconds: _cache.rows.renderedSeconds,
-        hitCap: _cache.rows.hitCap,
-        onProgress,
-    });
-    _cache.bakes.set(geomKey, result);
-    return result;
+    const opts = { ...options, engine: normalizeEngine(options.engine) };
+    const worker = await getWorker();
+    if (worker) return runInWorker(worker, 'bake', sidBytes, opts);
+    return pickBakeResult(await fallbackCore.renderAndBake(sidBytes, opts));
 }
 
-// Analysis-only entry point (#2/#3): render + loop detection ONLY - no vector
-// quantization - and return just the timing summary the UI needs (length, loop
-// point, keyframe count) to price the fps options before any PRG is generated. The
-// heavy render is cached, so the later export bake for the same tune/bars reuses it.
-// `storedSeconds` is the fps-independent stored duration - pass it to
-// estimateBakeBytes() to price each fps option (#4).
+// Analysis-only entry point (#2/#3): the tune's loop / length summary, with no
+// vector quantization. The heavy render is cached, so the later export bake for the
+// same tune/bars/engine reuses it.
 export async function analyzeSpectrometer(sidBytes, options = {}) {
-    const { bake } = await ensureRows(sidBytes, options);
-    const r = bake.analyzeRows(_cache.rows.rows, {
-        numBars: options.numBars, maxHeight: options.maxHeight,
-        frameHz: _cache.rows.frameHz, framesPerKeyframe: options.framesPerKeyframe,
-        minLoopSeconds: options.minLoopSeconds,
-        outputMaxSeconds: options.outputMaxSeconds,
-        analyzedSeconds: _cache.rows.renderedSeconds, hitCap: _cache.rows.hitCap,
-    });
-    return {
-        looped: r.looped,
-        fadedOut: r.fadedOut,
-        loopStart: r.loopStart,               // keyframes
-        numKeyframes: r.numKeyframes,
-        keyframeHz: r.keyframeHz,
-        frameHz: _cache.rows.frameHz,
-        isNtsc: _cache.rows.isNtsc || 0,
-        storedSeconds: r.storedSeconds,                        // intro+loop, or fade-capped
-        loopStartSeconds: r.loopStart / r.keyframeHz,          // where the repeat begins
-        loopSeconds: (r.numKeyframes - r.loopStart) / r.keyframeHz,
-        analyzedSeconds: r.analyzedSeconds,
-        cappedAtMaxSeconds: r.cappedAtMaxSeconds,
-    };
-}
-
-// Thrown when the caller aborts a render via options.signal (an AbortSignal).
-// Named 'AbortError' so callers can tell a user cancel from a genuine failure.
-function abortError() {
-    const e = new Error('Analysis cancelled');
-    e.name = 'AbortError';
-    return e;
-}
-
-// Render the tune through libsidplayfp (far faster than realtime), feeding each
-// chunk into an incremental FFT/bake session. Polls for a confident loop every
-// few seconds of audio and STOPS the render the moment one is found - so a tune
-// that loops early costs a fraction of the full analysis window. Returns the
-// session's rows + timing (never the whole PCM: only ~6 MB of frame rows are kept).
-async function renderAndAnalyze(sidBytes, bake, options = {}) {
-    const { sampleRate, maxSeconds, subtune, numBars, maxHeight, minLoopSeconds, onProgress, signal } = options;
-    if (signal && signal.aborted) throw abortError();
-
-    const module = await loadSidplayfpModule();
-    const cwrap = module.cwrap;
-    const api = {
-        init:       cwrap('audio_init', null, ['number']),
-        load:       cwrap('audio_load_sid', 'number', ['number', 'number']),
-        setSubtune: cwrap('audio_set_subtune', null, ['number']),
-        setSampling: cwrap('audio_set_sampling_method', null, ['number']),
-        generate:   cwrap('audio_generate', 'number', ['number', 'number']),
-        isNtsc:     cwrap('audio_get_is_ntsc', 'number', []),
-        cleanup:    cwrap('audio_cleanup', null, []),
-    };
-
-    api.init(sampleRate);
-    // Fast sampling (method 0): the bake only reads a 40-bar spectrum up to ~5.5 kHz,
-    // so audio fidelity is irrelevant here - and the render is ~90% of the bake time.
-    // Fast vs the default interpolate is a free ~10% off every bake. (No-op on an
-    // older engine that lacks the export.)
-    try { if (api.setSampling) api.setSampling(0); } catch (e) { /* best-effort */ }
-    const sidPtr = module._malloc(sidBytes.length);
-    module.HEAPU8.set(sidBytes, sidPtr);
-    const loaded = api.load(sidPtr, sidBytes.length);
-    if (module._free) module._free(sidPtr);
-    if (loaded < 0) throw new Error(`spectrometer bake: audio_load_sid failed (${loaded})`);
-    if (subtune) api.setSubtune(subtune);
-    // PAL vs NTSC decides the raster grid the bars are baked on (the C64 replays
-    // one keyframe per 2 raster frames): PAL 50.1245 Hz, NTSC 59.826 Hz - not a
-    // round 50, or the bars drift ~0.2 s per loop.
-    const isNtsc = api.isNtsc() ? 1 : 0;
-    const frameHz = isNtsc ? 59.826 : 50.1245;
-
-    const session = bake.createBakeSession(sampleRate, { numBars, maxHeight, frameHz, maxSeconds, minLoopSeconds });
-
-    const CHUNK = 8192;
-    const bufPtr = module._malloc(CHUNK * 2);   // int16 samples
-    const chunk = new Float32Array(CHUNK);
-    const total = Math.floor(maxSeconds * sampleRate);
-    const CHECK = Math.floor(sampleRate * 15);  // poll for a loop every ~15 s of audio
-    // A proposed loop is not accepted the moment it appears. detectLoop needs only
-    // TWO passes of a period to propose it, and two passes is a repeat, not a loop:
-    // an A-A-B tune (plays a phrase twice, then develops) looks exactly like a loop
-    // until B arrives. Stopping the render on first sight then freezes that mistake,
-    // because the detector never gets to see the audio that would refute it -
-    // Blending_Mode.sid proposes a 7.2 s loop at the 15 s poll and correctly reports
-    // "no loop" at every poll from 20 s on.
-    //
-    // So a candidate must survive until the stream holds CONFIRM_CYCLES passes plus
-    // detectLoop's own ~4 s tail window, and must still be the same period at a later
-    // poll. Confirming is only worth what it costs: CONFIRM_CAP_SECONDS bounds the
-    // extra audio rendered, so short loops (where the false-positive risk lives, and
-    // where confirming is cheap) get the full check, while a tune that repeats a
-    // multi-minute phrase is taken near enough on first sight.
-    const CONFIRM_CYCLES = 3;
-    const CONFIRM_TAIL = 4;             // seconds; matches detectLoop's confirm window
-    const CONFIRM_CAP_SECONDS = 60;     // most extra audio we'll render to confirm
-    let pending = null;                 // { period, firstSeen } of the standing candidate
-    // A tune that runs into ~10 s of unbroken digital silence has ended - stop the
-    // render there (the fade-off path then trims the dead tail and wraps the timer
-    // at the last musical frame, so the on-screen clock sticks instead of ticking
-    // on into nothing). We only start counting once real audio has been heard, so a
-    // few silent seconds of intro can never trip it.
-    const SILENCE_LEVEL = 0.004;                // |sample| under this ~= silence (~-48 dB)
-    const SILENCE_STOP = Math.floor(sampleRate * 10);
-    let rendered = 0, sinceYield = 0, sinceCheck = 0, foundLoop = false;
-    let silentRun = 0, sawSignal = false, foundSilence = false;
-    // Free the WASM buffer and release the audio engine even if we bail early (a
-    // user cancel throws mid-render), so the next analysis starts from a clean slate.
-    try {
-        while (rendered < total) {
-            const want = Math.min(CHUNK, total - rendered);
-            const got = api.generate(bufPtr, want);
-            if (got <= 0) break;
-            // Re-derive the view each iteration in case the heap grew/detached.
-            const view = new Int16Array(module.HEAPU8.buffer, bufPtr, got);
-            let peak = 0;
-            for (let i = 0; i < got; i++) {
-                const s = view[i] / 32768;
-                chunk[i] = s;
-                const a = s < 0 ? -s : s;
-                if (a > peak) peak = a;
-            }
-            session.feed(chunk.subarray(0, got));
-            rendered += got;
-            // Long-silence early exit (only after the tune has actually made sound).
-            if (peak >= SILENCE_LEVEL) { sawSignal = true; silentRun = 0; }
-            else if (sawSignal && (silentRun += got) >= SILENCE_STOP) {
-                foundSilence = true;
-                onProgress('Silence detected — the tune has ended', 1,
-                    { seconds: rendered / sampleRate, totalSeconds: maxSeconds, loopFound: true });
-                break;
-            }
-            if ((sinceCheck += got) >= CHECK) {
-                sinceCheck = 0;
-                const loop = session.tryLoop();
-                const secs = rendered / sampleRate;
-                if (!loop) {
-                    // The candidate was refuted by the audio since the last poll (an
-                    // A-A-B tune reaching B). Drop it and keep scanning.
-                    pending = null;
-                } else {
-                    const period = Math.max(1, loop.loopEnd - loop.loopStart) / frameHz;
-                    if (!pending || Math.abs(period - pending.period) > Math.max(0.1, period * 0.02)) {
-                        pending = { period, firstSeen: secs };
-                    }
-                    const confirmedAt = Math.min(
-                        (loop.loopStart / frameHz) + CONFIRM_CYCLES * period + CONFIRM_TAIL,
-                        pending.firstSeen + CONFIRM_CAP_SECONDS);
-                    if (secs >= confirmedAt) {
-                        foundLoop = true;
-                        // Explain the early exit: we found the tune's repeat point, so there's
-                        // no need to render the rest - one loop is all the visualization needs.
-                        // loopFound lets the UI hold this message on screen for a beat.
-                        onProgress('Loop found — no need to scan any further', 1,
-                            { seconds: secs, totalSeconds: maxSeconds, loopFound: true });
-                        break;
-                    }
-                    onProgress('Possible loop found — checking it holds', rendered / total,
-                        { seconds: secs, totalSeconds: maxSeconds });
-                }
-            }
-            if ((sinceYield += got) >= sampleRate * 4) {
-                sinceYield = 0;
-                onProgress('Analysing SID music', rendered / total,
-                    { seconds: rendered / sampleRate, totalSeconds: maxSeconds });
-                // MessageChannel-based yield (see spectrometer-bake.js): unlike
-                // setTimeout(0), it isn't throttled when the tab is backgrounded, so
-                // a render started before the user tabs away keeps running full-speed.
-                await bake.yieldToEventLoop();
-                // The user pressed Cancel while we were yielded: stop now (finally
-                // cleans up) and let the caller decide what a cancel means.
-                if (signal && signal.aborted) throw abortError();
-            }
-        }
-    } finally {
-        if (module._free) module._free(bufPtr);
-        try { api.cleanup(); } catch (e) { /* best-effort */ }
-    }
-
-    return {
-        numBars, frameHz, isNtsc,
-        rows: session.rows(),
-        renderedSeconds: session.fedSeconds(),
-        hitCap: !foundLoop && rendered >= total,
-    };
+    const opts = { ...options, engine: normalizeEngine(options.engine) };
+    const worker = await getWorker();
+    if (worker) return runInWorker(worker, 'analyze', sidBytes, opts);
+    return fallbackCore.analyze(sidBytes, opts);
 }

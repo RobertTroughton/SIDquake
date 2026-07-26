@@ -45,6 +45,23 @@ Two compiled WASM modules in `public/`:
 
 JS talks to WASM via `cwrap()` bindings in `sidquake-core.js`.
 
+### Baked spectrometer analysis
+The FFT-spectrometer players precompute their bar stream in the browser
+(`spectrometer-bake.js` = the DSP/VQ codec, `spectrometer-bake-core.js` = the
+render/analyse/bake pipeline, `spectrometer-bake-worker.js` = where it runs,
+`spectrometer-bake-runner.js` = the entry point callers use).
+
+The SID render is ~90% of a bake, so the engine choice dominates the wait. Both
+engines are selectable (Advanced → "Analysis SID engine"): libsidplayfp is the
+default because it plays every tune, and the lightweight reSID core is the fast
+option (~2x) for tunes it handles — it has no C64 environment, so tunes that need
+KERNAL/CIA behaviour render silent on it and are automatically re-scanned on
+libsidplayfp. Rendered rows are cached per tune+bars+engine, so the analyse pass
+and the later export bake share one render.
+
+The bake runs in a Web Worker; `spectrometer-bake-runner.js` falls back to the
+main thread if Workers (or dynamic `import()` inside one) are unavailable.
+
 ### PRG Export Pipeline
 SID file → WASM analysis → memory layout planning → player .bin overlay → optional compression (TSCrunch or Exomizer) → downloadable .prg
 
