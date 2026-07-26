@@ -159,8 +159,25 @@ const fmtOf = (r, p) => {
     const k = kindByPath[p];
     return k && k.rsid != null ? (k.rsid ? 1 : 0) : -1;
 };
-const pathIds = new Map();
-const paths = [];
+
+// How the tune ENDED, as distinct from how well it agrees with HVSC (the class).
+//   0 loop  - a repeat was found
+//   1 fade  - the music stopped
+//   2 never - the scan budget ran out with neither
+//  -1 error
+const endingOf = (r) => r.error ? -1 : (r.looped ? 0 : (r.capped ? 2 : 1));
+
+// Folder and filename are interned separately: folders repeat across every tune by
+// the same composer, so two tables are SMALLER than one of full paths as well as
+// being what the two columns need.
+const folderIds = new Map(), folders = [];
+const nameIds = new Map(), names = [];
+const intern = (map, arr, v) => {
+    let id = map.get(v);
+    if (id == null) { id = arr.length; map.set(v, id); arr.push(v); }
+    return id;
+};
+
 const rows = [];
 const counts = Object.fromEntries(CLASSES.map(c => [c, 0]));
 for (const e of entries) {
@@ -168,12 +185,13 @@ for (const e of entries) {
         const r = results.get(`${e.md5}:${s}`);
         if (!r) continue;
         const p = e.sidPath || '';
-        let pid = pathIds.get(p);
-        if (pid == null) { pid = paths.length; pathIds.set(p, pid); paths.push(p); }
+        const cut = p.lastIndexOf('/');
+        const fid = intern(folderIds, folders, cut < 0 ? '' : p.slice(0, cut));
+        const nid = intern(nameIds, names, cut < 0 ? p : p.slice(cut + 1));
         const cls = classify(r);
         counts[cls]++;
         rows.push([
-            pid,                                  // 0 path id
+            fid,                                  // 0 folder id
             s,                                    // 1 subtune
             e.times[s].ms == null ? -1 : e.times[s].ms,  // 2 HVSC ms
             r.error ? -1 : r.ms,                  // 3 our ms
@@ -185,6 +203,9 @@ for (const e of entries) {
             r.error ? 0 : Math.round(r.scannedSeconds || 0), // 9 seconds scanned
             r.fellBack ? 1 : 0,                   // 10 needed the libsidplayfp rescue
             fmtOf(r, p),                          // 11 0 = PSID, 1 = RSID, -1 = unknown
+            nid,                                  // 12 filename id
+            endingOf(r),                          // 13 how the tune ended
+
         ]);
     }
 }
@@ -192,8 +213,14 @@ const summary = CLASSES.map(c => `${c} ${counts[c]}`).join('  ');
 console.log(`3) songlengths-report.html   - ${rows.length.toLocaleString()} rows`);
 console.log(`   ${summary}`);
 
+// Relative path from the report to the HVSC tree, so the folder/file links work
+// when the page is opened straight off disk. Computed rather than hard-coded
+// because --out and --hvsc both move.
+const HVSC_DIR = meta.hvsc || path.join(REPO, 'public', 'HVSC', 'C64Music');
+const hvscHref = path.relative(OUT, HVSC_DIR).split(path.sep).join('/');
+
 const html = buildHtml({
-    paths, rows, counts,
+    folders, names, rows, counts, hvscHref,
     meta: { ...meta, source: path.basename(MD5), generated: new Date().toISOString(), threshold: THRESHOLD_MS / 1000 },
 });
 const htmlPath = path.join(OUT, 'songlengths-report.html');
@@ -203,8 +230,8 @@ console.log(`Open ${path.basename(htmlPath)} in a browser (${(html.length / 1048
 
 // ---------------------------------------------------------------------------
 
-function buildHtml({ paths, rows, counts, meta }) {
-    const data = JSON.stringify({ paths, rows, counts, meta, classes: CLASSES });
+function buildHtml({ folders, names, rows, counts, hvscHref, meta }) {
+    const data = JSON.stringify({ folders, names, rows, counts, hvscHref, meta, classes: CLASSES });
     return `<!doctype html>
 <html lang="en"><head>
 <meta charset="utf-8">
@@ -231,8 +258,9 @@ function buildHtml({ paths, rows, counts, meta }) {
   input[type=search] { flex:1; min-width:190px; padding:5px 9px; border:1px solid var(--line);
                        border-radius:6px; background:var(--bg); color:var(--fg); font:inherit; }
   .count { color:var(--mut); font-variant-numeric:tabular-nums; font-size:12px; }
-  #head { display:grid; border-bottom:1px solid var(--line); background:var(--head);
-          position:sticky; top:0; z-index:2; font-weight:600; }
+  #headclip { overflow:hidden; border-bottom:1px solid var(--line); background:var(--head); }
+  #head { display:grid; background:var(--head);
+          position:sticky; top:0; z-index:2; font-weight:600; will-change:transform; }
   #head div { padding:7px 9px; cursor:pointer; user-select:none; white-space:nowrap;
               overflow:hidden; text-overflow:ellipsis; }
   #head div:hover { color:#3b7ddd; }
@@ -252,6 +280,10 @@ function buildHtml({ paths, rows, counts, meta }) {
   .r > div { padding:5px 9px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
   .num { text-align:right; font-variant-numeric:tabular-nums; }
   .pth { font-family:ui-monospace,Consolas,monospace; font-size:12px; }
+  .pth a { color:inherit; text-decoration:none; }
+  .pth a:hover { color:#3b7ddd; text-decoration:underline; }
+  .e-loop{background:#1f9d5522;color:#1f9d55}.e-fade{background:#fb8c0022;color:#fb8c00}
+  .e-never{background:#e5393522;color:#ef5350}.e-err{background:#75757522;color:#9e9e9e}
   .tag { display:inline-block; padding:1px 7px; border-radius:99px; font-size:11px; font-weight:600; }
   .t-match{background:#1f9d5522;color:#1f9d55}.t-close{background:#8bc34a22;color:#7cb342}
   .t-half,.t-double{background:#9c27b022;color:#ab47bc}.t-off{background:#fb8c0022;color:#fb8c00}
@@ -268,23 +300,39 @@ function buildHtml({ paths, rows, counts, meta }) {
     <span class="count" id="count"></span>
   </div>
 </header>
-<div id="head"></div>
+<div id="headclip"><div id="head"></div></div>
 <div id="scroll"><div id="spacer"><div id="rows"></div></div></div>
 <div class="empty" id="empty" hidden>Nothing matches those filters.</div>
 <script id="d" type="application/json">${data.replace(/</g, '\\u003c')}</script>
 <script>
 const D = JSON.parse(document.getElementById('d').textContent);
-const { paths, rows, counts, meta, classes } = D;
+const { folders, names, rows, counts, hvscHref, meta, classes } = D;
+// hvscHref points at the HVSC root from wherever this file was written, so the
+// links resolve when the page is opened straight off disk.
+const href = (p) => hvscHref + '/' + p.split('/').map(encodeURIComponent).join('/');
+const link = (target, text, title) =>
+  '<a href="' + esc(href(target)) + '" title="' + esc(title) + '">' + esc(text) + '</a>';
+const ENDINGS = ['loop', 'fade', 'never', 'err'];
+
 const COLS = [
-  { k:'Path',      w:'minmax(260px,4fr)', get:r=>paths[r[0]], cls:'pth', cmp:(a,b)=>paths[a[0]]<paths[b[0]]?-1:paths[a[0]]>paths[b[0]]?1:a[1]-b[1] },
-  { k:'#',         w:'52px',  get:r=>r[1],                          cls:'num', cmp:(a,b)=>a[1]-b[1] },
+  { k:'Folder',    w:'minmax(150px,2fr)', cls:'pth', raw:1,
+    get:r=>link(folders[r[0]], folders[r[0]], folders[r[0]]),
+    cmp:(a,b)=>folders[a[0]]<folders[b[0]]?-1:folders[a[0]]>folders[b[0]]?1:a[12]-b[12] },
+  { k:'File',      w:'minmax(140px,2fr)', cls:'pth', raw:1,
+    get:r=>link(folders[r[0]] + '/' + names[r[12]], names[r[12]], folders[r[0]] + '/' + names[r[12]]),
+    cmp:(a,b)=>names[a[12]]<names[b[12]]?-1:names[a[12]]>names[b[12]]?1:a[1]-b[1] },
+  { k:'#',         w:'46px',  get:r=>r[1],                          cls:'num', cmp:(a,b)=>a[1]-b[1] },
   { k:'HVSC',      w:'92px',  get:r=>r[2]<0?'—':ms(r[2]),           cls:'num', cmp:(a,b)=>a[2]-b[2] },
   // A capped row never resolved a loop or an ending - its "length" is just where
   // the scan budget ran out, so show it as the lower bound it actually is.
   { k:'SIDquake',  w:'92px',  get:r=>r[3]<0?'—':(classes[r[7]]==='capped'?'≥':'')+ms(r[3]), cls:'num', cmp:(a,b)=>a[3]-b[3] },
   { k:'Diff',      w:'86px',  get:r=>(r[2]<0||r[3]<0)?'—':sd(r[3]-r[2]), cls:'num', cmp:(a,b)=>d(a)-d(b) },
   { k:'Class',     w:'92px',  get:r=>'<span class="tag t-'+classes[r[7]]+'">'+classes[r[7]]+'</span>', raw:1, cmp:(a,b)=>a[7]-b[7] },
-  { k:'Format',    w:'78px',  get:r=>r[11]===1?'RSID':r[11]===0?'PSID':'—',  cmp:(a,b)=>a[11]-b[11] },
+  { k:'Ending',    w:'82px',  raw:1, cmp:(a,b)=>a[13]-b[13],
+    get:r=>r[13]<0?'<span class="tag e-err">—</span>'
+      :'<span class="tag e-'+ENDINGS[r[13]]+'" >'+['loops','fades','never'][r[13]]+'</span>' },
+  { k:'Format',    w:'76px',  get:r=>r[11]===1?'RSID':r[11]===0?'PSID':'—',  cmp:(a,b)=>a[11]-b[11] },
+
   { k:'Length fr', w:'92px',  get:r=>r[4]||'—',                     cls:'num', cmp:(a,b)=>a[4]-b[4] },
   { k:'Intro fr',  w:'88px',  get:r=>r[5]||'—',                     cls:'num', cmp:(a,b)=>a[5]-b[5] },
   { k:'Loop fr',   w:'88px',  get:r=>r[6]||'—',                     cls:'num', cmp:(a,b)=>a[6]-b[6] },
@@ -292,6 +340,12 @@ const COLS = [
   { k:'Scanned',   w:'84px',  get:r=>r[9]?r[9]+'s':'—',             cls:'num', cmp:(a,b)=>a[9]-b[9] },
 ];
 const GRID = COLS.map(c=>c.w).join(' ');
+// Sum of each column's MINIMUM so the header and the rows share one width and stay
+// aligned once the table is wide enough to scroll sideways.
+// No regex here on purpose: this whole script is emitted through a template
+// literal, so a backslash would be eaten as an escape before it ever reached the
+// page. parseInt stops at the first non-digit, so slicing past "minmax(" is enough.
+const MINW = COLS.reduce((n,c)=>n + parseInt(c.w.startsWith('minmax(') ? c.w.slice(7) : c.w, 10), 0);
 const d = r => (r[2]<0||r[3]<0) ? Infinity : Math.abs(r[3]-r[2]);
 function ms(v){ const t=Math.max(0,v|0), m=Math.floor(t/60000), s=Math.floor(t%60000/1000);
   return m+':'+String(s).padStart(2,'0')+'.'+String(t%1000).padStart(3,'0'); }
@@ -315,9 +369,11 @@ for (const c of classes) {
 }
 
 // --- header / sorting
-let sortCol = 4, sortDir = -1;   // biggest disagreement first: the interesting end
+let sortCol = 5, sortDir = -1;   // Diff: biggest disagreement first, the interesting end
 const head = document.getElementById('head');
 head.style.gridTemplateColumns = GRID;
+head.style.minWidth = MINW + 'px';
+document.getElementById('spacer').style.minWidth = MINW + 'px';
 COLS.forEach((c,i) => {
   const el = document.createElement('div');
   el.onclick = () => { if (sortCol===i) sortDir=-sortDir; else { sortCol=i; sortDir=1; } apply(); };
@@ -337,7 +393,7 @@ function apply(){
   const q = document.getElementById('q').value.trim().toLowerCase();
   view = rows;
   if (active.size) view = view.filter(r => active.has(classes[r[7]]));
-  if (q) view = view.filter(r => paths[r[0]].toLowerCase().includes(q));
+  if (q) view = view.filter(r => (folders[r[0]] + '/' + names[r[12]]).toLowerCase().includes(q));
   const cmp = COLS[sortCol].cmp;
   view = view.slice().sort((a,b)=>{ const v = cmp(a,b); return (v===0? a[0]-b[0] : v) * sortDir; });
   document.getElementById('count').textContent = view.length.toLocaleString()+' of '+rows.length.toLocaleString()+' shown';
@@ -363,7 +419,11 @@ function render(){
   body.innerHTML = h;
 }
 function esc(s){ return s.replace(/[&<>]/g, m=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[m])); }
-scroll.addEventListener('scroll', render, { passive:true });
+const headEl = document.getElementById('head');
+scroll.addEventListener('scroll', () => {
+  headEl.style.transform = 'translateX(' + (-scroll.scrollLeft) + 'px)';
+  render();
+}, { passive:true });
 addEventListener('resize', render);
 let t; document.getElementById('q').addEventListener('input', ()=>{ clearTimeout(t); t=setTimeout(apply,140); });
 apply();
