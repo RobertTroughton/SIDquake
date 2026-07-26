@@ -27,6 +27,21 @@ const DEST = path.join(ROOT, 'public', 'HVSC');
 const MARKER = path.join(DEST, 'C64Music');
 const FORCE = process.argv.includes('--force');
 
+// The archive is stored via Git LFS (see hvsc-data/README.md). A clone made
+// without git-lfs — or a Netlify build that didn't fetch LFS objects — leaves a
+// ~130-byte pointer file in its place. 7za would fail on it with a confusing
+// "cannot open file as archive", so detect it here and say what's actually
+// wrong. LFS pointers start with the spec's version line.
+function isLfsPointer(file) {
+    try {
+        if (fs.statSync(file).size > 1024) return false;   // real archives are megabytes
+        const head = fs.readFileSync(file, 'utf8').slice(0, 100);
+        return head.startsWith('version https://git-lfs.github.com/spec/');
+    } catch (_) {
+        return false;
+    }
+}
+
 function findArchive() {
     if (!fs.existsSync(ARCHIVE_DIR)) return null;
     const candidates = fs.readdirSync(ARCHIVE_DIR)
@@ -49,6 +64,17 @@ function main() {
         // Non-fatal so a Netlify build without the archive still publishes the
         // rest of the site; HVSC browsing just won't have files to serve.
         process.exit(0);
+    }
+
+    // Fatal, unlike a missing archive: the pointer means the archive IS meant to
+    // be here and the checkout is broken, so failing the build beats quietly
+    // deploying a site whose HVSC browser has no files behind it.
+    if (isLfsPointer(archive)) {
+        console.error(`${path.basename(archive)} is a Git LFS pointer, not the archive itself.`);
+        console.error(`Locally:  git lfs install && git lfs pull`);
+        console.error(`On Netlify: set GIT_LFS_ENABLED=true (and GIT_LFS_FETCH_INCLUDE=*.7z)`);
+        console.error(`in the site's environment variables, then redeploy.`);
+        process.exit(1);
     }
 
     console.error(`Extracting ${path.basename(archive)} -> public/HVSC/ ...`);

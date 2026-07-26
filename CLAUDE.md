@@ -54,6 +54,8 @@ HVSC is hosted by the site itself, not proxied from an external mirror. Raw `.si
 
 The raw files are **not** committed. A committed archive at `hvsc-data/*.7z` is extracted into `public/HVSC/` by `scripts/extract-hvsc.js` — run locally once (`npm run extract-hvsc`) and by the Netlify build (see `netlify.toml`). `public/HVSC/` is gitignored. After an HVSC update: drop in the new archive, `npm run extract-hvsc -- --force`, then `npm run build-hvsc-index`, and commit the archive + `hvsc-index.json`.
 
+The archive is stored in **Git LFS** (it exceeds GitHub's 100 MB per-file push limit otherwise). Clone with git-lfs installed, and keep `GIT_LFS_ENABLED=true` / `GIT_LFS_FETCH_INCLUDE=*.7z` set in Netlify's environment variables — see `hvsc-data/README.md`.
+
 ## Code Conventions
 
 - Vanilla JavaScript with ES6 classes (no build step, no bundler, no framework)

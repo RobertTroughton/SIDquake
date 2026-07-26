@@ -4,6 +4,24 @@ Drop the High Voltage SID Collection archive here as a single `.7z` (or `.zip`)
 whose top-level folder is `C64Music/`. This archive **is** committed (the raw
 ~61k `.sid` files are not); the build extracts it into `public/HVSC/`.
 
+## Git LFS
+
+The archive is stored via **Git LFS** (`hvsc-data/*.7z` and `*.zip`, see
+`.gitattributes`). It is ~86 MB, and GitHub rejects any single file over 100 MB
+pushed through normal Git — so without LFS, one HVSC update from now the push
+would simply be refused.
+
+- **Cloning:** you need git-lfs installed (`git lfs install`); the archive
+  arrives with the clone. If you already cloned without it, `git lfs pull`
+  fetches the real file over the pointer.
+- **On Netlify:** LFS objects are *not* fetched by default. The site needs
+  `GIT_LFS_ENABLED = true` and `GIT_LFS_FETCH_INCLUDE = *.7z` set in
+  **Site settings → Environment variables** (these govern the clone, so setting
+  them in `netlify.toml` is too late to take effect).
+- If either is missing, `scripts/extract-hvsc.js` detects the pointer file and
+  fails the build with that instruction rather than deploying a site whose HVSC
+  browser has nothing behind it.
+
 A version-suffixed name like `C64Music-85.7z` keeps it obvious which update is
 shipped, but the filename is not load-bearing: `scripts/extract-hvsc.js` picks
 up any `.7z`/`.zip` here, and the authoritative version number lives in
