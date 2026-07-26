@@ -311,7 +311,11 @@ const SITE = meta.siteUrl;
 // site's ?tune= (same encoding as hvsc-browser.js's own share links); a bare
 // folder has no such link on the main site, so it goes through the standalone
 // embed page instead, which supports ?start=<folder>.
-const encPath = (p) => p.replace(/^\/+/, '').split('/').map(encodeURIComponent).join('/');
+// No regex here (same reason as MINW below): this script is emitted through a
+// template literal, so a backslash-escaped '/' would be eaten before the page
+// ever sees it.
+const stripLeadingSlashes = (p) => { let i = 0; while (p[i] === '/') i++; return p.slice(i); };
+const encPath = (p) => stripLeadingSlashes(p).split('/').map(encodeURIComponent).join('/');
 const tuneHref = (p) => SITE + '/?tune=' + encPath(p);
 const folderHref = (p) => SITE + '/hvsc-embed.html?start=' + encodeURIComponent('C64Music' + p);
 const link = (target, text, title, isFolder) =>
