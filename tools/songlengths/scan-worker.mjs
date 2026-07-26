@@ -29,7 +29,7 @@ process.on('warning', (w) => {
 
 const require = createRequire(import.meta.url);
 const { publicDir, engine: defaultEngine, sampleRate, minBudgetSeconds, budgetMultiple,
-        maxBudgetSeconds, minLoopSeconds } = workerData;
+        maxBudgetSeconds, minLoopSeconds, escalate } = workerData;
 
 // The Emscripten glue is built with -sENVIRONMENT="web", so it tries to fetch its
 // .wasm over HTTP. Handing it the bytes directly is all it needs to run under Node.
@@ -61,20 +61,23 @@ const core = createBakeCore(loadEngine);
 
 // How much audio to render looking for the loop. HVSC already tells us roughly
 // how long the tune is, and confirming a loop needs a bit over two passes of it,
-// so we scan a multiple of HVSC's figure instead of a flat 20-minute cap. This is
-// the single biggest saving in the whole run: without it every non-looping tune
-// burns the full cap. If HVSC's value is badly short we'll stop early and the
-// result is flagged `capped`, so those are visible and can be re-run wider.
-function scanBudget(hvscMs) {
+// so the FIRST attempt scans a multiple of HVSC's figure rather than a flat
+// 20-minute cap. That is the single biggest saving in the run: without it every
+// tune that never repeats burns the maximum.
+//
+// HVSC's figure is a hint, not a ceiling. Their list is hand-curated and can be
+// short (or the tune's real period may simply be longer than what they timed), so
+// a first attempt that runs out of budget without resolving anything is retried
+// once at the full --max-budget. One big jump rather than several small ones: the
+// retry re-renders from the beginning, so every extra step repeats work.
+function firstBudget(hvscMs) {
     const hvscSeconds = (hvscMs || 0) / 1000;
     if (!hvscSeconds) return Math.min(maxBudgetSeconds, 300);
     return Math.min(maxBudgetSeconds, Math.max(minBudgetSeconds, hvscSeconds * budgetMultiple + 15));
 }
 
-async function analyzeOne(task) {
-    const sidBytes = new Uint8Array(await readFile(path.join(workerData.hvscDir, task.sidPath)));
-    const maxSeconds = scanBudget(task.hvscMs);
-    const r = await core.analyze(sidBytes, {
+async function runAnalysis(sidBytes, task, maxSeconds) {
+    return core.analyze(sidBytes, {
         subtune: task.subtune,
         sampleRate,
         numBars: 40,
@@ -85,8 +88,22 @@ async function analyzeOne(task) {
         engine: defaultEngine,
         onProgress: () => {},
     });
+}
+
+async function analyzeOne(task) {
+    const sidBytes = new Uint8Array(await readFile(path.join(workerData.hvscDir, task.sidPath)));
+    // An explicit budget (a --only recheck pass) overrides the HVSC-derived one.
+    let maxSeconds = task.forceBudget || firstBudget(task.hvscMs);
+    let r = await runAnalysis(sidBytes, task, maxSeconds);
+    let escalated = 0;
+    if (escalate && !task.forceBudget && r.cappedAtMaxSeconds && maxSeconds < maxBudgetSeconds) {
+        maxSeconds = maxBudgetSeconds;
+        r = await runAnalysis(sidBytes, task, maxSeconds);
+        escalated = 1;
+    }
     const frameHz = r.frameHzExact || r.frameHz;
     return {
+        escalated,
         md5: task.md5,
         sidPath: task.sidPath,
         subtune: task.subtune,
@@ -117,6 +134,9 @@ parentPort.on('message', async (msg) => {
     try {
         const result = await analyzeOne(msg.task);
         result.tookMs = Date.now() - started;
+        // A recheck pass re-measures a subtune that is already in the journal, so
+        // the reader needs to know which line is the later one.
+        result.t = Date.now();
         parentPort.postMessage({ type: 'result', result });
     } catch (e) {
         parentPort.postMessage({

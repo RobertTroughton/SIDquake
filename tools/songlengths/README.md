@@ -87,8 +87,11 @@ Use `--redo` to throw the journal away and start over.
 | `--shuffle` | off | sample across the whole collection instead of taking the first n — pair with `--limit` for a representative trial |
 | `--redo` | off | ignore the existing journal |
 | `--min-loop <s>` | 2 | shortest repeat counted as a loop |
-| `--budget-mult <x>` | 2.5 | scan HVSC's length × this, plus 15 s |
-| `--max-budget <s>` | 900 | never scan longer than this |
+| `--budget-mult <x>` | 2.5 | **first** attempt scans HVSC's length × this, plus 15 s |
+| `--max-budget <s>` | 900 | ceiling for any single scan |
+| `--no-escalate` | off | don't retry a capped scan at the ceiling |
+| `--only <classes>` | — | re-measure entries **already in the journal** whose class is in this comma-separated list, e.g. `--only capped,error` |
+| `--budget <s>` | `--max-budget` | fixed scan window for an `--only` pass |
 
 ### report.mjs
 
@@ -97,6 +100,65 @@ Use `--redo` to throw the journal away and start over.
 | `--out <dir>` | `tools/songlengths/out` | where the journal is |
 | `--md5 <file>` | from `run-meta.json` | source list |
 | `--threshold <s>` | 1.0 | how far apart before we rewrite an entry |
+
+## Using HVSC's own numbers to help us
+
+HVSC's length is a **hint, not a ceiling**. It drives the scan in three stages:
+
+1. **First attempt** scans `--budget-mult` × HVSC's length + 15 s. Confirming a
+   loop needs a bit over two passes of it, so 2.5× is enough for a tune whose
+   published length is about right — and it avoids burning 15 minutes on every
+   tune that never repeats.
+2. **Automatic escalation.** If that attempt runs out without resolving anything,
+   it is retried once at `--max-budget`. Their list is hand-curated and can be
+   short, and some tunes simply have a longer period than what was timed. (The
+   retry re-renders from the start, which is why it's one big jump rather than
+   several small steps.)
+3. **Manual recheck**, for whatever still hasn't resolved:
+
+   ```
+   node tools\songlengths\scan.mjs --only capped --budget 1800
+   ```
+
+   This re-measures only the `capped` rows from the journal at a 30-minute window.
+   Results are appended; the newest line for a subtune wins, so just re-run
+   `report.mjs` afterwards. Repeat with a bigger budget as far as you care to.
+
+This works. On a deliberately starved test (60 s budget) all six tunes capped;
+rechecking at 240 s resolved three of them — two found real loops, one found its
+ending — and the automatic escalation produced identical numbers to the manual
+two-pass.
+
+## Can we match HVSC exactly?
+
+Partly, and it's worth being clear about where the ceiling is.
+
+Where a tune has a **clean repeat**, there is a right answer and both lists should
+find it — expect `match`/`close`, and treat anything else as worth investigating
+on one side or the other.
+
+Where a tune **fades or just stops**, there is no algorithmic answer. HVSC's value
+is a human decision about where a listener should stop hearing it, made by ear
+over many years. We measure where the signal drops below a silence threshold.
+Those two things are both defensible and will systematically differ — usually with
+ours slightly longer, because a quiet tail is still above our floor after a person
+would have called it done. That's a difference in definition, not an error in
+either list, and it's why `Songlengths.ours.md5` only rewrites entries we actually
+resolved.
+
+So: expect strong agreement on looping tunes, and a persistent spread on fade-outs.
+The `noloop`/`capped` classes keep the two apart in the report.
+
+### On frames vs times
+
+Worth defending HVSC slightly here: the same tune runs at 50.1245 Hz on PAL and
+59.826 Hz on NTSC, so a bare frame count is ambiguous unless you also record which
+clock it was measured on — and their list has to serve players on hardware, PC and
+mobile across both. A time value is portable in a way a frame count isn't.
+
+`Songlengths.frames.txt` records the video standard per tune alongside the frame
+count, which is what makes the frame figure unambiguous. That's the part their
+format is missing, rather than the frame count itself being the obvious choice.
 
 ## How long will it take, and how do I make it quicker
 
@@ -111,15 +173,13 @@ Two things dominate:
   measuring lengths in bulk that trade is worth making, and tunes it renders
   silent are detected and re-scanned on libsidplayfp automatically. Watch the
   `fp-rescue` counter: if it is high, `--engine fp` throughout may be no slower.
-- **`--budget-mult`** decides how much audio gets rendered per tune. We already
-  know roughly how long each tune is — HVSC just told us — and confirming a loop
-  needs a bit over two passes of it, so the scan is capped at a multiple of
-  HVSC's figure rather than a flat 15 minutes. Lower it and the run gets quicker
-  but more tunes come back `capped`; raise it and fewer do. Tunes that neither
-  loop nor fade are the expensive ones — they always burn the whole budget.
-
-Re-running only the `capped` rows with a bigger budget is cheap: delete those
-lines from the journal and run again, or scan into a second `--out` directory.
+- **`--budget-mult`** decides how much audio gets rendered per tune — see
+  [Using HVSC's own numbers](#using-hvscs-own-numbers-to-help-us) above. Lower it
+  and the first pass is quicker but more tunes escalate; raise it and fewer do.
+  Tunes that neither loop nor fade are the expensive ones: they burn the first
+  budget *and* the escalation. If a trial run shows a lot of escalation, either
+  raise `--budget-mult` (fewer wasted first passes) or `--no-escalate` the bulk
+  run and mop up afterwards with `--only capped`.
 
 ## Notes
 
