@@ -84,6 +84,13 @@ extern "C" {
         uint16_t ciaTimerValue;
         bool ciaTimerDetected;
         uint32_t maxCycles;
+
+        // Subtunes whose init routine never returned inside its cycle budget.
+        // Those songs contribute NOTHING to modifiedAddresses / zeroPageUsed, so a
+        // non-zero count here means the memory map below is incomplete and must not
+        // be treated as "this tune touches nothing" - see sid_analyze.
+        uint32_t initTimeouts;
+        uint32_t longestInitCycles;
     };
 
     struct {
@@ -153,6 +160,8 @@ extern "C" {
         sidState.analysis.patternPeriod = 0;
         sidState.analysis.initFrames = 0;
         sidState.analysis.maxCycles = 0;
+        sidState.analysis.initTimeouts = 0;
+        sidState.analysis.longestInitCycles = 0;
 
         cpu_init();
     }
@@ -298,6 +307,8 @@ extern "C" {
         sidState.analysis.ciaTimerValue = 0;
         sidState.analysis.ciaTimerDetected = false;
         sidState.analysis.maxCycles = 0;
+        sidState.analysis.initTimeouts = 0;
+        sidState.analysis.longestInitCycles = 0;
 
         // Snapshot memory after initial load so each song can start from
         // an identical baseline.
@@ -329,6 +340,29 @@ extern "C" {
             songsToAnalyze = 256;
         }
 
+        // Cycle budget for a subtune's init routine.
+        //
+        // This used to be a flat 100,000 cycles - about 0.1 s of C64 time, five
+        // raster frames. That is plenty for a typical player (measured: 22-1400
+        // cycles), but a tune that unpacks or builds tables in init needs orders of
+        // magnitude more: Julian_Jaymz/Slanted.sid takes 2,040,135 cycles, twenty
+        // times the old cap. When the budget ran out the subtune was skipped
+        // wholesale, so the tune reported NO modified memory and NO zero-page use -
+        // and the exporter, believing nothing was in use, placed player routines
+        // straight over memory the tune needs. Emulating those 2 M cycles costs
+        // ~14 ms, so the old cap was buying nothing.
+        //
+        // Budget the whole analysis rather than each song, so a 256-subtune file
+        // can't multiply a generous per-song cap into a frozen tab. A single-song
+        // tune gets the full allowance; the floor keeps even a 256-song file above
+        // the old limit.
+        const uint32_t INIT_CYCLE_BUDGET = 60000000;   // ~60 s of C64 time overall
+        const uint32_t INIT_CYCLES_MAX   = 20000000;   // ~20 s for any one subtune
+        const uint32_t INIT_CYCLES_MIN   = 200000;
+        uint32_t initCycleCap = INIT_CYCLE_BUDGET / (songsToAnalyze ? songsToAnalyze : 1);
+        if (initCycleCap > INIT_CYCLES_MAX) initCycleCap = INIT_CYCLES_MAX;
+        if (initCycleCap < INIT_CYCLES_MIN) initCycleCap = INIT_CYCLES_MIN;
+
         // The exporter bakes ONE subtune (default = the SID's start song), and
         // multispeed timing is per-subtune in PSID, so key the calls-per-frame
         // detection to that subtune's speed bit (below). 1-based; clamp a corrupt
@@ -352,8 +386,19 @@ extern "C" {
 
             cpu_set_tracking(true);
 
-            if (!cpu_execute_function(sidState.header.initAddress, 100000)) {
+            if (!cpu_execute_function(sidState.header.initAddress, initCycleCap)) {
+                // Init never returned. Skipping the song is still the right call -
+                // driving play() against a half-initialised tune records garbage -
+                // but it must not look like "this song touches no memory", so count
+                // it and let the caller decide (sid_get_init_timeouts).
+                sidState.analysis.initTimeouts++;
                 continue;
+            }
+            {
+                uint32_t initCycles = cpu_get_last_execution_cycles();
+                if (initCycles > sidState.analysis.longestInitCycles) {
+                    sidState.analysis.longestInitCycles = initCycles;
+                }
             }
 
             // A play address of 0 means init installed the play routine behind an
@@ -690,6 +735,21 @@ extern "C" {
     EMSCRIPTEN_KEEPALIVE
         uint16_t sid_get_cia_timer_value() {
         return sidState.analysis.ciaTimerValue;
+    }
+
+    // Number of subtunes whose init routine hit its cycle budget. Non-zero means
+    // the modified-address / zero-page maps are INCOMPLETE: those songs were
+    // skipped, so "no memory in use" is an absence of data, not a finding.
+    EMSCRIPTEN_KEEPALIVE
+        uint32_t sid_get_init_timeouts() {
+        return sidState.analysis.initTimeouts;
+    }
+
+    // Cycles the slowest init that DID return took - useful for spotting tunes
+    // that unpack in init (a normal player needs a few hundred).
+    EMSCRIPTEN_KEEPALIVE
+        uint32_t sid_get_longest_init_cycles() {
+        return sidState.analysis.longestInitCycles;
     }
 
     EMSCRIPTEN_KEEPALIVE

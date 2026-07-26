@@ -34,3 +34,6 @@ node_modules/
 # from hvsc-index.json at build time (npm run build-share-meta).
 /public/share-meta/
 /CSDbMusicFetch/xml
+
+# Song length scanner journal + generated reports (see tools/songlengths/README.md)
+tools/songlengths/out/

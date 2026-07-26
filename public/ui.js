@@ -1185,13 +1185,15 @@ class UIController {
         }
         if (window.studioModal) window.studioModal.setDerivedTabs(groups);
 
-        // Export tab: compression options, plus the spectrometer frame rate for
-        // FFT players (the only export knobs that still matter).
+        // Export tab: compression options, the spectrometer frame rate for FFT
+        // players, and the analysis engine - which is NOT spectrometer-specific
+        // (every visualizer runs the tune analysis), so it is always shown.
         const exportMount = document.getElementById('exportConfigMount');
         if (exportMount) {
             exportMount.innerHTML = this._wrapOptionsPanel(
                 this.createCompressionOptionsHTML() +
-                (config?.spectrometerBake ? this.createFrameRateOptionHTML() : ''));
+                (config?.spectrometerBake ? this.createFrameRateOptionHTML() : '') +
+                this.createAnalysisEngineOptionHTML());
         }
 
         this._wireAdvancedSettings();
@@ -1445,6 +1447,20 @@ class UIController {
                     <select id="advStoredLen" class="number-input">${len}</select>
                 </div>
             </div>
+        </div>`;
+    }
+
+    // The SID engine the tune ANALYSIS renders with. Deliberately not part of
+    // createFrameRateOptionHTML: every visualizer runs the analysis, not just the
+    // spectrometer ones - players with a timer show the song length from it, and a
+    // detected fade-out is what unlocks the Song Looping option. Keeping this knob
+    // inside the spectrometer-only block meant the setting still applied everywhere
+    // but could only be reached from an FFT player.
+    createAnalysisEngineOptionHTML() {
+        const a = this.getAdvancedSettings();
+        return `
+        <div class="option-group">
+            <div class="option-group-title">Tune analysis</div>
             <div class="option-row">
                 <label class="option-label" for="advBakeEngine">Analysis SID engine</label>
                 <div class="option-control">
@@ -1454,7 +1470,7 @@ class UIController {
                     </select>
                 </div>
             </div>
-            <p class="flow-note">Which SID core renders the tune while the bars are analysed. libsidplayfp runs a full C64, so it plays everything. reSID scans about twice as fast, but it has no C64 environment — it bakes different bars on some tunes, and any it can't play at all are re-scanned on libsidplayfp automatically. Playback is unaffected either way.</p>
+            <p class="flow-note">Which SID core renders the tune while its loop and length are worked out. libsidplayfp runs a full C64, so it plays everything. reSID scans about twice as fast, but it has no C64 environment — it resolves a different loop on some tunes, and any it can't play at all are re-scanned on libsidplayfp automatically. Playback is unaffected either way.</p>
         </div>`;
     }
 
@@ -2775,6 +2791,19 @@ class UIController {
 
         // Update the value
         const countElement = document.getElementById('modifiedMemoryCount');
+        // An init routine that never returned means its subtune was skipped, so we
+        // have NO memory map for it. Saying "None" there is actively misleading -
+        // it reads as "this tune is easy to place around" when the truth is the
+        // opposite, and exports built on it overwrite memory the tune is using.
+        const initTimeouts = this.analysisResults?.initTimeouts || 0;
+        if (initTimeouts > 0 && modifiedCount === 0) {
+            countElement.textContent = 'Unknown (init did not finish)';
+            countElement.title = `${initTimeouts} subtune(s) had an init routine that never returned, ` +
+                `so their memory use could not be traced. Exports that need this information ` +
+                `(anything but the default player) may not work for this tune.`;
+            return;
+        }
+        countElement.title = '';
         if (modifiedCount === 0) {
             countElement.textContent = 'None';
         } else if (modifiedCount === 1) {
