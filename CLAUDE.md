@@ -41,14 +41,14 @@ Two compiled WASM modules in `public/`:
 - **sidquake.wasm** - SID file processing + PNG converter + lightweight reSID playback (from `wasm/sid_processor.cpp` + `wasm/png_converter.cpp` + `wasm/cpu6510_wasm.cpp` + `wasm/sid_audio.cpp`). The 6510 CPU core (`cpu6510_wasm.cpp`) is compiled into this module, not shipped separately.
 - **sidplayfp.wasm** - The default playback engine: libsidplayfp + reSIDfp with a real C64 environment and embedded KERNAL/BASIC/CHARGEN ROMs (from `wasm/sidplayfp_audio.cpp` + vendored `wasm/libsidplayfp/`). Lazily loaded by `sid-playback.js`; exposes the same `audio_*` API as the legacy reSID engine (still inside sidquake.wasm, reachable via `?engine=resid` for one release before removal). Rebuild with `scripts/build-sidplayfp-wasm.sh` (Linux/CI) or the second emcc step in `0-build.bat` (Windows).
 
-- **exomizer.wasm** - Exomizer 3, the "smaller file" PRG compression option (from `wasm/exomizer_wrap.c` + vendored `wasm/exomizer/`). Lazily loaded by `compressor-manager.js`, which creates a fresh module instance per compression because upstream keeps global state it never resets. Rebuild with `scripts/build-exomizer-wasm.sh` (Linux/CI) or the third emcc step in `0-build.bat` (Windows).
+- **exomizer.wasm** - Exomizer 3, the default PRG compression option ("smaller file") (from `wasm/exomizer_wrap.c` + vendored `wasm/exomizer/`). Lazily loaded by `compressor-manager.js`, which creates a fresh module instance per compression because upstream keeps global state it never resets. Rebuild with `scripts/build-exomizer-wasm.sh` (Linux/CI) or the third emcc step in `0-build.bat` (Windows).
 
 JS talks to WASM via `cwrap()` bindings in `sidquake-core.js`.
 
 ### PRG Export Pipeline
 SID file → WASM analysis → memory layout planning → player .bin overlay → optional compression (TSCrunch or Exomizer) → downloadable .prg
 
-TSCrunch and Exomizer are a deliberate ratio/speed pair: Exomizer packs a typical export ~9-16% smaller, TSCrunch decrunches roughly 4x faster on the C64 (~33 vs ~129 cycles/byte). TSCrunch stays the default.
+TSCrunch and Exomizer are a deliberate ratio/speed pair: Exomizer packs a typical export ~9-16% smaller, TSCrunch decrunches roughly 4x faster on the C64 (~33 vs ~129 cycles/byte). Exomizer is the default; TSCrunch is there for when depack speed matters.
 
 ### SIDPlayers Assembly
 KickAss assembly files in `SIDPlayers/`. Pre-compiled to `.bin` at three load addresses ($4000, $8000, $C000) and stored in `public/prg/`. Each player has a JSON config defining its options, galleries, and capabilities.

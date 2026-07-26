@@ -137,6 +137,7 @@ Compiled into `sidplayfp.wasm` (playback only, lazily loaded):
 - The pair is a ratio/speed trade: Exomizer is ~9-16% smaller on a typical
   export, TSCrunch roughly 4x faster to decrunch on the C64 (~33 vs ~129 cycles
   per byte)
+- Exomizer is the default; TSCrunch is the pick when depack speed matters
 
 **`png-converter.js`** (244 lines) - WASM bridge for image conversion
 - `PNGConverter` class wrapping PNG converter WASM functions

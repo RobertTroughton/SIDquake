@@ -5,7 +5,8 @@
 // The two are a deliberate ratio/speed pair, measured on real exports:
 //   TSCrunch  ~33 cycles/byte to decrunch (a 27 KB image in ~0.9 s on a PAL C64)
 //   Exomizer  ~9-16% smaller, ~129 cycles/byte (the same image in ~3.6 s)
-// Neither dominates, so both are offered; TSCrunch stays the default.
+// Neither dominates, so both are offered; Exomizer is the default (the smaller
+// file wins for most exports) and TSCrunch is there when depack speed matters.
 
 class CompressorManager {
     constructor() {
