@@ -1439,7 +1439,6 @@ class UIController {
                     <select id="advStoredLen" class="number-input">${len}</select>
                 </div>
             </div>
-            <p class="flow-note">The bars are quantized in up to 5 independent slices across the spectrum, and each slice costs a byte per keyframe out of a fixed C64 memory budget &mdash; so the longer the stored stream, the fewer slices fit, and past about 3 minutes all 40 bars end up sharing one index and freeze together. Capping the length keeps the slices. Only affects tunes with no detected loop; a looping tune stores exactly one cycle either way.</p>
         </div>`;
     }
 
