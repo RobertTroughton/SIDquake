@@ -67,6 +67,14 @@ if (!results.size) {
 }
 console.log(`Loaded ${results.size.toLocaleString()} measurements (${lines.toLocaleString()} journal lines)`);
 
+// Journal entries written before the format was recorded fall back to the header
+// facts scan.mjs cached; if neither is available the column shows a dash rather
+// than guessing.
+let kindByPath = {};
+try {
+    const c = JSON.parse(fs.readFileSync(path.join(OUT, 'sid-kinds.json'), 'utf8'));
+    if (c && c.kinds) kindByPath = c.kinds;
+} catch (e) { /* optional */ }
 const { lines: srcLines, entries } = parseSonglengths(fs.readFileSync(MD5, 'utf8'));
 console.log(`HVSC file: ${entries.length.toLocaleString()} entries`);
 
@@ -146,6 +154,11 @@ console.log(`2) ${path.basename(framesPath)}  - ${measured.toLocaleString()} sub
 // path table (paths repeat across subtunes), sorted and filtered in memory, and
 // only the ~40 visible rows are ever in the DOM.
 
+const fmtOf = (r, p) => {
+    if (r.rsid != null) return r.rsid ? 1 : 0;
+    const k = kindByPath[p];
+    return k && k.rsid != null ? (k.rsid ? 1 : 0) : -1;
+};
 const pathIds = new Map();
 const paths = [];
 const rows = [];
@@ -171,6 +184,7 @@ for (const e of entries) {
             r.isNtsc ? 1 : 0,                     // 8 ntsc
             r.error ? 0 : Math.round(r.scannedSeconds || 0), // 9 seconds scanned
             r.fellBack ? 1 : 0,                   // 10 needed the libsidplayfp rescue
+            fmtOf(r, p),                          // 11 0 = PSID, 1 = RSID, -1 = unknown
         ]);
     }
 }
@@ -270,6 +284,7 @@ const COLS = [
   { k:'SIDquake',  w:'92px',  get:r=>r[3]<0?'—':(classes[r[7]]==='capped'?'≥':'')+ms(r[3]), cls:'num', cmp:(a,b)=>a[3]-b[3] },
   { k:'Diff',      w:'86px',  get:r=>(r[2]<0||r[3]<0)?'—':sd(r[3]-r[2]), cls:'num', cmp:(a,b)=>d(a)-d(b) },
   { k:'Class',     w:'92px',  get:r=>'<span class="tag t-'+classes[r[7]]+'">'+classes[r[7]]+'</span>', raw:1, cmp:(a,b)=>a[7]-b[7] },
+  { k:'Format',    w:'78px',  get:r=>r[11]===1?'RSID':r[11]===0?'PSID':'—',  cmp:(a,b)=>a[11]-b[11] },
   { k:'Length fr', w:'92px',  get:r=>r[4]||'—',                     cls:'num', cmp:(a,b)=>a[4]-b[4] },
   { k:'Intro fr',  w:'88px',  get:r=>r[5]||'—',                     cls:'num', cmp:(a,b)=>a[5]-b[5] },
   { k:'Loop fr',   w:'88px',  get:r=>r[6]||'—',                     cls:'num', cmp:(a,b)=>a[6]-b[6] },

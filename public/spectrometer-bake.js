@@ -641,10 +641,44 @@ function detectLoop(kf, nk, numBars, maxHeight, keyframeHz = 25, minLoopSeconds 
     // loop" (store the full stream) than a wrong period the C64 wraps out of sync.
     if (residual(P) > MATCH) return null;
 
-    // Loop start = just after the last column that clearly differs from the one
-    // a period later (the end of the intro).
+    // Loop start = the end of the intro, i.e. the last point where the stream
+    // genuinely differs from itself one period later.
+    //
+    // Judged over a WINDOW rather than a single column. Taking the last lone
+    // column above REJECT made the whole intro hostage to one transient: on
+    // The_Mighty_Bulldozer/Wonderful_Tunes_and_Graphics_tune_7, exactly 4 columns
+    // of 15,180 crossed the threshold - two of them adjacent, everything either
+    // side reading ~0 - and that one blip reported a 220 s intro on a tune that
+    // loops from the very first frame, doubling its measured length.
+    //
+    // What separates the two cases is the DENSITY of mismatch nearby, not how many
+    // columns in a row cross the line. Measured over the same ~4 s window used to
+    // confirm the period, of the 200 columns below the decision point:
+    //   the spurious 220 s intro above had 1 mismatching  (0.5%)
+    //   a genuine 4 s intro (6r6-selfiesfromtheex) had 43 (21.5%)
+    // so a 10% floor separates them by an order of magnitude either way. Requiring
+    // a consecutive RUN instead would fail that real intro, whose columns hover
+    // either side of REJECT rather than all clearing it.
+    const nDiff = nk - P;
+    const introNeed = Math.max(4, Math.round(W * 0.10));
     let I = 0;
-    for (let i = nk - 1 - P; i >= 0; i--) { if (colDiff(i, i + P) > REJECT) { I = i + 1; break; } }
+    if (nDiff > 0) {
+        const over = new Uint8Array(nDiff);           // 1 = this column clearly differs
+        for (let i = 0; i < nDiff; i++) over[i] = colDiff(i, i + P) > REJECT ? 1 : 0;
+        let run = 0;                                  // columns over REJECT in [i, i+W)
+        for (let i = nDiff - 1; i >= 0; i--) {
+            run += over[i];
+            if (i + W < nDiff) run -= over[i + W];
+            if (run >= introNeed) {
+                // The intro ends at the LAST column that actually differs, not at
+                // the window edge - otherwise every intro would be reported up to
+                // 4 s long.
+                const hi = Math.min(nDiff, i + W);
+                for (let j = hi - 1; j >= i; j--) if (over[j]) { I = j + 1; break; }
+                break;
+            }
+        }
+    }
     if (nk - P - I < W) return null;                  // need a full confirmed cycle
     return { loopStart: I, loopEnd: I + P };
 }

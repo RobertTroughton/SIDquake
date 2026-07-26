@@ -92,6 +92,8 @@ Use `--redo` to throw the journal away and start over.
 | `--no-escalate` | off | don't retry a capped scan at the ceiling |
 | `--only <classes>` | — | re-measure entries **already in the journal** whose class is in this comma-separated list, e.g. `--only capped,error` |
 | `--budget <s>` | `--max-budget` | fixed scan window for an `--only` pass |
+| `--exclude-rsid` | off | drop RSID tunes (they are measured by default) |
+| `--include-basic` | off | keep C64-BASIC tunes (excluded by default) |
 
 ### report.mjs
 
@@ -129,6 +131,22 @@ rechecking at 240 s resolved three of them — two found real loops, one found i
 ending — and the automatic escalation produced identical numbers to the manual
 two-pass.
 
+## What gets excluded, and what doesn't
+
+**C64-BASIC tunes are skipped by default.** The tune *is* a BASIC program started
+by `RUN`, so nothing ever drives the SID from our side and it measures as nothing.
+Detected from RSID flags bit 1, not the filename — the flag catches 589 of the 590
+files HVSC names `*_BASIC.sid`, so it is the reliable test. `--include-basic` keeps
+them.
+
+**Plain RSID tunes are measured.** They render perfectly well through libsidplayfp
+despite SIDquake's own *analyser* rejecting the format, so excluding them would
+throw away ~3,300 tunes for nothing. The report has a **Format** column (sortable)
+so you can see at a glance whether RSID entries behave differently as a group.
+`--exclude-rsid` drops them if you decide they aren't comparable.
+
+The filter runs **before** `--limit`, so `--limit 100` measures 100 real tunes
+rather than 100 candidates minus whatever got dropped.
 ## Can we match HVSC exactly?
 
 Partly, and it's worth being clear about where the ceiling is.
