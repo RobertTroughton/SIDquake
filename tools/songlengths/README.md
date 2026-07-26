@@ -25,7 +25,7 @@ Everything lands in `tools/songlengths/out/`.
 |---|---|
 | `Songlengths.ours.md5` | HVSC's file byte-for-byte, except the times we disagree with by more than `--threshold` (default 1 s). Comments, ordering and CRLF line endings are all preserved, so `diff` against the original shows exactly what changed and nothing else. |
 | `Songlengths.frames.txt` | Our measurements with raster-frame counts as well as times: intro length, loop period, total length, and PAL/NTSC. Format is documented in the file's own header. |
-| `songlengths-report.html` | Sortable, filterable table of every subtune. Click a column to sort, click the class chips to filter, type to search paths. |
+| `songlengths-report.html` | Sortable, filterable table of every subtune. Click a column to sort, click the class chips to filter, type to search paths. **Folder** and **File** are separate columns and both link into your local HVSC tree, so you can jump straight to a tune from a suspicious row. |
 
 Entries we could not measure confidently — the scan budget ran out, the tune
 failed to render, no loop or ending was found — are **never** written into
@@ -42,6 +42,17 @@ Frame counts are the raster frame, which is what a SID player actually counts:
 PAL 50.1245 Hz, NTSC 59.826 Hz. A tune's loop period is always a whole number of
 frames, so the frame figure is the exact one and the `M:SS.mmm` time is derived
 from it.
+
+## Ending vs class
+
+Two different questions, so two columns:
+
+- **Ending** — what *we* found: `loops` (a repeat), `fades` (the music stopped), or
+  `never` (the scan budget ran out with neither).
+- **Class** — how our number compares with HVSC's, below.
+
+A row can loop cleanly and still be `wild` if the two lists disagree about the
+period, and a `never` row's length is only ever a lower bound.
 
 ## Result classes
 
