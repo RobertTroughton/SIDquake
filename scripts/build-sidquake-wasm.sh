@@ -4,6 +4,10 @@
 #
 # Requires emcc on PATH (Emscripten SDK, or `apt install emscripten`).
 # Keep the source list and flags in sync with the WASM step in 0-build.bat.
+# Built with emscripten 5.0.7. From 6.0 the generated glue drops the
+# Module.wasmBinary path in getBinarySync(), which is how the `npm test`
+# harnesses load the module under node - they abort with "both async and sync
+# fetching of the wasm failed". Check `npm test` after changing toolchain.
 set -e
 cd "$(dirname "$0")/.."
 

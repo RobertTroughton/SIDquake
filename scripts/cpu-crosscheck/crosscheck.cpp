@@ -127,6 +127,111 @@ static void report(const char* title, const Divergence* d, uint32_t iterations, 
 
 static uint8_t base[0x10000];
 
+// Cross-check the analysis core's hand-written cycle counts and operand sizes
+// against opcodes.h, which the disassembler and the unimplemented-opcode
+// fallback both trust. Run with X=Y=0 and untaken branches so no opcode is
+// owed a page-crossing or branch-taken penalty, leaving the table's base
+// figures as the expected answer.
+static int table_check() {
+    int bad = 0;
+    for (int op = 0; op < 256; op++) {
+        if (op == 0x00 || (op & 0x0F) == 0x02) continue;  // terminal opcodes
+
+        memset(cpu.memory, 0, 0x10000);
+        const uint16_t startPC = 0x1000;
+        cpu.memory[startPC] = (uint8_t)op;
+        cpu.memory[startPC + 1] = 0x34;
+        cpu.memory[startPC + 2] = 0x12;
+        cpu.pc = startPC;
+        cpu.a = 0; cpu.x = 0; cpu.y = 0; cpu.sp = 0xFD;
+        cpu.status = FLAG_UNUSED | FLAG_INTERRUPT;
+        // With N, V, Z and C all clear these four branches are taken, which
+        // costs the base cycle plus one. A zero displacement keeps the target
+        // in the same page, so no page-crossing penalty is owed on top.
+        bool branchTaken = (op == 0x10 || op == 0x50 || op == 0x90 || op == 0xD0);
+        if (opcodeTable[op].mode == MODE_RELATIVE) cpu.memory[startPC + 1] = 0x00;
+        cpu.cycles = 0; cpu.halted = false;
+        cpu_step();
+
+        const OpcodeInfo& info = opcodeTable[op];
+        uint32_t expected = info.cycles + (branchTaken ? 1 : 0);
+        if ((uint32_t)cpu.cycles != expected) {
+            printf("  $%02X %-4s cycles: core=%u expected=%u\n",
+                   op, info.mnemonic, (uint32_t)cpu.cycles, expected);
+            bad++;
+            continue;
+        }
+        // PC only tells us the operand size for opcodes that fall through to
+        // the next instruction.
+        bool controlFlow = info.mode == MODE_RELATIVE || op == 0x4C || op == 0x6C ||
+                           op == 0x20 || op == 0x40 || op == 0x60;
+        if (!controlFlow && cpu.pc != (uint16_t)(startPC + info.size)) {
+            printf("  $%02X %-4s size: core=%d table=%u\n",
+                   op, info.mnemonic, (int)(cpu.pc - startPC), info.size);
+            bad++;
+        }
+    }
+    return bad;
+}
+
+// The unstable stores are the one place where "both cores agree" proves
+// nothing, since both were written from the same reading of the hardware.
+// These vectors are worked out by hand from the NMOS model: the value stored
+// is reg & (high byte of the pre-index address + 1), and a page-crossing index
+// replaces the target's high byte with that value.
+struct StoreVector {
+    const char* name;
+    uint8_t opcode, o1, o2;     // opcode and its two operand bytes
+    uint8_t a, x, y;
+    uint16_t expectAddr;
+    uint8_t expectValue;
+};
+static const StoreVector storeVectors[] = {
+    // SHY $1080,X with X=$01: $1081, no crossing, stores Y & ($10+1).
+    {"SHY no cross",   0x9C, 0x80, 0x10, 0x00, 0x01, 0xFF, 0x1081, 0x11},
+    // SHY $10FF,X with X=$02: crosses into $1101, Y=$0F narrows the value to
+    // $01, which then becomes the target's high byte.
+    {"SHY cross",      0x9C, 0xFF, 0x10, 0x00, 0x02, 0x0F, 0x0101, 0x01},
+    {"SHX no cross",   0x9E, 0x80, 0x10, 0x00, 0xFF, 0x01, 0x1081, 0x11},
+    {"SHX cross",      0x9E, 0xFF, 0x10, 0x00, 0x0F, 0x02, 0x0101, 0x01},
+    {"SHA no cross",   0x9F, 0x80, 0x10, 0xFF, 0xFF, 0x01, 0x1081, 0x11},
+    {"SHA cross",      0x9F, 0xFF, 0x10, 0xFF, 0x0F, 0x02, 0x0101, 0x01},
+    {"TAS cross",      0x9B, 0xFF, 0x10, 0xFF, 0x0F, 0x02, 0x0101, 0x01},
+};
+
+static int vector_check() {
+    int bad = 0;
+    for (const StoreVector& v : storeVectors) {
+        memset(cpu.memory, 0, 0x10000);
+        const uint16_t startPC = 0x2000;
+        cpu.memory[startPC] = v.opcode;
+        cpu.memory[startPC + 1] = v.o1;
+        cpu.memory[startPC + 2] = v.o2;
+        cpu.pc = startPC; cpu.a = v.a; cpu.x = v.x; cpu.y = v.y;
+        cpu.sp = 0xFD; cpu.status = FLAG_UNUSED | FLAG_INTERRUPT;
+        cpu.cycles = 0; cpu.halted = false;
+        cpu_step();
+
+        if (cpu.memory[v.expectAddr] != v.expectValue) {
+            printf("  %-14s expected mem[$%04X]=$%02X, got $%02X\n",
+                   v.name, v.expectAddr, v.expectValue, cpu.memory[v.expectAddr]);
+            bad++;
+        }
+
+        aud_set_state(cpu.memory, startPC, v.a, v.x, v.y, 0xFD,
+                      FLAG_UNUSED | FLAG_INTERRUPT);
+        // aud_set_state copied the post-store image, so undo the store first.
+        aud_mem()[v.expectAddr] = 0;
+        aud_step();
+        if (aud_mem()[v.expectAddr] != v.expectValue) {
+            printf("  %-14s audio core: expected mem[$%04X]=$%02X, got $%02X\n",
+                   v.name, v.expectAddr, v.expectValue, aud_mem()[v.expectAddr]);
+            bad++;
+        }
+    }
+    return bad;
+}
+
 int main(int argc, char** argv) {
     const uint32_t iterations = (argc > 1) ? (uint32_t)strtoul(argv[1], nullptr, 0) : 20000;
 
@@ -136,6 +241,15 @@ int main(int argc, char** argv) {
 
     cpu_init();
     cpu_set_tracking(false);
+
+    printf("=== analysis core vs opcodes.h ===\n");
+    int nTable = table_check();
+    if (!nTable) printf("  (none)\n");
+
+    printf("\n=== unstable stores vs hand-worked vectors ===\n");
+    int nVec = vector_check();
+    if (!nVec) printf("  (none)\n");
+    printf("\n");
 
     for (int op = 0; op < 256; op++) {
         // BRK and the KIL opcodes are terminal by design in at least one core,
@@ -263,10 +377,11 @@ int main(int argc, char** argv) {
     report("analysis core (cpu6510_wasm.cpp) vs audio core (sid_audio.cpp)",
            divAud, iterations, nAud);
 
-    printf("\n%d opcodes diverge vs audio core", nAud);
+    printf("\n%d opcode-table mismatches, %d store-vector failures, "
+           "%d opcodes diverge vs audio core", nTable, nVec, nAud);
 #ifdef WITH_REFERENCE
     printf(", %d vs reference core", nRef);
 #endif
     printf(" (%u cases each)\n", iterations);
-    return (nRef || nAud) ? 1 : 0;
+    return (nRef || nAud || nTable || nVec) ? 1 : 0;
 }

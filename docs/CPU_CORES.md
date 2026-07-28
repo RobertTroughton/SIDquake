@@ -10,37 +10,45 @@ SIDquake emulates the 6510 twice, for two different jobs:
 `wasm/sidplayfp_audio.cpp` is a third playback path but uses libsidplayfp's own
 CPU, not either of these.
 
-Both cores decode all 256 opcodes, including the illegals. Neither models the
-NMOS read-modify-write double write (real hardware writes the unmodified value
-back before the modified one), the unstable high-byte corruption that
-`SHA`/`SHX`/`SHY`/`TAS` show when the index crosses a page, or bus conflicts.
+Both decode all 256 opcodes, including the illegals, and agree with each other
+on PC, registers, flags, cycles and memory for every non-terminal opcode.
 
 ## Keeping them honest
 
-`scripts/cpu-crosscheck/run.sh` steps both cores through the same randomised
-machine states and diffs PC, registers, flags, cycles and all 64 KB of memory
-after every instruction. It can also link in a third-party `cpu.c` as an outside
-opinion. Run it after touching either core; see
-`scripts/cpu-crosscheck/README.md`.
+`scripts/cpu-crosscheck/run.sh` runs four checks:
 
-## Known divergence: page-crossing penalties
+- the analysis core's hand-written cycle counts and operand sizes against
+  `opcodes.h`, which the disassembler also trusts;
+- the unstable `SHA`/`SHX`/`SHY`/`TAS` stores against hand-worked vectors, since
+  "both cores agree" proves nothing where both were written from one reading of
+  the hardware;
+- both cores against each other, stepped through the same randomised machine
+  states, diffing PC, registers, flags, cycles and all 64 KB of memory;
+- optionally both against a third-party `cpu.c` linked in as an outside opinion.
 
-The audio core charges a flat cycle count where the analysis core adds the
-6502's +1 penalty. It affects 40 opcodes:
+Run it after touching either core; see `scripts/cpu-crosscheck/README.md`. It is
+not part of `npm test`: it needs a C++ toolchain and takes minutes.
 
-- indexed reads that cross a page - `abs,X` (14 opcodes), `abs,Y` (10),
-  `(ind),Y` (8)
-- taken branches whose target is in a different page than the instruction
-  after the branch (8)
+## What is still not modelled
 
-The analysis core is right; the audio core undercounts. The effect is that play
-routines appear slightly shorter than they are, so reSID is clocked a little
-early on the affected instructions. Nothing corrects for it downstream.
+- **The NMOS read-modify-write double write.** Real hardware writes the
+  unmodified value back before the modified one, which is visible on I/O
+  registers. Adding it would double every `INC`/`DEC`/shift on a tracked
+  address in `sidWrites`, `zpWrites` and the shadow-register write sequence, so
+  it needs those consumers looked at first.
+- **`ARR` (`$6B`) in decimal mode.** Both cores use the binary-mode result and
+  flags. The BCD variant needs a separate fixup.
+- **`XAA` (`$8B`) and `LAX #imm` (`$AB`) magic constants.** Both cores use the
+  common deterministic forms (`A = X & imm` and `A = X = imm`); on real hardware
+  the result depends on the analogue state of the internal bus.
+- **Bus conflicts and open-bus reads.** There is no I/O or VIC model here at
+  all; `$D400-$D7FF` is plain RAM in the analysis core and mapped to reSID in
+  the audio core.
 
-Everything else matches: across 20000 randomised cases per opcode the two cores
-agree on PC, registers, flags and memory for all 254 non-terminal opcodes.
-(`BRK` and the `KIL` opcodes are excluded - they are terminal by design in at
-least one core, so single-stepping them proves nothing.)
+The `SHA`/`SHX`/`SHY`/`TAS` behaviour that *is* modelled - value is
+`reg & (pre-index high byte + 1)`, and a page-crossing index replaces the
+target's high byte with that value - is the standard deterministic model. These
+opcodes are genuinely unstable on hardware and the AND can drop out.
 
 ## Checked against an outside reference
 
@@ -71,20 +79,18 @@ operand starts at `$FFFF`, where both SIDquake cores wrap to `$0000`.
 
 The 71 opcodes the reference does not implement - among them `LAX abs,Y`
 (`$BF`), all of `SLO`/`RLA`/`SRE`/`RRA`/`DCP`/`ISC`/`SAX`, `ALR`, `ARR`, `AXS`,
-`LAS` and the unstable stores - have only been cross-checked between SIDquake's
-own two cores, which agree.
+`LAS` and the unstable stores - have no third opinion; they are covered by the
+core-vs-core diff, the opcode-table check and the store vectors.
 
-## Read tracking is incomplete
+## Memory-access tracking
 
-`MEM_READ` in the analysis core is set by the shared `rd()` helper, but several
-opcodes still read `cpu.memory[]` directly and so record nothing: `AND`/`ORA`/
-`EOR`/`BIT` and the `CMP`/`CPX`/`CPY` comparisons in `zp` and `abs`, the
-zero-page `ASL`/`LSR`/`ROL`/`ROR` reads, the pointer fetches of `STA (ind,X)` /
-`STA (ind),Y` / `JMP (ind)`, and stack pulls. `MEM_WRITE` and `MEM_EXECUTE`,
-which is what `sid_processor.cpp` consumes, are complete.
+The analysis core records `MEM_READ`, `MEM_WRITE`, `MEM_EXECUTE`,
+`MEM_OPCODE` and `MEM_JUMP_TARGET` per address, plus the PC of the last write.
+Every read an instruction performs is recorded, including operand reads,
+indirect pointer fetches and stack pulls; the only unrecorded fetches are the
+instruction stream itself, which is covered by `MEM_EXECUTE`/`MEM_OPCODE`.
 
-The only consumer of `MEM_READ` is the free-page scan in
-`spectrometer-shadow-detect.js`, which asks whether a page was touched at all,
-so a page reached exclusively through one of those opcodes could be judged free.
-Any single tracked access anywhere in the 512-byte window saves it, which is why
-this has not bitten in practice.
+Consumers: `sid_processor.cpp` uses `MEM_WRITE` (modified addresses, zero-page
+use) and `MEM_EXECUTE` (code/data split); `spectrometer-shadow-detect.js` uses
+the whole flag byte to ask whether a page was touched at all before parking the
+shadow-register buffer there.

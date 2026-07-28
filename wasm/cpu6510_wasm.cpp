@@ -196,7 +196,11 @@ extern "C" {
 
     uint8_t pop() {
         cpu.sp++;
-        return cpu.memory[0x0100 + cpu.sp];
+        uint16_t address = 0x0100 + cpu.sp;
+        if (cpu.trackingEnabled) {
+            cpu.memoryAccess[address] |= MEM_READ;
+        }
+        return cpu.memory[address];
     }
 
     // Set processor flags
@@ -294,6 +298,16 @@ extern "C" {
     // Unofficial convenience
     inline void do_lax(uint8_t v) { cpu.a = v; cpu.x = v; set_zn_flags(v); }
 
+    // SHA/SHX/SHY/TAS store reg ANDed with the high byte of the *pre-index*
+    // address plus one, and when the index crosses a page the value being
+    // stored replaces the target's high byte.
+    inline void do_unstable_store(uint16_t base, uint8_t index, uint8_t reg) {
+        uint16_t addr = (uint16_t)(base + index);
+        uint8_t v = reg & uint8_t((base >> 8) + 1);
+        if ((base & 0xFF00) != (addr & 0xFF00)) addr = (uint16_t)((v << 8) | (addr & 0xFF));
+        write_memory_internal(addr, v);
+    }
+
     // Branch helper (+1 taken, +1 if taken crosses page)
     inline void branch_if(bool cond, uint16_t& pc) {
         int8_t off = (int8_t)cpu.memory[pc++];
@@ -367,7 +381,7 @@ extern "C" {
         case 0xA1: // LDA (indirect,X)
         {
             uint8_t zp = (cpu.memory[pc++] + cpu.x) & 0xFF;
-            uint16_t addr = cpu.memory[zp] | (cpu.memory[(zp + 1) & 0xFF] << 8);
+            uint16_t addr = rd(zp) | (rd((zp + 1) & 0xFF) << 8);
             cpu.a = cpu.memory[addr];
             if (cpu.trackingEnabled) {
                 cpu.memoryAccess[addr] |= MEM_READ;
@@ -421,7 +435,7 @@ extern "C" {
         case 0x81: // STA (indirect,X)
         {
             uint8_t zp = (cpu.memory[pc++] + cpu.x) & 0xFF;
-            uint16_t addr = cpu.memory[zp] | (cpu.memory[(zp + 1) & 0xFF] << 8);
+            uint16_t addr = rd(zp) | (rd((zp + 1) & 0xFF) << 8);
             write_memory_internal(addr, cpu.a);
             cpu.cycles += 6;
         }
@@ -430,7 +444,7 @@ extern "C" {
         case 0x91: // STA (indirect),Y
         {
             uint8_t zp = cpu.memory[pc++];
-            uint16_t addr = (cpu.memory[zp] | (cpu.memory[(zp + 1) & 0xFF] << 8)) + cpu.y;
+            uint16_t addr = (rd(zp) | (rd((zp + 1) & 0xFF) << 8)) + cpu.y;
             write_memory_internal(addr, cpu.a);
             cpu.cycles += 6;
         }
@@ -735,10 +749,10 @@ extern "C" {
             // from the same page ($xx00) instead of crossing into the next page.
             uint16_t addr;
             if ((ptr & 0xFF) == 0xFF) {
-                addr = cpu.memory[ptr] | (cpu.memory[ptr & 0xFF00] << 8);
+                addr = rd(ptr) | (rd(ptr & 0xFF00) << 8);
             }
             else {
-                addr = cpu.memory[ptr] | (cpu.memory[ptr + 1] << 8);
+                addr = rd(ptr) | (rd(ptr + 1) << 8);
             }
             pc = addr;
             if (cpu.trackingEnabled) {
@@ -797,7 +811,7 @@ extern "C" {
         case 0xC5: // CMP zero page
         {
             uint8_t zp = cpu.memory[pc++];
-            uint8_t value = cpu.memory[zp];
+            uint8_t value = rd(zp);
             uint8_t result = cpu.a - value;
             set_flag(FLAG_CARRY, cpu.a >= value);
             set_zn_flags(result);
@@ -808,7 +822,7 @@ extern "C" {
         case 0xCD: // CMP absolute
         {
             uint16_t addr = read_word(pc);
-            uint8_t value = cpu.memory[addr];
+            uint8_t value = rd(addr);
             uint8_t result = cpu.a - value;
             set_flag(FLAG_CARRY, cpu.a >= value);
             set_zn_flags(result);
@@ -830,7 +844,7 @@ extern "C" {
         case 0xE4: // CPX zero page
         {
             uint8_t zp = cpu.memory[pc++];
-            uint8_t value = cpu.memory[zp];
+            uint8_t value = rd(zp);
             uint8_t result = cpu.x - value;
             set_flag(FLAG_CARRY, cpu.x >= value);
             set_zn_flags(result);
@@ -852,7 +866,7 @@ extern "C" {
         case 0xC4: // CPY zero page
         {
             uint8_t zp = cpu.memory[pc++];
-            uint8_t value = cpu.memory[zp];
+            uint8_t value = rd(zp);
             uint8_t result = cpu.y - value;
             set_flag(FLAG_CARRY, cpu.y >= value);
             set_zn_flags(result);
@@ -870,7 +884,7 @@ extern "C" {
         case 0x25: // AND zero page
         {
             uint8_t zp = cpu.memory[pc++];
-            cpu.a &= cpu.memory[zp];
+            cpu.a &= rd(zp);
             set_zn_flags(cpu.a);
             cpu.cycles += 3;
         }
@@ -885,7 +899,7 @@ extern "C" {
         case 0x05: // ORA zero page
         {
             uint8_t zp = cpu.memory[pc++];
-            cpu.a |= cpu.memory[zp];
+            cpu.a |= rd(zp);
             set_zn_flags(cpu.a);
             cpu.cycles += 3;
         }
@@ -900,7 +914,7 @@ extern "C" {
         case 0x45: // EOR zero page
         {
             uint8_t zp = cpu.memory[pc++];
-            cpu.a ^= cpu.memory[zp];
+            cpu.a ^= rd(zp);
             set_zn_flags(cpu.a);
             cpu.cycles += 3;
         }
@@ -910,7 +924,7 @@ extern "C" {
         case 0x24: // BIT zero page
         {
             uint8_t zp = cpu.memory[pc++];
-            uint8_t value = cpu.memory[zp];
+            uint8_t value = rd(zp);
             set_flag(FLAG_ZERO, (cpu.a & value) == 0);
             set_flag(FLAG_NEGATIVE, value & 0x80);
             set_flag(FLAG_OVERFLOW, value & 0x40);
@@ -921,7 +935,7 @@ extern "C" {
         case 0x2C: // BIT absolute
         {
             uint16_t addr = read_word(pc);
-            uint8_t value = cpu.memory[addr];
+            uint8_t value = rd(addr);
             set_flag(FLAG_ZERO, (cpu.a & value) == 0);
             set_flag(FLAG_NEGATIVE, value & 0x80);
             set_flag(FLAG_OVERFLOW, value & 0x40);
@@ -967,7 +981,7 @@ extern "C" {
         case 0x06: // ASL zero page
         {
             uint8_t zp = cpu.memory[pc++];
-            uint8_t value = cpu.memory[zp];
+            uint8_t value = rd(zp);
             set_flag(FLAG_CARRY, value & 0x80);
             value <<= 1;
             write_memory_internal(zp, value);
@@ -986,7 +1000,7 @@ extern "C" {
         case 0x46: // LSR zero page
         {
             uint8_t zp = cpu.memory[pc++];
-            uint8_t value = cpu.memory[zp];
+            uint8_t value = rd(zp);
             set_flag(FLAG_CARRY, value & 0x01);
             value >>= 1;
             write_memory_internal(zp, value);
@@ -1008,7 +1022,7 @@ extern "C" {
         case 0x26: // ROL zero page
         {
             uint8_t zp = cpu.memory[pc++];
-            uint8_t value = cpu.memory[zp];
+            uint8_t value = rd(zp);
             bool old_carry = test_flag(FLAG_CARRY);
             set_flag(FLAG_CARRY, value & 0x80);
             value = (value << 1) | (old_carry ? 1 : 0);
@@ -1031,7 +1045,7 @@ extern "C" {
         case 0x66: // ROR zero page
         {
             uint8_t zp = cpu.memory[pc++];
-            uint8_t value = cpu.memory[zp];
+            uint8_t value = rd(zp);
             bool old_carry = test_flag(FLAG_CARRY);
             set_flag(FLAG_CARRY, value & 0x01);
             value = (value >> 1) | (old_carry ? 0x80 : 0);
@@ -1288,16 +1302,16 @@ extern "C" {
         // XAA #imm (a.k.a. ANE): A = X & imm. Highly unstable on hardware.
         case 0x8B: { uint8_t v = cpu.memory[pc++]; cpu.a = cpu.x & v; set_zn_flags(cpu.a); add(2); } break;
 
-        // SHA/AHX: store A & X & (addrHi+1).
-        case 0x9F: { uint16_t base = read_word(pc); uint16_t a = base + cpu.y; uint8_t v = cpu.a & cpu.x & uint8_t((a >> 8) + 1); write_memory_internal(a, v); add(5); } break;
-        case 0x93: { uint8_t z = cpu.memory[pc++]; uint16_t b = rd(z) | (rd((z + 1) & 0xFF) << 8); uint16_t a = b + cpu.y; uint8_t v = cpu.a & cpu.x & uint8_t((a >> 8) + 1); write_memory_internal(a, v); add(6); } break;
+        // SHA/AHX: store A & X & (baseHi+1).
+        case 0x9F: { uint16_t base = read_word(pc); do_unstable_store(base, cpu.y, cpu.a & cpu.x); add(5); } break;
+        case 0x93: { uint8_t z = cpu.memory[pc++]; uint16_t b = rd(z) | (rd((z + 1) & 0xFF) << 8); do_unstable_store(b, cpu.y, cpu.a & cpu.x); add(6); } break;
 
-        // SHX/SHY: store reg & (addrHi+1).
-        case 0x9E: { uint16_t base = read_word(pc); uint16_t a = base + cpu.y; uint8_t v = cpu.x & uint8_t((a >> 8) + 1); write_memory_internal(a, v); add(5); } break;
-        case 0x9C: { uint16_t base = read_word(pc); uint16_t a = base + cpu.x; uint8_t v = cpu.y & uint8_t((a >> 8) + 1); write_memory_internal(a, v); add(5); } break;
+        // SHX/SHY: store reg & (baseHi+1).
+        case 0x9E: { uint16_t base = read_word(pc); do_unstable_store(base, cpu.y, cpu.x); add(5); } break;
+        case 0x9C: { uint16_t base = read_word(pc); do_unstable_store(base, cpu.x, cpu.y); add(5); } break;
 
-        // TAS/SHS: SP = A & X, then store A & X & (addrHi+1).
-        case 0x9B: { uint16_t base = read_word(pc); uint16_t a = base + cpu.y; cpu.sp = cpu.a & cpu.x; uint8_t v = cpu.a & cpu.x & uint8_t((a >> 8) + 1); write_memory_internal(a, v); add(5); } break;
+        // TAS/SHS: SP = A & X, then store A & X & (baseHi+1).
+        case 0x9B: { uint16_t base = read_word(pc); cpu.sp = cpu.a & cpu.x; do_unstable_store(base, cpu.y, cpu.a & cpu.x); add(5); } break;
 
         // LAS/LAR: A = X = SP = mem & SP.
         case 0xBB: { auto e = ea_absy(pc); uint8_t v = rd(e.addr) & cpu.sp; cpu.a = v; cpu.x = v; cpu.sp = v; set_zn_flags(v); add_read(4, e.cross); } break;
