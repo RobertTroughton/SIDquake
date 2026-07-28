@@ -36,8 +36,13 @@
 //; that would have read them have no callers. Compiling them out saves ~3.2 KB
 //; of every bar player's code blob and costs nothing at runtime.
 //;
-//; Kept in source because they are the readable, commented form of the styles
-//; and the reference the JS was written from. Change one, change both.
+//; Kept in source because they are the readable, commented form of the styles.
+//; They are NOT all still in step with what ships: the 10 main chars per style
+//; and the mirror set's vertical flip match public/bar-styles-data.js byte for
+//; byte, but the water reflection frames here are the older dense dither. The JS
+//; superseded them with a sparser (~25%) shimmer that lights alternate scanlines,
+//; and that is what every export has been getting. Edit the JS to change the
+//; look; treat these tables as reference only.
 //; =============================================================================
 
 //; Graphics-donor builds (-define GFX_DONOR) carry no code: the constants
