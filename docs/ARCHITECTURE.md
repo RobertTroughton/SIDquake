@@ -250,6 +250,15 @@ that run the real assembled code in the 6510 emulator (`npm test`):
 `scripts/test-shadow-replay.js` (shadow-register replay order). See
 `SIDPlayers/BAR_HEIGHT_METHODS.md`.
 
+There are two independent 6510 cores in `wasm/` - `cpu6510_wasm.cpp` for offline
+analysis and `sid_audio.cpp` for reSID playback - so they can drift apart.
+`scripts/cpu-crosscheck/run.sh` fuzzes both from identical randomised machine
+states and diffs registers, flags, cycles and memory after every instruction; it
+can link in a third-party `cpu.c` as an outside opinion. It is not part of
+`npm test` (it needs a C++ toolchain and takes minutes); run it after touching
+either core. See `scripts/cpu-crosscheck/README.md`, and `docs/CPU_CORES.md`
+for what the cores currently disagree on.
+
 All players share the multi-call IRQ scheduler in `INC/multicallirq.asm`:
 music call 0 is raster-driven once per frame at the player's
 `MUSIC_SYNC_LINE`; calls 1..N-1 (N = NumCallsPerFrame, up to 8) are CIA1
