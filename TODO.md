@@ -52,7 +52,6 @@ VIC asset at any *valid slot within a bank* — not just shift whole banks in
 - **Media-converter consolidation** — reassess whether `png_converter` is still needed or whether CharSetLab (or its functions) can replace it; unify the font/PETSCII/image conversion paths on a faster shared core.
 - **Palette drift** — the C64 RGB values differ between `ui.js` and `petscii-converter.js`; consolidate to one shared palette.
 - **Export option snapshot** — the exporter reads option state from the live DOM rather than a captured snapshot (`_captureOptionValues` exists but isn't used for export). No observed desync today (the modal is static during export).
-- **`addComponent`** has no 64K bounds check; reloc transforms mask `& 0xffff` and can wrap.
 
 ## Loop detection — give the user control of the scan
 The analysis cap is currently an Advanced-settings number (`maxLoopSeconds`, default
@@ -115,8 +114,11 @@ Until a real fix is known, at least make the failure legible:
 
 ## Build / infra
 - **Release WASM flags** — consider `-flto`, `-sASSERTIONS=0`, `--closure 1`.
-- **No artifact CI** — nothing verifies the committed generated artifacts (`.bin`, `.wasm`, reloc/gfx JSON, freq tables) against source; a Linux job ending in `git diff --exit-code` would catch drift.
-- **Windows-only build** — `0-build.bat` has a hardcoded `EMSDK_PATH`; the sidplayfp WASM build is duplicated between it and `scripts/build-sidplayfp-wasm.sh`.
+- **Artifact CI covers the players only** — `.github/workflows/ci.yml` rebuilds the
+  players and diffs them against what is committed (`scripts/build-players.sh --check`).
+  The `.wasm` files and the freq tables are still unverified; both need emsdk/python
+  in the job.
+- **Windows-only build** — `0-build.bat` has a hardcoded `EMSDK_PATH`; the sidplayfp WASM build is duplicated between it and `scripts/build-sidplayfp-wasm.sh`. The player half now also runs from `scripts/build-players.sh`, so the two will drift unless they are folded together.
 - **Repo size** — the committed HVSC `.7z` (~88 MB) dominates the repository; consider Git LFS or a build-time fetch.
 - **`.gitignore` residue** — still carries CMake / native-desktop-app entries from before the project became a web tool.
 - **HVSC token hardening** — the token is a deliberate speed-bump, not access control; a Netlify rate-limit on `/hvsc-token` + `/HVSC/*` would raise the bar.

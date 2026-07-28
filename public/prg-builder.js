@@ -18,6 +18,14 @@ class PRGBuilder {
         if (!data || data.length === 0) {
             throw new Error(`Component ${name} has no data`);
         }
+        // A component that runs past $FFFF - or a NaN address from a missing
+        // config field - would otherwise size the PRG from a bogus highest
+        // address and drop the overhanging bytes on the floor at build().
+        if (!Number.isInteger(loadAddress) || loadAddress < 0 || loadAddress + data.length > 0x10000) {
+            throw new Error(`Component ${name} (${data.length} bytes at ` +
+                `${Number.isInteger(loadAddress) ? '$' + loadAddress.toString(16).toUpperCase() : loadAddress}) ` +
+                `does not fit in C64 memory`);
+        }
 
         this.components.push({
             data: data,
