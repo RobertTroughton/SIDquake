@@ -1758,14 +1758,23 @@ class SIDquakePRGExporter {
             numChips,
             frames: 1200,
         });
-        if (!res.suitable) {
-            // The only thing that blocks shadow now is a SID write we can't
-            // redirect (e.g. an indirect or self-modifying store address) - if we
-            // can't capture every write we can't safely mask the SID.
+        if (res.leakedWrites) {
+            // A SID write we can't redirect (e.g. an indirect or self-modifying
+            // store address) - if we can't capture every write we can't safely
+            // mask the SID.
             throw new Error(
                 `Shadow method won't work for this tune: ${res.leakedWrites} SID ` +
                 `write(s) don't come from a redirectable store instruction, so the ` +
                 `SID can't be fully masked. Use the realtime variant instead.`);
+        }
+        if (!res.suitable) {
+            // An indexed store reached past the last register the mirror covers,
+            // so redirecting it would write over whatever the player keeps after
+            // the mirror instead of into it.
+            throw new Error(
+                `Shadow method won't work for this tune: ${res.overflowWrites} redirected ` +
+                `write(s) land past the end of the player's SID mirror. Use the ` +
+                `realtime variant instead.`);
         }
 
         // Repoint each store's high byte ($D4) at the mirror page. Only touch

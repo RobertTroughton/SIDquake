@@ -13,6 +13,7 @@
 //      the only check that can disqualify a tune.
 
 const MEM_EXECUTE = 1 << 0;
+const MEM_WRITE = 1 << 2;
 
 function makeApi(module) {
     const cw = (n, r, a) => module.cwrap(n, r, a);
@@ -95,6 +96,23 @@ function fallbackOrder(numChips) {
 }
 const ORDER_CONSISTENCY_MIN = 0.60;
 
+// How much of the redirected page the player's mirror actually covers: chip 3's
+// last register, $60 + $18. Matches SIDMIRROR_SIZE in SIDPlayers/INC/common.asm.
+const MIRROR_BYTES = (MAX_SHADOW_CHIPS - 1) * CHIP_STRIDE + REGS_PER_CHIP;
+
+// Two consecutive pages the tune never reads, writes or executes, searched from
+// the top of RAM down (below the $D000 I/O block). Returns the first page's high
+// byte, or null if the tune leaves no such pair. Reads the access map left by the
+// most recent run, so call it after pass 1 and before pass 2 reinitialises it.
+function pickShadowPage(api) {
+    for (let page = 0xCE; page >= 0x02; page--) {
+        let used = false;
+        for (let off = 0; off < 0x200 && !used; off++) used = api.access(((page << 8) + off) & 0xffff) !== 0;
+        if (!used) return page;
+    }
+    return null;
+}
+
 // Turn an observed (partial) dominant order into a full replay order covering all
 // 25 registers of every chip the tune uses. Below the consistency floor we ignore
 // the observation entirely and use the fallback; above it we keep the observed
@@ -136,7 +154,6 @@ export function analyzeShadow(module, sidBytes, opts) {
     // Find STA $D4xx store sites among EXECUTED opcodes (8D abs / 9D abs,X /
     // 99 abs,Y with high byte $D4). Executed-only avoids matching data.
     const storeSites = [];   // offset within the music image of the operand high byte
-    const shadowHi = 0xCE;   // simulation shadow page ($CE00..); the exporter picks the real one
     // Absolute stores whose high operand byte can be repointed at the shadow:
     // STA abs $8D, STA abs,X $9D, STA abs,Y $99, STX abs $8E, STY abs $8C.
     const STORE_OPS = new Set([0x8D, 0x9D, 0x99, 0x8E, 0x8C]);
@@ -146,6 +163,13 @@ export function analyzeShadow(module, sidBytes, opts) {
         if (api.rd(a + 2) === 0xD4) storeSites.push((a + 2 - loadAddress));
     }
 
+    // Simulation shadow page (the exporter picks the real one). It has to be two
+    // pages the tune never touches: then every access inside them during pass 2
+    // came from the redirect and nothing else, which is what makes the overflow
+    // check below trustworthy - and it stops the redirect corrupting the tune's
+    // own data, which would make the leak check meaningless.
+    const shadowHi = pickShadowPage(api) ?? 0xCE;
+
     // Pass 2: patch every site's high byte to the shadow page and re-run; if the
     // redirect is complete, ZERO writes should reach the real $D4xx registers.
     const patches = storeSites.map(off => [loadAddress + off, shadowHi]);
@@ -154,12 +178,21 @@ export function analyzeShadow(module, sidBytes, opts) {
     // $D400-$D7FF - so any chip's leaked write shows up here whatever its address.
     let leaked = 0;
     for (let reg = 0; reg < 0x20; reg++) leaked += api.sidWrites(reg);
-    const redirectComplete = leaked === 0;
+
+    // Indexed stores (STA $D4xx,X/Y) can reach past the last register the player's
+    // mirror covers - a redirected write beyond MIRROR_BYTES lands on whatever the
+    // player put after the mirror (the replay-order table, for a start). Nothing in
+    // the leak count catches that, since such a write never touches $D400-$D7FF.
+    let overflowWrites = 0;
+    for (let off = MIRROR_BYTES; off < 0x200; off++) {
+        if (api.access(((shadowHi << 8) + off) & 0xffff) & MEM_WRITE) overflowWrites++;
+    }
+    const redirectComplete = leaked === 0 && overflowWrites === 0;
 
     return {
-        // Shadow is usable as long as every SID write can be redirected. The
-        // per-frame order only decides whether we bake the detected order or the
-        // fallback - it never blocks the tune.
+        // Shadow is usable as long as every SID write can be redirected, and lands
+        // inside the mirror when it is. The per-frame order only decides whether we
+        // bake the detected order or the fallback - it never blocks the tune.
         suitable: redirectComplete,
         consistency: ord.consistency,
         variants: ord.variants,
@@ -169,6 +202,7 @@ export function analyzeShadow(module, sidBytes, opts) {
         storeSites,
         redirectComplete,
         leakedWrites: leaked,
+        overflowWrites,
     };
 }
 
