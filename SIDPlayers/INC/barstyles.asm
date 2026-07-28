@@ -22,13 +22,33 @@
 .const BAR_STYLE_SIZE_WATER = 240
 .const BAR_STYLE_SIZE_MIRROR = 160
 
-//; BarStyle variable location in data block (offset $70 from DATA_ADDRESS)
-.var BarStyle = DATA_ADDRESS + $70
+//; =============================================================================
+//; The style DATA below is not compiled into a shipped player (build with
+//; -define BARSTYLES_IN_CODE to get it back).
+//;
+//; The bar chars live in the graphics bank, where each player reserves them as
+//; zeroes (`.fill BAR_STYLE_SIZE_*, $00`, the "Bar Chars" segment in the gfx
+//; manifest). The exporter writes the style the user picked straight into that
+//; reservation - public/prg-builder.js injects a "Graphics: bar chars"
+//; component from public/bar-styles-data.js, which holds the same 10 main chars
+//; per style and derives the mirror/reflection chars from them. So the tables
+//; here are a second copy of data the C64 never reads, and the copy routines
+//; that would have read them have no callers. Compiling them out saves ~3.2 KB
+//; of every bar player's code blob and costs nothing at runtime.
+//;
+//; Kept in source because they are the readable, commented form of the styles
+//; and the reference the JS was written from. Change one, change both.
+//; =============================================================================
 
 //; Graphics-donor builds (-define GFX_DONOR) carry no code: the constants
 //; above stay visible (the gfx blocks size their bar-chars region with them),
 //; everything below is compiled out.
-#if !GFX_DONOR
+#if !GFX_DONOR && BARSTYLES_IN_CODE
+
+//; BarStyle variable location in data block (offset $70 from DATA_ADDRESS)
+//; NOTE: this is the same byte common.asm hands to BitmapMode. Only the copy
+//; routines below ever read it, so nothing collides today.
+.var BarStyle = DATA_ADDRESS + $70
 
 //; =============================================================================
 //; BAR STYLE COPY ROUTINE - WATER REFLECTION VERSION
@@ -603,4 +623,4 @@ BarStyleMirror7:
     .byte $7E, $00, $7E, $00, $7E, $00, $7E, $00     //; Full
 
 
-#endif // !GFX_DONOR
+#endif // !GFX_DONOR && BARSTYLES_IN_CODE
