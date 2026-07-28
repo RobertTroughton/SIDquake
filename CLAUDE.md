@@ -177,63 +177,73 @@ keeping anything I'd plausibly re-run.
 
 ## Project facts
 
-> Fill this in per repository. Keep it to things an agent can't work out in
-> thirty seconds; put anything longer in the repo's own docs and link to it here.
+> Keep it to things an agent can't work out in thirty seconds; put anything
+> longer in the repo's own docs and link to it here.
 
-**What this project is** — A Commodore 64 remaster of *Sabre Wulf* (Ultimate
-Play the Game, 1984), by Genesis Project. Two code bodies: `ASM/` is the game
-itself (KickAssembler 6502, ~12k lines, five separately-assembled programs
-overlaid by the Sparkle loader); `CPP/` is an offline tool that converts
-authored assets (PNGs, LDtk level data) into the `.bin` / `.asm` data files the
-assembler then packs.
+**What this project is** — SIDquake, a browser tool for Commodore 64 SID music
+(live at sidquake.c64demo.com). It plays tunes through libsidplayfp/reSIDfp,
+analyses them with a 6510 emulator, links them with a visualiser into a runnable
+C64 `.prg`, and browses a self-hosted HVSC. Three code bodies: `public/` is the
+app (plain browser JS, **no bundler** — classic scripts loaded by the loader at
+the bottom of `index.html`, plus dynamic `import()` for the ES modules);
+`wasm/` is the C++ compiled to the committed `.wasm` files; `SIDPlayers/` is the
+KickAssembler 6502 source for the visualiser players.
 
 **Build**
 
-- Asset tool: `make -C CPP` → `CPP/SabreWulfAssetGen`. Run it **from the repo
-  root** (its input paths are relative to it).
-- Game: `make` at the repo root — KickAssembler + SPOT + Sparkle → `.d64`.
-  Windows-only as written (`.exe` paths, `del`). To assemble a single program
-  on any platform: `java -jar Extras/KickAss/KickAss.jar ASM/<path>.asm -o <out>.prg`.
-- **Assets are not a makefile target.** Run the asset tool before `make`, or
-  `make` will silently pack whatever stale `Out/*.bin` are lying around.
+- Players: `scripts/build-players.sh` (Linux/macOS) or step 2 of `0-build.bat`.
+  `--check` builds to a temp dir and diffs against the committed artifacts
+  instead of overwriting them — use it to answer "did my change move any shipped
+  binary?". Needs `java` only.
+- WASM: `scripts/build-*-wasm.sh`, needs emsdk. `0-build.bat` hardcodes
+  `EMSDK_PATH`. The `.wasm` + their emscripten JS glue are committed.
+- Site: `npm run build` (HVSC extract + SEO pages + share meta). Netlify serves
+  `public/` as-is; there is no compile step for the app JS.
 
-**Test** — There is no automated suite. The available checks are: all five
-programs assemble without error, and the asset tool regenerates the committed
-generated files (`ASM/Frontend/FE_SpriteData-Generated.asm` and friends)
-byte-identically. Run both before calling a change done.
+**Test** — `npm test`. Two harnesses drive the *real assembled 6502* in the WASM
+6510 emulator, covering the two places the C64 side and the exporter must agree
+byte-for-byte: `scripts/test-baked-decoder.js` (baked FFT stream) and
+`scripts/test-shadow-replay.js` (shadow-register replay order). Nothing covers
+the browser UI. Also run `scripts/build-players.sh --check` after touching
+`SIDPlayers/`.
 
 **Layout**
 
-- `ASM/Common/` — resident kernel at `$0400`, shared defines, `ZPUsage.asm`
-  (the single source of truth for zero page).
-- `ASM/Boot|Intro|Frontend|Game/` — the four overlay programs. Intro and
-  Frontend deliberately share load address `$1800`.
-- `SabreWulf.sls` — the Sparkle loader script. This is the real linker script;
-  its bundle order must match the `LoadFileIndex_*` enum in `BaseCodeDefines.asm`.
-- `CPP/Code/`, `CPP/Common/` — the asset tool. `CPP/ThirdParty/` is vendored.
-- `docs/review/` — subsystem-by-subsystem review notes; read the relevant one
-  before working in an area.
+- `public/` — the app. `ui.js` (UI + state), `prg-builder.js` (memory layout +
+  PRG assembly), `sidquake-core.js` (WASM analysis glue), `spectrometer-*.js`
+  (the two offline bar-data methods), `visualizer-registry.js` + `prg/*.json`
+  (what the visualiser picker offers).
+- `SIDPlayers/` — one directory per visualiser, shared code in `INC/`.
+  `INC/common.asm` holds the **data-block layout**, a contract with
+  `prg-builder.js` `generateDataBlock()`: change one, change both.
+- `scripts/` — build, codegen and test tooling. `tools/` — HVSC index + song
+  length scanners.
+- Docs: `docs/ARCHITECTURE.md`, `docs/EMBED.md`,
+  `SIDPlayers/CODE_ONLY_GUIDE.md` (how a relocatable player is structured),
+  `SIDPlayers/BAR_HEIGHT_METHODS.md` (the three bar-data methods). `TODO.md` is
+  outstanding work only and is kept current.
 
-**Generated output — never edit by hand** — `Out/` (gitignored), and the
-committed `*-Generated.asm` files. The `.sym` files are assembler output but are
-committed because programs import each other's symbols; regenerate rather than
-hand-edit them.
+**Generated output — never edit by hand** — `public/prg/*-code.bin`,
+`*.codereloc.json`, `*.reloc.json`, `*.gfx.json`, the fixed-bank `*.bin`,
+`public/*.wasm` and their emscripten JS glue (`sidquake.js`, `sidplayfp.js`,
+`exomizer.js`), and `SIDPlayers/INC/FreqTable*.bin`. Regenerate rather than
+patch.
 
 **Gotchas**
 
-- The memory map at the top of `ASM/Game/SabreWulfMain.asm` is authoritative and
-  kept current. Read it before moving anything.
-- Zero page `$50-$5a` is main-loop-only scratch and `$5b-$60` is IRQ-time
-  scratch. That split is load-bearing: putting IRQ-time state back into
-  `$50-$5a` reintroduces a corruption window. See `ASM/Common/ZPUsage.asm`.
-- `UpdateSingleSprite` / `UpdateSingleSpriteFlipped` are self-modifying and
-  therefore not re-entrant — main loop only, never from an IRQ.
-- A few constants are hand-duplicated between ASM and C++
-  (`NumAnimationsPerCritter`, `MaxNumCrittersOnScreen`). Change one, change both.
-- Timing is PAL-only throughout (game clock, attract timers, intro raster splits).
-- `DoIntro()` shells out to `Extras/SPOT/SPOT.exe`, a Windows binary. That one
-  step can't run on Linux; everything else in the tool can.
-- `CPP/C64_Palettes.txt` is read at runtime relative to the **repo root**, so the
-  asset tool must be run from there. Several source images deliberately carry a
-  non-C64 marker colour (`#ff0044` in the LDtk screens) and will never match a
-  palette; they are scanned by exact RGB, not by palette index.
+- A player blob and its reloc table **must be regenerated together**. A stale
+  blob against a fresh table is patched at the wrong offsets and silently
+  corrupts every export; the table carries an Adler-32 of the blob to catch it.
+  `build-players.sh` and `0-build.bat` always emit both from one build.
+- Exports are relocated, so a player's *code* size is not capped by the bank
+  layout — only its VIC graphics must fit a 16 KB bank. See `CODE_ONLY_GUIDE.md`.
+- Each bar visualiser is compiled once per bar-data method (`<none>` /
+  `SPECTROMETER_SHADOW` / `SPECTROMETER_BAKED`). Touching shared `INC/` code
+  changes up to three shipped blobs per player — check which with
+  `build-players.sh --check`.
+- Timing is PAL-only throughout, and `SetupStableRaster` writes the PAL `$DC06`
+  latch unconditionally.
+- The 6510 analyser counts a SID "chip" per touched `$20` slot in `$D400-$D7FF`,
+  so a tune that sweeps writes across the mirror range reports up to 8 chips.
+- The committed HVSC archive under `hvsc-data/` dominates the repo size; the
+  extracted `public/HVSC/` is gitignored and rebuilt by `npm run extract-hvsc`.
