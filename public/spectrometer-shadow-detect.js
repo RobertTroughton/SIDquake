@@ -6,9 +6,11 @@
 // the real SID in a fixed order and reuses those values for the bars. That needs
 // two things this module works out (and verifies) offline, using only existing
 // exports in sidquake.wasm (no rebuild):
-//   1) the write ORDER is essentially the same every frame (>=90%);
+//   1) the per-frame write ORDER, which is baked as the replay order when it is
+//      consistent enough to trust and replaced by a safe fallback when it isn't;
 //   2) every SID write comes from a patchable STA $D4xx instruction, so
-//      repointing them at the shadow page captures 100% of the writes.
+//      repointing them at the shadow page captures 100% of the writes. This is
+//      the only check that can disqualify a tune.
 
 const MEM_EXECUTE = 1 << 0;
 
@@ -75,30 +77,41 @@ function dominantOrder(orders) {
     return { order: bestKey ? bestKey.split(',').map(Number) : [], consistency: total ? best / total : 0, variants: counts.size, frames: total };
 }
 
-// Safe fallback replay order for single SID: descending from $18 down to $00.
-// Used verbatim when the tune's per-frame write order isn't consistent enough to
-// trust, and to fill in any registers the tune never wrote so we always replay a
-// full 25.
-const FALLBACK_ORDER = (() => {
+// Entries in the replay order are offsets from $D400, so chip N's registers are
+// $20*N + $00..$18 - the same offsets the C64 uses to index both the mirror page
+// and $D400 (see PlayMusicShadow in INC/musicplayback.asm).
+const CHIP_STRIDE = 0x20;
+const REGS_PER_CHIP = 25;          // $00-$18
+export const MAX_SHADOW_CHIPS = 4; // the mirror page covers $D400-$D478
+
+// Safe fallback replay order: registers descending from $18 down to $00, chips
+// ascending. Used verbatim when the tune's per-frame write order isn't consistent
+// enough to trust, and to fill in any register the tune never wrote so we always
+// replay a full 25 per chip.
+function fallbackOrder(numChips) {
     const o = [];
-    for (let r = 0x18; r >= 0x00; r--) o.push(r);
+    for (let c = 0; c < numChips; c++) for (let r = 0x18; r >= 0x00; r--) o.push(c * CHIP_STRIDE + r);
     return o;
-})();
+}
 const ORDER_CONSISTENCY_MIN = 0.60;
 
-// Turn an observed (partial) dominant order into a full 25-entry permutation of
-// $00-$18. Below the consistency floor we ignore the observation entirely and use
-// the fallback; above it we keep the observed order for the registers it covers
-// and append every remaining register in fallback order. We always replay all 25
-// on the C64 so init-only registers (volume, filter) and the odd frame that
-// touches an extra register are never dropped.
-function buildFullOrder(observed, consistency) {
+// Turn an observed (partial) dominant order into a full replay order covering all
+// 25 registers of every chip the tune uses. Below the consistency floor we ignore
+// the observation entirely and use the fallback; above it we keep the observed
+// order for the offsets it covers - which preserves the tune's own cross-chip
+// interleaving - and append every remaining register in fallback order. We always
+// replay all 25 per chip on the C64 so init-only registers (volume, filter) and
+// the odd frame that touches an extra register are never dropped.
+// Exported so scripts/test-shadow-replay.js can drive the assembled player with
+// the exact tables the exporter bakes.
+export function buildFullOrder(observed, consistency, numChips) {
+    const valid = new Set(fallbackOrder(numChips));
     const seen = new Set();
     const full = [];
-    const push = r => { if (r >= 0 && r <= 0x18 && !seen.has(r)) { seen.add(r); full.push(r); } };
+    const push = r => { if (valid.has(r) && !seen.has(r)) { seen.add(r); full.push(r); } };
     if (consistency >= ORDER_CONSISTENCY_MIN) for (const r of observed) push(r);
-    for (const r of FALLBACK_ORDER) push(r);
-    return full;   // exactly 25 entries, a permutation of $00..$18
+    for (const r of fallbackOrder(numChips)) push(r);
+    return full;   // exactly 25 * numChips entries
 }
 
 // Full shadow analysis. Returns:
@@ -107,6 +120,7 @@ function buildFullOrder(observed, consistency) {
 export function analyzeShadow(module, sidBytes, opts) {
     const api = makeApi(module);
     const { loadAddress } = opts;
+    const numChips = Math.min(Math.max(opts.numChips || 1, 1), MAX_SHADOW_CHIPS);
     const musicLen = ((sidBytes[8] << 8) | sidBytes[9]) === 0
         ? sidBytes.length - (((sidBytes[6] << 8) | sidBytes[7]) + 2)
         : sidBytes.length - ((sidBytes[6] << 8) | sidBytes[7]);
@@ -117,7 +131,7 @@ export function analyzeShadow(module, sidBytes, opts) {
     // order when it's consistent enough, otherwise the safe fallback. Low
     // consistency doesn't disqualify the tune - only an un-redirectable write does (below).
     const usedFallback = !(ord.consistency >= ORDER_CONSISTENCY_MIN && ord.order.length > 0);
-    const fullOrder = buildFullOrder(ord.order, ord.consistency);
+    const fullOrder = buildFullOrder(ord.order, ord.consistency, numChips);
 
     // Find STA $D4xx store sites among EXECUTED opcodes (8D abs / 9D abs,X /
     // 99 abs,Y with high byte $D4). Executed-only avoids matching data.
@@ -136,8 +150,10 @@ export function analyzeShadow(module, sidBytes, opts) {
     // redirect is complete, ZERO writes should reach the real $D4xx registers.
     const patches = storeSites.map(off => [loadAddress + off, shadowHi]);
     loadAndRun(api, sidBytes, opts, patches);
+    // Write counts are kept per register ($00-$1F), pooled across every chip in
+    // $D400-$D7FF - so any chip's leaked write shows up here whatever its address.
     let leaked = 0;
-    for (let reg = 0; reg < 0x80; reg++) leaked += api.sidWrites(reg);
+    for (let reg = 0; reg < 0x20; reg++) leaked += api.sidWrites(reg);
     const redirectComplete = leaked === 0;
 
     return {
@@ -147,7 +163,8 @@ export function analyzeShadow(module, sidBytes, opts) {
         suitable: redirectComplete,
         consistency: ord.consistency,
         variants: ord.variants,
-        order: fullOrder,       // full 25-entry permutation of $00-$18
+        order: fullOrder,       // 25 entries per chip, each an offset from $D400
+        numChips,
         usedFallback,
         storeSites,
         redirectComplete,

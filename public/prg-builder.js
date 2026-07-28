@@ -1721,21 +1721,41 @@ class SIDquakePRGExporter {
         };
     }
 
-    // Shadow-register method: analyse the tune's SID write order, and
-    // if it's consistent enough, repoint every $D4xx store at the player's
-    // page-aligned mirror (sidInfo.data is held by reference, so patching it here
-    // still reaches the built PRG) and bake the canonical replay order. Fails
-    // loudly if the tune isn't suitable or the store sites don't line up.
+    // Shadow-register method: analyse the tune's SID write order, repoint every
+    // $D4xx store at the player's page-aligned mirror (sidInfo.data is held by
+    // reference, so patching it here still reaches the built PRG) and bake the
+    // canonical replay order. Multi-SID works because only the store's high byte
+    // is repointed, so all four chips share one mirror page at their natural $20
+    // spacing. Fails loudly if the tune isn't suitable (a SID write that can't be
+    // redirected, or chips off the $D400/$20 grid) or the store sites don't line up.
     async processSpectrometerShadow(vizConfig, layout, sidInfo, header, selectedSong = 0) {
         const sidBytes = this.analyzer.createModifiedSID();
         if (!sidBytes) throw new Error('Shadow: could not obtain SID data for the current tune');
 
-        const { analyzeShadow } = await import((window.cacheBust || (s => s))('./spectrometer-shadow-detect.js'));
+        const { analyzeShadow, MAX_SHADOW_CHIPS } = await import((window.cacheBust || (s => s))('./spectrometer-shadow-detect.js'));
+
+        // The player mirrors and replays chip N at $D400 + $20*N, so the tune's
+        // chips have to sit on that grid. Every real multi-SID layout we handle
+        // does ($D420/$D440/$D460); anything else would replay one chip's values
+        // to an address no chip listens on - which on a stock C64 mirrors back
+        // onto SID 1 and wrecks the audio. Refuse rather than export that.
+        const chipAddresses = this.analyzer.analysisResults?.sidChipAddresses || [];
+        const numChips = Math.min(Math.max(this.analyzer.analysisResults?.sidChipCount || 1, 1), MAX_SHADOW_CHIPS);
+        const offGrid = chipAddresses.filter((a, i) => a !== 0xD400 + i * 0x20);
+        if (offGrid.length || chipAddresses.length > MAX_SHADOW_CHIPS) {
+            throw new Error(
+                `Shadow method won't work for this tune: its SID chips sit at ` +
+                `${chipAddresses.map(a => '$' + a.toString(16).toUpperCase()).join(', ')}, ` +
+                `but the shadow player only handles up to ${MAX_SHADOW_CHIPS} chips at ` +
+                `$D400/$D420/$D440/$D460. Use the realtime variant instead.`);
+        }
+
         const res = analyzeShadow(this.analyzer.Module, sidBytes, {
             initAddress: header.initAddress,
             playAddress: header.playAddress,
             loadAddress: header.loadAddress,
             subtune: selectedSong,
+            numChips,
             frames: 1200,
         });
         if (!res.suitable) {
@@ -1762,18 +1782,22 @@ class SIDquakePRGExporter {
                 `SID store sites didn't line up with the exported music - cannot safely redirect.`);
         }
 
-        // Bake the replay order: a full 25-entry permutation of $00-$18 (the C64
-        // replays all 25 every frame, no terminator). analyzeShadow guarantees
-        // exactly 25 entries; clamp defensively so a stray value can't shift the
-        // component size and corrupt the following memory.
-        const regs = res.order.filter(r => r >= 0 && r <= 0x18);
-        if (regs.length !== 25) {
-            throw new Error(`Shadow: expected a full 25-register replay order, got ${regs.length}.`);
+        // Bake the replay order: 25 entries per chip, each an offset from $D400
+        // ($20*chip + register), followed by the $FF terminator that stops the
+        // player's replay loop. analyzeShadow guarantees exactly 25 per chip;
+        // clamp defensively so a stray value can't shift the component size and
+        // corrupt the following memory.
+        const maxOffset = (numChips - 1) * 0x20 + 0x18;
+        const regs = res.order.filter(r => r >= 0 && r <= maxOffset);
+        if (regs.length !== 25 * numChips) {
+            throw new Error(`Shadow: expected a ${25 * numChips}-entry replay order for ` +
+                `${numChips} SID chip(s), got ${regs.length}.`);
         }
-        const order = Uint8Array.from(regs);
+        const order = Uint8Array.from([...regs, 0xFF]);
         this.builder.addComponent(order, parseInt(layout.shadowOrderAddress), 'Shadow Order');
 
-        console.log(`Shadow: replay 25 regs (${res.usedFallback ? 'fallback order' : `detected, ` +
+        console.log(`Shadow: replay ${regs.length} regs across ${numChips} chip(s) ` +
+            `(${res.usedFallback ? 'fallback order' : `detected, ` +
             `${(res.consistency * 100).toFixed(0)}% consistent`}), ${patched} stores -> mirror page ` +
             `$${mirrorPage.toString(16)}, order@${layout.shadowOrderAddress}`);
     }

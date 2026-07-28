@@ -157,10 +157,11 @@ barGradientColors:                      // $80-$A7: per-bar colours (colorEffect
 .const WAVE_LEVEL_SHIFT					= 3
 .const COLOR_TABLE_ADDRESS				= VIC_BANK_ADDRESS + $2E00 //; Within 16k VIC bank
 
-//; The 100-byte SID register mirror (runtime-only, rewritten every frame)
-//; also lives in the unused sprite area, page-aligned - keeping it (and the
-//; shadow build's .align padding) out of the packed code block below the
-//; bitmap.
+//; The SIDMIRROR_SIZE-byte SID register mirror (runtime-only, rewritten every
+//; frame) also lives in the unused sprite area, page-aligned - keeping it (and
+//; the shadow build's .align padding) out of the packed code block below the
+//; bitmap. It has the whole $2F00 page to itself, so the shadow build's wider
+//; $20-per-chip layout fits as-is.
 #define SIDREGMIRROR_EXTERNAL
 .label sidRegisterMirror				= VIC_BANK_ADDRESS + $2F00
 

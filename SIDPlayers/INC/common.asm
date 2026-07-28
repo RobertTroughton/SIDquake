@@ -44,6 +44,23 @@
 .var LogoD024						= DATA_ADDRESS + $73 // 1 byte, charset-logo $d024 (ECM bg4)
 .var ZPUsageData					= DATA_ADDRESS + $e0 // 32-byte string
 
+// =============================================================================
+// SID REGISTER MIRROR LAYOUT
+// The mirror holds each chip's 25 registers ($00-$18); chip N starts at
+// sidRegisterMirror + N * SIDMIRROR_CHIP_STRIDE. The analyse build fills the
+// mirror itself, so it packs the chips 25 bytes apart. The shadow build's
+// mirror is written by the tune's OWN $D4xx stores (repointed at the mirror
+// page by the exporter), so its chips land wherever the hardware puts them -
+// $20 apart, matching $D400/$D420/$D440/$D460.
+// =============================================================================
+
+#if SPECTROMETER_SHADOW
+.const SIDMIRROR_CHIP_STRIDE		= $20
+#else
+.const SIDMIRROR_CHIP_STRIDE		= 25
+#endif
+.const SIDMIRROR_SIZE				= (SIDMIRROR_CHIP_STRIDE * 3) + 25
+
 // Graphics-donor builds (-define GFX_DONOR) carry no code: the data-block
 // contract above stays visible, the helpers below are compiled out.
 #if !GFX_DONOR

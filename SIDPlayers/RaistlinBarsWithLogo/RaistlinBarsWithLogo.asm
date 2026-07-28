@@ -356,10 +356,13 @@ DrawSongLength:
 //; enough to hold the shared IRQ framework.
 //; =============================================================================
 
-.label sidRegisterMirror        = SCREEN1_ADDRESS + 0      //; 100 bytes
-.label previousHeightsScreen0   = SCREEN1_ADDRESS + 100    //; 40 bytes
-.label previousHeightsScreen1   = SCREEN1_ADDRESS + 140    //; 40 bytes
-.label previousColors           = SCREEN1_ADDRESS + 180    //; 40 bytes
+//; The mirror is SIDMIRROR_SIZE bytes (100 analysing, 121 in the shadow build,
+//; where the chips sit $20 apart - see INC/common.asm), so everything after it
+//; is placed relative to that rather than at a fixed offset.
+.label sidRegisterMirror        = SCREEN1_ADDRESS + 0
+.label previousHeightsScreen0   = SCREEN1_ADDRESS + SIDMIRROR_SIZE          //; 40 bytes
+.label previousHeightsScreen1   = SCREEN1_ADDRESS + SIDMIRROR_SIZE + 40     //; 40 bytes
+.label previousColors           = SCREEN1_ADDRESS + SIDMIRROR_SIZE + 80     //; 40 bytes
 
 //; =============================================================================
 //; INITIALIZATION

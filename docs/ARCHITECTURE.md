@@ -239,7 +239,16 @@ KickAss assembly source for each visualizer type:
 - Main file (e.g., `RaistlinBars.asm`)
 - Shared includes in `INC/` (lowercase filenames): common.asm, multicallirq.asm, spectrometer.asm, musicplayback.asm, keyboard.asm, stablerastersetup.asm, barstyles.asm
 - Binary data: FreqTable.bin, SoundbarSine.bin, character sets
-- Compiled by `0-build.bat` using KickAss.jar
+- Compiled by `0-build.bat` using KickAss.jar. `scripts/build-players.sh` runs
+  the same player builds on Linux/macOS; `--check` builds to a temp directory and
+  diffs against the committed artifacts instead of overwriting them.
+
+Two routines are contracts between the C64 side and the exporter, where a layout
+change is easy to get wrong and impossible to eyeball. Both are pinned by tests
+that run the real assembled code in the 6510 emulator (`npm test`):
+`scripts/test-baked-decoder.js` (baked FFT stream) and
+`scripts/test-shadow-replay.js` (shadow-register replay order). See
+`SIDPlayers/BAR_HEIGHT_METHODS.md`.
 
 All players share the multi-call IRQ scheduler in `INC/multicallirq.asm`:
 music call 0 is raster-driven once per frame at the player's

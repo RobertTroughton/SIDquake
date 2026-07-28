@@ -942,7 +942,9 @@ class UIController {
         } else if (tooManyCalls) {
             disabledMessage = `Needs a slower tune (max ${caps.maxCalls} call${caps.maxCalls > 1 ? 's' : ''}/frame)`;
         } else if (tooManySidChips) {
-            disabledMessage = `Single-SID tunes only`;
+            disabledMessage = caps.maxSid === 1
+                ? `Single-SID tunes only`
+                : `Up to ${caps.maxSid} SID chips only`;
         }
 
         card.innerHTML = `
@@ -1015,7 +1017,7 @@ class UIController {
         const maxCalls = variant?.configData?.maxCallsPerFrame ?? Infinity;
         const maxSid = variant?.configData?.maxSIDChips ?? Infinity;
         if (requiredCalls > maxCalls) return { ok: false, reason: `needs ≤${maxCalls} call${maxCalls > 1 ? 's' : ''}/frame` };
-        if (requiredSid > maxSid) return { ok: false, reason: 'single-SID only' };
+        if (requiredSid > maxSid) return { ok: false, reason: maxSid === 1 ? 'single-SID only' : `needs ≤${maxSid} SID chips` };
         return { ok: true };
     }
 

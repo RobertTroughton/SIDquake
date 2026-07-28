@@ -149,7 +149,7 @@ AnalyseMusic:
     ldy #24
 !loopSID2:
     lda $d420, y
-    sta sidRegisterMirror + 25, y
+    sta sidRegisterMirror + SIDMIRROR_CHIP_STRIDE, y
     dey
     bpl !loopSID2-
 !skipSID2:
@@ -161,7 +161,7 @@ AnalyseMusic:
     ldy #24
 !loopSID3:
     lda $d440, y
-    sta sidRegisterMirror + 50, y
+    sta sidRegisterMirror + (SIDMIRROR_CHIP_STRIDE * 2), y
     dey
     bpl !loopSID3-
 !skipSID3:
@@ -173,7 +173,7 @@ AnalyseMusic:
     ldy #24
 !loopSID4:
     lda $d460, y
-    sta sidRegisterMirror + 75, y
+    sta sidRegisterMirror + (SIDMIRROR_CHIP_STRIDE * 3), y
     dey
     bpl !loopSID4-
 !skipSID4:
@@ -183,33 +183,41 @@ AnalyseMusic:
 
     jmp AnalyzeSIDRegisters
 
-// 4 x 25 bytes = 100 bytes for up to 4 SID chip register mirrors.
-// A player short on code space can relocate this runtime-only buffer by
-// defining SIDREGMIRROR_EXTERNAL and providing its own
+// SIDMIRROR_SIZE bytes for up to 4 SID chip register mirrors (see the layout
+// note in common.asm). A player short on code space can relocate this
+// runtime-only buffer by defining SIDREGMIRROR_EXTERNAL and providing its own
 // `.label sidRegisterMirror = <address>` (no initial contents needed - the
 // mirror is fully rewritten before it is read).
 #if !SIDREGMIRROR_EXTERNAL
-sidRegisterMirror: .fill 100, 0
+sidRegisterMirror: .fill SIDMIRROR_SIZE, 0
 #endif // !SIDREGMIRROR_EXTERNAL
 
 #else // SPECTROMETER_SHADOW
-// Shadow method (single SID): the play routine's $D4xx stores - including the
-// ones in the tune's init - were repointed at sidRegisterMirror, so the mirror
-// always holds the tune's full intended SID state (init's volume/filter plus
-// whatever this frame's play wrote). We replay ALL 25 SID1 registers ($00-$18)
-// every frame in shadowOrder's baked canonical order: that way no write is ever
-// missed (init-only registers, or a frame that touches extra registers, still
-// reach the real SID), and re-writing an unchanged register with its own mirror
-// value is harmless. shadowOrder is a full permutation of $00-$18 (25 bytes);
-// the exporter fills it with the tune's detected order, or a safe fallback
-// ($18,$17,..,$00) when the per-frame order isn't consistent enough.
+// Shadow method: the play routine's $D4xx stores - including the ones in the
+// tune's init - were repointed at sidRegisterMirror, so the mirror always holds
+// the tune's full intended SID state (init's volume/filter plus whatever this
+// frame's play wrote). Because only the store's HIGH byte is repointed, every
+// chip keeps its natural offset within the page: SID 1 lands at mirror + $00,
+// SID 2 at + $20, SID 3 at + $40, SID 4 at + $60 - the same offsets the replay
+// then uses to index $D400, so one page-aligned mirror covers all four chips.
+//
+// We replay ALL 25 registers ($00-$18) of every chip the tune uses, each frame,
+// in shadowOrder's baked canonical order: that way no write is ever missed
+// (init-only registers, or a frame that touches extra registers, still reach the
+// real SID), and re-writing an unchanged register with its own mirror value is
+// harmless. shadowOrder holds 25 entries per chip - each entry a mirror/$D400
+// offset, so chip N's registers appear as $20*N + $00..$18 - and is terminated
+// by $FF, which is what bounds the replay to the chips actually present.
+// The exporter fills it with the tune's detected write order, or a safe fallback
+// (registers descending, chips ascending) when the per-frame order isn't
+// consistent enough.
 // sidRegisterMirror honours SIDREGMIRROR_EXTERNAL just like the analyse path,
 // so logo players (short on code space) can relocate the runtime-only buffer.
 #if !SIDREGMIRROR_EXTERNAL
 .align $100
-sidRegisterMirror: .fill 100, 0
+sidRegisterMirror: .fill SIDMIRROR_SIZE, 0
 #endif
-shadowOrder: .fill 25, $00
+shadowOrder: .fill (25 * 4) + 1, $ff
 
 //; The exporter must inject the SID mirror page + the 25-byte replay order at
 //; the EXACT addresses these labels land on - both move as the code changes
@@ -224,11 +232,12 @@ PlayMusicShadow:
     ldx #$00
 !replay:
     ldy shadowOrder, x
+    bmi !done+
     lda sidRegisterMirror, y
     sta $d400, y
     inx
-    cpx #25
-    bcc !replay-
+    bne !replay-
+!done:
     jmp AnalyzeSIDRegisters
 #endif // !SPECTROMETER_SHADOW
 

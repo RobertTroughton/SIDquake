@@ -2,6 +2,8 @@
   "name": "sidquake",
   "version": "2.0.0",
   "scripts": {
+    "test": "node scripts/test-baked-decoder.js && node scripts/test-shadow-replay.js",
+    "build-players": "scripts/build-players.sh",
     "extract-hvsc": "node scripts/extract-hvsc.js",
     "build-hvsc-index": "node tools/build-hvsc-index.js",
     "build-seo-pages": "node scripts/build-seo-pages.js",

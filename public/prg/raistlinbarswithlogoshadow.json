@@ -390,5 +390,5 @@
   "relocBaseLayout": "bank4000",
   "relocCodeBase": "prg/RaistlinBarsWithLogoShadow-code.bin",
   "relocCodeTable": "prg/raistlinbarswithlogoshadow.codereloc.json",
-  "maxSIDChips": 1
+  "maxSIDChips": 4
 }

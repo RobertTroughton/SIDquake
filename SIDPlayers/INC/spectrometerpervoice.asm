@@ -137,9 +137,9 @@ AnalyzeSIDRegistersPerVoice:
     lda NumSIDChips
     cmp #2
     bcc !restoreZP+
-    lda #<(sidRegisterMirror + 25)
+    lda #<(sidRegisterMirror + SIDMIRROR_CHIP_STRIDE)
     sta zpRegPtr
-    lda #>(sidRegisterMirror + 25)
+    lda #>(sidRegisterMirror + SIDMIRROR_CHIP_STRIDE)
     sta zpRegPtr + 1
     lda #3
     sta zpVoiceIdx
@@ -149,9 +149,9 @@ AnalyzeSIDRegistersPerVoice:
     lda NumSIDChips
     cmp #3
     bcc !restoreZP+
-    lda #<(sidRegisterMirror + 50)
+    lda #<(sidRegisterMirror + (SIDMIRROR_CHIP_STRIDE * 2))
     sta zpRegPtr
-    lda #>(sidRegisterMirror + 50)
+    lda #>(sidRegisterMirror + (SIDMIRROR_CHIP_STRIDE * 2))
     sta zpRegPtr + 1
     lda #6
     sta zpVoiceIdx
@@ -161,9 +161,9 @@ AnalyzeSIDRegistersPerVoice:
     lda NumSIDChips
     cmp #4
     bcc !restoreZP+
-    lda #<(sidRegisterMirror + 75)
+    lda #<(sidRegisterMirror + (SIDMIRROR_CHIP_STRIDE * 3))
     sta zpRegPtr
-    lda #>(sidRegisterMirror + 75)
+    lda #>(sidRegisterMirror + (SIDMIRROR_CHIP_STRIDE * 3))
     sta zpRegPtr + 1
     lda #9
     sta zpVoiceIdx

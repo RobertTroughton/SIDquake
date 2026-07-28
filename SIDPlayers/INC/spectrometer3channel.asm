@@ -124,9 +124,9 @@ AnalyzeSIDRegisters:
     bcs !doSID2+
     jmp !restoreZP+
 !doSID2:
-    lda #<(sidRegisterMirror + 25)
+    lda #<(sidRegisterMirror + SIDMIRROR_CHIP_STRIDE)
     sta zpRegPtr
-    lda #>(sidRegisterMirror + 25)
+    lda #>(sidRegisterMirror + SIDMIRROR_CHIP_STRIDE)
     sta zpRegPtr + 1
     lda #3
     sta zpVoiceIdx
@@ -137,9 +137,9 @@ AnalyzeSIDRegisters:
     bcs !doSID3+
     jmp !restoreZP+
 !doSID3:
-    lda #<(sidRegisterMirror + 50)
+    lda #<(sidRegisterMirror + (SIDMIRROR_CHIP_STRIDE * 2))
     sta zpRegPtr
-    lda #>(sidRegisterMirror + 50)
+    lda #>(sidRegisterMirror + (SIDMIRROR_CHIP_STRIDE * 2))
     sta zpRegPtr + 1
     lda #6
     sta zpVoiceIdx
@@ -148,9 +148,9 @@ AnalyzeSIDRegisters:
     lda NumSIDChips
     cmp #4
     bcc !restoreZP+
-    lda #<(sidRegisterMirror + 75)
+    lda #<(sidRegisterMirror + (SIDMIRROR_CHIP_STRIDE * 3))
     sta zpRegPtr
-    lda #>(sidRegisterMirror + 75)
+    lda #>(sidRegisterMirror + (SIDMIRROR_CHIP_STRIDE * 3))
     sta zpRegPtr + 1
     lda #9
     sta zpVoiceIdx

@@ -8,7 +8,7 @@ supports, selected by a build flag, and the web app picks the variant at export
 | # | Method | Play calls/frame | Extra RAM | Quality | Status |
 |---|--------|------------------|-----------|---------|--------|
 | a | Modified-memory | 2 (real + analysis peek, backup/restore) | none | good | **shipped** (normal build) |
-| b | Shadow-register | 1 (redirected) | small (order table + shadow) | good, cheaper | **designed, not built** |
+| b | Shadow-register | 1 (redirected) | small (order table + mirror) | good, cheaper | **shipped** (`SPECTROMETER_SHADOW`) |
 | c | Precomputed FFT | 1 | large (codebook + index, ~10-15 KB) | best | **shipped** (`SPECTROMETER_BAKED`) |
 
 ## (a) Modified-memory — current normal build
@@ -37,7 +37,7 @@ analysis subsystem (freqtable, `AnalyzeSIDRegisters`, ADSR sim, register
 mirror, `barVoiceMap`, `voiceRelease`). One play call, no bar maths, but needs
 the data in RAM and can fail to find a clean loop on very long tunes.
 
-## (b) Shadow-register — design
+## (b) Shadow-register — `SPECTROMETER_SHADOW`
 
 Goal: one play call and no per-frame save/restore, while still getting the
 per-register values method (a) needs. Instead of playing twice, redirect the
@@ -64,6 +64,11 @@ written **per frame**, and reports the dominant order + its consistency. Steps:
    knightrider (76%), dane (87%) vary - all now handled, the low ones via the
    fallback order.
 
+For a multi-SID tune the same detection covers every chip: the recorded offsets
+are already relative to `$D400`, so chip N's registers appear as `$20*N + $00-$18`
+and go into the same order list, preserving the tune's own cross-chip interleaving.
+`analyzeShadow` takes a `numChips` option and returns **25 entries per chip**.
+
 `analyzeShadow()` also finds the **store sites** and **verifies the redirect**:
 it scans the executed code (init **and** play) for absolute stores to `$D4xx`
 (STA/STX/STY - `8D/9D/99/8E/8C`), then re-runs with every site's high byte
@@ -84,6 +89,24 @@ frame wrote but the dominant frame didn't. So the C64 replays **all 25**
 registers from the mirror every frame in the baked order; re-writing an unchanged
 register with its own mirror value is harmless, and no write is ever missed.
 
+### Multi-SID
+Only the *high* byte of each `$D4xx` store is repointed, so every chip keeps its
+natural offset within the redirected page: SID 1 lands at `mirror + $00`, SID 2 at
+`+ $20`, SID 3 at `+ $40`, SID 4 at `+ $60`. Those are the same offsets the replay
+uses to index `$D400`, so **one page-aligned mirror covers all four chips** and the
+replay loop is unchanged apart from running longer. Cost is 25 more replayed
+registers per extra chip (~500 cycles), against a whole extra play call for method
+(a). The mirror grows from 100 to 121 bytes in shadow builds
+(`SIDMIRROR_CHIP_STRIDE`/`SIDMIRROR_SIZE` in `INC/common.asm`), and the order table
+reserves `4*25+1` bytes.
+
+This assumes the chips sit on the `$D400 + $20*N` grid, which is what the C64
+players assume everywhere else too (`RestartMusic`, `AnalyseMusic`,
+`AnalyzeSIDRegisters`). The exporter checks the analyzer's detected chip addresses
+and refuses shadow for anything else. A chip outside the `$D4` page (e.g. `$D500`)
+is caught earlier and more cheaply: its stores aren't `$D4xx`, so they never get
+redirected and show up as leaked writes.
+
 ### PRG baking
 - Bake the canonical order table into a small data block the player reads.
 - Patch the play routine's SID stores to target the shadow buffer instead of
@@ -96,8 +119,11 @@ register with its own mirror value is harmless, and no write is ever missed.
 Per frame (`PlayMusicShadow` in `INC/musicplayback.asm`):
 1. `jsr SIDPlay` — writes land in `sidRegisterMirror` (the play routine's `$D4xx`
    stores were repointed there by the exporter; init's were too, at startup).
-2. Replay **all 25** registers to the real SID in the baked order:
-   `ldy shadowOrder,x / lda sidRegisterMirror,y / sta $D400,y`, `x` = 0..24.
+2. Replay **all 25** registers of every chip to the real SID in the baked order:
+   `ldy shadowOrder,x / bmi done / lda sidRegisterMirror,y / sta $D400,y`. The
+   table holds 25 entries per chip and ends in `$FF`, so the terminator alone
+   bounds the loop to the chips the tune actually uses — a single-SID export
+   replays exactly the 25 it used to, at exactly the old cost.
 3. `jmp AnalyzeSIDRegisters`, which reads the mirror directly for bar targets.
 No second play, no backup/restore.
 
@@ -118,6 +144,9 @@ Each supporting visualizer compiles up to three code blobs via flags
 (`<none>` = a, `SPECTROMETER_SHADOW` = b, `SPECTROMETER_BAKED` = c), e.g.
 `RaistlinBars-code.bin`, `RaistlinBarsShadow-code.bin`, `RaistlinBarsFFT-code.bin`.
 Each variant's config JSON lists its binary + the data-block addresses it needs;
-the registry/UI exposes the choice. Today RaistlinBars and
-RaistlinMirrorBarsWithLogo ship (a) and (c); (b) and the remaining visualizers
-are the outstanding work.
+the registry/UI exposes the choice. All four bar players (RaistlinBars,
+RaistlinBarsWithLogo, RaistlinMirrorBars, RaistlinMirrorBarsWithLogo) ship all
+three methods. ScrapColumns and the non-bar visualizers still ship (a) only.
+
+`scripts/build-players.sh` rebuilds every variant; `--check` builds to a temp
+directory and diffs against the committed artifacts instead of overwriting them.
