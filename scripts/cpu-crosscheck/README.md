@@ -1,20 +1,33 @@
 # 6510 cross-check
 
-Differential fuzzer for the two 6510 cores in this repo:
+Correctness checks for the 6510 emulation. The decoder itself lives once, in
+`wasm/cpu6510_core.h`; the two cores are bus adapters over it:
 
 | | source | used by |
 |---|---|---|
 | A | `wasm/cpu6510_wasm.cpp` | offline analysis (`sid_analyze`, shadow/baked spectrometer, `npm test`) |
 | B | `wasm/sid_audio.cpp` | reSID playback engine |
 
-Both are compiled natively against stubbed `emscripten.h` / `resid/sid.h`
-headers, put into an identical randomised machine state, stepped one
-instruction, then compared on PC, A, X, Y, SP, flags (N V D I Z C), cycle count
-and all 64 KB of memory. Every opcode is fuzzed with a fresh random memory image
-and random registers; a quarter of the cases deliberately aim the operand at the
-instruction's own bytes so read-modify-write self-modification is covered, and
-one case in eight runs the instruction from zero page so zero-page addressing
-can alias it.
+Everything is compiled natively against stubbed `emscripten.h` / `resid/sid.h`
+headers. Four checks run:
+
+1. **Cycle counts and operand sizes vs `opcodes.h`**, the table the disassembler
+   trusts, with no page crossing or branch penalty owed.
+2. **The unstable `SHA`/`SHX`/`SHY`/`TAS` stores vs hand-worked vectors**, so
+   those do not rest on the implementation agreeing with itself.
+3. **A against B**, stepped through identical randomised machine states and
+   compared on PC, A, X, Y, SP, flags (N V D I Z C), cycle count and all 64 KB
+   of memory. Since both now share a decoder this no longer proves the
+   instruction set is right - it proves the two *bus adapters* agree wherever
+   they should, which catches a mis-bound register or a tracking hook with a
+   side effect.
+4. **A against an optional third-party `cpu.c`**, which is the only check that
+   is genuinely independent of this repo's reading of the hardware.
+
+Every opcode is fuzzed with a fresh random memory image and random registers; a
+quarter of the cases deliberately aim the operand at the instruction's own bytes
+so read-modify-write self-modification is covered, and one case in eight runs
+the instruction from zero page so zero-page addressing can alias it.
 
 ## Running
 

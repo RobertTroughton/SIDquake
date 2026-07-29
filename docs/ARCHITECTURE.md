@@ -35,8 +35,13 @@ export, PNG conversion + the lightweight reSID playback engine) and
 
 C++ files compiled together into `sidquake.wasm`:
 
-**`cpu6510_wasm.cpp`** - 6510 CPU emulator
-- Complete MOS 6510 instruction set (legal + illegal opcodes)
+**`cpu6510_core.h`** - the 6510 instruction set, templated over a memory bus
+- Complete MOS 6510 instruction set (legal + illegal opcodes), decoded once
+- The bus supplies the registers plus `fetch`/`read`/`write`/`jumpTarget`/`jam`,
+  which is what lets the analysis and playback cores differ without duplicating
+  the decoder. See `docs/CPU_CORES.md`.
+
+**`cpu6510_wasm.cpp`** - analysis bus over that core
 - Memory access tracking (execute/read/write/jump-target flags per address)
 - SID register write capture (supports up to 32 SID chips)
 - Zero-page write tracking
@@ -58,7 +63,8 @@ C++ files compiled together into `sidquake.wasm`:
 - Key exports: `png_converter_init`, `png_converter_convert`, `png_converter_get_*`
 
 **`sid_audio.cpp`** - Legacy lightweight reSID playback engine
-- Minimal 6510 CPU that calls init once and JSR-to-play once per frame, driving reSID
+- Playback bus over `cpu6510_core.h`, routing reads and writes through the SID
+  chips; calls init once and JSR-to-play once per frame, driving reSID
 - No real C64 environment (RSID/digi/raster tunes need `sidplayfp.wasm`)
 - No longer the default; kept one release as the `?engine=resid` fallback
 - Key exports: `audio_init`, `audio_load_sid`, `audio_generate`, `audio_get_*`
@@ -250,14 +256,15 @@ that run the real assembled code in the 6510 emulator (`npm test`):
 `scripts/test-shadow-replay.js` (shadow-register replay order). See
 `SIDPlayers/BAR_HEIGHT_METHODS.md`.
 
-There are two independent 6510 cores in `wasm/` - `cpu6510_wasm.cpp` for offline
-analysis and `sid_audio.cpp` for reSID playback - so they can drift apart.
-`scripts/cpu-crosscheck/run.sh` fuzzes both from identical randomised machine
-states and diffs registers, flags, cycles and memory after every instruction; it
-can link in a third-party `cpu.c` as an outside opinion. It is not part of
-`npm test` (it needs a C++ toolchain and takes minutes); run it after touching
-either core. See `scripts/cpu-crosscheck/README.md`, and `docs/CPU_CORES.md`
-for what the cores currently disagree on.
+The 6510 instruction set lives once, in `wasm/cpu6510_core.h`, as a template
+over a memory bus. `cpu6510_wasm.cpp` (offline analysis) and `sid_audio.cpp`
+(reSID playback) are bus adapters over it - the first tracks per-address access,
+the second routes reads and writes through the SID chips.
+`scripts/cpu-crosscheck/run.sh` checks the decoder against `opcodes.h` and
+hand-worked vectors, checks the two adapters against each other, and can link in
+a third-party `cpu.c` as an outside opinion. It is not part of `npm test` (it
+needs a C++ toolchain and takes minutes); run it after touching either.
+See `scripts/cpu-crosscheck/README.md` and `docs/CPU_CORES.md`.
 
 All players share the multi-call IRQ scheduler in `INC/multicallirq.asm`:
 music call 0 is raster-driven once per frame at the player's

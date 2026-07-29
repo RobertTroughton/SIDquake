@@ -9,6 +9,7 @@
 #include <cstring>
 #include <cmath>
 #include "resid/sid.h"
+#include "cpu6510_core.h"
 
 extern "C" {
 
@@ -18,16 +19,6 @@ static const double NTSC_CLOCK = 1022730.0;
 static const int PAL_CYCLES_PER_FRAME  = 19656;
 static const int NTSC_CYCLES_PER_FRAME = 17095;
 static const int MAX_SID_CHIPS = 3;
-
-// ---- CPU flags ----
-#define FLAG_C 0x01
-#define FLAG_Z 0x02
-#define FLAG_I 0x04
-#define FLAG_D 0x08
-#define FLAG_B 0x10
-#define FLAG_U 0x20
-#define FLAG_V 0x40
-#define FLAG_N 0x80
 
 // ---- Playback state ----
 static struct {
@@ -113,533 +104,41 @@ static inline void mem_write(uint16_t addr, uint8_t val) {
     }
 }
 
-// ---- Stack helpers ----
+// ---- Stack helper (used by cpu_jsr to plant a sentinel return address) ----
 static inline void push8(uint8_t val) {
     S.memory[0x100 + S.sp] = val;
     S.sp--;
-}
-static inline uint8_t pull8() {
-    S.sp++;
-    return S.memory[0x100 + S.sp];
 }
 static inline void push16(uint16_t val) {
     push8((val >> 8) & 0xFF);
     push8(val & 0xFF);
 }
-static inline uint16_t pull16() {
-    uint8_t lo = pull8();
-    uint8_t hi = pull8();
-    return (hi << 8) | lo;
-}
 
-// ---- Flag helpers ----
-static inline void set_nz(uint8_t val) {
-    S.st = (S.st & ~(FLAG_N | FLAG_Z)) | (val & 0x80) | (val == 0 ? FLAG_Z : 0);
-}
+// ---- Bus adapter ----
+// Binds the shared decoder in cpu6510_core.h to this engine's memory. Reads and
+// writes go through the SID interception; instruction fetches are always plain
+// RAM, as on the real machine where the CPU never executes from $D400.
+static bool cpuJammed;
 
-// ---- Addressing modes (return effective address) ----
-// The indexed modes record whether adding the index crossed a page. Reads pay
-// an extra cycle for that; writes and read-modify-writes do not, so the penalty
-// is applied at the opcode rather than inside the addressing mode. Also used to
-// place the unstable SHA/SHX/SHY/TAS stores. Cleared at the top of cpu_step().
-static bool pageCrossed;
-static uint16_t indexBase;  // pre-index address of the last indexed mode
+struct AudioBus {
+    uint16_t& pc;
+    uint8_t& sp;
+    uint8_t& a;
+    uint8_t& x;
+    uint8_t& y;
+    uint8_t& st;
 
-static inline uint16_t am_imm()  { return S.pc++; }
-static inline uint16_t am_zp()   { return S.memory[S.pc++]; }
-static inline uint16_t am_zpx()  { return (S.memory[S.pc++] + S.x) & 0xFF; }
-static inline uint16_t am_zpy()  { return (S.memory[S.pc++] + S.y) & 0xFF; }
-// Note: the high operand byte is fetched at (uint16_t)(pc+1) so an absolute
-// opcode at $FFFE wraps to $0000 like a real 6502 instead of reading memory[65536].
-static inline uint16_t am_abs()  { uint16_t a = S.memory[S.pc] | (S.memory[(uint16_t)(S.pc+1)] << 8); S.pc += 2; return a; }
-static inline uint16_t am_index(uint16_t base, uint8_t idx) {
-    uint16_t a = (uint16_t)(base + idx);
-    indexBase = base;
-    pageCrossed = (base & 0xFF00) != (a & 0xFF00);
-    return a;
-}
-static inline uint16_t am_abx()  { uint16_t b = am_abs(); return am_index(b, S.x); }
-static inline uint16_t am_aby()  { uint16_t b = am_abs(); return am_index(b, S.y); }
-static inline uint16_t am_izx()  { uint8_t zp = (S.memory[S.pc++] + S.x) & 0xFF; return S.memory[zp] | (S.memory[(zp+1) & 0xFF] << 8); }
-static inline uint16_t am_izy()  { uint8_t zp = S.memory[S.pc++]; return am_index(S.memory[zp] | (S.memory[(zp+1) & 0xFF] << 8), S.y); }
-
-// SHA/SHX/SHY/TAS store reg & (high byte of the pre-index address + 1), and
-// when the index crosses a page the stored value replaces the target's high
-// byte. Call after the addressing mode has run.
-static inline uint16_t unstable_store_addr(uint16_t addr, uint8_t val) {
-    return pageCrossed ? (uint16_t)((val << 8) | (addr & 0xFF)) : addr;
-}
-static inline uint8_t unstable_store_val(uint8_t reg) {
-    return reg & (uint8_t)((indexBase >> 8) + 1);
-}
-
-// ---- ADC/SBC with NMOS 6502 decimal-mode support ----
-static inline void adc_op(uint8_t v) {
-    uint16_t carry = (S.st & FLAG_C) ? 1 : 0;
-    S.st &= ~(FLAG_C | FLAG_Z | FLAG_N | FLAG_V);
-    if (S.st & FLAG_D) {
-        // BCD add: Z from the binary result; N/V from the pre-fixup sum.
-        int al = (S.a & 0x0F) + (v & 0x0F) + carry;
-        if (al >= 0x0A) al = ((al + 0x06) & 0x0F) + 0x10;
-        int a2 = (S.a & 0xF0) + (v & 0xF0) + al;
-        if (((S.a + v + carry) & 0xFF) == 0) S.st |= FLAG_Z;
-        if (a2 & 0x80) S.st |= FLAG_N;
-        if (~(S.a ^ v) & (S.a ^ a2) & 0x80) S.st |= FLAG_V;
-        if (a2 >= 0xA0) a2 += 0x60;
-        if (a2 >= 0x100) S.st |= FLAG_C;
-        S.a = (uint8_t)(a2 & 0xFF);
-    } else {
-        uint16_t r = (uint16_t)S.a + v + carry;
-        if (r > 0xFF) S.st |= FLAG_C;
-        if (~(S.a ^ v) & (S.a ^ r) & 0x80) S.st |= FLAG_V;
-        S.a = (uint8_t)r;
-        if (S.a == 0) S.st |= FLAG_Z;
-        if (S.a & 0x80) S.st |= FLAG_N;
-    }
-}
-static inline void sbc_op(uint8_t v) {
-    uint16_t borrow = (S.st & FLAG_C) ? 0 : 1;
-    int bin = (int)S.a - v - borrow;
-    uint8_t binr = (uint8_t)bin;
-    // NMOS: SBC sets all flags identically in binary and decimal mode.
-    S.st &= ~(FLAG_C | FLAG_Z | FLAG_N | FLAG_V);
-    if (bin >= 0) S.st |= FLAG_C;
-    if (binr == 0) S.st |= FLAG_Z;
-    if (binr & 0x80) S.st |= FLAG_N;
-    if ((S.a ^ v) & (S.a ^ binr) & 0x80) S.st |= FLAG_V;
-    if (S.st & FLAG_D) {
-        int al = (S.a & 0x0F) - (v & 0x0F) - (int)borrow;
-        if (al < 0) al = ((al - 0x06) & 0x0F) - 0x10;
-        int a2 = (S.a & 0xF0) - (v & 0xF0) + al;
-        if (a2 < 0) a2 -= 0x60;
-        S.a = (uint8_t)(a2 & 0xFF);
-    } else {
-        S.a = binr;
-    }
-}
+    uint8_t fetch(uint16_t addr) { return S.memory[addr]; }
+    uint8_t read(uint16_t addr) { return mem_read(addr); }
+    void write(uint16_t addr, uint8_t val) { mem_write(addr, val); }
+    void jumpTarget(uint16_t) {}
+    void jam() { cpuJammed = true; }
+};
 
 // ---- 6510 CPU step: execute one instruction, return cycle count ----
 static int cpu_step() {
-    pageCrossed = false;
-    uint8_t op = S.memory[S.pc++];
-    uint16_t addr;
-    uint8_t val, tmp;
-    uint16_t tmp16;
-    int cyc;
-
-    switch (op) {
-    // ---- LDA ----
-    case 0xA9: val=mem_read(am_imm());  set_nz(S.a=val); return 2;
-    case 0xA5: val=mem_read(am_zp());   set_nz(S.a=val); return 3;
-    case 0xB5: val=mem_read(am_zpx());  set_nz(S.a=val); return 4;
-    case 0xAD: val=mem_read(am_abs());  set_nz(S.a=val); return 4;
-    case 0xBD: addr=am_abx(); val=mem_read(addr); set_nz(S.a=val); return 4 + pageCrossed;
-    case 0xB9: addr=am_aby(); val=mem_read(addr); set_nz(S.a=val); return 4 + pageCrossed;
-    case 0xA1: val=mem_read(am_izx());  set_nz(S.a=val); return 6;
-    case 0xB1: addr=am_izy(); val=mem_read(addr); set_nz(S.a=val); return 5 + pageCrossed;
-
-    // ---- LDX ----
-    case 0xA2: val=mem_read(am_imm());  set_nz(S.x=val); return 2;
-    case 0xA6: val=mem_read(am_zp());   set_nz(S.x=val); return 3;
-    case 0xB6: val=mem_read(am_zpy());  set_nz(S.x=val); return 4;
-    case 0xAE: val=mem_read(am_abs());  set_nz(S.x=val); return 4;
-    case 0xBE: addr=am_aby(); val=mem_read(addr); set_nz(S.x=val); return 4 + pageCrossed;
-
-    // ---- LDY ----
-    case 0xA0: val=mem_read(am_imm());  set_nz(S.y=val); return 2;
-    case 0xA4: val=mem_read(am_zp());   set_nz(S.y=val); return 3;
-    case 0xB4: val=mem_read(am_zpx());  set_nz(S.y=val); return 4;
-    case 0xAC: val=mem_read(am_abs());  set_nz(S.y=val); return 4;
-    case 0xBC: addr=am_abx(); val=mem_read(addr); set_nz(S.y=val); return 4 + pageCrossed;
-
-    // ---- STA ----
-    case 0x85: mem_write(am_zp(),  S.a); return 3;
-    case 0x95: mem_write(am_zpx(), S.a); return 4;
-    case 0x8D: mem_write(am_abs(), S.a); return 4;
-    case 0x9D: mem_write(am_abx(), S.a); return 5;
-    case 0x99: mem_write(am_aby(), S.a); return 5;
-    case 0x81: mem_write(am_izx(), S.a); return 6;
-    case 0x91: mem_write(am_izy(), S.a); return 6;
-
-    // ---- STX ----
-    case 0x86: mem_write(am_zp(),  S.x); return 3;
-    case 0x96: mem_write(am_zpy(), S.x); return 4;
-    case 0x8E: mem_write(am_abs(), S.x); return 4;
-
-    // ---- STY ----
-    case 0x84: mem_write(am_zp(),  S.y); return 3;
-    case 0x94: mem_write(am_zpx(), S.y); return 4;
-    case 0x8C: mem_write(am_abs(), S.y); return 4;
-
-    // ---- Transfer ----
-    case 0xAA: set_nz(S.x = S.a); return 2;  // TAX
-    case 0xA8: set_nz(S.y = S.a); return 2;  // TAY
-    case 0x8A: set_nz(S.a = S.x); return 2;  // TXA
-    case 0x98: set_nz(S.a = S.y); return 2;  // TYA
-    case 0xBA: set_nz(S.x = S.sp); return 2; // TSX
-    case 0x9A: S.sp = S.x; return 2;          // TXS
-
-    // ---- AND ----
-    case 0x29: S.a &= mem_read(am_imm());  set_nz(S.a); return 2;
-    case 0x25: S.a &= mem_read(am_zp());   set_nz(S.a); return 3;
-    case 0x35: S.a &= mem_read(am_zpx());  set_nz(S.a); return 4;
-    case 0x2D: S.a &= mem_read(am_abs());  set_nz(S.a); return 4;
-    case 0x3D: S.a &= mem_read(am_abx());  set_nz(S.a); return 4 + pageCrossed;
-    case 0x39: S.a &= mem_read(am_aby());  set_nz(S.a); return 4 + pageCrossed;
-    case 0x21: S.a &= mem_read(am_izx());  set_nz(S.a); return 6;
-    case 0x31: S.a &= mem_read(am_izy());  set_nz(S.a); return 5 + pageCrossed;
-
-    // ---- ORA ----
-    case 0x09: S.a |= mem_read(am_imm());  set_nz(S.a); return 2;
-    case 0x05: S.a |= mem_read(am_zp());   set_nz(S.a); return 3;
-    case 0x15: S.a |= mem_read(am_zpx());  set_nz(S.a); return 4;
-    case 0x0D: S.a |= mem_read(am_abs());  set_nz(S.a); return 4;
-    case 0x1D: S.a |= mem_read(am_abx());  set_nz(S.a); return 4 + pageCrossed;
-    case 0x19: S.a |= mem_read(am_aby());  set_nz(S.a); return 4 + pageCrossed;
-    case 0x01: S.a |= mem_read(am_izx());  set_nz(S.a); return 6;
-    case 0x11: S.a |= mem_read(am_izy());  set_nz(S.a); return 5 + pageCrossed;
-
-    // ---- EOR ----
-    case 0x49: S.a ^= mem_read(am_imm());  set_nz(S.a); return 2;
-    case 0x45: S.a ^= mem_read(am_zp());   set_nz(S.a); return 3;
-    case 0x55: S.a ^= mem_read(am_zpx());  set_nz(S.a); return 4;
-    case 0x4D: S.a ^= mem_read(am_abs());  set_nz(S.a); return 4;
-    case 0x5D: S.a ^= mem_read(am_abx());  set_nz(S.a); return 4 + pageCrossed;
-    case 0x59: S.a ^= mem_read(am_aby());  set_nz(S.a); return 4 + pageCrossed;
-    case 0x41: S.a ^= mem_read(am_izx());  set_nz(S.a); return 6;
-    case 0x51: S.a ^= mem_read(am_izy());  set_nz(S.a); return 5 + pageCrossed;
-
-    // ---- ADC (decimal-aware; see adc_op) ----
-    #define DO_ADC(v) adc_op(v)
-    case 0x69: DO_ADC(mem_read(am_imm()));  return 2;
-    case 0x65: DO_ADC(mem_read(am_zp()));   return 3;
-    case 0x75: DO_ADC(mem_read(am_zpx()));  return 4;
-    case 0x6D: DO_ADC(mem_read(am_abs()));  return 4;
-    case 0x7D: DO_ADC(mem_read(am_abx()));  return 4 + pageCrossed;
-    case 0x79: DO_ADC(mem_read(am_aby()));  return 4 + pageCrossed;
-    case 0x61: DO_ADC(mem_read(am_izx()));  return 6;
-    case 0x71: DO_ADC(mem_read(am_izy()));  return 5 + pageCrossed;
-
-    // ---- SBC (decimal-aware; see sbc_op) ----
-    #define DO_SBC(v) sbc_op(v)
-    case 0xE9: DO_SBC(mem_read(am_imm()));  return 2;
-    case 0xEB: DO_SBC(mem_read(am_imm()));  return 2; // illegal SBC #imm
-    case 0xE5: DO_SBC(mem_read(am_zp()));   return 3;
-    case 0xF5: DO_SBC(mem_read(am_zpx()));  return 4;
-    case 0xED: DO_SBC(mem_read(am_abs()));  return 4;
-    case 0xFD: DO_SBC(mem_read(am_abx()));  return 4 + pageCrossed;
-    case 0xF9: DO_SBC(mem_read(am_aby()));  return 4 + pageCrossed;
-    case 0xE1: DO_SBC(mem_read(am_izx()));  return 6;
-    case 0xF1: DO_SBC(mem_read(am_izy()));  return 5 + pageCrossed;
-
-    // ---- CMP ----
-    #define DO_CMP(r, v) do { \
-        val = (v); \
-        tmp16 = (uint16_t)(r) - val; \
-        S.st = (S.st & ~(FLAG_C|FLAG_Z|FLAG_N)) | \
-               (tmp16 < 0x100 ? FLAG_C : 0); \
-        set_nz(tmp16 & 0xFF); \
-    } while(0)
-    case 0xC9: DO_CMP(S.a, mem_read(am_imm()));  return 2;
-    case 0xC5: DO_CMP(S.a, mem_read(am_zp()));   return 3;
-    case 0xD5: DO_CMP(S.a, mem_read(am_zpx()));  return 4;
-    case 0xCD: DO_CMP(S.a, mem_read(am_abs()));  return 4;
-    case 0xDD: DO_CMP(S.a, mem_read(am_abx()));  return 4 + pageCrossed;
-    case 0xD9: DO_CMP(S.a, mem_read(am_aby()));  return 4 + pageCrossed;
-    case 0xC1: DO_CMP(S.a, mem_read(am_izx()));  return 6;
-    case 0xD1: DO_CMP(S.a, mem_read(am_izy()));  return 5 + pageCrossed;
-
-    // ---- CPX ----
-    case 0xE0: DO_CMP(S.x, mem_read(am_imm()));  return 2;
-    case 0xE4: DO_CMP(S.x, mem_read(am_zp()));   return 3;
-    case 0xEC: DO_CMP(S.x, mem_read(am_abs()));  return 4;
-
-    // ---- CPY ----
-    case 0xC0: DO_CMP(S.y, mem_read(am_imm()));  return 2;
-    case 0xC4: DO_CMP(S.y, mem_read(am_zp()));   return 3;
-    case 0xCC: DO_CMP(S.y, mem_read(am_abs()));  return 4;
-
-    // ---- BIT ----
-    case 0x24: val=mem_read(am_zp());  S.st=(S.st&~(FLAG_N|FLAG_V|FLAG_Z))|(val&0xC0)|((S.a&val)?0:FLAG_Z); return 3;
-    case 0x2C: val=mem_read(am_abs()); S.st=(S.st&~(FLAG_N|FLAG_V|FLAG_Z))|(val&0xC0)|((S.a&val)?0:FLAG_Z); return 4;
-
-    // ---- INC/DEC memory ----
-    #define DO_RMW(am, op, cyc) addr=am(); val=mem_read(addr); val op; mem_write(addr,val); set_nz(val); return cyc
-    case 0xE6: DO_RMW(am_zp,  ++, 5);
-    case 0xF6: DO_RMW(am_zpx, ++, 6);
-    case 0xEE: DO_RMW(am_abs, ++, 6);
-    case 0xFE: DO_RMW(am_abx, ++, 7);
-    case 0xC6: DO_RMW(am_zp,  --, 5);
-    case 0xD6: DO_RMW(am_zpx, --, 6);
-    case 0xCE: DO_RMW(am_abs, --, 6);
-    case 0xDE: DO_RMW(am_abx, --, 7);
-
-    // ---- INX/INY/DEX/DEY ----
-    case 0xE8: set_nz(++S.x); return 2;
-    case 0xC8: set_nz(++S.y); return 2;
-    case 0xCA: set_nz(--S.x); return 2;
-    case 0x88: set_nz(--S.y); return 2;
-
-    // ---- ASL ----
-    #define DO_ASL(v) tmp = (v); S.st = (S.st & ~FLAG_C) | (tmp >> 7); tmp <<= 1; set_nz(tmp)
-    case 0x0A: DO_ASL(S.a); S.a=tmp; return 2;
-    case 0x06: addr=am_zp();  DO_ASL(mem_read(addr)); mem_write(addr,tmp); return 5;
-    case 0x16: addr=am_zpx(); DO_ASL(mem_read(addr)); mem_write(addr,tmp); return 6;
-    case 0x0E: addr=am_abs(); DO_ASL(mem_read(addr)); mem_write(addr,tmp); return 6;
-    case 0x1E: addr=am_abx(); DO_ASL(mem_read(addr)); mem_write(addr,tmp); return 7;
-
-    // ---- LSR ----
-    #define DO_LSR(v) tmp = (v); S.st = (S.st & ~FLAG_C) | (tmp & 1); tmp >>= 1; set_nz(tmp)
-    case 0x4A: DO_LSR(S.a); S.a=tmp; return 2;
-    case 0x46: addr=am_zp();  DO_LSR(mem_read(addr)); mem_write(addr,tmp); return 5;
-    case 0x56: addr=am_zpx(); DO_LSR(mem_read(addr)); mem_write(addr,tmp); return 6;
-    case 0x4E: addr=am_abs(); DO_LSR(mem_read(addr)); mem_write(addr,tmp); return 6;
-    case 0x5E: addr=am_abx(); DO_LSR(mem_read(addr)); mem_write(addr,tmp); return 7;
-
-    // ---- ROL ----
-    #define DO_ROL(v) do { \
-        tmp = (v); uint8_t c = S.st & FLAG_C; \
-        S.st = (S.st & ~FLAG_C) | (tmp >> 7); \
-        tmp = (tmp << 1) | c; set_nz(tmp); \
-    } while(0)
-    case 0x2A: DO_ROL(S.a); S.a=tmp; return 2;
-    case 0x26: addr=am_zp();  DO_ROL(mem_read(addr)); mem_write(addr,tmp); return 5;
-    case 0x36: addr=am_zpx(); DO_ROL(mem_read(addr)); mem_write(addr,tmp); return 6;
-    case 0x2E: addr=am_abs(); DO_ROL(mem_read(addr)); mem_write(addr,tmp); return 6;
-    case 0x3E: addr=am_abx(); DO_ROL(mem_read(addr)); mem_write(addr,tmp); return 7;
-
-    // ---- ROR ----
-    #define DO_ROR(v) do { \
-        tmp = (v); uint8_t c = (S.st & FLAG_C) << 7; \
-        S.st = (S.st & ~FLAG_C) | (tmp & 1); \
-        tmp = (tmp >> 1) | c; set_nz(tmp); \
-    } while(0)
-    case 0x6A: DO_ROR(S.a); S.a=tmp; return 2;
-    case 0x66: addr=am_zp();  DO_ROR(mem_read(addr)); mem_write(addr,tmp); return 5;
-    case 0x76: addr=am_zpx(); DO_ROR(mem_read(addr)); mem_write(addr,tmp); return 6;
-    case 0x6E: addr=am_abs(); DO_ROR(mem_read(addr)); mem_write(addr,tmp); return 6;
-    case 0x7E: addr=am_abx(); DO_ROR(mem_read(addr)); mem_write(addr,tmp); return 7;
-
-    // ---- Branches ----
-    #define BRANCH(cond) do { \
-        int8_t off = (int8_t)S.memory[S.pc++]; \
-        if (!(cond)) return 2; \
-        uint16_t from = S.pc; \
-        S.pc = (uint16_t)(from + off); \
-        return ((from ^ S.pc) & 0xFF00) ? 4 : 3; \
-    } while(0)
-    case 0x10: BRANCH(!(S.st & FLAG_N));  // BPL
-    case 0x30: BRANCH(S.st & FLAG_N);     // BMI
-    case 0x50: BRANCH(!(S.st & FLAG_V));  // BVC
-    case 0x70: BRANCH(S.st & FLAG_V);     // BVS
-    case 0x90: BRANCH(!(S.st & FLAG_C));  // BCC
-    case 0xB0: BRANCH(S.st & FLAG_C);     // BCS
-    case 0xD0: BRANCH(!(S.st & FLAG_Z));  // BNE
-    case 0xF0: BRANCH(S.st & FLAG_Z);     // BEQ
-
-    // ---- JMP ----
-    case 0x4C: S.pc = am_abs(); return 3;
-    case 0x6C: { // JMP indirect (with 6502 page-crossing bug)
-        uint16_t ptr = am_abs();
-        uint16_t lo = S.memory[ptr];
-        uint16_t hi = S.memory[(ptr & 0xFF00) | ((ptr + 1) & 0xFF)];
-        S.pc = (hi << 8) | lo;
-        return 5;
-    }
-
-    // ---- JSR / RTS / RTI ----
-    case 0x20: addr = am_abs(); push16(S.pc - 1); S.pc = addr; return 6;
-    case 0x60: S.pc = pull16() + 1; return 6;
-    case 0x40: S.st = pull8() | FLAG_U; S.pc = pull16(); return 6;
-
-    // ---- Stack ----
-    case 0x48: push8(S.a); return 3;                         // PHA
-    case 0x08: push8(S.st | FLAG_B | FLAG_U); return 3;     // PHP
-    case 0x68: set_nz(S.a = pull8()); return 4;             // PLA
-    case 0x28: S.st = pull8() | FLAG_U; return 4;           // PLP
-
-    // ---- Flag instructions ----
-    case 0x18: S.st &= ~FLAG_C; return 2;  // CLC
-    case 0x38: S.st |= FLAG_C;  return 2;  // SEC
-    case 0x58: S.st &= ~FLAG_I; return 2;  // CLI
-    case 0x78: S.st |= FLAG_I;  return 2;  // SEI
-    case 0xD8: S.st &= ~FLAG_D; return 2;  // CLD
-    case 0xF8: S.st |= FLAG_D;  return 2;  // SED
-    case 0xB8: S.st &= ~FLAG_V; return 2;  // CLV
-
-    // ---- BRK ----
-    case 0x00:
-        S.pc++;
-        push16(S.pc);
-        push8(S.st | FLAG_B | FLAG_U);
-        S.st |= FLAG_I;
-        S.pc = S.memory[0xFFFE] | (S.memory[0xFFFF] << 8);
-        return 7;
-
-    // ---- NOP ----
-    case 0xEA: return 2;
-
-    // ==== Illegal opcodes commonly used by SID music ====
-
-    // LAX - LDA + LDX
-    case 0xA7: val=mem_read(am_zp());   S.a=S.x=val; set_nz(val); return 3;
-    case 0xB7: val=mem_read(am_zpy());  S.a=S.x=val; set_nz(val); return 4;
-    case 0xAF: val=mem_read(am_abs());  S.a=S.x=val; set_nz(val); return 4;
-    case 0xBF: val=mem_read(am_aby());  S.a=S.x=val; set_nz(val); return 4 + pageCrossed;
-    case 0xA3: val=mem_read(am_izx());  S.a=S.x=val; set_nz(val); return 6;
-    case 0xB3: val=mem_read(am_izy());  S.a=S.x=val; set_nz(val); return 5 + pageCrossed;
-
-    // SAX - store A & X
-    case 0x87: mem_write(am_zp(),  S.a & S.x); return 3;
-    case 0x97: mem_write(am_zpy(), S.a & S.x); return 4;
-    case 0x8F: mem_write(am_abs(), S.a & S.x); return 4;
-    case 0x83: mem_write(am_izx(), S.a & S.x); return 6;
-
-    // DCP - DEC + CMP
-    #define DO_DCP(am, cyc) addr=am(); val=mem_read(addr)-1; mem_write(addr,val); DO_CMP(S.a,val); return cyc
-    case 0xC7: DO_DCP(am_zp,  5);
-    case 0xD7: DO_DCP(am_zpx, 6);
-    case 0xCF: DO_DCP(am_abs, 6);
-    case 0xDF: DO_DCP(am_abx, 7);
-    case 0xDB: DO_DCP(am_aby, 7);
-    case 0xC3: DO_DCP(am_izx, 8);
-    case 0xD3: DO_DCP(am_izy, 8);
-
-    // ISC (ISB) - INC + SBC
-    #define DO_ISC(am, cyc) addr=am(); val=mem_read(addr)+1; mem_write(addr,val); DO_SBC(val); return cyc
-    case 0xE7: DO_ISC(am_zp,  5);
-    case 0xF7: DO_ISC(am_zpx, 6);
-    case 0xEF: DO_ISC(am_abs, 6);
-    case 0xFF: DO_ISC(am_abx, 7);
-    case 0xFB: DO_ISC(am_aby, 7);
-    case 0xE3: DO_ISC(am_izx, 8);
-    case 0xF3: DO_ISC(am_izy, 8);
-
-    // SLO - ASL + ORA
-    #define DO_SLO(am, cyc) addr=am(); val=mem_read(addr); S.st=(S.st&~FLAG_C)|(val>>7); val<<=1; mem_write(addr,val); S.a|=val; set_nz(S.a); return cyc
-    case 0x07: DO_SLO(am_zp,  5);
-    case 0x17: DO_SLO(am_zpx, 6);
-    case 0x0F: DO_SLO(am_abs, 6);
-    case 0x1F: DO_SLO(am_abx, 7);
-    case 0x1B: DO_SLO(am_aby, 7);
-    case 0x03: DO_SLO(am_izx, 8);
-    case 0x13: DO_SLO(am_izy, 8);
-
-    // RLA - ROL + AND
-    #define DO_RLA(am, cyc) do { \
-        addr=am(); val=mem_read(addr); uint8_t c=S.st&FLAG_C; \
-        S.st=(S.st&~FLAG_C)|(val>>7); val=(val<<1)|c; \
-        mem_write(addr,val); S.a&=val; set_nz(S.a); return cyc; \
-    } while(0)
-    case 0x27: DO_RLA(am_zp,  5);
-    case 0x37: DO_RLA(am_zpx, 6);
-    case 0x2F: DO_RLA(am_abs, 6);
-    case 0x3F: DO_RLA(am_abx, 7);
-    case 0x3B: DO_RLA(am_aby, 7);
-    case 0x23: DO_RLA(am_izx, 8);
-    case 0x33: DO_RLA(am_izy, 8);
-
-    // SRE - LSR + EOR
-    #define DO_SRE(am, cyc) addr=am(); val=mem_read(addr); S.st=(S.st&~FLAG_C)|(val&1); val>>=1; mem_write(addr,val); S.a^=val; set_nz(S.a); return cyc
-    case 0x47: DO_SRE(am_zp,  5);
-    case 0x57: DO_SRE(am_zpx, 6);
-    case 0x4F: DO_SRE(am_abs, 6);
-    case 0x5F: DO_SRE(am_abx, 7);
-    case 0x5B: DO_SRE(am_aby, 7);
-    case 0x43: DO_SRE(am_izx, 8);
-    case 0x53: DO_SRE(am_izy, 8);
-
-    // RRA - ROR + ADC
-    #define DO_RRA(am, cyc) do { \
-        addr=am(); val=mem_read(addr); uint8_t c=(S.st&FLAG_C)<<7; \
-        S.st=(S.st&~FLAG_C)|(val&1); val=(val>>1)|c; \
-        mem_write(addr,val); DO_ADC(val); return cyc; \
-    } while(0)
-    case 0x67: DO_RRA(am_zp,  5);
-    case 0x77: DO_RRA(am_zpx, 6);
-    case 0x6F: DO_RRA(am_abs, 6);
-    case 0x7F: DO_RRA(am_abx, 7);
-    case 0x7B: DO_RRA(am_aby, 7);
-    case 0x63: DO_RRA(am_izx, 8);
-    case 0x73: DO_RRA(am_izy, 8);
-
-    // ANC - AND + set C from N
-    case 0x0B: case 0x2B:
-        S.a &= mem_read(am_imm());
-        set_nz(S.a);
-        S.st = (S.st & ~FLAG_C) | ((S.a >> 7) & FLAG_C);
-        return 2;
-
-    // ALR - AND + LSR
-    case 0x4B:
-        S.a &= mem_read(am_imm());
-        S.st = (S.st & ~FLAG_C) | (S.a & 1);
-        S.a >>= 1;
-        set_nz(S.a);
-        return 2;
-
-    // ARR - AND + ROR (simplified)
-    case 0x6B:
-        S.a &= mem_read(am_imm());
-        S.a = (S.a >> 1) | ((S.st & FLAG_C) << 7);
-        set_nz(S.a);
-        S.st = (S.st & ~(FLAG_C|FLAG_V)) |
-               ((S.a >> 6) & FLAG_C) |
-               (((S.a >> 6) ^ (S.a >> 5)) & 1) << 6;
-        return 2;
-
-    // AXS (SBX) - (A & X) - imm -> X
-    case 0xCB:
-        val = mem_read(am_imm());
-        tmp16 = (uint16_t)(S.a & S.x) - val;
-        S.st = (S.st & ~FLAG_C) | (tmp16 < 0x100 ? FLAG_C : 0);
-        S.x = tmp16 & 0xFF;
-        set_nz(S.x);
-        return 2;
-
-    // LAX #imm (LXA/ATX) - unstable; load immediate into A and X
-    case 0xAB: val=mem_read(am_imm()); S.a=S.x=val; set_nz(val); return 2;
-
-    // XAA #imm (ANE) - highly unstable; A = X & imm
-    case 0x8B: S.a = S.x & mem_read(am_imm()); set_nz(S.a); return 2;
-
-    // SHA/AHX - store A & X & (baseHi+1)
-    case 0x9F: addr=am_aby(); val=unstable_store_val(S.a & S.x); mem_write(unstable_store_addr(addr,val), val); return 5;
-    case 0x93: addr=am_izy(); val=unstable_store_val(S.a & S.x); mem_write(unstable_store_addr(addr,val), val); return 6;
-
-    // SHX / SHY - store reg & (baseHi+1)
-    case 0x9E: addr=am_aby(); val=unstable_store_val(S.x); mem_write(unstable_store_addr(addr,val), val); return 5;
-    case 0x9C: addr=am_abx(); val=unstable_store_val(S.y); mem_write(unstable_store_addr(addr,val), val); return 5;
-
-    // TAS/SHS - SP = A & X, then store A & X & (baseHi+1)
-    case 0x9B: addr=am_aby(); S.sp = S.a & S.x; val=unstable_store_val(S.a & S.x); mem_write(unstable_store_addr(addr,val), val); return 5;
-
-    // LAS/LAR - A = X = SP = mem & SP
-    case 0xBB: addr=am_aby(); val = mem_read(addr) & S.sp; S.a=S.x=S.sp=val; set_nz(val); return 4 + pageCrossed;
-
-    // Illegal NOPs (various sizes)
-    case 0x1A: case 0x3A: case 0x5A: case 0x7A: case 0xDA: case 0xFA:
-        return 2; // 1-byte NOPs
-    case 0x80: case 0x82: case 0x89: case 0xC2: case 0xE2:
-        S.pc++; return 2; // 2-byte NOPs
-    case 0x04: case 0x44: case 0x64:
-        mem_read(am_zp()); return 3; // 2-byte ZP NOPs
-    case 0x14: case 0x34: case 0x54: case 0x74: case 0xD4: case 0xF4:
-        mem_read(am_zpx()); return 4; // 2-byte ZPX NOPs
-    case 0x0C:
-        mem_read(am_abs()); return 4; // 3-byte ABS NOP
-    case 0x1C: case 0x3C: case 0x5C: case 0x7C: case 0xDC: case 0xFC:
-        mem_read(am_abx()); return 4 + pageCrossed; // 3-byte ABX NOPs
-
-    // KIL opcodes - halt CPU (treat as NOP for safety)
-    case 0x02: case 0x12: case 0x22: case 0x32: case 0x42: case 0x52:
-    case 0x62: case 0x72: case 0x92: case 0xB2: case 0xD2: case 0xF2:
-        return 2;
-
-    // Remaining rarely-used illegals - treat as NOP
-    default:
-        return 2;
-    }
+    AudioBus bus{ S.pc, S.sp, S.a, S.x, S.y, S.st };
+    return cpu6510::step(bus);
 }
 
 // ---- CPU init ----
@@ -647,7 +146,7 @@ static void cpu_init(uint16_t pc) {
     S.pc = pc;
     S.sp = 0xFF;
     S.a = S.x = S.y = 0;
-    S.st = FLAG_U | FLAG_I;
+    S.st = cpu6510::FLAG_U | cpu6510::FLAG_I;
 }
 
 // Run a subroutine to completion or until maxCycles is exceeded.
@@ -658,12 +157,14 @@ static void cpu_jsr(uint16_t addr, uint32_t maxCycles) {
     S.pc = addr;
     uint32_t cyclesRun = 0;
     uint8_t initialSP = S.sp + 2;  // SP before the sentinel push
+    cpuJammed = false;
 
     while (cyclesRun < maxCycles) {
         int cyc = cpu_step();
         cyclesRun += cyc;
         S.totalCycles += cyc;
 
+        if (cpuJammed) break;  // KIL opcode; the CPU would never come back
         if (S.sp >= initialSP) break;  // matching RTS executed
         if (S.pc == 0 || S.pc == 0xFFFF) break;  // BRK or sentinel landing
     }

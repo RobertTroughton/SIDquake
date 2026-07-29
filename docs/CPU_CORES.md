@@ -1,6 +1,9 @@
-# The two 6510 cores
+# The 6510 emulation
 
-SIDquake emulates the 6510 twice, for two different jobs:
+The instruction set lives once, in `wasm/cpu6510_core.h`. It is a template over
+a *bus*: a type supplying the register file by reference plus `fetch`, `read`,
+`write`, `jumpTarget` and `jam`. Two bus adapters use it, for two different
+jobs:
 
 | | source | job |
 |---|---|---|
@@ -10,8 +13,14 @@ SIDquake emulates the 6510 twice, for two different jobs:
 `wasm/sidplayfp_audio.cpp` is a third playback path but uses libsidplayfp's own
 CPU, not either of these.
 
-Both decode all 256 opcodes, including the illegals, and agree with each other
-on PC, registers, flags, cycles and memory for every non-terminal opcode.
+Splitting the two apart is what the bus is for. The analysis adapter reads and
+writes plain RAM and records access flags; the audio adapter routes reads and
+writes through the SID chips. Instruction fetch is a separate operation from
+data read in both: the analysis core covers the instruction stream with
+`MEM_EXECUTE`/`MEM_OPCODE` rather than `MEM_READ`, and the audio core must not
+let an instruction fetch reach reSID.
+
+All 256 opcodes are decoded, illegals included.
 
 ## Keeping them honest
 
@@ -22,9 +31,12 @@ on PC, registers, flags, cycles and memory for every non-terminal opcode.
 - the unstable `SHA`/`SHX`/`SHY`/`TAS` stores against hand-worked vectors, since
   "both cores agree" proves nothing where both were written from one reading of
   the hardware;
-- both cores against each other, stepped through the same randomised machine
-  states, diffing PC, registers, flags, cycles and all 64 KB of memory;
-- optionally both against a third-party `cpu.c` linked in as an outside opinion.
+- the two bus adapters against each other, stepped through the same randomised
+  machine states, diffing PC, registers, flags, cycles and all 64 KB of memory -
+  which since consolidation checks the adapters, not the instruction set;
+- optionally the analysis core against a third-party `cpu.c` linked in as an
+  outside opinion, the only check independent of this repo's reading of the
+  hardware.
 
 Run it after touching either core; see `scripts/cpu-crosscheck/README.md`. It is
 not part of `npm test`: it needs a C++ toolchain and takes minutes.
@@ -41,9 +53,9 @@ not part of `npm test`: it needs a C++ toolchain and takes minutes.
 - **`XAA` (`$8B`) and `LAX #imm` (`$AB`) magic constants.** Both cores use the
   common deterministic forms (`A = X & imm` and `A = X = imm`); on real hardware
   the result depends on the analogue state of the internal bus.
-- **Bus conflicts and open-bus reads.** There is no I/O or VIC model here at
-  all; `$D400-$D7FF` is plain RAM in the analysis core and mapped to reSID in
-  the audio core.
+- **Bus conflicts and open-bus reads.** There is no I/O, VIC or PLA banking
+  model here at all; `$D400-$D7FF` is plain RAM in the analysis core and mapped
+  to reSID in the audio core, with no way to bank RAM in underneath it.
 
 The `SHA`/`SHX`/`SHY`/`TAS` behaviour that *is* modelled - value is
 `reg & (pre-index high byte + 1)`, and a page-crossing index replaces the
@@ -89,6 +101,9 @@ The analysis core records `MEM_READ`, `MEM_WRITE`, `MEM_EXECUTE`,
 Every read an instruction performs is recorded, including operand reads,
 indirect pointer fetches and stack pulls; the only unrecorded fetches are the
 instruction stream itself, which is covered by `MEM_EXECUTE`/`MEM_OPCODE`.
+
+`lastWritePC` records the address of the instruction that made the store, not
+the PC as it stood mid-instruction.
 
 Consumers: `sid_processor.cpp` uses `MEM_WRITE` (modified addresses, zero-page
 use) and `MEM_EXECUTE` (code/data split); `spectrometer-shadow-detect.js` uses

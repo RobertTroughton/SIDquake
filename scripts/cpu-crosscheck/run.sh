@@ -24,7 +24,7 @@ done
 rm -rf "$out"
 mkdir -p "$out"
 cp -r "$here/stubs/." "$out/"
-cp "$wasm/sid_audio.cpp" "$wasm/cpu6510_wasm.cpp" "$wasm/opcodes.h" "$out/"
+cp "$wasm/sid_audio.cpp" "$wasm/cpu6510_wasm.cpp" "$wasm/cpu6510_core.h" "$wasm/opcodes.h" "$out/"
 cp "$here/shim_audio.cpp" "$here/crosscheck.cpp" "$out/"
 
 cxxflags=(-O2 -w -I"$out")

@@ -205,8 +205,9 @@ KickAssembler 6502 source for the visualiser players.
 byte-for-byte: `scripts/test-baked-decoder.js` (baked FFT stream) and
 `scripts/test-shadow-replay.js` (shadow-register replay order). Nothing covers
 the browser UI. Also run `scripts/build-players.sh --check` after touching
-`SIDPlayers/`, and `scripts/cpu-crosscheck/run.sh` after touching either 6510
-core (not in `npm test`: needs a C++ toolchain, takes minutes).
+`SIDPlayers/`, and `scripts/cpu-crosscheck/run.sh` after touching the 6510
+decoder or either bus adapter (not in `npm test`: needs a C++ toolchain, takes
+minutes).
 
 **Layout**
 
@@ -220,7 +221,7 @@ core (not in `npm test`: needs a C++ toolchain, takes minutes).
 - `scripts/` — build, codegen and test tooling. `tools/` — HVSC index + song
   length scanners.
 - Docs: `docs/ARCHITECTURE.md`, `docs/EMBED.md`,
-  `docs/CPU_CORES.md` (the two 6510 cores and what they disagree on),
+  `docs/CPU_CORES.md` (the shared 6510 decoder and its two bus adapters),
   `SIDPlayers/CODE_ONLY_GUIDE.md` (how a relocatable player is structured),
   `SIDPlayers/BAR_HEIGHT_METHODS.md` (the three bar-data methods). `TODO.md` is
   outstanding work only and is kept current.
