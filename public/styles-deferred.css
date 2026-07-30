@@ -786,6 +786,10 @@
     display: flex;
     justify-content: space-between;
     align-items: center;
+    /* Name and description share a line until they don't fit, then the
+       description drops below instead of overlapping. */
+    flex-wrap: wrap;
+    gap: 2px 12px;
 }
 
 .compression-name {
@@ -1880,6 +1884,45 @@
     background: var(--text-muted);
 }
 
+/* ---------- narrow screens: fullscreen, info panel below the list ----------
+   The info panel's 382px minimum is wider than a phone, and the file panel is
+   allowed to shrink, so side by side the file list collapses to zero width and
+   the listing renders invisibly. Stack them instead. */
+
+@media (max-width: 720px) {
+    .hvsc-modal {
+        padding: 0;
+    }
+
+    .hvsc-modal-content {
+        width: 100vw;
+        height: 100dvh;
+        max-height: none;
+        border-radius: 0;
+        border: none;
+    }
+
+    .browser-content {
+        flex-direction: column;
+    }
+
+    .file-panel {
+        min-height: 0;
+    }
+
+    .sid-info-panel {
+        width: auto;
+        min-width: 0;
+        max-height: 40%;
+        border-left: none;
+        border-top: 1px solid var(--border);
+    }
+
+    .sid-info-placeholder {
+        padding: 12px;
+    }
+}
+
 /* ==========================================================================
    Gallery Modal
    ========================================================================== */
@@ -2573,6 +2616,11 @@
 .sid-player {
     display: inline-flex;
     align-items: center;
+    /* The pill is wider than a phone: wrap it onto more rows rather than let
+       the tail (speed, volume) run off the edge of whatever holds it. */
+    flex-wrap: wrap;
+    justify-content: center;
+    max-width: 100%;
     gap: var(--space-xs);
     padding: 4px 8px;
     background: var(--bg-elevated);

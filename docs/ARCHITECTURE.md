@@ -109,6 +109,9 @@ Compiled into `sidplayfp.wasm` (playback only, lazily loaded):
   the DOM by id
 - Export tab renders a live include/skip manifest mirroring the builder's
   gates; footer carries a one-line summary + the Generate button
+- Under 720px it goes fullscreen with the rail on top, so it has to sit above
+  the site header and no panel may set a width the viewport can't hold
+  (`scripts/mobile-layout-check.js` guards both)
 
 **Player binaries** (`public/prg/*.bin`) - two kinds:
 - Players with a CODE_ONLY reloc blob (`relocCodeBase`: Default,

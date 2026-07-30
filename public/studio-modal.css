@@ -1,15 +1,17 @@
 /* ==========================================================================
    SIDquake Studio modal
    Near-fullscreen workspace: load -> configure -> export, as tabs.
-   Sits below the message modal (1000), busy overlay (2000) and the
-   HVSC/gallery modals (10000) so all of those can open above it.
+   Sits below the message modal (1000, later in the DOM at the same z-index),
+   the busy overlay (2000) and the HVSC/gallery modals (10000) so all of those
+   can open above it, and above the site header (1000, earlier in the DOM) —
+   which fullscreens over the studio head on narrow screens otherwise.
    ========================================================================== */
 
 .studio-modal {
     position: fixed;
     inset: 0;
     background: rgba(6, 6, 9, 0.72);
-    z-index: 900;
+    z-index: 1000;
     display: none;
     align-items: center;
     justify-content: center;
@@ -23,6 +25,11 @@
 .studio-modal-content {
     width: min(1160px, 96vw);
     height: min(820px, 92vh);
+    /* Never let content set the width: without this the widest thing in any
+       panel pushes the whole modal past the viewport, and the overflow is
+       clipped with no way to scroll to it. Same for the rows and columns
+       below, which are grid items and so size from their content too. */
+    min-width: 0;
     background: var(--bg-secondary);
     border: 1px solid var(--border-light);
     border-radius: var(--radius-xl);
@@ -42,6 +49,7 @@
     border-bottom: 1px solid var(--border);
     background: var(--bg-surface);
     min-height: 54px;
+    min-width: 0;
 }
 
 .studio-head-icon {
@@ -101,9 +109,11 @@
     display: grid;
     grid-template-columns: 200px 1fr;
     min-height: 0;
+    min-width: 0;
 }
 
 .studio-rail {
+    min-width: 0;
     border-right: 1px solid var(--border);
     padding: 14px 10px;
     display: flex;
@@ -185,6 +195,7 @@
 .studio-panels {
     overflow-y: auto;
     min-height: 0;
+    min-width: 0;
     padding: 22px 28px 40px;
 }
 
@@ -330,6 +341,7 @@
     padding: 10px 18px;
     border-top: 1px solid var(--border);
     background: var(--bg-surface);
+    min-width: 0;
 }
 
 .studio-foot-sum {
@@ -340,6 +352,7 @@
     overflow: hidden;
     text-overflow: ellipsis;
     flex: 0 1 auto;
+    min-width: 0;
 }
 
 .studio-foot .export-status {
@@ -353,6 +366,9 @@
 .studio-foot .export-button {
     margin-left: auto;
     flex: 0 0 auto;
+    /* Not the full-width export button of the narrow main page: in the footer
+       row that width is measured against the footer and runs off its end. */
+    width: auto;
 }
 
 /* ---------- landing card ---------- */
