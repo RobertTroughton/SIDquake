@@ -1319,8 +1319,9 @@
     background: var(--bg-primary);
     color: var(--text-secondary);
     border: 1px solid var(--border);
-    width: 30px;
-    height: 30px;
+    /* Same size as the Studio's close: one escape hatch across the modals. */
+    width: 36px;
+    height: 36px;
     border-radius: var(--radius-sm);
     cursor: pointer;
     font-size: 16px;
@@ -1989,8 +1990,8 @@
 
     .hvsc-modal-close,
     .gallery-modal-close {
-        width: 40px;
-        height: 40px;
+        width: 44px;
+        height: 44px;
     }
 
     .search-bar {
