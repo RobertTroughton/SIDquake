@@ -327,6 +327,10 @@ class StudioModal {
             btn.addEventListener('click', () => this.activate(t.id));
             this.rail.appendChild(btn);
         });
+        // Rebuilding the rail put its scroll position back to the start, so
+        // bring the active tab back into view (a no-op when it never left).
+        const active = this.rail.querySelector('.studio-tab.active');
+        if (active) active.scrollIntoView({ block: 'nearest', inline: 'nearest' });
     }
 
     // ---------------------------------------------------------------------

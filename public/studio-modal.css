@@ -396,9 +396,15 @@
         grid-template-rows: auto 1fr;
     }
 
+    /* Every tab on screen at once, wrapped over as many rows as it takes: a
+       strip that scrolls sideways hides tabs behind a gesture nothing asks
+       for. */
     .studio-rail {
         flex-direction: row;
-        overflow-x: auto;
+        flex-wrap: wrap;
+        justify-content: center;
+        overflow: visible;
+        gap: 6px;
         border-right: none;
         border-bottom: 1px solid var(--border);
         padding: 8px 10px;
@@ -411,6 +417,23 @@
     .studio-tab {
         white-space: nowrap;
         width: auto;
+        min-height: 44px;
+        padding: 9px 14px;
+    }
+
+    /* One card per row: a full-width preview and an unwrapped title beat two
+       columns of cropped thumbnails on a phone. */
+    .studio-panel .visualizer-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .studio-panel .visualizer-preview {
+        height: auto;
+        aspect-ratio: 320 / 200;
+    }
+
+    .studio-panel .visualizer-preview img {
+        object-fit: contain;
     }
 
     .studio-panels {
@@ -419,6 +442,21 @@
 
     .studio-player-mount {
         display: none;
+    }
+
+    /* Thumb-sized controls in the chrome that frames every panel. */
+    .studio-close {
+        width: 44px;
+        height: 44px;
+    }
+
+    .studio-foot {
+        padding: 8px 12px calc(8px + env(safe-area-inset-bottom, 0px));
+    }
+
+    .studio-foot .studio-nav-btn,
+    .studio-foot .export-button {
+        min-height: 44px;
     }
 }
 

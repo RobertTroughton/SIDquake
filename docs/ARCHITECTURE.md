@@ -109,9 +109,10 @@ Compiled into `sidplayfp.wasm` (playback only, lazily loaded):
   the DOM by id
 - Export tab renders a live include/skip manifest mirroring the builder's
   gates; footer carries a one-line summary + the Generate button
-- Under 720px it goes fullscreen with the rail on top, so it has to sit above
-  the site header and no panel may set a width the viewport can't hold
-  (`scripts/mobile-layout-check.js` guards both)
+- Under 720px it goes fullscreen with the rail wrapped across the top: it has
+  to sit above the site header, no panel may set a width the viewport can't
+  hold, and nothing may need a sideways drag to reach
+  (`scripts/mobile-layout-check.js` guards all three)
 
 **Player binaries** (`public/prg/*.bin`) - two kinds:
 - Players with a CODE_ONLY reloc blob (`relocCodeBase`: Default,
@@ -199,6 +200,11 @@ version is whatever we ship.
 - Builds the directory tree in-memory from `hvsc-index.json`; no network per folder
 - Plays/downloads SIDs directly from `/HVSC/<path>`
 - Search matches title, author, path AND folded STIL comment text
+- A row single-clicks to select and preview; double-click (double-tap) opens a
+  folder or takes a tune, the same as the Select button, which stays inert
+  until a tune is selected
+- Under 720px the modal goes fullscreen, the SID info panel moves below the
+  listing and hides until it has details to show
 
 **`hvsc-random.js`** - Random SID picker
 - `window.hvscRandom`: Picks a random tune from the index

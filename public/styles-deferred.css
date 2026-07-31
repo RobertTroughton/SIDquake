@@ -100,6 +100,24 @@
     gap: 12px;
 }
 
+/* Narrow screens stack the label above its control. The label's 140px basis
+   would otherwise become a 140px-tall gap once the row turns into a column. */
+@media (max-width: 768px) {
+    .option-row {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: var(--space-sm);
+    }
+
+    .option-label {
+        flex: none;
+    }
+
+    .option-control {
+        width: 100%;
+    }
+}
+
 .image-input-container {
     display: flex;
     justify-content: center;
@@ -1021,8 +1039,11 @@
 
 .image-preview-frame {
     position: relative;
-    width: 320px;
-    height: 200px;
+    /* A C64 screen's 320x200, shrinking to fit a narrow panel rather than
+       overflowing it. */
+    width: 100%;
+    max-width: 320px;
+    aspect-ratio: 320 / 200;
     margin: 0 auto;
     border: 1px solid var(--border);
     border-radius: var(--radius-sm);
@@ -1921,6 +1942,71 @@
     .sid-info-placeholder {
         padding: 12px;
     }
+
+    /* Select is how a tune leaves the browser, so it gets the width and the
+       weight: path on its own line, then Cancel and a primary Select filling
+       the rest of the row. */
+    .hvsc-modal-footer {
+        flex-wrap: wrap;
+        padding: 10px 12px calc(10px + env(safe-area-inset-bottom, 0px));
+    }
+
+    .hvsc-path-text {
+        flex: 1 0 100%;
+        order: -1;
+    }
+
+    .hvsc-choose-btn,
+    .hvsc-cancel-btn {
+        min-height: 44px;
+        font-size: 14px;
+    }
+
+    .hvsc-cancel-btn {
+        order: 1;
+    }
+
+    .hvsc-choose-btn {
+        order: 2;
+        flex: 1 1 auto;
+    }
+
+    /* Rows and chrome sized for a fingertip rather than a mouse pointer. */
+    .file-item {
+        min-height: 44px;
+        font-size: 14px;
+    }
+
+    .hvsc-listheader .hvsc-nav-btn {
+        width: 40px;
+        height: 36px;
+    }
+
+    .hvsc-listheader .hvsc-col {
+        min-height: 40px;
+        padding: 10px 6px;
+    }
+
+    .hvsc-modal-close,
+    .gallery-modal-close {
+        width: 40px;
+        height: 40px;
+    }
+
+    .search-bar {
+        min-height: 44px;
+    }
+
+    /* Everything below the listing competes with it for a phone's height, so
+       the decoration gives way: the spectrum strip halves, the info panel
+       waits until there is something to show, and the credit line tightens. */
+    .browser-title {
+        padding-right: 44px;
+    }
+
+    .sid-info-panel:not(.has-info) {
+        display: none;
+    }
 }
 
 /* ==========================================================================
@@ -2794,6 +2880,7 @@
     color: var(--text-secondary);
 }
 
+
 /* Spectrum visualizer strip at the bottom of the HVSC browser */
 .hvsc-visualizer {
     display: block;
@@ -2834,6 +2921,52 @@
 .hvsc-player-container .sid-player {
     margin-top: 0;
     background: var(--bg-surface);
+}
+
+/* Phone-sized transport controls, and a browser that spends its height on the
+   listing: the spectrum strip is decoration and the credit line can be small.
+   (These sit after the rules they override, not with the other narrow-screen
+   HVSC rules further up.) */
+@media (max-width: 720px) {
+    .sid-player {
+        gap: var(--space-sm);
+        padding: 6px 10px;
+    }
+
+    .sid-player-btn {
+        width: 40px;
+        height: 40px;
+    }
+
+    .sid-player-subtune .sid-player-btn {
+        width: 34px;
+        height: 34px;
+    }
+
+    /* Resampling quality is a technical nicety that costs the pill a whole
+       wrapped row on a phone; playback keeps the default (Interpolate). */
+    .sid-player-quality {
+        display: none;
+    }
+
+    .sid-player-speed-btn {
+        min-width: 34px;
+        padding: 8px 6px;
+    }
+
+    .sid-player-volume-slider {
+        width: 96px;
+        height: 24px;
+    }
+
+    .hvsc-visualizer {
+        display: none;
+    }
+
+    .hvsc-attribution {
+        font-size: 0.68em;
+        padding: 5px 12px 6px;
+    }
 }
 
 /* Main page player container */
