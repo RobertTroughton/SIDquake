@@ -85,22 +85,29 @@
     margin: 0;
 }
 
+/* Boxed, like the close button on the HVSC and gallery modals: a bare glyph
+   next to the song title reads as part of the title, not as the way out. */
 .studio-close {
-    width: 32px;
-    height: 32px;
+    width: 36px;
+    height: 36px;
     flex: 0 0 auto;
-    border: none;
-    border-radius: var(--radius-md);
-    background: none;
-    color: var(--text-muted);
-    font-size: 15px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    background: var(--bg-primary);
+    color: var(--text-secondary);
+    font-size: 16px;
+    font-weight: bold;
     cursor: pointer;
     transition: all var(--transition-fast);
 }
 
 .studio-close:hover {
-    background: var(--bg-hover);
-    color: var(--text-primary);
+    background: var(--error);
+    border-color: var(--error);
+    color: #fff;
 }
 
 /* ---------- body: rail + panels ---------- */

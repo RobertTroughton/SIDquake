@@ -210,11 +210,15 @@ async function checkStudio(page, size) {
             return {
                 over: new Function('sel', 'return (' + of + ')(sel)')('.studio-modal-content'),
                 closeReachable: !!atClose && atClose.classList.contains('studio-close'),
-                atClose: atClose ? atClose.tagName.toLowerCase() + '.' + String(atClose.className).slice(0, 40) : 'nothing'
+                atClose: atClose ? atClose.tagName.toLowerCase() + '.' + String(atClose.className).slice(0, 40) : 'nothing',
+                closeBox: Math.round(close.width) + 'x' + Math.round(close.height),
+                closeBig: close.width >= 44 && close.height >= 44,
+                closeCorner: window.innerWidth - close.right < 24 && close.top < 24
             };
         }, overflowingIn.toString());
         check(m.over.length === 0, `studio @${size.w} [${tab}]: fits the viewport`, m.over.join(', '));
         check(m.closeReachable, `studio @${size.w} [${tab}]: close button not covered`, m.closeReachable ? '' : 'hit ' + m.atClose);
+        check(m.closeBig && m.closeCorner, `studio @${size.w} [${tab}]: close button is big and in the corner`, m.closeBox);
     }
 
     // Every tab has to be on screen without a sideways drag, and a refresh —
