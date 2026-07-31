@@ -384,7 +384,7 @@
     margin-top: var(--space-md);
 }
 
-/* ---------- narrow screens: fullscreen, rail on top ---------- */
+/* ---------- narrow screens: fullscreen, one panel at a time ---------- */
 
 @media (max-width: 720px) {
     .studio-modal {
@@ -398,34 +398,25 @@
         border: none;
     }
 
-    .studio-body {
-        grid-template-columns: 1fr;
-        grid-template-rows: auto 1fr;
-    }
-
-    /* Every tab on screen at once, wrapped over as many rows as it takes: a
-       strip that scrolls sideways hides tabs behind a gesture nothing asks
-       for. */
+    /* No rail: a phone's width can't hold the tabs without either a sideways
+       drag or two rows of chrome above every panel. Previous/Next walk the
+       same order, and the footer counter says how far along that is. */
     .studio-rail {
-        flex-direction: row;
-        flex-wrap: wrap;
-        justify-content: center;
-        overflow: visible;
-        gap: 6px;
-        border-right: none;
-        border-bottom: 1px solid var(--border);
-        padding: 8px 10px;
-    }
-
-    .studio-rail-sep {
         display: none;
     }
 
-    .studio-tab {
+    .studio-body {
+        grid-template-columns: 1fr;
+        grid-template-rows: 1fr;
+    }
+
+    .studio-nav-pos {
+        display: inline-block;
+        font-family: var(--font-mono);
+        font-size: 0.8em;
+        color: var(--text-muted);
         white-space: nowrap;
-        width: auto;
-        min-height: 44px;
-        padding: 9px 14px;
+        padding: 0 2px;
     }
 
     /* One card per row: a full-width preview and an unwrapped title beat two

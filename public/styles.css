@@ -1383,4 +1383,6 @@ details[open].panel > summary h2::after {
     cursor: pointer; font-weight: 500;
 }
 .studio-nav-btn.next { background: var(--accent); color: #1a1a22; }
+/* Step counter: only earns its place where the tab rail is gone. */
+.studio-nav-pos { display: none; }
 .studio-nav-btn:hover { filter: brightness(1.12); }

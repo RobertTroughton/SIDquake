@@ -184,6 +184,9 @@ class StudioModal {
         if (prev) parts.push(
             `<button type="button" class="studio-nav-btn prev" data-go="${prev.id}">`
             + `<i class="fas fa-chevron-left"></i> Previous</button>`);
+        // Narrow screens drop the tab rail and navigate with these buttons
+        // alone, so the position the rail used to show comes with them.
+        parts.push(`<span class="studio-nav-pos">${i + 1} / ${tabs.length}</span>`);
         if (next && !onExport) parts.push(
             `<button type="button" class="studio-nav-btn next" data-go="${next.id}">`
             + `Next <i class="fas fa-chevron-right"></i></button>`);
