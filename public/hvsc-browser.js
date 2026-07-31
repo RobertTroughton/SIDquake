@@ -306,6 +306,7 @@ window.hvscBrowser = (function () {
         const entry = entries.find((e) => !e.isDirectory && e.path === path);
         if (!entry) return false;
         currentSelection = entry;
+        syncChooseButton();
         const fileList = document.getElementById('fileList');
         if (fileList) {
             fileList.querySelectorAll('.file-item').forEach((item) => {
@@ -332,6 +333,7 @@ window.hvscBrowser = (function () {
         hvscInitialized = true;
         wireSearch();
         buildListHeader();
+        syncChooseButton();
         // Warm up the playback engine in the background while the user browses,
         // so the Play button is responsive on the very first tune instead of
         // stalling on a cold WASM/audio-worklet load.
@@ -590,6 +592,7 @@ window.hvscBrowser = (function () {
 
         e.currentTarget.classList.add('selected');
         currentSelection = entry;
+        syncChooseButton();
 
         if (!entry.isDirectory) {
             previewSID(entry);
@@ -645,6 +648,7 @@ window.hvscBrowser = (function () {
             + `</div>`;
 
         content.innerHTML = html;
+        markInfoPanel(true);
     }
 
     function clearInfoPanel() {
@@ -652,6 +656,14 @@ window.hvscBrowser = (function () {
         if (content) {
             content.innerHTML = '<div class="sid-info-placeholder">Select a SID file to view details</div>';
         }
+        markInfoPanel(false);
+    }
+
+    // Whether the panel holds real details or just its placeholder — on a
+    // phone the placeholder is dropped entirely so the listing gets the room.
+    function markInfoPanel(hasInfo) {
+        const panel = document.getElementById('sidInfoPanel');
+        if (panel) panel.classList.toggle('has-info', hasInfo);
     }
 
     function escapeHtml(str) {
@@ -711,8 +723,9 @@ window.hvscBrowser = (function () {
         }
     }
 
-    // Double-click only navigates into folders. Choosing a tune is done
-    // explicitly with the Select button (files single-click to preview).
+    // Double-click (double-tap) opens a folder, or takes a tune — the same
+    // shortcut for both, alongside the explicit Select button. Single-click on
+    // a tune only selects and previews it.
     function handleItemDoubleClick(entry) {
         if (entry.isDirectory) {
             let cleanPath = entry.path;
@@ -720,12 +733,14 @@ window.hvscBrowser = (function () {
                 cleanPath = cleanPath.slice(0, -1);
             }
             fetchDirectory(cleanPath);
+        } else {
+            selectSID();
         }
     }
 
-    // Make a file/directory row keyboard-operable. Enter mirrors mouse
-    // behaviour: open a folder, or select-and-preview a tune (choosing a tune
-    // for export stays on the dedicated button).
+    // Make a file/directory row keyboard-operable. Enter mirrors the mouse:
+    // open a folder, select-and-preview a tune, and — pressed again on the tune
+    // already selected — take it, the way a second click does.
     function makeRowKeyboardAccessible(item, entry) {
         item.tabIndex = 0;
         item.setAttribute('role', 'button');
@@ -733,6 +748,7 @@ window.hvscBrowser = (function () {
             if (e.key !== 'Enter') return;
             e.preventDefault();
             if (entry.isDirectory) handleItemDoubleClick(entry);
+            else if (currentSelection && currentSelection.path === entry.path) selectSID();
             else handleItemClick(e, entry);
         });
     }
@@ -768,6 +784,16 @@ window.hvscBrowser = (function () {
         }
         const up = document.getElementById('upBtn');
         if (up) up.disabled = !currentPath || currentPath === '' || currentPath === ROOT;
+    }
+
+    // The Select button is the main way out of the browser, so it has to say
+    // whether it will do anything: live only once a tune (not a folder) is
+    // selected. RSID tunes keep it live and answer with the inline note.
+    function syncChooseButton() {
+        const usable = !!(currentSelection && !currentSelection.isDirectory);
+        document.querySelectorAll('.hvsc-choose-btn').forEach((btn) => {
+            btn.disabled = !usable;
+        });
     }
 
     function selectSID() {
@@ -974,6 +1000,8 @@ window.hvscBrowser = (function () {
 
         searchMode = true;
         currentSelection = null;
+        syncChooseButton();
+        clearInfoPanel();
         const fileList = document.getElementById('fileList');
         const header = document.getElementById('filePanelHeader');
         if (header) header.textContent = 'Search Results';

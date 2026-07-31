@@ -130,7 +130,33 @@ async function checkHvsc(page, size) {
     check(m.rowW > 0, label + ': result rows are visible', m.rowW + 'px wide');
     check(m.over.length === 0, label + ': nothing clipped off-screen', m.over.join(', '));
 
-    await page.evaluate(() => document.getElementById('hvscModalClose').click());
+    // Select is the way out of the browser: big, and honest about whether it
+    // will do anything yet.
+    const before = await page.evaluate(() => {
+        const btn = document.querySelector('#hvscModal .hvsc-choose-btn');
+        const r = btn.getBoundingClientRect();
+        return { disabled: btn.disabled, h: Math.round(r.height), w: Math.round(r.width) };
+    });
+    check(before.disabled, label + ': Select is inert with nothing chosen');
+    check(before.h >= 44, label + ': Select is thumb-sized', before.w + 'x' + before.h);
+
+    await page.evaluate(() => document.querySelector('#fileList .file-item').click());
+    await page.waitForTimeout(500);
+    const after = await page.evaluate(() => document.querySelector('#hvscModal .hvsc-choose-btn').disabled);
+    check(!after, label + ': Select wakes up once a tune is picked');
+
+    // Double-tapping a tune takes it, the same as pressing Select.
+    await page.evaluate(() => document.querySelector('#fileList .file-item').dispatchEvent(
+        new MouseEvent('dblclick', { bubbles: true })));
+    await page.waitForTimeout(500);
+    const closed = await page.evaluate(
+        () => !document.getElementById('hvscModal').classList.contains('visible'));
+    check(closed, label + ': double-tapping a tune chooses it');
+
+    await page.evaluate(() => {
+        const modal = document.getElementById('hvscModal');
+        if (modal.classList.contains('visible')) document.getElementById('hvscModalClose').click();
+    });
     await page.waitForTimeout(300);
 }
 
@@ -191,23 +217,29 @@ async function checkStudio(page, size) {
         check(m.closeReachable, `studio @${size.w} [${tab}]: close button not covered`, m.closeReachable ? '' : 'hit ' + m.atClose);
     }
 
-    // The rail is left showing the last (rightmost) tab. A refresh rebuilds it
-    // from scratch, which resets scrollLeft, so the active tab has to be put
-    // back in view — and while tabs remain off either end, that has to show.
+    // Every tab has to be on screen without a sideways drag, and a refresh —
+    // which rebuilds the rail from scratch — must not lose the active one.
     await page.evaluate(() => window.studioModal.queueRefresh());
     await page.waitForTimeout(300);
     const rail = await page.evaluate(() => {
         const el = document.querySelector('.studio-rail');
         const active = el.querySelector('.studio-tab.active');
         const box = el.getBoundingClientRect(), tab = active.getBoundingClientRect();
+        const tabs = [...el.querySelectorAll('.studio-tab')];
         return {
-            overflows: el.scrollWidth - el.clientWidth > 1,
-            marked: el.classList.contains('more-before') || el.classList.contains('more-after'),
-            activeInView: tab.left >= box.left - 1 && tab.right <= box.right + 1
+            slack: el.scrollWidth - el.clientWidth,
+            activeInView: tab.left >= box.left - 1 && tab.right <= box.right + 1,
+            offscreen: tabs.filter(t => {
+                const r = t.getBoundingClientRect();
+                return r.left < -1 || r.right > window.innerWidth + 1;
+            }).length,
+            shortest: Math.min(...tabs.map(t => Math.round(t.getBoundingClientRect().height)))
         };
     });
     check(rail.activeInView, `studio @${size.w}: active tab survives a rail rebuild`);
-    check(!rail.overflows || rail.marked, `studio @${size.w}: overflowing rail is marked scrollable`);
+    check(rail.slack <= 1, `studio @${size.w}: tab rail needs no sideways scrolling`, 'slack ' + rail.slack);
+    check(rail.offscreen === 0, `studio @${size.w}: every tab is on screen`, rail.offscreen + ' off');
+    check(rail.shortest >= 44, `studio @${size.w}: tabs are thumb-sized`, rail.shortest + 'px tall');
 }
 
 (async () => {

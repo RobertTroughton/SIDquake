@@ -817,19 +817,9 @@ details[open].panel > summary h2::after {
         margin: var(--space-md) var(--space-sm);
     }
 
-    .option-row {
-        flex-direction: column;
-        align-items: flex-start;
-        gap: var(--space-sm);
-    }
-
-    .option-label {
-        flex: none;
-    }
-
-    .option-control {
-        width: 100%;
-    }
+    /* The narrow-screen option-row rules live in styles-deferred.css, next to
+       the base rules they override — that sheet loads after this one, and at
+       equal specificity the later sheet wins. */
 
     .color-slider-control {
         flex-direction: column;
@@ -865,9 +855,25 @@ details[open].panel > summary h2::after {
         gap: 4px;
     }
 
-    .image-preview-frame {
-        width: 280px;
-        height: 175px;
+    /* Touch targets: the pointer is a fingertip here, so the app's own
+       controls get 44px of height to land on. */
+    .upload-btn,
+    .export-button,
+    .btn,
+    .file-button,
+    .number-input,
+    .select-input {
+        min-height: 44px;
+    }
+
+    input[type="checkbox"] {
+        width: 22px;
+        height: 22px;
+        flex-shrink: 0;
+    }
+
+    .info-value.editable {
+        padding: 8px 10px;
     }
 }
 
