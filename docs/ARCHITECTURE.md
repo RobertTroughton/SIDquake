@@ -109,9 +109,10 @@ Compiled into `sidplayfp.wasm` (playback only, lazily loaded):
   the DOM by id
 - Export tab renders a live include/skip manifest mirroring the builder's
   gates; footer carries a one-line summary + the Generate button
-- Under 720px it goes fullscreen with the rail wrapped across the top: it has
-  to sit above the site header, no panel may set a width the viewport can't
-  hold, and nothing may need a sideways drag to reach
+- Under 720px it goes fullscreen and drops the rail entirely: the footer's
+  Previous/Next walk the same tab order and carry a step counter. It has to
+  sit above the site header, no panel may set a width the viewport can't
+  hold, and every panel must be reachable from the first one
   (`scripts/mobile-layout-check.js` guards all three)
 
 **Player binaries** (`public/prg/*.bin`) - two kinds:

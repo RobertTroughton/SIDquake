@@ -197,12 +197,27 @@ async function checkStudio(page, size) {
         .map(t => t.textContent.trim().replace(/[^\w ]/g, '').trim()));
     check(tabs.length >= 5, `studio @${size.w}: visualizer derives its option tabs`, tabs.join(', '));
 
-    for (const tab of tabs) {
-        await page.evaluate((t) => {
-            const el = [...document.querySelectorAll('.studio-tab')].find(x => x.textContent.trim().startsWith(t));
-            if (el) el.click();
-        }, tab);
+    check(await page.evaluate(() => getComputedStyle(document.querySelector('.studio-rail')).display === 'none'),
+        `studio @${size.w}: the tab rail stays out of the way`);
+
+    // Rewind to the first panel, then walk forward with the footer's Next
+    // button alone — with no rail, that is the only way through.
+    while (await page.evaluate(() => {
+        const btn = document.querySelector('.studio-nav-btn.prev');
+        if (!btn) return false;
+        btn.click();
+        return true;
+    })) await page.waitForTimeout(250);
+
+    const walked = [];
+    for (;;) {
         await page.waitForTimeout(400);
+        const tab = await page.evaluate(() => {
+            const panel = document.querySelector('.studio-panel.active');
+            const title = panel && panel.querySelector('.studio-panel-title');
+            return (title ? title.textContent : panel && panel.dataset.studioTab || '?').trim();
+        });
+        walked.push(tab);
         const m = await page.evaluate((of) => {
             const close = document.querySelector('.studio-close').getBoundingClientRect();
             const atClose = document.elementFromPoint(
@@ -219,31 +234,21 @@ async function checkStudio(page, size) {
         check(m.over.length === 0, `studio @${size.w} [${tab}]: fits the viewport`, m.over.join(', '));
         check(m.closeReachable, `studio @${size.w} [${tab}]: close button not covered`, m.closeReachable ? '' : 'hit ' + m.atClose);
         check(m.closeBig && m.closeCorner, `studio @${size.w} [${tab}]: close button is big and in the corner`, m.closeBox);
+
+        const nav = await page.evaluate(() => {
+            const btn = document.querySelector('.studio-nav-btn.next');
+            const pos = document.querySelector('.studio-nav-pos');
+            const shown = pos && getComputedStyle(pos).display !== 'none';
+            const state = { pos: shown ? pos.textContent.trim() : null, more: !!btn };
+            if (btn) btn.click();
+            return state;
+        });
+        check(!!nav.pos, `studio @${size.w} [${tab}]: footer says where you are`, nav.pos || 'no counter');
+        if (!nav.more) break;
     }
 
-    // Every tab has to be on screen without a sideways drag, and a refresh —
-    // which rebuilds the rail from scratch — must not lose the active one.
-    await page.evaluate(() => window.studioModal.queueRefresh());
-    await page.waitForTimeout(300);
-    const rail = await page.evaluate(() => {
-        const el = document.querySelector('.studio-rail');
-        const active = el.querySelector('.studio-tab.active');
-        const box = el.getBoundingClientRect(), tab = active.getBoundingClientRect();
-        const tabs = [...el.querySelectorAll('.studio-tab')];
-        return {
-            slack: el.scrollWidth - el.clientWidth,
-            activeInView: tab.left >= box.left - 1 && tab.right <= box.right + 1,
-            offscreen: tabs.filter(t => {
-                const r = t.getBoundingClientRect();
-                return r.left < -1 || r.right > window.innerWidth + 1;
-            }).length,
-            shortest: Math.min(...tabs.map(t => Math.round(t.getBoundingClientRect().height)))
-        };
-    });
-    check(rail.activeInView, `studio @${size.w}: active tab survives a rail rebuild`);
-    check(rail.slack <= 1, `studio @${size.w}: tab rail needs no sideways scrolling`, 'slack ' + rail.slack);
-    check(rail.offscreen === 0, `studio @${size.w}: every tab is on screen`, rail.offscreen + ' off');
-    check(rail.shortest >= 44, `studio @${size.w}: tabs are thumb-sized`, rail.shortest + 'px tall');
+    check(walked.length === tabs.length,
+        `studio @${size.w}: Previous/Next reach every panel`, walked.join(' > '));
 }
 
 (async () => {
