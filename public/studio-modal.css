@@ -404,6 +404,25 @@
         padding: 8px 10px;
     }
 
+    /* Tabs run off the strip more often than not, and a touch device shows no
+       scrollbar to say so: fade whichever edge still has tabs past it. */
+    .studio-rail.more-after {
+        -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 34px), transparent);
+        mask-image: linear-gradient(to right, #000 calc(100% - 34px), transparent);
+    }
+
+    .studio-rail.more-before {
+        -webkit-mask-image: linear-gradient(to right, transparent, #000 34px);
+        mask-image: linear-gradient(to right, transparent, #000 34px);
+    }
+
+    .studio-rail.more-before.more-after {
+        -webkit-mask-image: linear-gradient(to right, transparent, #000 34px,
+            #000 calc(100% - 34px), transparent);
+        mask-image: linear-gradient(to right, transparent, #000 34px,
+            #000 calc(100% - 34px), transparent);
+    }
+
     .studio-rail-sep {
         display: none;
     }

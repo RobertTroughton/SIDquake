@@ -190,6 +190,24 @@ async function checkStudio(page, size) {
         check(m.over.length === 0, `studio @${size.w} [${tab}]: fits the viewport`, m.over.join(', '));
         check(m.closeReachable, `studio @${size.w} [${tab}]: close button not covered`, m.closeReachable ? '' : 'hit ' + m.atClose);
     }
+
+    // The rail is left showing the last (rightmost) tab. A refresh rebuilds it
+    // from scratch, which resets scrollLeft, so the active tab has to be put
+    // back in view — and while tabs remain off either end, that has to show.
+    await page.evaluate(() => window.studioModal.queueRefresh());
+    await page.waitForTimeout(300);
+    const rail = await page.evaluate(() => {
+        const el = document.querySelector('.studio-rail');
+        const active = el.querySelector('.studio-tab.active');
+        const box = el.getBoundingClientRect(), tab = active.getBoundingClientRect();
+        return {
+            overflows: el.scrollWidth - el.clientWidth > 1,
+            marked: el.classList.contains('more-before') || el.classList.contains('more-after'),
+            activeInView: tab.left >= box.left - 1 && tab.right <= box.right + 1
+        };
+    });
+    check(rail.activeInView, `studio @${size.w}: active tab survives a rail rebuild`);
+    check(!rail.overflows || rail.marked, `studio @${size.w}: overflowing rail is marked scrollable`);
 }
 
 (async () => {

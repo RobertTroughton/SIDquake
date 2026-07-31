@@ -67,6 +67,9 @@ class StudioModal {
                 this.queueRefresh();
             });
         }
+
+        this.rail.addEventListener('scroll', () => this.markRailEdges(), { passive: true });
+        window.addEventListener('resize', () => this.markRailEdges());
     }
 
     open() {
@@ -327,6 +330,20 @@ class StudioModal {
             btn.addEventListener('click', () => this.activate(t.id));
             this.rail.appendChild(btn);
         });
+        // On narrow screens the rail is a sideways strip, and rebuilding it
+        // just put scrollLeft back to 0 - so bring the active tab back into
+        // view (a no-op when it never left).
+        const active = this.rail.querySelector('.studio-tab.active');
+        if (active) active.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+        this.markRailEdges();
+    }
+
+    /** Flag the edges the rail can still scroll towards, for the fade masks. */
+    markRailEdges() {
+        const slack = this.rail.scrollWidth - this.rail.clientWidth;
+        const at = this.rail.scrollLeft;
+        this.rail.classList.toggle('more-before', slack > 1 && at > 1);
+        this.rail.classList.toggle('more-after', slack > 1 && at < slack - 1);
     }
 
     // ---------------------------------------------------------------------
