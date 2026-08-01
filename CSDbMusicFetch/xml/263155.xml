@@ -6,7 +6,7 @@
 <ReleaseDay>20</ReleaseDay>
 <ReleaseMonth>7</ReleaseMonth>
 <ReleaseYear>2026</ReleaseYear>
-<Rating>9.87</Rating>
+<Rating>9.88</Rating>
 <ScreenShot>https://csdb.dk/gfx/releases/263000/263155.png</ScreenShot>
 <ReleasedBy><Group><ID>396</ID>
 <Name>Genesis Project</Name>
@@ -39,7 +39,54 @@ G*P were the organizer of successful parties such as &amp;lt;event id=445&amp;gt
 <Slogan>Accept No Limits</Slogan>
 </Group>
 </ReleasedBy>
-<Credits><Credit><CreditType>Charset</CreditType>
+<Credits><Credit><CreditType>Code</CreditType>
+<Handle><ID>848</ID>
+<Handle>Raistlin</Handle>
+<CurrentlyUsedHandle>true</CurrentlyUsedHandle>
+<HandleStory>I was a huge fan of the Dragonlance books.</HandleStory>
+<Scener><ID>832</ID>
+<Country>United Kingdom</Country>
+<Trivia>Pre-scene, Raistlin was a prolific POKEster (ZZAP!, Commodore User, CCI, What Poke and many more).
+
+Joined the demo scene in 1988 with his brother, Kreator (&amp;lt;scener id=7835&amp;gt;), creating SCC (Silsden Cracking Crew) .. soon after joined Pyrotech and, later, co-formed Excess.
+
+Joined Genesis Project (G*P) - which became his proper "home" - after short stints in a few other groups.
+
+Quit the scene in 1991, after Delirious 10, to focus on University studies.
+
+27 years later, in 2018, he rejoined G*P and released Delirious 11 at Gubbdata 2018 - which took 2nd place. Later that year, with just a 3-month development window, released X Marks the Spot at X2018 (which took 4th place).
+
+Raistlin has been in the games industry since 1994 and has worked on many games - Destruction Derby, the Test Drive series,  LA Rush, Wheelman, Infinity Blade, the Gears of War series, Fortnite, Lawbreakers, Conan Exiles, Sea of Thieves and more... as well as working on Unreal Engine.
+
+Moved to Thailand in 2021.
+
+Created several C64 related websites:-
+
+https://c64demo.com : a coding blog
+https://c64gfx.com : a site collecting C64 artworks
+https://sidquake.c64demo.com : a tool for easy packaging of SIDs as executables with visualiser, scroller etc
+https://dirquake.c64demo.com : a tool - mostly for C64GFX.com - to quickly grab screenshots of C64 DIR art</Trivia>
+<Handles><Handle><ID>848</ID>
+</Handle>
+<Handle><ID>4983</ID>
+<Handle>Kipperman</Handle>
+<CurrentlyUsedHandle>false</CurrentlyUsedHandle>
+<HandleStory>Originally created as an alter-ego when submitting POKEs to Zzap!64.</HandleStory>
+<Scener><ID>832</ID>
+</Scener>
+<FreelanceFunctions><Function>Coder</Function>
+</FreelanceFunctions>
+</Handle>
+</Handles>
+</Scener>
+<FreelanceFunctions><Function>Coder</Function>
+<Function>Diskmag Editor</Function>
+<Function>Organizer</Function>
+<Function>Webmaster</Function>
+</FreelanceFunctions>
+</Handle>
+</Credit>
+<Credit><CreditType>Charset</CreditType>
 <Handle><ID>19</ID>
 <Handle>Mermaid</Handle>
 <AKA>Marmalade, Meanmaid, Merenneito, Zeemeermin, Viswijf</AKA>
@@ -177,53 +224,6 @@ Poisson d'avril = April Fools' day in France.</HandleStory>
 </FreelanceFunctions>
 </Handle>
 </Credit>
-<Credit><CreditType>Code</CreditType>
-<Handle><ID>848</ID>
-<Handle>Raistlin</Handle>
-<CurrentlyUsedHandle>true</CurrentlyUsedHandle>
-<HandleStory>I was a huge fan of the Dragonlance books.</HandleStory>
-<Scener><ID>832</ID>
-<Country>United Kingdom</Country>
-<Trivia>Pre-scene, Raistlin was a prolific POKEster (ZZAP!, Commodore User, CCI, What Poke and many more).
-
-Joined the demo scene in 1988 with his brother, Kreator (&amp;lt;scener id=7835&amp;gt;), creating SCC (Silsden Cracking Crew) .. soon after joined Pyrotech and, later, co-formed Excess.
-
-Joined Genesis Project (G*P) - which became his proper "home" - after short stints in a few other groups.
-
-Quit the scene in 1991, after Delirious 10, to focus on University studies.
-
-27 years later, in 2018, he rejoined G*P and released Delirious 11 at Gubbdata 2018 - which took 2nd place. Later that year, with just a 3-month development window, released X Marks the Spot at X2018 (which took 4th place).
-
-Raistlin has been in the games industry since 1994 and has worked on many games - Destruction Derby, the Test Drive series,  LA Rush, Wheelman, Infinity Blade, the Gears of War series, Fortnite, Lawbreakers, Conan Exiles, Sea of Thieves and more... as well as working on Unreal Engine.
-
-Moved to Thailand in 2021.
-
-Created several C64 related websites:-
-
-https://c64demo.com : a coding blog
-https://c64gfx.com : a site collecting C64 artworks
-https://sidquake.c64demo.com : a tool for easy packaging of SIDs as executables with visualiser, scroller etc
-https://dirquake.c64demo.com : a tool - mostly for C64GFX.com - to quickly grab screenshots of C64 DIR art</Trivia>
-<Handles><Handle><ID>848</ID>
-</Handle>
-<Handle><ID>4983</ID>
-<Handle>Kipperman</Handle>
-<CurrentlyUsedHandle>false</CurrentlyUsedHandle>
-<HandleStory>Originally created as an alter-ego when submitting POKEs to Zzap!64.</HandleStory>
-<Scener><ID>832</ID>
-</Scener>
-<FreelanceFunctions><Function>Coder</Function>
-</FreelanceFunctions>
-</Handle>
-</Handles>
-</Scener>
-<FreelanceFunctions><Function>Coder</Function>
-<Function>Diskmag Editor</Function>
-<Function>Organizer</Function>
-<Function>Webmaster</Function>
-</FreelanceFunctions>
-</Handle>
-</Credit>
 <Credit><CreditType>Music</CreditType>
 <Handle><ID>12931</ID>
 <Handle>psych858o</Handle>
@@ -253,12 +253,12 @@ Beside that, 8580 was my first and true love. I've been loyal until now, and I'
 </Credits>
 <DownloadLinks><DownloadLink><Link>https://csdb.dk/getinternalfile.php/281768/psych858o-parasites.prg</Link>
 <CounterLink>https://csdb.dk/release/download.php?id=323831</CounterLink>
-<Downloads>104</Downloads>
+<Downloads>160</Downloads>
 <Status>Ok</Status>
 </DownloadLink>
 <DownloadLink><Link>https://csdb.dk/getinternalfile.php/281769/Parasites.sid</Link>
 <CounterLink>https://csdb.dk/release/download.php?id=323832</CounterLink>
-<Downloads>57</Downloads>
+<Downloads>89</Downloads>
 <Status>Ok</Status>
 </DownloadLink>
 </DownloadLinks>
@@ -273,6 +273,139 @@ Beside that, 8580 was my first and true love. I've been loyal until now, and I'
 <Date>20.07.2026</Date>
 <Text>SIDquake.c64demo.com will be updating really soon to include new methods of rendering the visualiser, as well as lots of general improvements. Psych858o's tune here nicely shows the new Spectrometer visualiser.</Text>
 </ProductionNote>
+<UserComment><CSDbUser><ID>2680</ID>
+<Login>psycho</Login>
+<Handle>psych</Handle>
+<RegisteredDate>1970-01-01T01:00:00+01:00</RegisteredDate>
+<CSDbEntry><Handle><ID>12931</ID>
+</Handle>
+</CSDbEntry>
+</CSDbUser>
+<Date>28.07.2026</Date>
+<Text>Thank you for the comments. To be honest, it was a bit of a quick-and-dirty effort, so I certainly didn’t expect such positive feedback.</Text>
+</UserComment>
+<UserComment><CSDbUser><ID>736</ID>
+<Login>DrVoice</Login>
+<Handle>Dr.Voice</Handle>
+<RegisteredDate>1970-01-01T01:00:00+01:00</RegisteredDate>
+<CSDbEntry><Handle><ID>8374</ID>
+<Handle>Dr. Voice</Handle>
+<CurrentlyUsedHandle>true</CurrentlyUsedHandle>
+<HandleStory>I have no idea how I ended up with such a horrible handle. Guess I had a hard time thinking one hehe.</HandleStory>
+<Scener><ID>7594</ID>
+<Country>Finland</Country>
+<Handles><Handle><ID>20051</ID>
+<Handle>Chaos</Handle>
+<CurrentlyUsedHandle>false</CurrentlyUsedHandle>
+<Scener><ID>7594</ID>
+</Scener>
+<FreelanceFunctions><Function>Musician</Function>
+</FreelanceFunctions>
+</Handle>
+<Handle><ID>8374</ID>
+</Handle>
+</Handles>
+</Scener>
+<FreelanceFunctions><Function>Musician</Function>
+</FreelanceFunctions>
+</Handle>
+</CSDbEntry>
+</CSDbUser>
+<Date>26.07.2026</Date>
+<Text>Awesome!</Text>
+</UserComment>
+<UserComment><CSDbUser><ID>5905</ID>
+<Login>Stinsen</Login>
+<Handle>Stinsen</Handle>
+<RegisteredDate>1970-01-01T01:00:00+01:00</RegisteredDate>
+<CSDbEntry><Handle><ID>23584</ID>
+<Handle>Stinsen</Handle>
+<CurrentlyUsedHandle>true</CurrentlyUsedHandle>
+<Scener><ID>21086</ID>
+<Handles><Handle><ID>23584</ID>
+</Handle>
+</Handles>
+</Scener>
+<FreelanceFunctions><Function>Musician</Function>
+</FreelanceFunctions>
+</Handle>
+</CSDbEntry>
+</CSDbUser>
+<Date>24.07.2026</Date>
+<Text>Looks and sounds amazing! :O</Text>
+</UserComment>
+<UserComment><CSDbUser><ID>5290</ID>
+<Login>magnartbl</Login>
+<Handle>Magnar</Handle>
+<RegisteredDate>1970-01-01T01:00:00+01:00</RegisteredDate>
+<CSDbEntry><Handle><ID>16913</ID>
+<Handle>Magnar Harestad</Handle>
+<CurrentlyUsedHandle>true</CurrentlyUsedHandle>
+<Scener><ID>667</ID>
+<Country>Sweden</Country>
+<Trivia>This is not "just" a greeting list, it is "the list" of all the different group's I've been (or still am) active and proud demoscene member of: 
+
+* Abscess   
+* Anarchy
+* Andromeda
+* Cavalry
+* Censor Design
+* Legion Design
+* Lemon.
+* Irongods
+* Jolly Poppers
+* Megastyle Incorporated / Megastyle Productions
+* Nah Kolor
+* Noiseless
+* Offence / Offence Software
+* Reflex
+* Scoopex
+* Spaceballs
+* The Black Lotus / TBL
+* The Road Busters
+* The Pornos
+* The Silents
+
+And.. Somehow Fairlight is still missing on that list, Pantaloon.. :)
+
+
+I was the main-coordinator behind The Gathering 1995 party, which was hosted in Stavanger Idrettshall instead of Hamar Vikingship that year. In the late 80's, I also was Sysop and host of the AmiExpress BBS called "Noiseless". And Co-Sysop for a numberous of PC BBS, such as "Scandinavian BBS" etc.
+
+For free music on any platform and any purpose, don't hesitate to contact me. :) Cheers Magnar!
+
+https://open.spotify.com/artist/2nnXrL87cBFRyts2KrVSvv?si=dA_NP8TnRFeLQhWKv8ZfUA</Trivia>
+<Handles><Handle><ID>20194</ID>
+<Handle>Assassin</Handle>
+<CurrentlyUsedHandle>false</CurrentlyUsedHandle>
+<Scener><ID>667</ID>
+</Scener>
+<FreelanceFunctions><Function>Coder</Function>
+</FreelanceFunctions>
+</Handle>
+<Handle><ID>16913</ID>
+</Handle>
+<Handle><ID>683</ID>
+<Handle>Lizard</Handle>
+<CurrentlyUsedHandle>false</CurrentlyUsedHandle>
+<Scener><ID>667</ID>
+</Scener>
+<FreelanceFunctions><Function>Coder</Function>
+<Function>Musician</Function>
+</FreelanceFunctions>
+</Handle>
+</Handles>
+</Scener>
+<FreelanceFunctions><Function>Coder</Function>
+<Function>Graphician</Function>
+<Function>Musician</Function>
+<Function>Organizer</Function>
+</FreelanceFunctions>
+</Handle>
+</CSDbEntry>
+</CSDbUser>
+<Date>24.07.2026</Date>
+<Text>Insane! What this I just listen to - and watch! Code is spot on - but the music is beyond the 3ch SID! I'll go my usual way fiddle with GT again and do "classic Rob Hubbard" stuff... Jeeeez.... I would never find the time to do sound-design like this!</Text>
+</UserComment>
 <UserComment><CSDbUser><ID>4468</ID>
 </CSDbUser>
 <Date>22.07.2026</Date>
@@ -517,7 +650,7 @@ Organizer of the successful Gubbdata parties in Lund 2012-2022, Sweden. Also co-
 <RegisteredDate>1970-01-01T01:00:00+01:00</RegisteredDate>
 <CSDbEntry><Handle><ID>40854</ID>
 <Handle>D/V</Handle>
-<AKA>DslashV</AKA>
+<AKA>DslashV &amp;lt;- pronounced as Dee slash Vee</AKA>
 <CurrentlyUsedHandle>true</CurrentlyUsedHandle>
 <HandleStory>I got this name/handle when I started to switch from Anormalperson to D/V
 

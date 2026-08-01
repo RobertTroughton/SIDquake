@@ -59,14 +59,14 @@ http://www.retroperks.com</HandleStory>
 </Handle>
 </Credit>
 </Credits>
-<DownloadLinks><DownloadLink><Link>https://csdb.dk/getinternalfile.php/281823/ill wait.sid</Link>
-<CounterLink>https://csdb.dk/release/download.php?id=323888</CounterLink>
-<Downloads>12</Downloads>
+<DownloadLinks><DownloadLink><Link>https://csdb.dk/getinternalfile.php/281822/ill wait.prg</Link>
+<CounterLink>https://csdb.dk/release/download.php?id=323887</CounterLink>
+<Downloads>95</Downloads>
 <Status>Ok</Status>
 </DownloadLink>
-<DownloadLink><Link>https://csdb.dk/getinternalfile.php/281822/ill wait.prg</Link>
-<CounterLink>https://csdb.dk/release/download.php?id=323887</CounterLink>
-<Downloads>21</Downloads>
+<DownloadLink><Link>https://csdb.dk/getinternalfile.php/281823/ill wait.sid</Link>
+<CounterLink>https://csdb.dk/release/download.php?id=323888</CounterLink>
+<Downloads>48</Downloads>
 <Status>Ok</Status>
 </DownloadLink>
 </DownloadLinks>
