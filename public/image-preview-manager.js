@@ -391,6 +391,10 @@ class ImagePreviewManager {
         this.galleryModal = null;
         this.selectorModal = null;
         this.logoTypeCache = new Map();
+        // Per-input logo placement: the decoded source image plus where it sits
+        // on the C64 screen (see logo-fit.js). Keyed by input id.
+        this.logoFit = new Map();
+        this.logoFitModal = null;
     }
 
     // ─── Logo type classification (badges) ───
@@ -497,6 +501,169 @@ class ImagePreviewManager {
         badgeEl.title = info.title;
         badgeEl.classList.add('show');
         if (!info.ok) badgeEl.classList.add('unusable');
+        // The badge alone is easy to miss, and an image the converter rejects
+        // stops the export dead - spell the reason out next to the preview.
+        this.setPreviewNote(config, 'warn', info.ok ? ''
+            : `This image can't be used here: ${info.title.replace(/^Not usable here:\s*/i, '')}`);
+    }
+
+    // ─── Logo fitting (auto-placement + the Adjust crop tool) ───
+
+    async ensureLogoFit() {
+        if (typeof LogoFit === 'undefined') await window.loadScript('logo-fit.js');
+    }
+
+    // Decode any image the browser can read into a drawable canvas plus its
+    // pixels. Non-PNG uploads (JPEG, GIF, WebP) decode here too, so they end up
+    // as a converted PNG instead of failing further down.
+    async decodeImage(file) {
+        const url = URL.createObjectURL(file);
+        try {
+            const img = await new Promise((resolve, reject) => {
+                const im = new Image();
+                im.onload = () => resolve(im);
+                im.onerror = () => reject(new Error('Could not read this image file'));
+                im.src = url;
+            });
+            const canvas = document.createElement('canvas');
+            canvas.width = img.naturalWidth;
+            canvas.height = img.naturalHeight;
+            const ctx = canvas.getContext('2d', { willReadFrequently: true });
+            ctx.drawImage(img, 0, 0);
+            const rgba = ctx.getImageData(0, 0, canvas.width, canvas.height).data;
+            return { source: canvas, width: canvas.width, height: canvas.height, rgba };
+        } finally {
+            URL.revokeObjectURL(url);
+        }
+    }
+
+    // Work out where `file` should sit in this input's logo band and remember
+    // it (the Adjust tool re-renders from this state). Returns the PNG the
+    // exporter should use: the original when it's already a size the converter
+    // accepts with its artwork inside the band, otherwise a 320x200 render with
+    // the artwork placed on the character grid.
+    async prepareLogoImage(config, file) {
+        await this.ensureLogoFit();
+        const src = await this.decodeImage(file);
+        const band = LogoFit.bandHeight(config.charsetRows);
+        const place = LogoFit.plan(src.rgba, src.width, src.height, { band });
+        this.logoFit.set(config.id, { src, band, place, auto: Object.assign({}, place), original: file });
+        if (!place.needsFit) return { file, fitted: false, place };
+        return { file: await this.renderLogoFile(config), fitted: true, place };
+    }
+
+    // Render the remembered placement to a PNG File.
+    async renderLogoFile(config) {
+        const state = this.logoFit.get(config.id);
+        const canvas = LogoFit.render(state.src.source, state.place);
+        const blob = await LogoFit.toPngBlob(canvas);
+        const base = ((state.original && state.original.name) || 'logo').replace(/\.[^.]+$/, '');
+        return new File([blob], base + '.png', { type: 'image/png' });
+    }
+
+    // Put the file the exporter should read into the hidden <input type="file">.
+    // Dropping onto the preview never goes through the input, so without this
+    // the export silently fell back to the visualizer's default image.
+    setInputFile(config, file) {
+        const input = document.getElementById(config.id);
+        if (!input || typeof DataTransfer === 'undefined') return;
+        const dt = new DataTransfer();
+        dt.items.add(file);
+        input.files = dt.files;
+    }
+
+    // The message strip under a logo preview: 'fit' says what was done to the
+    // image, 'warn' says why it can't be converted.
+    setPreviewNote(config, kind, text) {
+        const wrapper = document.querySelector(`[data-input-id="${config.id}"]`);
+        const el = wrapper && wrapper.querySelector(`.preview-note.${kind}`);
+        if (!el) return;
+        el.textContent = text || '';
+        el.hidden = !text;
+    }
+
+    updateLogoNotice(config, fit) {
+        if (!fit || !fit.fitted) {
+            this.setPreviewNote(config, 'fit', '');
+            return;
+        }
+        this.setPreviewNote(config, 'fit',
+            `Auto-placed: ${LogoFit.describe(fit.place)}. Use "Adjust logo" to move or recolour it.`);
+    }
+
+    // The placement state for an input, loading the current selection (or the
+    // visualizer default) the first time the Adjust tool is opened on it.
+    async ensureLogoState(config) {
+        if (this.logoFit.has(config.id)) return this.logoFit.get(config.id);
+        const input = document.getElementById(config.id);
+        let file = input && input.files && input.files[0];
+        if (!file && config.default) {
+            const data = await this.loadDefaultFile(config.default);
+            file = new File([new Blob([data], { type: 'image/png' })],
+                config.default.split('/').pop(), { type: 'image/png' });
+        }
+        if (!file) return null;
+        await this.prepareLogoImage(config, file);
+        return this.logoFit.get(config.id);
+    }
+
+    async openLogoAdjust(config) {
+        const wrapper = document.querySelector(`[data-input-id="${config.id}"]`);
+        const loading = wrapper && wrapper.querySelector('.image-preview-loading');
+        let state;
+        try {
+            if (loading) loading.style.display = 'flex';
+            state = await this.ensureLogoState(config);
+            if (typeof LogoFitModal === 'undefined') await window.loadScript('logo-fit-modal.js');
+            // The surround swatches are the 16 C64 colours out of the palette
+            // the converter matches against.
+            if (typeof CharsetLabCore === 'undefined') await window.loadScript('charsetlab-core.js');
+        } catch (error) {
+            this.showError(wrapper, `Could not open the logo adjuster: ${error.message}`);
+            return;
+        } finally {
+            if (loading) loading.style.display = 'none';
+        }
+        if (!state) return;
+        if (!this.logoFitModal) this.logoFitModal = new LogoFitModal();
+        this.logoFitModal.open({
+            source: state.src.source,
+            place: state.place,
+            autoPlace: state.auto,
+            title: `Adjust ${(config.label || 'logo').toLowerCase()}`,
+            onApply: place => this.applyLogoPlace(config, place)
+        });
+    }
+
+    // Re-render the logo with the placement the crop tool returned, then push
+    // it through the same steps a fresh upload takes.
+    async applyLogoPlace(config, place) {
+        const state = this.logoFit.get(config.id);
+        if (!state) return;
+        state.place = Object.assign({}, state.place, place);
+        const wrapper = document.querySelector(`[data-input-id="${config.id}"]`);
+        const img = wrapper && wrapper.querySelector('.image-preview-img');
+        const loading = wrapper && wrapper.querySelector('.image-preview-loading');
+        try {
+            if (loading) loading.style.display = 'flex';
+            const file = await this.renderLogoFile(config);
+            this.setInputFile(config, file);
+            // A hand-placed logo is no longer the gallery image it came from.
+            const input = document.getElementById(config.id);
+            if (input) {
+                delete input.dataset.gallerySelected;
+                delete input.dataset.galleryFile;
+            }
+            const data = await this.readFileAsArrayBuffer(file);
+            const preview = await this.createPreviewFromPNGData(data);
+            if (img) img.src = preview.dataUrl;
+            this.setPreviewNote(config, 'fit', `Placed by hand: ${LogoFit.describe(state.place)}.`);
+            this.updatePreviewBadge(config, this.classifyLogoData(data, config));
+        } catch (error) {
+            this.showError(wrapper, `Could not apply the logo placement: ${error.message}`);
+        } finally {
+            if (loading) loading.style.display = 'none';
+        }
     }
 
     initGalleryModal() {
@@ -520,6 +687,11 @@ class ImagePreviewManager {
         container.className = 'image-preview-container';
 
         const hasGallery = config.gallery && config.gallery.length > 0;
+        const isLogo = this.isLogoInput(config);
+        // A fresh preview means a fresh input: any placement remembered for this
+        // id belongs to the visualizer that was on screen before, whose logo
+        // band may be a different height.
+        this.logoFit.delete(config.id);
 
         container.innerHTML = `
             <div class="image-preview-wrapper" data-input-id="${config.id}">
@@ -546,7 +718,12 @@ class ImagePreviewManager {
                 <div class="image-preview-hint"><i class="fas fa-hand-pointer"></i> Drag &amp; drop an image here, or:</div>
                 <div class="image-preview-actions">
                     <button type="button" class="file-button" data-act="browse"><i class="fas fa-folder-open"></i> Browse Files</button>
+                    ${isLogo ? '<button type="button" class="file-button" data-act="adjust"><i class="fas fa-crop-alt"></i> Adjust logo</button>' : ''}
                 </div>
+                ${isLogo ? `<div class="image-preview-notice">
+                    <div class="preview-note fit" hidden></div>
+                    <div class="preview-note warn" hidden></div>
+                </div>` : ''}
                 ${hasGallery ? '<div class="image-inline-gallery gallery-grid-container"></div>' : ''}
             </div>
             <input type="file"
@@ -563,6 +740,9 @@ class ImagePreviewManager {
         // gallery is inline below, so there's no popup selector anymore.
         previewFrame.addEventListener('click', () => fileInput.click());
         wrapper.querySelector('[data-act="browse"]').addEventListener('click', () => fileInput.click());
+        if (isLogo) {
+            wrapper.querySelector('[data-act="adjust"]').addEventListener('click', () => this.openLogoAdjust(config));
+        }
 
         // Inline gallery grid (matches the font picker's grid on the tab).
         if (hasGallery) {
@@ -586,6 +766,10 @@ class ImagePreviewManager {
         });
 
         fileInput.addEventListener('change', (e) => {
+            // Browsing replaces whatever gallery pick was active, so the input
+            // must stop claiming to be that gallery file.
+            delete fileInput.dataset.gallerySelected;
+            delete fileInput.dataset.galleryFile;
             this.handleFileChange(e, config);
         });
 
@@ -727,11 +911,26 @@ class ImagePreviewManager {
             const fileData = new Uint8Array(arrayBuffer);
 
             if (filepath.toLowerCase().endsWith('.png') && this.isPNGFile(fileData)) {
-                const preview = await this.createPreviewFromPNGData(fileData);
-                img.src = preview.dataUrl;
-
                 const blob = new Blob([fileData], { type: 'image/png' });
-                const file = new File([blob], name + '.png', { type: 'image/png' });
+                let file = new File([blob], name + '.png', { type: 'image/png' });
+
+                // Gallery logos are screen-sized already, so this normally only
+                // records the placement the Adjust tool starts from; a gallery
+                // whose artwork falls outside this player's rows gets moved up.
+                let fit = null;
+                if (this.isLogoInput(config)) {
+                    try {
+                        fit = await this.prepareLogoImage(config, file);
+                        file = fit.file;
+                    } catch (fitError) {
+                        console.warn('Logo fit skipped:', fitError);
+                    }
+                    this.updateLogoNotice(config, fit);
+                }
+
+                const preview = await this.createPreviewFromPNGData(
+                    fit && fit.fitted ? await this.readFileAsArrayBuffer(file) : fileData);
+                img.src = preview.dataUrl;
 
                 const dataTransfer = new DataTransfer();
                 dataTransfer.items.add(file);
@@ -779,19 +978,40 @@ class ImagePreviewManager {
         try {
             loadingDiv.style.display = 'flex';
 
-            const fileData = await this.readFileAsArrayBuffer(file);
+            // A logo that isn't screen-sized, or whose artwork sits outside the
+            // rows this visualizer shows, is placed onto a 320x200 screen first
+            // (logo-fit.js) - the converter only takes a handful of sizes and
+            // only ever displays the top of the image.
+            let useFile = file, fit = null;
+            if (this.isLogoInput(config)) {
+                try {
+                    fit = await this.prepareLogoImage(config, file);
+                    useFile = fit.file;
+                } catch (fitError) {
+                    // Undecodable image - carry on with the original and let the
+                    // classifier report what's wrong with it.
+                    console.warn('Logo fit skipped:', fitError);
+                }
+                this.updateLogoNotice(config, fit);
+            }
+
+            // The exporter reads the file from this input, and a drag-and-drop
+            // never touches it.
+            this.setInputFile(config, useFile);
+
+            const fileData = await this.readFileAsArrayBuffer(useFile);
             if (this.isLogoInput(config)) this.updatePreviewBadge(config, this.classifyLogoData(fileData, config));
 
-            if (file.name.toLowerCase().endsWith('.png') && this.isPNGFile(fileData)) {
+            if (useFile.name.toLowerCase().endsWith('.png') && this.isPNGFile(fileData)) {
                 const preview = await this.createPreviewFromPNGData(fileData);
                 img.src = preview.dataUrl;
             } else {
-                const preview = await this.createPreviewFromData(fileData, file.name);
+                const preview = await this.createPreviewFromData(fileData, useFile.name);
                 img.src = preview.dataUrl;
             }
 
             if (config.onChange) {
-                config.onChange(file);
+                config.onChange(useFile);
             }
         } catch (error) {
             console.error('Error loading file:', error);

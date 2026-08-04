@@ -203,10 +203,12 @@ KickAssembler 6502 source for the visualiser players.
 **Test** — `npm test`. Two harnesses drive the *real assembled 6502* in the WASM
 6510 emulator, covering the two places the C64 side and the exporter must agree
 byte-for-byte: `scripts/test-baked-decoder.js` (baked FFT stream) and
-`scripts/test-shadow-replay.js` (shadow-register replay order). Almost nothing
-covers the browser UI — the exception is `scripts/mobile-layout-check.js`, which
-drives the HVSC and Studio modals at phone widths (not in `npm test`: needs
-Playwright, which isn't a dependency). Also run `scripts/build-players.sh
+`scripts/test-shadow-replay.js` (shadow-register replay order); a third,
+`scripts/test-logo-fit.js`, covers the logo placement maths. Almost nothing
+covers the browser UI — the exceptions are `scripts/mobile-layout-check.js`
+(HVSC and Studio modals at phone widths) and `scripts/logo-drop-check.js`
+(picking a logo lands in the input the exporter reads); neither is in `npm test`,
+both need Playwright, which isn't a dependency. Also run `scripts/build-players.sh
 --check` after touching `SIDPlayers/`, and `scripts/cpu-crosscheck/run.sh` after
 touching the 6510 decoder or either bus adapter (not in `npm test`: needs a C++
 toolchain, takes minutes).

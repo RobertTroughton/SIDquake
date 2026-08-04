@@ -154,11 +154,35 @@ Compiled into `sidplayfp.wasm` (playback only, lazily loaded):
 - `PNGConverter` class wrapping PNG converter WASM functions
 - Handles RGBA pixel data transfer to/from WASM heap
 
-**`image-preview-manager.js`** (615 lines) - Image selection UI
+**`image-preview-manager.js`** - Image selection UI
 - `ImageSelectorModal`: Modal dialog for choosing visualizer images
 - Supports: drag-drop, file browse, gallery selection
 - PETSCII and bitmap mode support
 - Gallery loading from visualizer config JSON files
+- Whatever the user picks is written back to the hidden `<input type="file">` -
+  that input is what `prg-builder.js` reads at export time, so a preview that
+  doesn't reach it exports the visualizer's default instead
+- Logo inputs run every image through `logo-fit.js` first, and the note strip
+  under the preview says what was done to it (or why it can't be converted)
+
+**`logo-fit.js`** - Placing a logo on the C64 screen
+- A player only displays the top `charsetRows` character rows, and
+  `charsetlab-core` only accepts 320x200, 384x272 or a 320-wide strip of whole
+  character rows; anything else fails to convert or loses most of itself
+- `plan()` finds the surround colour (most common colour around the image
+  edges), the artwork's bounding box, and where that artwork has to sit; images
+  that are already a usable size with their artwork inside the band are left
+  untouched
+- Offsets are always multiples of 8 so each source character cell still lands in
+  one output cell; artwork too big for the band is scaled down (never up) with
+  nearest-neighbour, so no colours appear that the palette match can't hold
+- Pure enough to run in Node - see `scripts/test-logo-fit.js`
+
+**`logo-fit-modal.js`** - The "Adjust logo" crop tool
+- Shows the placement on a 320x200 canvas with the rows the visualizer never
+  displays dimmed; drag / arrow keys / nudge buttons move by whole character
+  cells, plus a size slider and the 16 C64 colours for the surround
+- Applying re-renders the logo and pushes it back through the input
 
 **`charsetlab-core.js`** - CharSet Lab analysis engine (pure JS, no WASM)
 - Extracted from `charsetlab/charsetlab.js`; runs in the browser and in Node
@@ -309,6 +333,8 @@ User selects visualizer + options
   → Loads player .bin from public/prg/
   → Patches SID data + metadata into player template
   → Optional: image conversion (PNG → C64 bitmap via WASM)
+  → Optional: logo conversion (already placed on the screen by logo-fit.js
+    when the image was picked; charsetlab-core turns it into charset/bitmap)
   → Optional: PETSCII conversion for text logos
   → Optional: TSCrunch or Exomizer compression (self-extracting)
   → Downloads .prg file

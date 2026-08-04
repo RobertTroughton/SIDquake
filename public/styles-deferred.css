@@ -4273,3 +4273,218 @@
 .font-selector-current .bar-style-thumbnail {
     cursor: default;
 }
+
+/* ==========================================================================
+   Logo fitting - the note strip under a logo preview and the Adjust tool
+   ========================================================================== */
+
+.preview-note {
+    font-size: 0.8em;
+    line-height: 1.4;
+    padding: 6px 10px;
+    border-radius: var(--radius-sm);
+    margin-top: 6px;
+}
+
+.preview-note.fit {
+    background: var(--accent-dim);
+    border-left: 3px solid var(--accent);
+    color: var(--text-secondary);
+}
+
+.preview-note.warn {
+    background: rgba(212, 85, 85, 0.12);
+    border-left: 3px solid var(--error);
+    color: var(--text-primary);
+}
+
+.logo-fit-modal {
+    display: none;
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0, 0, 0, 0.7);
+    z-index: 10002;
+    backdrop-filter: blur(4px);
+    animation: fadeIn 0.2s ease-out;
+}
+
+.logo-fit-modal.visible {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.logo-fit-content {
+    background: var(--bg-surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    box-shadow: var(--shadow-lg);
+    width: 90%;
+    max-width: 560px;
+    max-height: 90vh;
+    overflow-y: auto;
+    padding: 28px 24px 20px;
+    position: relative;
+    animation: slideUp 0.25s ease-out;
+}
+
+.logo-fit-close {
+    position: absolute;
+    top: 10px;
+    right: 10px;
+    background: none;
+    border: none;
+    font-size: 20px;
+    color: var(--text-muted);
+    cursor: pointer;
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    transition: all var(--transition-fast);
+}
+
+.logo-fit-close:hover {
+    background: var(--bg-hover);
+    color: var(--text-primary);
+}
+
+.logo-fit-title {
+    font-size: 1.15em;
+    font-weight: 600;
+    color: var(--text-primary);
+    margin-bottom: 6px;
+}
+
+.logo-fit-hint {
+    font-size: 0.8em;
+    color: var(--text-muted);
+    margin-bottom: var(--space-md);
+}
+
+/* The C64 screen: the logo band is shown as-is, the rows the visualizer never
+   displays are dimmed behind a dashed cut line. */
+.logo-fit-stage {
+    position: relative;
+    width: 100%;
+    max-width: 480px;
+    aspect-ratio: 320 / 200;
+    margin: 0 auto;
+    border: 1px solid var(--border-light);
+    border-radius: var(--radius-sm);
+    overflow: hidden;
+    background: #000;
+}
+
+.logo-fit-canvas {
+    display: block;
+    width: 100%;
+    height: 100%;
+    cursor: grab;
+    touch-action: none;
+    image-rendering: pixelated;
+    image-rendering: -moz-crisp-edges;
+    image-rendering: crisp-edges;
+}
+
+.logo-fit-canvas.dragging {
+    cursor: grabbing;
+}
+
+.logo-fit-outside {
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.65);
+    pointer-events: none;
+}
+
+.logo-fit-band-edge {
+    position: absolute;
+    left: 0;
+    right: 0;
+    border-top: 1px dashed var(--accent);
+    pointer-events: none;
+}
+
+.logo-fit-nudge {
+    display: flex;
+    gap: 6px;
+    justify-content: center;
+    flex-wrap: wrap;
+    margin-top: var(--space-md);
+}
+
+.logo-fit-scale {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-top: var(--space-md);
+    font-size: 0.85em;
+    color: var(--text-secondary);
+}
+
+.logo-fit-scale input[type="range"] {
+    flex: 1;
+    min-width: 0;
+    accent-color: var(--accent);
+}
+
+.logo-fit-scale-value {
+    min-width: 44px;
+    text-align: right;
+    color: var(--text-primary);
+}
+
+.logo-fit-colours {
+    margin-top: var(--space-md);
+    font-size: 0.85em;
+    color: var(--text-secondary);
+}
+
+.logo-fit-swatches {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 5px;
+    margin-top: 6px;
+}
+
+.logo-fit-swatch {
+    width: 26px;
+    height: 26px;
+    border: 2px solid var(--border-light);
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    padding: 0;
+}
+
+.logo-fit-swatch.auto {
+    border-style: dashed;
+    border-color: var(--accent);
+}
+
+.logo-fit-swatch.selected {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 2px var(--accent-glow);
+}
+
+.logo-fit-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+    margin-top: var(--space-lg);
+}
+
+.logo-fit-actions .file-button {
+    background: var(--bg-elevated);
+    color: var(--text-primary);
+}
+
+.logo-fit-actions .file-button.primary,
+.logo-fit-actions .file-button:hover {
+    background: var(--accent);
+    color: var(--bg-primary);
+}

@@ -1,0 +1,152 @@
+#!/usr/bin/env node
+// test-logo-fit.js - the logo placement maths in public/logo-fit.js.
+//
+// A player only displays the top N character rows, and charsetlab-core only
+// accepts a handful of image sizes, so an uploaded logo usually has to be
+// placed onto a 320x200 screen before it can be converted. Two things have to
+// hold for every placement or the logo converts to something the C64 can't
+// draw the way the artist meant:
+//
+//   * the artwork ends up inside the visible band, and
+//   * it only ever moves by whole 8x8 character cells, so each cell of the
+//     source still lands in one cell of the output.
+//
+// Usage: node scripts/test-logo-fit.js   (no dependencies, exits non-zero on failure)
+
+const LogoFit = require('../public/logo-fit.js');
+
+let failures = 0;
+function check(ok, what, detail) {
+    console.log((ok ? '  ok   ' : '  FAIL ') + what + (detail ? '  ' + detail : ''));
+    if (!ok) failures++;
+}
+
+// An image of `bg` with one `fg` rectangle in it.
+function image(w, h, bg, box, fg) {
+    const rgba = new Uint8Array(w * h * 4);
+    for (let y = 0; y < h; y++) {
+        for (let x = 0; x < w; x++) {
+            const inBox = box && x >= box.x0 && x <= box.x1 && y >= box.y0 && y <= box.y1;
+            const c = inBox ? fg : bg;
+            const p = (y * w + x) * 4;
+            rgba[p] = c[0]; rgba[p + 1] = c[1]; rgba[p + 2] = c[2]; rgba[p + 3] = 255;
+        }
+    }
+    return { rgba, w, h };
+}
+
+const BLACK = [0, 0, 0], BLUE = [0x35, 0x28, 0x79], WHITE = [255, 255, 255];
+
+// Where the source's content lands on the 320x200 screen once placed.
+function placedBox(place) {
+    const b = place.bounds, s = place.scale;
+    return {
+        x0: place.dx + b.x0 * s, y0: place.dy + b.y0 * s,
+        x1: place.dx + (b.x1 + 1) * s - 1, y1: place.dy + (b.y1 + 1) * s - 1
+    };
+}
+function inBand(place) {
+    const p = placedBox(place);
+    return p.x0 >= 0 && p.x1 <= LogoFit.W - 1 && p.y0 >= 0 && p.y1 <= place.band - 1;
+}
+function onGrid(place) {
+    return place.dx % 8 === 0 && place.dy % 8 === 0;
+}
+
+// ─── A screen-sized logo already sitting in the band is left alone ───
+{
+    const img = image(320, 200, BLACK, { x0: 8, y0: 8, x1: 311, y1: 79 }, WHITE);
+    const place = LogoFit.plan(img.rgba, img.w, img.h, { band: 88 });
+    check(!place.needsFit, 'a 320x200 logo inside the band is not touched');
+    check(place.scale === 1 && place.dx === 0 && place.dy === 0, 'and its placement is the identity',
+        `scale ${place.scale} at ${place.dx},${place.dy}`);
+}
+
+// ─── A 320-wide strip of whole character rows is a native size too ───
+{
+    const img = image(320, 72, BLACK, { x0: 6, y0: 0, x1: 305, y1: 51 }, WHITE);
+    const place = LogoFit.plan(img.rgba, img.w, img.h, { band: 72 });
+    check(!place.needsFit, 'a 320x72 strip is not touched');
+}
+
+// ─── The reported case: a 320x200 logo down the middle of the screen ───
+{
+    const img = image(320, 200, BLACK, { x0: 30, y0: 60, x1: 290, y1: 140 }, WHITE);
+    const place = LogoFit.plan(img.rgba, img.w, img.h, { band: 88 });
+    check(place.needsFit, 'a logo below the band is repositioned');
+    check(place.scale === 1, 'a logo that fits the band is not scaled', 'scale ' + place.scale);
+    check(place.dx === 0, 'a screen-sized logo keeps its horizontal placement', 'dx ' + place.dx);
+    check(onGrid(place), 'it moves by whole character cells', `${place.dx},${place.dy}`);
+    check(inBand(place), 'and lands inside the band', JSON.stringify(placedBox(place)));
+}
+
+// ─── An undersized logo is centred and gets a surround colour ───
+{
+    const img = image(240, 88, BLUE, { x0: 20, y0: 12, x1: 219, y1: 75 }, WHITE);
+    const place = LogoFit.plan(img.rgba, img.w, img.h, { band: 88 });
+    check(place.needsFit, 'a 240x88 logo needs placing');
+    check(place.scale === 1, 'a small logo is not blown up', 'scale ' + place.scale);
+    check(onGrid(place), 'it moves by whole character cells', `${place.dx},${place.dy}`);
+    check(inBand(place), 'and lands inside the band', JSON.stringify(placedBox(place)));
+    const bg = place.background;
+    check(bg.r === BLUE[0] && bg.g === BLUE[1] && bg.b === BLUE[2],
+        'the surround colour is taken from the image edges',
+        `rgb(${bg.r},${bg.g},${bg.b})`);
+    const box = placedBox(place);
+    check(Math.abs(box.x0 - (LogoFit.W - 1 - box.x1)) <= 8, 'the artwork is centred horizontally',
+        `${box.x0}px left, ${LogoFit.W - 1 - box.x1}px right`);
+}
+
+// ─── Artwork too big for the band is scaled down, never up ───
+{
+    const img = image(640, 400, BLACK, { x0: 8, y0: 8, x1: 631, y1: 391 }, WHITE);
+    const place = LogoFit.plan(img.rgba, img.w, img.h, { band: 88 });
+    check(place.needsFit, 'an oversized image needs placing');
+    check(place.scale < 1, 'it is scaled down', 'scale ' + place.scale.toFixed(3));
+    check(onGrid(place), 'it still moves by whole character cells', `${place.dx},${place.dy}`);
+    check(inBand(place), 'and lands inside the band', JSON.stringify(placedBox(place)));
+}
+
+// ─── A VICE grab keeps its inner screen ───
+{
+    // 384x272 with a blue border and artwork near the top of the inner screen.
+    const img = image(384, 272, BLUE, { x0: 40, y0: 40, x1: 340, y1: 100 }, WHITE);
+    const place = LogoFit.plan(img.rgba, img.w, img.h, { band: 88 });
+    check(!place.needsFit, 'a VICE grab with its logo in the band is not touched');
+    const shifted = LogoFit.autoPlace(place.bounds, 384, 272, 88);
+    check(shifted.dx === -32, 'placing one crops the border rather than centring the artwork',
+        'dx ' + shifted.dx);
+}
+
+// ─── A blank image has nothing to place ───
+{
+    const img = image(320, 200, BLACK, null, WHITE);
+    const place = LogoFit.plan(img.rgba, img.w, img.h, { band: 88 });
+    check(place.bounds === null, 'a blank image has no content bounds');
+    check(!place.needsFit, 'and is left alone');
+}
+
+// ─── Every band height a player can ask for keeps the artwork visible ───
+//
+// Artwork that fills its band to within a character cell can have no
+// grid-aligned position wholly inside it; the placement then splits the few
+// pixels that spill between the two edges rather than shifting off the grid.
+{
+    let bad = null;
+    for (let rows = 1; rows <= 25 && !bad; rows++) {
+        for (const h of [40, 88, 150, 199]) {
+            const band = LogoFit.bandHeight(rows);
+            const img = image(300, 220, BLACK, { x0: 5, y0: 100, x1: 294, y1: 100 + h - 1 }, WHITE);
+            const place = LogoFit.plan(img.rgba, img.w, img.h, { band });
+            const box = placedBox(place);
+            const spill = Math.max(0, -box.y0) + Math.max(0, box.y1 - (band - 1));
+            if (!onGrid(place) || box.x0 < 0 || box.x1 > LogoFit.W - 1 || spill > 7) {
+                bad = `${rows} rows, ${h}px tall artwork: ${JSON.stringify(box)} in a ${band}px band`;
+            }
+        }
+    }
+    check(!bad, 'artwork of any height stays on the character grid within its band', bad || '');
+}
+
+console.log(failures ? `\n${failures} check(s) failed` : '\nall checks passed');
+process.exit(failures ? 1 : 0);
