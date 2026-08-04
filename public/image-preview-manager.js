@@ -112,11 +112,6 @@ class ImageSelectorModal {
             if (files.length > 0) {
                 const file = files[0];
                 if (this.isValidImageFile(file)) {
-                    const fileInput = this.currentContainer.querySelector(`#${this.currentConfig.id}`);
-                    if (fileInput) {
-                        delete fileInput.dataset.gallerySelected;
-                        delete fileInput.dataset.galleryFile;
-                    }
                     window.imagePreviewManager.handleFileChange({ target: { files: [file] } }, this.currentConfig);
                     this.close();
                 } else {
@@ -549,6 +544,14 @@ class ImagePreviewManager {
     async prepareLogoImage(config, file) {
         await this.ensureLogoFit();
         const src = await this.decodeImage(file);
+        // Sizes the C64 side isn't defined for are refused rather than cropped
+        // or resampled into something the artist didn't draw.
+        const wrongSize = LogoFit.sizeError(src.width, src.height);
+        if (wrongSize) {
+            const err = new Error(wrongSize);
+            err.wrongSize = true;
+            throw err;
+        }
         const band = LogoFit.bandHeight(config.charsetRows);
         const place = LogoFit.plan(src.rgba, src.width, src.height, { band });
         this.logoFit.set(config.id, { src, band, place, auto: Object.assign({}, place), original: file });
@@ -764,16 +767,10 @@ class ImagePreviewManager {
         previewFrame.addEventListener('drop', e => {
             const f = e.dataTransfer.files && e.dataTransfer.files[0];
             if (!f) return;
-            delete fileInput.dataset.gallerySelected;
-            delete fileInput.dataset.galleryFile;
             this.handleFileChange({ target: { files: [f] } }, config);
         });
 
         fileInput.addEventListener('change', (e) => {
-            // Browsing replaces whatever gallery pick was active, so the input
-            // must stop claiming to be that gallery file.
-            delete fileInput.dataset.gallerySelected;
-            delete fileInput.dataset.galleryFile;
             this.handleFileChange(e, config);
         });
 
@@ -927,6 +924,14 @@ class ImagePreviewManager {
                         fit = await this.prepareLogoImage(config, file);
                         file = fit.file;
                     } catch (fitError) {
+                        if (fitError.wrongSize) {
+                            // A gallery entry the converter can't take at all -
+                            // keep whatever was chosen before rather than
+                            // swapping in something that won't export.
+                            this.setPreviewNote(config, 'warn', fitError.message);
+                            this.showError(container, fitError.message);
+                            return;
+                        }
                         console.warn('Logo fit skipped:', fitError);
                     }
                     this.updateLogoNotice(config, fit);
@@ -982,16 +987,23 @@ class ImagePreviewManager {
         try {
             loadingDiv.style.display = 'flex';
 
-            // A logo that isn't screen-sized, or whose artwork sits outside the
-            // rows this visualizer shows, is placed onto a 320x200 screen first
-            // (logo-fit.js) - the converter only takes a handful of sizes and
-            // only ever displays the top of the image.
+            // A logo whose artwork sits outside the rows this visualizer shows
+            // is placed onto the screen first (logo-fit.js); one that isn't a
+            // size the C64 side is defined for is refused outright.
             let useFile = file, fit = null;
             if (this.isLogoInput(config)) {
                 try {
                     fit = await this.prepareLogoImage(config, file);
                     useFile = fit.file;
                 } catch (fitError) {
+                    if (fitError.wrongSize) {
+                        // Leave the input, the preview and the notes as they
+                        // were: the logo already chosen is still the one that
+                        // will be exported.
+                        this.setPreviewNote(config, 'warn', fitError.message);
+                        this.showError(wrapper, fitError.message);
+                        return;
+                    }
                     // Undecodable image - carry on with the original and let the
                     // classifier report what's wrong with it.
                     console.warn('Logo fit skipped:', fitError);
@@ -1000,7 +1012,13 @@ class ImagePreviewManager {
             }
 
             // The exporter reads the file from this input, and a drag-and-drop
-            // never touches it.
+            // never touches it. Only a gallery pick comes through
+            // loadGalleryImage, so anything arriving here replaces one.
+            const input = document.getElementById(config.id);
+            if (input) {
+                delete input.dataset.gallerySelected;
+                delete input.dataset.galleryFile;
+            }
             this.setInputFile(config, useFile);
 
             const fileData = await this.readFileAsArrayBuffer(useFile);

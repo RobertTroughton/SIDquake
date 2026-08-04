@@ -93,6 +93,15 @@ async function dropImage(page, spec) {
     await page.waitForTimeout(1200);
 }
 
+// Open the Adjust tool, run `edit` inside it, and apply.
+async function adjust(page, edit) {
+    await page.evaluate(() => document.querySelector('[data-act="adjust"]').click());
+    await page.waitForSelector('#logoFitModal.visible', { timeout: 15000 });
+    await page.evaluate(`(${edit.toString()})()`);
+    await page.evaluate(() => document.getElementById('logoFitApply').click());
+    await page.waitForTimeout(1200);
+}
+
 // What the exporter would find on the input, plus where the artwork ended up.
 async function readInput(page, inputId) {
     return page.evaluate(async (id) => {
@@ -141,23 +150,24 @@ async function openStudioWithLogo(page) {
         () => window.uiController && window.uiController.visualizerConfig
             && !document.querySelector('.visualizer-grid.disabled'),
         null, { timeout: 60000 });
-    await page.evaluate(() => window.studioModal.open());
-    await page.waitForSelector('.visualizer-card', { state: 'attached', timeout: 30000 });
     // Clicking a card while the Studio is still settling can be swallowed;
     // the panel for the logo input appearing is what says it took.
-    for (let attempt = 0; attempt < 4; attempt++) {
-        await page.waitForTimeout(500 * (attempt + 1));
+    let opened = false;
+    for (let attempt = 0; attempt < 6 && !opened; attempt++) {
+        await page.evaluate(() => window.studioModal.open());
+        await page.waitForSelector('.visualizer-card', { state: 'attached', timeout: 30000 });
+        await page.waitForTimeout(600 * (attempt + 1));
         await page.evaluate((name) => {
             const card = [...document.querySelectorAll('.visualizer-card')]
                 .find(e => e.textContent.trim().startsWith(name));
-            if (!card) throw new Error('no card for ' + name);
-            card.click();
+            if (card) card.click();
         }, VISUALIZER);
         try {
-            await page.waitForSelector('.image-preview-wrapper', { state: 'attached', timeout: 8000 });
-            break;
+            await page.waitForSelector('.image-preview-wrapper', { state: 'attached', timeout: 10000 });
+            opened = true;
         } catch (e) { /* try again */ }
     }
+    if (!opened) throw new Error('the Studio never reached ' + VISUALIZER + "'s logo panel");
     // Dismiss any message dialog layered over the Studio.
     await page.evaluate(() => {
         const overlay = document.getElementById('modalOverlay');
@@ -215,46 +225,47 @@ async function openStudioWithLogo(page) {
         r.box ? `60 -> ${r.box.y0}` : '');
     check(/auto-placed/i.test(r.note), 'the preview says what happened to it', r.note || 'no note');
 
-    // An undersized logo: centred on the screen, with the surround taken from
-    // the image's own edges.
+    // A 320-wide strip of whole character rows is a logo too, and one that
+    // already fits is passed through untouched.
     await dropImage(page, {
-        w: 240, h: 88, bg: '#352879', fg: '#ffffff',
-        box: [20, 12, 219, 75], name: 'small-logo.png'
+        w: 320, h: 88, bg: '#352879', fg: '#ffffff',
+        box: [20, 12, 299, 75], name: 'strip.png'
     });
     r = await readInput(page, inputId);
-    check(r.files === 1 && r.w === 320 && r.h === 200, 'a 240x88 logo is placed on a full screen',
+    check(r.files === 1 && r.w === 320 && r.h === 88, 'a 320x88 strip is taken as it is',
         r.w + 'x' + r.h);
-    check(r.bg === '53,40,121', 'the space around it takes the image\'s edge colour', 'rgb(' + r.bg + ')');
-    check(!!r.box && r.box.y1 < BAND, 'its artwork lands in the visible rows',
-        r.box ? `y ${r.box.y0}-${r.box.y1}` : '');
-    check(!!r.box && Math.abs(r.box.x0 - (319 - r.box.x1)) <= 8, 'and is centred across the screen',
-        r.box ? `${r.box.x0} left, ${319 - r.box.x1} right` : '');
+    check(r.note === '', 'and is not repositioned', r.note);
 
     // The crop tool: nudging down a row moves the artwork by exactly 8px.
     const before = r.box;
-    await page.evaluate(() => document.querySelector('[data-act="adjust"]').click());
-    await page.waitForSelector('#logoFitModal.visible', { timeout: 15000 });
-    check(true, 'the Adjust tool opens');
-    await page.evaluate(() => {
-        document.querySelector('[data-nudge="down"]').click();
-        document.getElementById('logoFitApply').click();
-    });
-    await page.waitForTimeout(1200);
+    await adjust(page, () => document.querySelector('[data-nudge="down"]').click());
+    check(await page.evaluate(() => !!document.getElementById('logoFitModal')), 'the Adjust tool opens');
     r = await readInput(page, inputId);
     check(!!r.box && r.box.y0 === before.y0 + 8, 'nudging moves the logo one character row',
         r.box ? `${before.y0} -> ${r.box.y0}` : '');
 
-    // ...and the surround colour can be overridden. Swatch 0 is the colour
-    // taken from the image, 1 is C64 black, 2 is C64 white.
-    await page.evaluate(() => document.querySelector('[data-act="adjust"]').click());
-    await page.waitForSelector('#logoFitModal.visible', { timeout: 15000 });
-    await page.evaluate(() => {
-        document.querySelectorAll('.logo-fit-swatch')[2].click();
-        document.getElementById('logoFitApply').click();
-    });
-    await page.waitForTimeout(1200);
+    check(r.bg === '53,40,121', 'the screen around it takes the image\'s edge colour',
+        'rgb(' + r.bg + ')');
+
+    // Shrinking a logo exposes more of that screen, which is what the surround
+    // colour is for. Swatch 0 is the colour taken from the image, 1 is C64
+    // black, 2 is C64 white. Recolour first, so the measurement below reads the
+    // whole logo against it rather than the artwork against the logo.
+    await adjust(page, () => document.querySelectorAll('.logo-fit-swatch')[1].click());
     r = await readInput(page, inputId);
-    check(r.bg === '255,255,255', 'the chosen surround colour is applied', 'rgb(' + r.bg + ')');
+    check(r.bg === '0,0,0', 'the chosen surround colour fills the rest of the screen',
+        'rgb(' + r.bg + ')');
+    const fullWidth = r.box ? r.box.x1 - r.box.x0 + 1 : 0;
+
+    await adjust(page, () => {
+        const slider = document.getElementById('logoFitScale');
+        slider.value = 50;
+        slider.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+    r = await readInput(page, inputId);
+    const halfWidth = r.box ? r.box.x1 - r.box.x0 + 1 : 0;
+    check(Math.abs(halfWidth - fullWidth / 2) <= 4, 'and the size slider scales the logo',
+        `${fullWidth}px -> ${halfWidth}px`);
 
     // A real multicolour logo, moved down the screen and given the soft
     // transparent edges a logo exported from a modern tool has. Placing it must
@@ -331,6 +342,26 @@ async function openStudioWithLogo(page) {
     check(r.files === 1 && r.w === 320 && r.h === 200, 'a browsed gallery-quality logo still loads',
         r.w + 'x' + r.h);
     check(r.note === '', 'and a logo that already fits is left alone', r.note);
+
+    // An image that is no C64 size at all (the user's 360x194): 40 columns too
+    // many and a height off the character grid, so there's no offset that makes
+    // it work. It has to be refused outright, leaving the logo already chosen
+    // exactly as it was - that's what will be exported.
+    const kept = await readInput(page, inputId);
+    await dropImage(page, {
+        w: 360, h: 194, bg: '#000000', fg: '#ffffff',
+        box: [20, 40, 339, 150], name: 'wrong-size.png'
+    });
+    r = await readInput(page, inputId);
+    check(r.name === kept.name && r.w === kept.w && r.h === kept.h
+        && JSON.stringify(r.box) === JSON.stringify(kept.box),
+        'a 360x194 image leaves the chosen logo alone', `still ${r.name} ${r.w}x${r.h}`);
+    const refusal = await page.evaluate(() => {
+        const warn = document.querySelector('.preview-note.warn');
+        return warn && !warn.hidden ? warn.textContent : '';
+    });
+    check(/360×194/.test(refusal) && /320×200/.test(refusal) && /384×272/.test(refusal),
+        'and says what sizes a logo can be', refusal || 'no message');
 
     await ctx.close();
     await browser.close();

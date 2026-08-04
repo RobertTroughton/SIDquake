@@ -34,15 +34,40 @@
         return Math.max(8, Math.min(H, px));
     }
 
-    // Sizes charsetlab-core takes as-is.
+    // Sizes charsetlab-core takes as-is: a C64 screen, a VICE grab, or a
+    // 320-wide strip of whole character rows.
     function isNativeSize(w, h) {
         return (w === VICE_W && h === VICE_H) || (w === W && h >= 8 && h <= H && h % 8 === 0);
     }
 
-    // Most common opaque colour around the 1px edge ring - what the space
-    // around an undersized logo should be filled with. A fully transparent or
+    // Why this image can't be a logo, or null when it can.
+    //
+    // Only these sizes are accepted. Anything else needs a decision nothing can
+    // make for the user: a 360px-wide image has 40 columns too many and no
+    // offset drops them in the right place, and a height that isn't a multiple
+    // of 8 can't line up with the character grid at all. Cropping or resampling
+    // to cover that up wrecks the pixel art either way, so say so instead.
+    function sizeError(w, h) {
+        if (isNativeSize(w, h)) return null;
+        return 'A logo has to be ' + W + '×' + H + ' (a C64 screen), ' + VICE_W + '×' + VICE_H +
+            ' (a VICE screenshot with its borders), or ' + W + ' wide by any multiple of 8 high' +
+            ' (e.g. ' + W + '×88). This one is ' + w + '×' + h + '.';
+    }
+
+    // The part of the image the C64 screen actually is: all of it, or the inner
+    // screen of a VICE grab. Measuring a grab's colours over the whole thing
+    // would read its border as the background and its entire screen as artwork.
+    function screenRegion(w, h) {
+        return (w === VICE_W && h === VICE_H)
+            ? { x: VICE_X, y: VICE_Y, w: W, h: H }
+            : { x: 0, y: 0, w: w, h: h };
+    }
+
+    // Most common opaque colour around the 1px edge ring of `region` - what the
+    // space around a moved logo should be filled with. A fully transparent or
     // empty edge falls back to black (the usual C64 screen background).
-    function edgeBackground(rgba, w, h) {
+    function edgeBackground(rgba, w, h, region) {
+        var r = region || screenRegion(w, h);
         var counts = {}, best = null, bestN = 0;
         function add(x, y) {
             var p = (y * w + x) * 4;
@@ -51,20 +76,21 @@
             counts[k] = (counts[k] || 0) + 1;
             if (counts[k] > bestN) { bestN = counts[k]; best = k; }
         }
-        for (var x = 0; x < w; x++) { add(x, 0); add(x, h - 1); }
-        for (var y = 0; y < h; y++) { add(0, y); add(w - 1, y); }
+        for (var x = r.x; x < r.x + r.w; x++) { add(x, r.y); add(x, r.y + r.h - 1); }
+        for (var y = r.y; y < r.y + r.h; y++) { add(r.x, y); add(r.x + r.w - 1, y); }
         return best == null ? { r: 0, g: 0, b: 0 }
             : { r: (best >> 16) & 255, g: (best >> 8) & 255, b: best & 255 };
     }
 
-    // Bounding box of everything that isn't the background (transparent pixels
-    // count as background - they'll be filled with it), or null for a blank
-    // image.
-    function contentBounds(rgba, w, h, bg) {
+    // Bounding box (in source coordinates) of everything in `region` that isn't
+    // the background; transparent pixels count as background, since that's what
+    // they'll be filled with. Null for a blank image.
+    function contentBounds(rgba, w, h, bg, region) {
+        var r = region || screenRegion(w, h);
         var key = (bg.r << 16) | (bg.g << 8) | bg.b;
         var x0 = w, y0 = h, x1 = -1, y1 = -1;
-        for (var y = 0; y < h; y++) {
-            for (var x = 0; x < w; x++) {
+        for (var y = r.y; y < r.y + r.h; y++) {
+            for (var x = r.x; x < r.x + r.w; x++) {
                 var p = (y * w + x) * 4;
                 if (rgba[p + 3] < 128) continue;
                 if (((rgba[p] << 16) | (rgba[p + 1] << 8) | rgba[p + 2]) === key) continue;
@@ -136,8 +162,9 @@
     function plan(rgba, w, h, opts) {
         opts = opts || {};
         var band = Math.max(8, Math.min(H, opts.band == null ? H : opts.band));
-        var background = opts.background || edgeBackground(rgba, w, h);
-        var bounds = contentBounds(rgba, w, h, background);
+        var region = screenRegion(w, h);
+        var background = opts.background || edgeBackground(rgba, w, h, region);
+        var bounds = contentBounds(rgba, w, h, background, region);
         var native = isNativeSize(w, h);
         // Where the converter's screen window starts inside this source.
         var baseY = (w === VICE_W && h === VICE_H) ? VICE_Y : 0;
@@ -230,6 +257,8 @@
         snap8: snap8,
         bandHeight: bandHeight,
         isNativeSize: isNativeSize,
+        sizeError: sizeError,
+        screenRegion: screenRegion,
         edgeBackground: edgeBackground,
         contentBounds: contentBounds,
         autoPlace: autoPlace,

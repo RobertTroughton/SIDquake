@@ -80,7 +80,51 @@ function onGrid(place) {
     check(inBand(place), 'and lands inside the band', JSON.stringify(placedBox(place)));
 }
 
-// ─── An undersized logo is centred and gets a surround colour ───
+// ─── Only sizes the C64 side is defined for are accepted ───
+{
+    check(LogoFit.sizeError(320, 200) === null, '320x200 is a logo');
+    check(LogoFit.sizeError(384, 272) === null, '384x272 (a VICE grab) is a logo');
+    check(LogoFit.sizeError(320, 88) === null, 'so is a 320-wide strip of whole character rows');
+    check(LogoFit.sizeError(320, 96) === null, 'at any multiple of 8 high');
+    check(!!LogoFit.sizeError(360, 194), 'a 360x194 image is refused',
+        LogoFit.sizeError(360, 194));
+    check(!!LogoFit.sizeError(320, 194), 'a height off the character grid is refused',
+        LogoFit.sizeError(320, 194));
+    check(!!LogoFit.sizeError(320, 208), 'and so is one taller than the screen');
+    const msg = LogoFit.sizeError(360, 194) || '';
+    check(msg.includes('360×194') && msg.includes('320×200') && msg.includes('384×272'),
+        'the refusal says what was given and what is wanted');
+}
+
+// ─── A VICE grab is measured over its inner screen, not its border ───
+{
+    // Blue border, black screen, artwork in the top rows of the screen. Reading
+    // the border as the background would make the whole screen look like
+    // artwork and scale a perfectly good grab down to fit the band.
+    const img = image(384, 272, BLUE, null, WHITE);
+    for (let y = 35; y < 235; y++) {
+        for (let x = 32; x < 352; x++) {
+            const inArt = x >= 60 && x <= 320 && y >= 39 && y <= 100;
+            const c = inArt ? WHITE : BLACK;
+            const p = (y * 384 + x) * 4;
+            img.rgba[p] = c[0]; img.rgba[p + 1] = c[1]; img.rgba[p + 2] = c[2];
+        }
+    }
+    const place = LogoFit.plan(img.rgba, img.w, img.h, { band: 88 });
+    const bg = place.background;
+    check(bg.r === 0 && bg.g === 0 && bg.b === 0, 'the screen background is read, not the border',
+        `rgb(${bg.r},${bg.g},${bg.b})`);
+    check(!!place.bounds && place.bounds.x0 === 60 && place.bounds.y0 === 39,
+        'and the artwork is found inside the screen', JSON.stringify(place.bounds));
+    check(!place.needsFit, 'a grab with its logo in the band is left alone');
+    check(place.scale === 1, 'and is never scaled', 'scale ' + place.scale);
+}
+
+// ─── Placement maths for content smaller than the screen ───
+//
+// Not reachable from a file any more - sizeError() refuses anything but the
+// sizes above - but the Adjust tool scales a logo down to any size, and the
+// result has to be centred and surrounded the same way.
 {
     const img = image(240, 88, BLUE, { x0: 20, y0: 12, x1: 219, y1: 75 }, WHITE);
     const place = LogoFit.plan(img.rgba, img.w, img.h, { band: 88 });
@@ -107,12 +151,10 @@ function onGrid(place) {
     check(inBand(place), 'and lands inside the band', JSON.stringify(placedBox(place)));
 }
 
-// ─── A VICE grab keeps its inner screen ───
+// ─── Placing a VICE grab crops its border ───
 {
-    // 384x272 with a blue border and artwork near the top of the inner screen.
     const img = image(384, 272, BLUE, { x0: 40, y0: 40, x1: 340, y1: 100 }, WHITE);
     const place = LogoFit.plan(img.rgba, img.w, img.h, { band: 88 });
-    check(!place.needsFit, 'a VICE grab with its logo in the band is not touched');
     const shifted = LogoFit.autoPlace(place.bounds, 384, 272, 88);
     check(shifted.dx === -32, 'placing one crops the border rather than centring the artwork',
         'dx ' + shifted.dx);

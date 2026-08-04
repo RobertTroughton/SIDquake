@@ -166,13 +166,18 @@ Compiled into `sidplayfp.wasm` (playback only, lazily loaded):
   under the preview says what was done to it (or why it can't be converted)
 
 **`logo-fit.js`** - Placing a logo on the C64 screen
-- A player only displays the top `charsetRows` character rows, and
-  `charsetlab-core` only accepts 320x200, 384x272 or a 320-wide strip of whole
-  character rows; anything else fails to convert or loses most of itself
-- `plan()` finds the surround colour (most common colour around the image
-  edges), the artwork's bounding box, and where that artwork has to sit; images
-  that are already a usable size with their artwork inside the band are left
-  untouched
+- A player only displays the top `charsetRows` character rows, so a logo drawn
+  lower down loses most of itself
+- `sizeError()` is the gate on what a logo may be: 320x200, 384x272 (a VICE
+  grab) or 320 wide by any multiple of 8. Anything else is refused when it's
+  picked, with the preview and the input left on the previous choice - there is
+  no offset that makes a 360x194 image a C64 screen, and cropping or resampling
+  to hide that wrecks the pixel art
+- `plan()` finds the surround colour (most common colour around the edges), the
+  artwork's bounding box and where that artwork has to sit; an image whose
+  artwork is already inside the band is left untouched. For a VICE grab all
+  three are measured over the inner screen, or the border reads as the
+  background and the whole screen as artwork
 - Offsets are always multiples of 8 so each source character cell still lands in
   one output cell; artwork too big for the band is scaled down (never up)
 - `composite()` blends nothing: scaling is nearest-neighbour and a
