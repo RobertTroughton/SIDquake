@@ -256,6 +256,73 @@ async function openStudioWithLogo(page) {
     r = await readInput(page, inputId);
     check(r.bg === '255,255,255', 'the chosen surround colour is applied', 'rgb(' + r.bg + ')');
 
+    // A real multicolour logo, moved down the screen and given the soft
+    // transparent edges a logo exported from a modern tool has. Placing it must
+    // not blend those edges into the background: the converter ignores alpha,
+    // and the in-between shades a blend produces fit no C64 mode at all.
+    await page.evaluate(async () => {
+        const img = await new Promise((resolve, reject) => {
+            const im = new Image();
+            im.onload = () => resolve(im);
+            im.onerror = reject;
+            im.src = 'PNG/Logos/facet-mch.png';
+        });
+        const c = document.createElement('canvas');
+        c.width = 320;
+        c.height = 200;
+        const x = c.getContext('2d', { willReadFrequently: true });
+        x.fillStyle = '#000';
+        x.fillRect(0, 0, 320, 200);
+        x.drawImage(img, 0, 60);                       // artwork below the visible rows
+        const id = x.getImageData(0, 0, 320, 200);
+        const d = id.data;
+        for (let y = 0; y < 199; y++) {
+            for (let px = 0; px < 319; px++) {
+                const i = (y * 320 + px) * 4;
+                if ((d[i] | d[i + 1] | d[i + 2]) === 0) { d[i + 3] = 0; continue; }
+                const n = (y * 320 + px + 1) * 4;
+                if ((d[n] | d[n + 1] | d[n + 2]) === 0) d[i + 3] = 128;
+            }
+        }
+        x.putImageData(id, 0, 0);
+        const blob = await new Promise(r => c.toBlob(r, 'image/png'));
+        const dt = new DataTransfer();
+        dt.items.add(new File([blob], 'soft-edges.png', { type: 'image/png' }));
+        document.querySelector('.image-preview-frame')
+            .dispatchEvent(new DragEvent('drop', { dataTransfer: dt, bubbles: true, cancelable: true }));
+    });
+    await page.waitForTimeout(6000);
+    const verdict = await page.evaluate(() => {
+        const badge = document.querySelector('.logo-type-badge');
+        const warn = document.querySelector('.preview-note.warn');
+        return {
+            badge: badge ? badge.textContent : '',
+            unusable: !!badge && badge.classList.contains('unusable'),
+            warn: warn && !warn.hidden ? warn.textContent : ''
+        };
+    });
+    check(!verdict.unusable && !verdict.warn,
+        'a soft-edged multicolour logo still converts once placed',
+        verdict.warn || 'converts as ' + verdict.badge);
+    check(/BMP|MC|MIXED|ECM|HI|PET/.test(verdict.badge), 'and reports the mode it converts to',
+        verdict.badge || 'no badge');
+
+    // The badge and the export run the same engine, but only this is the code
+    // the export itself calls - run it over what the input now holds.
+    const converted = await page.evaluate(async (id) => {
+        await window.loadScript('prg-builder.js');
+        const cfg = window.uiController.currentVisualizerConfig.inputs.find(i => i.id === id);
+        const file = document.getElementById(id).files[0];
+        try {
+            const blob = await window.SIDquakePRGExporter.prototype.convertLogoPNG.call({}, file, cfg);
+            return { ok: true, size: blob.length, mode: blob[CharsetLabCore.LOGO_BLOB.MODE] };
+        } catch (e) {
+            return { ok: false, error: e.message };
+        }
+    }, inputId);
+    check(converted.ok, 'and the exporter converts it for real',
+        converted.ok ? `${converted.size}-byte blob, logo mode ${converted.mode}` : converted.error);
+
     // Browsing to a file has always worked; check the fit didn't break it.
     const png = path.join(ROOT, 'PNG', 'Logos', '0-default.png');
     await page.setInputFiles('#' + inputId, png);

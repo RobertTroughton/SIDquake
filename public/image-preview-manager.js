@@ -431,14 +431,18 @@ class ImagePreviewManager {
         let report;
         try {
             // shift:false skips the ±7px alignment search (the dominant cost -
-            // ~450ms vs ~38ms per image), which the badge doesn't need: the search
-            // only refines alignment/char-count, never the mode class the badge
-            // shows. The export still runs the full search for the real conversion.
-            report = CharsetLabCore.analyse(imageData.data, imageData.width, imageData.height, {
-                modes: inputConfig.charsetModes,
-                rowLimit: inputConfig.charsetRows,
-                shift: false
-            });
+            // ~450ms vs ~38ms per image), which a fitting image doesn't need: the
+            // search refines alignment and char count, not the mode class the
+            // badge shows.
+            const opts = { modes: inputConfig.charsetModes, rowLimit: inputConfig.charsetRows };
+            report = CharsetLabCore.analyse(imageData.data, imageData.width, imageData.height,
+                Object.assign({ shift: false }, opts));
+            // Artwork that isn't on the character grid - anything drawn outside a
+            // C64 tool - only fits once that search has run, and the export always
+            // runs it. Pay the cost rather than calling such an image unusable.
+            if (!report.chosen) {
+                report = CharsetLabCore.analyse(imageData.data, imageData.width, imageData.height, opts);
+            }
         } catch (err) {
             return { ok: false, label: '?', title: err.message || String(err) };
         }
@@ -513,9 +517,9 @@ class ImagePreviewManager {
         if (typeof LogoFit === 'undefined') await window.loadScript('logo-fit.js');
     }
 
-    // Decode any image the browser can read into a drawable canvas plus its
-    // pixels. Non-PNG uploads (JPEG, GIF, WebP) decode here too, so they end up
-    // as a converted PNG instead of failing further down.
+    // Decode any image the browser can read into its raw pixels. Non-PNG
+    // uploads (JPEG, GIF, WebP) decode here too, so they end up as a converted
+    // PNG instead of failing further down.
     async decodeImage(file) {
         const url = URL.createObjectURL(file);
         try {
@@ -531,7 +535,7 @@ class ImagePreviewManager {
             const ctx = canvas.getContext('2d', { willReadFrequently: true });
             ctx.drawImage(img, 0, 0);
             const rgba = ctx.getImageData(0, 0, canvas.width, canvas.height).data;
-            return { source: canvas, width: canvas.width, height: canvas.height, rgba };
+            return { width: canvas.width, height: canvas.height, rgba };
         } finally {
             URL.revokeObjectURL(url);
         }
@@ -555,7 +559,7 @@ class ImagePreviewManager {
     // Render the remembered placement to a PNG File.
     async renderLogoFile(config) {
         const state = this.logoFit.get(config.id);
-        const canvas = LogoFit.render(state.src.source, state.place);
+        const canvas = LogoFit.render(state.src.rgba, state.place);
         const blob = await LogoFit.toPngBlob(canvas);
         const base = ((state.original && state.original.name) || 'logo').replace(/\.[^.]+$/, '');
         return new File([blob], base + '.png', { type: 'image/png' });
@@ -627,7 +631,7 @@ class ImagePreviewManager {
         if (!state) return;
         if (!this.logoFitModal) this.logoFitModal = new LogoFitModal();
         this.logoFitModal.open({
-            source: state.src.source,
+            src: state.src,
             place: state.place,
             autoPlace: state.auto,
             title: `Adjust ${(config.label || 'logo').toLowerCase()}`,

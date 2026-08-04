@@ -12,7 +12,7 @@ class LogoFitModal {
         this.modal = null;
         this.canvas = null;
         this.place = null;
-        this.source = null;
+        this.src = null;
         this.autoPlace = null;
         this.autoBackground = null;
         this.onApply = null;
@@ -172,19 +172,15 @@ class LogoFitModal {
         document.getElementById('logoFitScaleValue').textContent = pct + '%';
     }
 
+    // Exactly what the exporter will get - same blit, no blending.
     redraw() {
-        const ctx = this.canvas.getContext('2d');
-        ctx.imageSmoothingEnabled = false;
-        ctx.fillStyle = LogoFit.cssColour(this.place.background);
-        ctx.fillRect(0, 0, LogoFit.W, LogoFit.H);
-        ctx.drawImage(this.source, this.place.dx, this.place.dy,
-            Math.max(1, Math.round(this.place.width * this.place.scale)),
-            Math.max(1, Math.round(this.place.height * this.place.scale)));
+        this.canvas.getContext('2d').putImageData(
+            new ImageData(LogoFit.composite(this.src.rgba, this.place), LogoFit.W, LogoFit.H), 0, 0);
     }
 
     /**
      * @param {object} opts
-     *   source     - decoded image (any canvas drawable)
+     *   src        - decoded image: { rgba, width, height }
      *   place      - current placement (from LogoFit.plan / a previous adjust)
      *   autoPlace  - the automatic placement, for the "Auto-place" button
      *   title      - modal heading
@@ -192,7 +188,7 @@ class LogoFitModal {
      */
     open(opts) {
         this.init();
-        this.source = opts.source;
+        this.src = opts.src;
         this.place = Object.assign({}, opts.place);
         this.autoPlace = Object.assign({}, opts.autoPlace || opts.place);
         this.autoBackground = (opts.autoPlace || opts.place).background;

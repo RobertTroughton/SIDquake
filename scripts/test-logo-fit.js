@@ -148,5 +148,63 @@ function onGrid(place) {
     check(!bad, 'artwork of any height stays on the character grid within its band', bad || '');
 }
 
+// ─── Placing an image never invents a colour ───
+//
+// The converter ignores the alpha channel, so blending a semi-transparent edge
+// with the background hands it in-between shades that belong to no C64 colour
+// the artist used. A couple of those in a character cell is enough to fail
+// every mode - including multicolour bitmap, which also needs its pixels in
+// 2px pairs.
+{
+    const w = 200, h = 100;
+    const rgba = new Uint8Array(w * h * 4);
+    const RED = [0x88, 0x20, 0x00], CYAN = [0x68, 0xd0, 0xa8];
+    for (let y = 0; y < h; y++) {
+        for (let x = 0; x < w; x++) {
+            const p = (y * w + x) * 4;
+            const c = x < w / 2 ? RED : CYAN;
+            rgba[p] = c[0]; rgba[p + 1] = c[1]; rgba[p + 2] = c[2];
+            // A soft edge down the middle and a fully transparent margin.
+            rgba[p + 3] = (x < 4 || x > w - 5) ? 0 : (Math.abs(x - w / 2) < 2 ? 140 : 255);
+        }
+    }
+    const place = LogoFit.plan(rgba, w, h, { band: 88 });
+    const out = LogoFit.composite(rgba, place);
+    const seen = new Set();
+    for (let i = 0; i < out.length; i += 4) seen.add([out[i], out[i + 1], out[i + 2]].join(','));
+    const bg = place.background;
+    const allowed = new Set([RED.join(','), CYAN.join(','), [bg.r, bg.g, bg.b].join(',')]);
+    const strays = [...seen].filter(c => !allowed.has(c));
+    check(strays.length === 0, 'placing an image introduces no colours of its own',
+        strays.length ? strays.slice(0, 3).join(' / ') : `${seen.size} colours out`);
+
+    let opaque = true;
+    for (let i = 3; i < out.length; i += 4) if (out[i] !== 255) { opaque = false; break; }
+    check(opaque, 'and the result is fully opaque');
+}
+
+// ─── Scaling down stays nearest-neighbour ───
+{
+    const w = 640, h = 400;
+    const rgba = new Uint8Array(w * h * 4);
+    for (let y = 0; y < h; y++) {
+        for (let x = 0; x < w; x++) {
+            const p = (y * w + x) * 4;
+            const on = ((x >> 1) + (y >> 1)) % 2 === 0;   // fine checkerboard: catches any averaging
+            rgba[p] = on ? 255 : 0;
+            rgba[p + 1] = on ? 255 : 0;
+            rgba[p + 2] = on ? 255 : 0;
+            rgba[p + 3] = 255;
+        }
+    }
+    const place = LogoFit.plan(rgba, w, h, { band: 88 });
+    const out = LogoFit.composite(rgba, place);
+    const seen = new Set();
+    for (let i = 0; i < out.length; i += 4) seen.add([out[i], out[i + 1], out[i + 2]].join(','));
+    const strays = [...seen].filter(c => c !== '0,0,0' && c !== '255,255,255');
+    check(strays.length === 0, 'scaling down averages nothing together',
+        strays.length ? strays.slice(0, 3).join(' / ') : `${seen.size} colours out`);
+}
+
 console.log(failures ? `\n${failures} check(s) failed` : '\nall checks passed');
 process.exit(failures ? 1 : 0);

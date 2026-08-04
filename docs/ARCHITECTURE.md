@@ -174,8 +174,12 @@ Compiled into `sidplayfp.wasm` (playback only, lazily loaded):
   that are already a usable size with their artwork inside the band are left
   untouched
 - Offsets are always multiples of 8 so each source character cell still lands in
-  one output cell; artwork too big for the band is scaled down (never up) with
-  nearest-neighbour, so no colours appear that the palette match can't hold
+  one output cell; artwork too big for the band is scaled down (never up)
+- `composite()` blends nothing: scaling is nearest-neighbour and a
+  semi-transparent pixel keeps its own colour rather than being mixed with the
+  background. The converter ignores alpha entirely, so a blended edge would hand
+  it in-between shades that fit no C64 mode - a couple of pixels of one is
+  enough to fail even multicolour bitmap (whose pixels are 2px wide)
 - Pure enough to run in Node - see `scripts/test-logo-fit.js`
 
 **`logo-fit-modal.js`** - The "Adjust logo" crop tool
@@ -188,6 +192,9 @@ Compiled into `sidplayfp.wasm` (playback only, lazily loaded):
 - Extracted from `charsetlab/charsetlab.js`; runs in the browser and in Node
 - PNG (320x200 / 384x272 VICE grab) → palette match, ±7px alignment search,
   then PETSCII / Hires / Mixed / ECM character-mode analysis
+- Every mode in the input's list is tried; `failureReason()` explains the last
+  (most permissive) one, since quoting the first reads as though hires was the
+  only mode considered
 - `buildLogoBlob()` packs a fitted result (charset + screen + colour RAM +
   `$d021-$d024` registers) into a fixed-layout blob that visualizer configs
   slice into memory regions (`convertType: "charset"` inputs, e.g. the

@@ -168,24 +168,49 @@
     }
 
     /**
-     * Draw the source onto a fresh 320x200 canvas following `place`. Nearest
-     * neighbour throughout, so a scaled logo keeps hard pixel edges and doesn't
-     * gain in-between colours the C64 palette can't hold.
+     * Blit the source onto a 320x200 screen following `place`, filling the space
+     * around it (and anything transparent in it) with the surround colour.
      *
-     * @param {CanvasImageSource} source - decoded image (any drawable)
-     * @param {object} place - from plan()/autoPlace(), plus width/height/background
+     * Nothing here blends or interpolates. Scaling is nearest neighbour, and a
+     * semi-transparent pixel keeps its own colour instead of being mixed with
+     * what is behind it, because the converter ignores the alpha channel
+     * completely: a blended edge hands it colours that are in no C64 palette
+     * slot the artist used, and one stray pixel of an in-between shade in a
+     * character cell is enough to put the whole logo out of reach of every
+     * mode - including multicolour bitmap, whose pixels are 2px wide.
+     *
+     * @param {Uint8Array|Uint8ClampedArray} rgba - the source image, w*h*4
+     * @param {object} place - from plan(), carrying width/height/scale/dx/dy/background
+     * @returns {Uint8ClampedArray} 320*200*4 opaque pixels
      */
-    function render(source, place) {
+    function composite(rgba, place) {
+        var out = new Uint8ClampedArray(W * H * 4);
+        var bg = place.background, s = place.scale, sw = place.width, sh = place.height;
+        for (var i = 0; i < out.length; i += 4) {
+            out[i] = bg.r; out[i + 1] = bg.g; out[i + 2] = bg.b; out[i + 3] = 255;
+        }
+        var dw = Math.max(1, Math.round(sw * s)), dh = Math.max(1, Math.round(sh * s));
+        var x0 = Math.max(0, place.dx), y0 = Math.max(0, place.dy);
+        var x1 = Math.min(W, place.dx + dw), y1 = Math.min(H, place.dy + dh);
+        for (var y = y0; y < y1; y++) {
+            var sy = Math.min(sh - 1, Math.floor((y - place.dy) * sh / dh));
+            for (var x = x0; x < x1; x++) {
+                var sx = Math.min(sw - 1, Math.floor((x - place.dx) * sw / dw));
+                var sp = (sy * sw + sx) * 4;
+                if (rgba[sp + 3] < 128) continue;       // see-through: keep the surround
+                var dp = (y * W + x) * 4;
+                out[dp] = rgba[sp]; out[dp + 1] = rgba[sp + 1]; out[dp + 2] = rgba[sp + 2];
+            }
+        }
+        return out;
+    }
+
+    // composite() onto a fresh canvas, ready to be turned into a PNG or drawn.
+    function render(rgba, place) {
         var canvas = document.createElement('canvas');
         canvas.width = W;
         canvas.height = H;
-        var ctx = canvas.getContext('2d', { willReadFrequently: true });
-        ctx.imageSmoothingEnabled = false;
-        ctx.fillStyle = cssColour(place.background);
-        ctx.fillRect(0, 0, W, H);
-        ctx.drawImage(source, place.dx, place.dy,
-            Math.max(1, Math.round(place.width * place.scale)),
-            Math.max(1, Math.round(place.height * place.scale)));
+        canvas.getContext('2d').putImageData(new ImageData(composite(rgba, place), W, H), 0, 0);
         return canvas;
     }
 
@@ -211,6 +236,7 @@
         plan: plan,
         describe: describe,
         cssColour: cssColour,
+        composite: composite,
         render: render,
         toPngBlob: toPngBlob
     };

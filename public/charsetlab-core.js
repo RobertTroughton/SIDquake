@@ -1041,12 +1041,22 @@ NTSCVICE,$000000,$ffffff,$8f4230,$80d1e6,$9446b8,$64b844,$422ead,$e6fe74,$956321
     }
 
     // The most useful "why it failed" line from a report with no fitted mode:
-    // prefer the actionable over-the-char-limit reason, else the first reason.
+    // prefer the actionable over-the-char-limit reason, else explain the last
+    // mode tried. The modes run simplest-first, so the last one is the most
+    // permissive - quoting the first instead reads as though hires was the only
+    // mode considered, which is baffling when the image is a multicolour one.
     function failureReason(report) {
         var attempts = report && report.attempts;
         if (attempts) {
             for (var i = 0; i < attempts.length; i++) if (attempts[i] && !attempts[i].ok && attempts[i].over) return attempts[i].reason;
-            for (i = 0; i < attempts.length; i++) if (attempts[i] && !attempts[i].ok && attempts[i].reason) return attempts[i].reason;
+            var tried = [];
+            for (i = 0; i < attempts.length; i++) if (attempts[i] && attempts[i].label) tried.push(attempts[i].label);
+            for (i = attempts.length - 1; i >= 0; i--) {
+                if (attempts[i] && !attempts[i].ok && attempts[i].reason) {
+                    return 'no C64 mode fits this image (tried ' + tried.join(', ') + '). '
+                        + attempts[i].label + ', the most permissive of them: ' + attempts[i].reason;
+                }
+            }
         }
         return 'No supported charset mode fits this image.';
     }
