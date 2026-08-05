@@ -203,8 +203,10 @@ KickAssembler 6502 source for the visualiser players.
 **Test** — `npm test`. Two harnesses drive the *real assembled 6502* in the WASM
 6510 emulator, covering the two places the C64 side and the exporter must agree
 byte-for-byte: `scripts/test-baked-decoder.js` (baked FFT stream) and
-`scripts/test-shadow-replay.js` (shadow-register replay order); a third,
-`scripts/test-logo-fit.js`, covers the logo placement maths. Almost nothing
+`scripts/test-shadow-replay.js` (shadow-register replay order).
+`scripts/test-timer-layout.js` also drives assembled players, calling each one's
+timer routines and diffing memory to check where the play-time clock lands;
+`scripts/test-logo-fit.js` covers the logo placement maths. Almost nothing
 covers the browser UI — the exceptions are `scripts/mobile-layout-check.js`
 (HVSC and Studio modals at phone widths) and `scripts/logo-drop-check.js`
 (picking a logo lands in the input the exporter reads); neither is in `npm test`,

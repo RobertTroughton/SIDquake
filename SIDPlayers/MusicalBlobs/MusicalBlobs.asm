@@ -392,6 +392,10 @@ DrawSongName:
 .const TIMER_ELAPSED_COL = 29                       //; MM:SS at 29..33
 .const TIMER_SLASH_COL   = 34                       //; '/'
 .const TIMER_LENGTH_COL  = 35                       //; MM:SS length at 35..39
+//; With no length to sit beside it, the clock moves to where the length would
+//; have been, so it still ends at the right-hand edge instead of stranding six
+//; blank columns between itself and the border.
+.const TIMER_ELAPSED_COL_ALONE = TIMER_LENGTH_COL   //; no length: flush-right
 .const TIMER_COLOUR      = SONGNAME_COLOUR          //; must be < 8 to stay hires
 .const TIMER_FPS         = 50                       //; this player is PAL-only
 .const T_DIGIT0          = FONT_BASE_CHAR + 48      //; '0' glyph in the song font
@@ -454,18 +458,50 @@ FormatTime:
     sta fmtBuf + 4
     rts
 
+//; Both elapsed-time columns are fixed constants, so the two stores are just
+//; branched to - no self-modify (the same shape as INC/timer.asm's timerAlone).
 DrawSongTimer:
     lda TimerMinutes
     sta fmtMin
     lda TimerSeconds
     sta fmtSec
     jsr FormatTime
+    lda bakedHasLength
+    beq !alone+
     ldx #4
 !write:
     lda fmtBuf, x
     sta SCREEN_ADDRESS + TIMER_ROW_OFFSET + TIMER_ELAPSED_COL, x
     dex
     bpl !write-
+    rts
+!alone:
+    ldx #4
+!writeR:
+    lda fmtBuf, x
+    sta SCREEN_ADDRESS + TIMER_ROW_OFFSET + TIMER_ELAPSED_COL_ALONE, x
+    dex
+    bpl !writeR-
+    rts
+
+//; Colour the five elapsed-time cells, in whichever column the clock is using.
+ColourSongTimer:
+    lda bakedHasLength
+    beq !alone+
+    ldx #4
+!colour:
+    lda #TIMER_COLOUR
+    sta $d800 + TIMER_ROW_OFFSET + TIMER_ELAPSED_COL, x
+    dex
+    bpl !colour-
+    rts
+!alone:
+    ldx #4
+!colourR:
+    lda #TIMER_COLOUR
+    sta $d800 + TIMER_ROW_OFFSET + TIMER_ELAPSED_COL_ALONE, x
+    dex
+    bpl !colourR-
     rts
 
 //; Zero the clock, colour the elapsed cells, paint 00:00, then draw "/MM:SS".
@@ -474,12 +510,7 @@ InitSongTimer:
     sta TimerFrames
     sta TimerSeconds
     sta TimerMinutes
-    ldx #4
-!colour:
-    lda #TIMER_COLOUR
-    sta $d800 + TIMER_ROW_OFFSET + TIMER_ELAPSED_COL, x
-    dex
-    bpl !colour-
+    jsr ColourSongTimer
     jsr DrawSongTimer
     // fall through into DrawSongLength
 
