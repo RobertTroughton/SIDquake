@@ -14,6 +14,13 @@
 // written - so the check is about the shape of the layout, not about constants
 // that are free to move.
 //
+// It also checks, in the sources, that every player with a clock advances it
+// inside its fast-forward loop. Holding SPACE plays several music frames per
+// real frame, and a clock that keeps ticking at 50Hz through that drifts behind
+// the audio - MusicalBlobs did. That one is a source check rather than an
+// emulator run: the loop lives in the middle of a main loop or a raster IRQ,
+// neither of which can be called on its own.
+//
 // Not covered: that a player wires bakedHasLength through to its timer at boot
 // (that happens in the middle of the boot sequence, which needs a VIC).
 //
@@ -66,6 +73,19 @@ const PLAYERS = [
         withLength: { poke: [[HAS_LENGTH, 1], ['timerAlone', 0]], call: ['InitTimer', 'DrawSongLength'] },
         alone: { poke: [[HAS_LENGTH, 0], ['timerAlone', 1]], call: ['InitTimer'] }
     }
+];
+
+// Every player that shows a clock, and the routine that advances it one music
+// frame. ScrapColumns, SimpleRaster and SimpleBitmapWithScroller fast-forward
+// too but have no clock, so there's nothing to keep in step.
+const FAST_FORWARD = [
+    { name: 'MusicalBlobs', asm: 'SIDPlayers/MusicalBlobs/MusicalBlobs.asm', tick: 'UpdateSongTimer' },
+    { name: 'Default', asm: 'SIDPlayers/Default/Default.asm', tick: 'UpdateTimer' },
+    { name: 'DefaultWithLogo', asm: 'SIDPlayers/DefaultWithLogo/DefaultWithLogo.asm', tick: 'UpdateTimer' },
+    { name: 'RaistlinBars', asm: 'SIDPlayers/RaistlinBars/RaistlinBars.asm', tick: 'UpdateTimer' },
+    { name: 'RaistlinBarsWithLogo', asm: 'SIDPlayers/RaistlinBarsWithLogo/RaistlinBarsWithLogo.asm', tick: 'UpdateTimer' },
+    { name: 'RaistlinMirrorBars', asm: 'SIDPlayers/RaistlinMirrorBars/RaistlinMirrorBars.asm', tick: 'UpdateTimer' },
+    { name: 'RaistlinMirrorBarsWithLogo', asm: 'SIDPlayers/RaistlinMirrorBarsWithLogo/RaistlinMirrorBarsWithLogo.asm', tick: 'UpdateTimer' }
 ];
 
 let failures = 0;
@@ -149,6 +169,27 @@ function contiguous(cells) {
     return true;
 }
 
+// The body of a player's fast-forward loop: one pass plays a whole music
+// frame's worth of calls, so whatever is in here runs once per music frame.
+function fastForwardBody(src) {
+    const start = src.indexOf('!ffFrameLoop:');
+    if (start < 0) return null;
+    const end = src.indexOf('bne !ffFrameLoop-', start);
+    return end < 0 ? null : src.slice(start, end);
+}
+
+function checkFastForward() {
+    for (const player of FAST_FORWARD) {
+        const src = fs.readFileSync(path.join(ROOT, player.asm), 'utf8');
+        const body = fastForwardBody(src);
+        check(body !== null, `${player.name}: has a fast-forward loop`);
+        if (!body) continue;
+        check(body.includes(`jsr ${player.tick}`),
+            `${player.name}: fast-forward advances the clock with the music`,
+            body.includes(`jsr ${player.tick}`) ? '' : `no "jsr ${player.tick}" in the loop`);
+    }
+}
+
 async function run() {
     const m = await loadCpu();
 
@@ -183,6 +224,8 @@ async function run() {
             `${left} column(s) to its left, ${right} to its right`
             + (flushRight ? ' - flush-right' : centred ? ' - centred' : ''));
     }
+
+    checkFastForward();
 
     console.log(failures ? `\n${failures} check(s) failed` : '\nall checks passed');
     process.exit(failures ? 1 : 0);

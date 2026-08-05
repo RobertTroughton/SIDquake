@@ -732,7 +732,12 @@ BottomIRQ:
     dec FFCallCounter
     bne !ffCallLoop-
 
-    jsr CheckMusicLoop          //; forced song loop tracks fast-forwarded frames too
+    //; Each pass above is one music frame's worth of play calls, so everything
+    //; that counts music frames advances at the same accelerated rate - the
+    //; forced song loop, and the clock, which would otherwise stand still and
+    //; fall behind the audio for as long as SPACE is held.
+    jsr CheckMusicLoop
+    jsr UpdateSongTimer
     jsr CheckSpaceKey
     lda FastForwardActive
     bne !ffFrameLoop-
