@@ -119,6 +119,13 @@
      * Where the source image should sit on the 320x200 screen so its content
      * lands inside the top `band` pixels.
      *
+     * Horizontally the artwork is centred; vertically it goes to the top of the
+     * band, not the middle of it. The band is the top slice of a screen whose
+     * remainder the player fills with bars, so a 56px logo centred in an 88px
+     * band puts 16px above it and 16px below - and the screen as a whole then
+     * reads as sitting low. Against the top, the same logo has its 32px of slack
+     * below it, between the logo and the bars, where it looks deliberate.
+     *
      * The image is only ever scaled down, and only when its content is too big
      * for the band; a source that's already screen-sized keeps its horizontal
      * placement (the artist put it there) and is only moved vertically.
@@ -141,7 +148,7 @@
             dx = snap8((W - cw * scale) / 2 - bounds.x0 * scale);
             dx = clamp8(dx, -bounds.x0 * scale, W - (bounds.x1 + 1) * scale);
         }
-        var dy = snap8((band - ch * scale) / 2 - bounds.y0 * scale);
+        var dy = snap8(-bounds.y0 * scale);
         dy = clamp8(dy, -bounds.y0 * scale, band - (bounds.y1 + 1) * scale);
         return { scale: scale, dx: dx, dy: dy };
     }
@@ -155,9 +162,12 @@
      * @param {object} [opts] - { band: visible logo height in px (default 200),
      *                            background: {r,g,b} to override the detected one }
      * @returns place { width, height, band, background, bounds, scale, dx, dy,
-     *                  native, needsFit }
+     *                  native, needsFit, auto }
      *          needsFit is false when the image is already a size the converter
      *          takes with its content inside the band - leave it untouched.
+     *          scale/dx/dy are then the crop the converter would do anyway, so
+     *          the Adjust tool opens on the image exactly as it is; `auto` always
+     *          carries the automatic placement, for the Auto-place button.
      */
     function plan(rgba, w, h, opts) {
         opts = opts || {};
@@ -166,17 +176,18 @@
         var background = opts.background || edgeBackground(rgba, w, h, region);
         var bounds = contentBounds(rgba, w, h, background, region);
         var native = isNativeSize(w, h);
-        // Where the converter's screen window starts inside this source.
-        var baseY = (w === VICE_W && h === VICE_H) ? VICE_Y : 0;
-        var inBand = !bounds || (bounds.y0 >= baseY && bounds.y1 - baseY < band);
-        var place = autoPlace(bounds, w, h, band);
+        var inBand = !bounds || (bounds.y0 >= region.y && bounds.y1 - region.y < band);
+        var auto = autoPlace(bounds, w, h, band);
+        var needsFit = !(native && inBand);
+        var place = needsFit ? auto : { scale: 1, dx: -region.x, dy: -region.y };
         place.width = w;
         place.height = h;
         place.band = band;
         place.background = background;
         place.bounds = bounds;
         place.native = native;
-        place.needsFit = !(native && inBand);
+        place.needsFit = needsFit;
+        place.auto = auto;
         return place;
     }
 

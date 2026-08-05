@@ -554,7 +554,12 @@ class ImagePreviewManager {
         }
         const band = LogoFit.bandHeight(config.charsetRows);
         const place = LogoFit.plan(src.rgba, src.width, src.height, { band });
-        this.logoFit.set(config.id, { src, band, place, auto: Object.assign({}, place), original: file });
+        this.logoFit.set(config.id, {
+            src, band, place, original: file,
+            // What the "Auto-place" button offers, which for an image that
+            // needed no fitting is not where it currently sits.
+            auto: Object.assign({}, place, place.auto)
+        });
         if (!place.needsFit) return { file, fitted: false, place };
         return { file: await this.renderLogoFile(config), fitted: true, place };
     }

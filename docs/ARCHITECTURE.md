@@ -175,9 +175,13 @@ Compiled into `sidplayfp.wasm` (playback only, lazily loaded):
   to hide that wrecks the pixel art
 - `plan()` finds the surround colour (most common colour around the edges), the
   artwork's bounding box and where that artwork has to sit; an image whose
-  artwork is already inside the band is left untouched. For a VICE grab all
-  three are measured over the inner screen, or the border reads as the
-  background and the whole screen as artwork
+  artwork is already inside the band is left untouched, and opens in the Adjust
+  tool exactly as it is (`place.auto` still carries the automatic placement, for
+  the Auto-place button). For a VICE grab all three are measured over the inner
+  screen, or the border reads as the background and the whole screen as artwork
+- Artwork is centred horizontally but goes to the **top** of the band, not the
+  middle: the player fills the screen below the band with bars, so slack above
+  the logo makes the whole screen read as sitting low. All of it belongs below
 - Offsets are always multiples of 8 so each source character cell still lands in
   one output cell; artwork too big for the band is scaled down (never up)
 - `composite()` blends nothing: scaling is nearest-neighbour and a

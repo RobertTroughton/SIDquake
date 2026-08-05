@@ -163,26 +163,24 @@ async function openStudioWithLogo(page) {
             if (card) card.click();
         }, VISUALIZER);
         try {
+            // The preview lives in a Studio panel that may not be the active
+            // one. The panels re-render as the visualizer's config and gallery
+            // arrive, and a late-finishing analysis can reset the selection
+            // altogether - so let everything settle, then confirm the preview
+            // survived. If it didn't, pick the visualizer again.
             await page.waitForSelector('.image-preview-wrapper', { state: 'attached', timeout: 10000 });
+            await page.waitForTimeout(2500);
+            await page.evaluate(() => {
+                const overlay = document.getElementById('modalOverlay');
+                if (!overlay || !overlay.classList.contains('visible')) return;
+                const btn = overlay.querySelector('.modal-actions button');
+                if (btn) btn.click(); else overlay.classList.remove('visible');
+            });
+            await page.waitForSelector('.image-preview-wrapper', { state: 'attached', timeout: 5000 });
             opened = true;
         } catch (e) { /* try again */ }
     }
     if (!opened) throw new Error('the Studio never reached ' + VISUALIZER + "'s logo panel");
-    // Dismiss any message dialog layered over the Studio.
-    await page.evaluate(() => {
-        const overlay = document.getElementById('modalOverlay');
-        if (!overlay || !overlay.classList.contains('visible')) return;
-        const btn = overlay.querySelector('.modal-actions button');
-        if (btn) btn.click(); else overlay.classList.remove('visible');
-    });
-    // The preview lives in a Studio panel that may not be the active one, and
-    // the panels re-render as the visualizer's config and gallery arrive - wait
-    // for the wrapper to still be there after everything has settled.
-    await page.waitForFunction(() => !!document.querySelector('.image-preview-wrapper'),
-        null, { timeout: 30000 });
-    await page.waitForTimeout(2500);
-    await page.waitForFunction(() => !!document.querySelector('.image-preview-wrapper'),
-        null, { timeout: 30000 });
     return page.evaluate(() => document.querySelector('.image-preview-wrapper').dataset.inputId);
 }
 

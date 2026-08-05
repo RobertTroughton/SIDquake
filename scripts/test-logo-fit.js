@@ -69,6 +69,50 @@ function onGrid(place) {
     check(!place.needsFit, 'a 320x72 strip is not touched');
 }
 
+// ─── Artwork goes to the top of the band, not the middle of it ───
+//
+// The player fills the screen below the band with bars, so slack left above the
+// logo reads as the whole screen sitting low. All of it belongs below.
+{
+    const img = image(320, 200, BLACK, { x0: 30, y0: 104, x1: 290, y1: 159 }, WHITE);
+    const place = LogoFit.plan(img.rgba, img.w, img.h, { band: 88 });
+    const box = placedBox(place);
+    check(box.y0 === 0, 'a 56px logo sits against the top of an 88px band', 'y0 ' + box.y0);
+    check(88 - 1 - box.y1 === 32, 'with all the slack below it', `${88 - 1 - box.y1}px below`);
+
+    // Artwork whose own top isn't on the character grid can only get within a
+    // cell of the top - moving it the rest of the way would break its alignment.
+    const off = image(320, 200, BLACK, { x0: 30, y0: 100, x1: 290, y1: 155 }, WHITE);
+    const offBox = placedBox(LogoFit.plan(off.rgba, off.w, off.h, { band: 88 }));
+    check(offBox.y0 > 0 && offBox.y0 < 8, 'off-grid artwork gets within a character row of the top',
+        'y0 ' + offBox.y0);
+}
+
+// ─── An image that needs no fitting opens in the Adjust tool untouched ───
+{
+    const img = image(320, 200, BLACK, { x0: 8, y0: 8, x1: 311, y1: 79 }, WHITE);
+    const place = LogoFit.plan(img.rgba, img.w, img.h, { band: 88 });
+    check(!place.needsFit && place.scale === 1 && place.dx === 0 && place.dy === 0,
+        'a logo already in the band starts where it is, not where auto-place would put it',
+        `scale ${place.scale} at ${place.dx},${place.dy}`);
+    check(place.auto.dy === -8, 'and auto-place still offers the top of the band',
+        'auto dy ' + place.auto.dy);
+
+    // A VICE grab starts on its inner screen - the crop the converter does anyway.
+    const grab = image(384, 272, BLUE, null, WHITE);
+    for (let y = 35; y < 235; y++) {
+        for (let x = 32; x < 352; x++) {
+            const inArt = x >= 60 && x <= 320 && y >= 43 && y <= 100;
+            const c = inArt ? WHITE : BLACK;
+            const p = (y * 384 + x) * 4;
+            grab.rgba[p] = c[0]; grab.rgba[p + 1] = c[1]; grab.rgba[p + 2] = c[2];
+        }
+    }
+    const gp = LogoFit.plan(grab.rgba, grab.w, grab.h, { band: 88 });
+    check(!gp.needsFit && gp.dx === -32 && gp.dy === -35,
+        'and a VICE grab starts cropped to its screen', `${gp.dx},${gp.dy}`);
+}
+
 // ─── The reported case: a 320x200 logo down the middle of the screen ───
 {
     const img = image(320, 200, BLACK, { x0: 30, y0: 60, x1: 290, y1: 140 }, WHITE);
