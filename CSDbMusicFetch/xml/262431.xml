@@ -24,7 +24,7 @@ During its activity, Hokuto Force was in coop with: &amp;lt;group id=3416&amp;gt
 <BaseCountry>Italy</BaseCountry>
 <FoundYear>1988</FoundYear>
 <Website>http://www.hokutoforce.c64.org</Website>
-<Rating>9.08</Rating>
+<Rating>9.03</Rating>
 <Grouptypes><Grouptype>Cracker Group</Grouptype>
 <Grouptype>Demo Group</Grouptype>
 <Grouptype>Game Development Group</Grouptype>
@@ -50,6 +50,7 @@ https://www.facebook.com/djspace.music
 http://www.retroperks.com</HandleStory>
 <Scener><ID>35085</ID>
 <Country>Greece</Country>
+<Trivia>https://deepsid.chordian.net/?file=/MUSICIANS/D/DJ_Space</Trivia>
 <Handles><Handle><ID>38402</ID>
 </Handle>
 </Handles>
@@ -60,14 +61,14 @@ http://www.retroperks.com</HandleStory>
 </Handle>
 </Credit>
 </Credits>
-<DownloadLinks><DownloadLink><Link>https://csdb.dk/getinternalfile.php/280899/separate ways.prg</Link>
-<CounterLink>https://csdb.dk/release/download.php?id=322935</CounterLink>
-<Downloads>166</Downloads>
+<DownloadLinks><DownloadLink><Link>https://csdb.dk/getinternalfile.php/280900/separate ways.sid</Link>
+<CounterLink>https://csdb.dk/release/download.php?id=322936</CounterLink>
+<Downloads>76</Downloads>
 <Status>Ok</Status>
 </DownloadLink>
-<DownloadLink><Link>https://csdb.dk/getinternalfile.php/280900/separate ways.sid</Link>
-<CounterLink>https://csdb.dk/release/download.php?id=322936</CounterLink>
-<Downloads>74</Downloads>
+<DownloadLink><Link>https://csdb.dk/getinternalfile.php/280899/separate ways.prg</Link>
+<CounterLink>https://csdb.dk/release/download.php?id=322935</CounterLink>
+<Downloads>169</Downloads>
 <Status>Ok</Status>
 </DownloadLink>
 </DownloadLinks>
