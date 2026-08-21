@@ -16,7 +16,7 @@ source; where a claim still needs a browser to confirm it, it says so.
 Ranked by value against effort, not by section order. Each line names the section
 that holds the detail.
 
-1. Ship the eleven preview GIFs and set `animated: true`. *(Preview)*
+1. Ship the preview GIFs and set `animated: true` — one per grid card. *(Preview)*
 
 Bigger pieces worth planning rather than picking up: the live in-browser preview,
 recipe files plus the `sidquake-build` CLI, the listener-first entry point, and
@@ -178,13 +178,6 @@ Studio panel copy, the method cards, the compression labels, the multi-song
 warning and the greyed-out reasons (which now describe the *look*, not the
 tune, and carry the SID's address range for the expert). Still to do:
 
-- **The visualiser names.** Fifteen entries sharing three words — "Raistlin
-  Bars", "Raistlin Bars (Shadow)", "Raistlin Mirror Bars With Logo
-  (Spectrometer)" — and two of them are people's handles, which read as
-  technical terms. The Shadow / Spectrometer variants are already reached
-  through the Method tab, so the grid should show one card per look with a plain
-  name: "Bars", "Mirrored bars", "Bars with a picture", "3D columns", "Just the
-  text", "Coloured stripes".
 - **"PRG" still appears** in the About tab, the Releases copy and the memory
   map. The button and the completion panel say what it is now; the rest doesn't.
 - **The logo input's description** ("320x200 or 384x272 PNG; only the top 11

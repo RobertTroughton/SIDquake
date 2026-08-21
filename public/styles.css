@@ -1486,3 +1486,13 @@ details[open].panel > summary h2::after {
 .skip-link:focus {
     left: 0;
 }
+
+/* The player's scene name under its plain one. "Raistlin Bars" is attribution
+   and sceners look for it; "Bars" is what everyone else can act on. */
+.visualizer-scene-name {
+    margin-top: 2px;
+    font-family: var(--font-mono);
+    font-size: 0.72em;
+    letter-spacing: 0.5px;
+    color: var(--text-muted);
+}

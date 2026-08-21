@@ -1049,7 +1049,7 @@ class UIController {
         // immediately. Neither is a deliberate pick, so neither updates the
         // sticky choice (remember: false).
         const remembered = compatible.find(v => v.id === this._lastVisualizerId);
-        const autoSelect = remembered || compatible[0];
+        const autoSelect = remembered || compatible.find(v => v.defaultPick) || compatible[0];
 
         for (const viz of compatible) {
             const card = this.createVisualizerCard(viz);
@@ -1140,6 +1140,7 @@ class UIController {
         </div>
         <div class="visualizer-info">
             <h3>${visualizer.name}</h3>
+            ${visualizer.sceneName ? `<p class="visualizer-scene-name">${esc(visualizer.sceneName)}</p>` : ''}
             <p>${visualizer.description}</p>
             ${isDisabled ? `<p class="visualizer-reason">${esc(disabledMessage)}</p>` : ''}
         </div>
