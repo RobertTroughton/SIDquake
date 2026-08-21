@@ -94,8 +94,13 @@
 .const LOGO_MODE_PETSCII_UPPER      = 5
 .const LOGO_MODE_PETSCII_LOWER      = 6
 
-// Raster line where the split occurs (first visible line + rows * 8 pixels)
-.const SPLIT_RASTERLINE             = 50 + (LOGO_ROWS * 8) - 1
+// Raster line where the split occurs: the last line of the logo's final
+// character row. With the standard YSCROLL of 3 the first badline is 51, so
+// character row N covers rasters 51 + N*8 .. 58 + N*8 - counting the first
+// display line as 50 puts the whole split one line high, which leaves the
+// logo's own last line rendering as text through the logo's video matrix.
+.const FIRST_DISPLAY_LINE           = 51
+.const SPLIT_RASTERLINE             = FIRST_DISPLAY_LINE + (LOGO_ROWS * 8) - 1
 
 // =============================================================================
 // SPRITE CURTAIN
