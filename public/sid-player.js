@@ -23,33 +23,33 @@ class SIDPlayer {
     buildUI() {
         this.container.innerHTML = `
             <div class="sid-player">
-                <button class="sid-player-btn sid-player-play" title="Play" disabled>
+                <button class="sid-player-btn sid-player-play" title="Play" aria-label="Play" disabled>
                     <i class="fas fa-play"></i>
                 </button>
-                <button class="sid-player-btn sid-player-stop" title="Stop" disabled>
+                <button class="sid-player-btn sid-player-stop" title="Stop" aria-label="Stop" disabled>
                     <i class="fas fa-stop"></i>
                 </button>
-                <button class="sid-player-btn sid-player-restart" title="Restart" disabled>
+                <button class="sid-player-btn sid-player-restart" title="Restart" aria-label="Restart" disabled>
                     <i class="fas fa-undo"></i>
                 </button>
                 <div class="sid-player-subtune">
-                    <button class="sid-player-btn sid-player-prev" title="Previous subtune" disabled>
+                    <button class="sid-player-btn sid-player-prev" title="Previous subtune" aria-label="Previous tune" disabled>
                         <i class="fas fa-step-backward"></i>
                     </button>
                     <span class="sid-player-subtune-display">1/1</span>
-                    <button class="sid-player-btn sid-player-next" title="Next subtune" disabled>
+                    <button class="sid-player-btn sid-player-next" title="Next subtune" aria-label="Next tune" disabled>
                         <i class="fas fa-step-forward"></i>
                     </button>
                 </div>
                 <div class="sid-player-time">0:00</div>
                 <div class="sid-player-quality">
-                    <select class="sid-player-quality-select" title="Sampling quality">
+                    <select class="sid-player-quality-select" title="Sampling quality" aria-label="Sampling quality">
                         <option value="0">Fast</option>
                         <option value="1">Interpolate</option>
                         <option value="2">Resample</option>
                     </select>
                 </div>
-                <div class="sid-player-speed" title="Playback speed (fast-forward)">
+                <div class="sid-player-speed" role="group" aria-label="Playback speed">
                     <button class="sid-player-speed-btn active" data-speed="1">1x</button>
                     <button class="sid-player-speed-btn" data-speed="2">2x</button>
                     <button class="sid-player-speed-btn" data-speed="4">4x</button>
@@ -126,7 +126,9 @@ class SIDPlayer {
                 const mult = parseInt(btn.dataset.speed, 10);
                 getSharedSIDPlayback().setSpeed(mult);
                 document.querySelectorAll('.sid-player-speed-btn').forEach(b => {
-                    b.classList.toggle('active', parseInt(b.dataset.speed, 10) === mult);
+                    const on = parseInt(b.dataset.speed, 10) === mult;
+                    b.classList.toggle('active', on);
+                    b.setAttribute('aria-pressed', on ? 'true' : 'false');
                 });
             });
         });
@@ -237,7 +239,9 @@ class SIDPlayer {
         this.els.speedGroup.style.display = player.supportsSpeed() ? '' : 'none';
         const speed = player.getSpeed ? player.getSpeed() : 1;
         this.els.speedGroup.querySelectorAll('.sid-player-speed-btn').forEach(b => {
-            b.classList.toggle('active', parseInt(b.dataset.speed, 10) === speed);
+            const on = parseInt(b.dataset.speed, 10) === speed;
+            b.classList.toggle('active', on);
+            b.setAttribute('aria-pressed', on ? 'true' : 'false');
         });
 
         // Asked for on load: play now the tune is ready. _syncPlayButton already

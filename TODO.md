@@ -224,6 +224,13 @@ other twenty places that needed them.
 
 **Contrast** (computed from the tokens in `styles.css:7-68`; AA needs 4.5:1):
 
+**Done since:** transient toasts are polite status regions rather than dialogs
+that steal focus and hand it back two seconds later; the icon-only modal close
+buttons, the transport and the sampling-quality select have accessible names;
+Play/Pause renames itself with its glyph; the speed buttons carry `aria-pressed`
+inside a labelled group; and the 22px transport / search-clear targets meet the
+24px minimum.
+
 **Contrast — done.** `--text-muted` and the white-on-amber buttons cleared AA
 earlier; this pass added `--border-control` (#6e6e85, 3.17:1 against the tightest
 surface) for every text field's boundary, lifted `--error` to #e07070 (4.84:1 on

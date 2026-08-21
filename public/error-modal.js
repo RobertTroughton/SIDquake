@@ -286,10 +286,22 @@ class ErrorModal {
         // modals (duration 0: error/confirm) are alertdialogs; transient toasts
         // are plain dialogs. Only capture the prior focus on a fresh open, so
         // re-showing over an already-open modal keeps the original anchor.
+        // A self-dismissing toast is NOT a dialog. Announcing one as a modal and
+        // moving focus into it interrupts a screen reader mid-sentence, drags it
+        // in, and drags it back out two seconds later - and it steals the caret
+        // from anyone typing. Only a must-acknowledge modal (duration 0: error or
+        // confirm) is a dialog and takes focus; the rest are polite status.
+        const transient = options.duration > 0;
         const content = this.modalElement.querySelector('.modal-content');
         if (content) {
-            content.setAttribute('role', options.duration === 0 ? 'alertdialog' : 'dialog');
-            content.setAttribute('aria-modal', 'true');
+            content.setAttribute('role', transient ? 'status' : 'alertdialog');
+            if (transient) {
+                content.setAttribute('aria-live', 'polite');
+                content.removeAttribute('aria-modal');
+            } else {
+                content.setAttribute('aria-modal', 'true');
+                content.removeAttribute('aria-live');
+            }
             content.setAttribute('aria-describedby', 'modalMessage');
             if (options.title) content.setAttribute('aria-labelledby', 'modalTitle');
             else content.removeAttribute('aria-labelledby');
@@ -303,13 +315,15 @@ class ErrorModal {
         // Move focus into the dialog (primary button if any, else the first
         // focusable, else the content itself) so keyboard/screen-reader users
         // land inside it instead of on the now-inert page behind.
-        const primary = actionsEl && actionsEl.querySelector('.modal-action-btn.primary');
-        const target = primary ||
-            (this.modalElement.querySelector('.modal-content button, .modal-content summary')) ||
-            content;
-        if (target) {
-            if (target === content) target.setAttribute('tabindex', '-1');
-            target.focus();
+        if (!transient) {
+            const primary = actionsEl && actionsEl.querySelector('.modal-action-btn.primary');
+            const target = primary ||
+                (this.modalElement.querySelector('.modal-content button, .modal-content summary')) ||
+                content;
+            if (target) {
+                if (target === content) target.setAttribute('tabindex', '-1');
+                target.focus();
+            }
         }
 
         if (options.duration > 0) {
@@ -335,8 +349,14 @@ class ErrorModal {
         }
 
         // Restore focus to whatever was focused before the modal opened, so
-        // keyboard focus doesn't jump to the top of the page on dismiss.
-        if (this._previouslyFocused && typeof this._previouslyFocused.focus === 'function') {
+        // keyboard focus doesn't jump to the top of the page on dismiss - but
+        // only if focus is still inside the modal. A transient toast never took
+        // it, and yanking it back would interrupt whatever the user has since
+        // moved on to.
+        const inside = this.modalElement && this.modalElement.contains(document.activeElement);
+        if (inside && this._previouslyFocused
+            && typeof this._previouslyFocused.focus === 'function'
+            && this._previouslyFocused.isConnected) {
             this._previouslyFocused.focus();
         }
         this._previouslyFocused = null;

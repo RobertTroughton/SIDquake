@@ -1482,6 +1482,7 @@
 }
 
 .search-clear {
+    /* 2.5.8 minimum target; was 22x22. */
     position: absolute;
     right: 8px;
     top: 50%;
@@ -1491,8 +1492,8 @@
     border: none;
     cursor: pointer;
     font-size: 13px;
-    width: 22px;
-    height: 22px;
+    width: 24px;
+    height: 24px;
     display: inline-flex;
     align-items: center;
     justify-content: center;
@@ -2776,8 +2777,9 @@
 }
 
 .sid-player-subtune .sid-player-btn {
-    width: 22px;
-    height: 22px;
+    /* 2.5.8 wants 24x24 minimum; these were 22. */
+    width: 24px;
+    height: 24px;
     font-size: 0.6em;
 }
 
