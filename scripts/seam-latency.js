@@ -25,6 +25,14 @@
  *   node scripts/seam-latency.js --visualizer=RaistlinBarsWithLogo --frames=3000
  *   node scripts/seam-latency.js --sid=jammer-mm.sid      # multi-speed: more collisions
  *   node scripts/seam-latency.js --method=realtime       # the bar data to export with
+ *   node scripts/seam-latency.js --visualizer=RaistlinBarsWithLogo --watch=curtain
+ *
+ * --watch=curtain measures the other half of the seam: not whether the mode
+ * switch is hidden, but whether the curtain that hides it was there at all. It
+ * breaks on the same write and reads sprite 0's Y, which says which duty the
+ * sprites were on at that instant. Only RaistlinBarsWithLogo re-arms them per
+ * frame (they do water duty in between); the other logo players set their
+ * curtain up once at init.
  *
  * The C64 ROMs come from the ones committed under roms/.
  */
@@ -117,6 +125,7 @@ const PAL_LINE_CYCLES = 63;
  */
 const SPLIT_WRITES = ['8d', '11', 'd0', '8e', '21', 'd0', '8c', '18', 'd0'];
 
+
 (async () => {
     const args = process.argv.slice(2);
     const arg = (n, d) => (args.find(a => a.startsWith('--' + n + '=')) || '=' + d).split('=')[1];
@@ -129,6 +138,12 @@ const SPLIT_WRITES = ['8d', '11', 'd0', '8e', '21', 'd0', '8c', '18', 'd0'];
     const frames = Number(arg('frames', '1500'));
     // How many raster lines the player's sprite curtain hides the switch behind.
     const curtainLines = Number(arg('curtain-lines', '2'));
+    // What to measure: 'switch' (the $d011 write - is the mode change hidden?)
+    // or 'curtain' (the sprite Y that arms the curtain - is it there to hide it?).
+    const watch = arg('watch', 'switch');
+    // The curtain's own sprite Y, from the player source (CURTAIN_SPRITE_Y;
+    // RaistlinBarsWithLogo's 11-row logo puts the split on 138, so 117).
+    const curtainY = Number(arg('curtain-y', '117'));
     const port = Number(arg('port', '6510'));
     const keep = arg('keep', '');
     const dir = keep || fs.mkdtempSync(path.join(os.tmpdir(), 'seam-'));
@@ -169,7 +184,16 @@ const SPLIT_WRITES = ['8d', '11', 'd0', '8e', '21', 'd0', '8c', '18', 'd0'];
             const out = await mon.cmd('x', 15000);
             const m = /exec [0-9a-f]{4}\)\s+(\d+)\/\$[0-9a-f]+,\s+(\d+)\//i.exec(out);
             if (!m) break;
-            seen.push({ line: Number(m[1]), cycle: Number(m[2]) });
+            const hit = { line: Number(m[1]), cycle: Number(m[2]) };
+            if (watch === 'curtain') {
+                // Sprite 0's Y, as the VIC holds it at the instant of the switch:
+                // the curtain's own Y means the curtain is up, anything else means
+                // the sprites are still on water duty and the switch is in the open.
+                const mem = await mon.cmd('m d001 d001', 8000);
+                const b = /d001\s+([0-9a-f]{2})/i.exec(mem);
+                hit.spriteY = b ? parseInt(b[1], 16) : null;
+            }
+            seen.push(hit);
         }
         if (!seen.length) throw new Error('the breakpoint never reported a beam position');
 
@@ -182,6 +206,27 @@ const SPLIT_WRITES = ['8d', '11', 'd0', '8e', '21', 'd0', '8c', '18', 'd0'];
             console.log('  line ' + line + '  x' + String(n).padStart(5) +
                 '  (' + (100 * n / seen.length).toFixed(2) + '%)' +
                 '  cycles ' + Math.min(...cyc) + '-' + Math.max(...cyc));
+        }
+
+        if (watch === 'curtain') {
+            // A frame whose sprite Y is not the curtain's had no curtain over the
+            // switch. It is not about WHERE the arming ran - an arming any time
+            // after the water write serves the next frame - but about whether it
+            // ran at all: a frame call dropped by the dispatcher's overload guard
+            // takes the arming with it, and that frame's seam is drawn in the open.
+            const missed = seen.filter(s => s.spriteY !== curtainY);
+            const pct = (100 * missed.length / seen.length).toFixed(2);
+            const others = [...new Set(missed.map(s => s.spriteY))];
+            console.log('\nsprite Y at the switch, over ' + seen.length + ' frames: ' +
+                'curtain (' + curtainY + ') on ' + (seen.length - missed.length) +
+                (others.length ? ', otherwise ' + others.join('/') : ''));
+            check(missed.length === 0,
+                'the curtain is up on every frame the switch happens',
+                missed.length + ' of ' + seen.length + ' frames (' + pct + '%) had no curtain');
+            if (mon) mon.close();
+            try { process.kill(-vice.pid, 'SIGKILL'); } catch (e) { /* already gone */ }
+            if (!keep) console.log('(working dir ' + dir + ')');
+            process.exit(failures ? 1 : 0);
         }
 
         // The curtain hides the line the IRQ is armed on and the one after it.

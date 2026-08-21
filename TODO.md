@@ -672,47 +672,6 @@ moment.
 - Related: the render already stops early on a confirmed loop and on ~10 s of
   silence, so these prompts should only ever appear on genuinely long tunes.
 
-## RaistlinBarsWithLogo — the seam smears when the logo fills its band
-A logo whose artwork reaches the bottom of the 11-row band shows a two-line
-smear at the logo/spectrum seam on a minority of frames: display lines 86-87
-(the two the sprite curtain is meant to block) draw the logo's last row through
-the spectrum half's pointers. Every shipped gallery logo stops around row 8, so
-the smear lands on black and nobody sees it; a full-height logo puts artwork
-there and it shows.
-
-Reproduce (needs Playwright + VICE, see the seam scripts' headers):
-
-    node scripts/make-test-logo.js /tmp/full.png --bitmap
-    node scripts/seam-check.js --visualizer=RaistlinBarsWithLogo \
-        --logo=/tmp/full.png --frames=12 --keep=/tmp/seam
-
-then read display lines 86-87 of each frame (`lineProfile` in
-`scripts/lib/seam-lib.js`): a smeared frame has ink on them.
-
-Measured, one export each, psych858o-xtrovert.sid:
-
-| logo art | bar method | frames smeared |
-|---|---|---|
-| to row 10 | VU meter (live) | 2 of 6 |
-| to row 10 | spectrometer | 2 of 12 |
-| to row 8 (shipped logos) | VU meter (live) | 0 of 20 |
-| to row 8 (shipped logos) | spectrometer | 0 of 4 |
-
-So it is not the bar method, and it is not the mode switch either:
-`seam-latency.js` puts the `$d011` write on a curtained line in 1200 of 1200
-frames, with 105 cycles of margin. What is left is the curtain itself — the
-sprites are configured for the next frame by `UpdateSprites`, at the bottom of
-the frame after the music call (`FrameCall`, `MUSIC_SYNC_LINE` 251), and a frame
-whose work runs long can push those writes past the curtain's own Y compare on
-the following frame, so the curtain simply does not appear. Not confirmed:
-the next step is a VICE breakpoint on the sprite Y write, reporting the raster
-line it lands on per frame, the way `seam-latency.js` does for `$d011`.
-
-If that is the cause, the fix is to set the curtain up somewhere that cannot be
-pushed past line 117 - the split handler's own tail (it already waits for
-`SPLIT_RASTERLINE + 1` before flipping to water) rather than the bottom of the
-frame.
-
 ## Bar methods — warn when a tune is invisible to the VU meter
 The VU-meter methods claim a bar only for a voice with GATE=1, TEST=0 and a
 waveform selected (`INC/spectrometer.asm` `AnalyseSingleVoice`). Some tunes drive
