@@ -173,6 +173,15 @@
                         </button>
                         <button type="button" class="sid-queue-clear" id="sidQueueClear" aria-label="Clear the queue">&#10005;</button>
                     </div>
+                    <div class="sid-queue-where">
+                        <label class="option-label" for="queueDestination">Put the files</label>
+                        <select id="queueDestination" class="number-input">
+                            <option value="downloads">in my downloads folder</option>
+                            <option value="zip">in one zip file</option>
+                            <option value="folder">in a folder I choose…</option>
+                        </select>
+                        <span class="option-hint" id="queueDestinationNote"></span>
+                    </div>
                     <p class="sid-queue-note" id="sidQueueNote"></p>
                     <ol class="sid-queue-list" id="sidQueueList"></ol>
                 </div>
@@ -1284,7 +1293,7 @@
                 // c64-palette.js first: ui.js reads the shared colour table at
                 // module scope, so it has to be there before it parses.
                 'c64-palette.js', 'overlay-stack.js', 'error-modal.js', 'visualizer-registry.js',
-                'studio-modal.js', 'ui.js'
+                'zip-writer.js', 'studio-modal.js', 'ui.js'
             ];
             var i = 0;
             function loadNext() {

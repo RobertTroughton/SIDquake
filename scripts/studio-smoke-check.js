@@ -905,6 +905,37 @@ async function loadSid(page, file) {
             return { shown: !document.getElementById('sidQueue').hidden,
                 queued: window.uiController._queue.length };
         });
+        // Where a whole-set export puts its files.
+        const dest = await page.evaluate(async () => {
+            const el = document.getElementById('queueDestination');
+            if (!el) return { missing: true };
+            const values = [...el.options].map(o => o.value);
+            const ui = window.uiController;
+
+            // The zip route: divert the sink the way a run does, then deliver.
+            const made = [];
+            const realDownload = ui.downloadFile.bind(ui);
+            ui.downloadFile = (data, name) => made.push({ name, len: data.length });
+            await ui._deliverQueueFiles([
+                { name: 'one.prg', data: new Uint8Array([1, 8, 9]) },
+                { name: 'two.prg', data: new Uint8Array([1, 8, 7, 7]) },
+            ]);
+            ui.downloadFile = realDownload;
+            return {
+                values,
+                offersFolder: values.includes('folder') === (typeof window.showDirectoryPicker === 'function'),
+                made,
+                zipHelper: typeof window.makeZip === 'function',
+            };
+        });
+        check('A whole-set export can go somewhere other than downloads',
+            !dest.missing && dest.values.includes('zip'), JSON.stringify(dest));
+        check('The folder option is offered only where the browser has one',
+            dest.offersFolder === true, JSON.stringify(dest));
+        check('And the files arrive as one archive, not one download each',
+            dest.zipHelper && dest.made.length === 1 && /\.zip$/.test(dest.made[0].name)
+            && dest.made[0].len > 40, JSON.stringify(dest));
+
         check('The queue can be cleared', cleared.shown === false && cleared.queued === 0,
             JSON.stringify(cleared));
 

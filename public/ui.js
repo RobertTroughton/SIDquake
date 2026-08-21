@@ -835,6 +835,24 @@ class UIController {
             if (el) el.addEventListener('click', fn);
         };
         on('sidQueueRun', () => this.runQueue());
+        const dest = document.getElementById('queueDestination');
+        if (dest) {
+            // showDirectoryPicker is Chromium-only, so the folder option is only
+            // offered where it exists; the zip is the answer everywhere else.
+            const folderOpt = dest.querySelector('option[value="folder"]');
+            if (folderOpt && typeof window.showDirectoryPicker !== 'function') folderOpt.remove();
+            try {
+                const saved = localStorage.getItem('sidquakeQueueDest');
+                if (saved && dest.querySelector(`option[value="${saved}"]`)) dest.value = saved;
+            } catch (e) { /* blocked */ }
+            dest.addEventListener('change', async () => {
+                try { localStorage.setItem('sidquakeQueueDest', dest.value); } catch (e) { /* blocked */ }
+                this._outputDir = null;
+                if (dest.value === 'folder') await this._pickOutputDir();
+                this._renderDestinationNote();
+            });
+            this._renderDestinationNote();
+        }
         on('sidQueueStop', () => { this._queueStop = true; });
         on('sidQueueClear', () => {
             this._queue = [];
@@ -843,6 +861,39 @@ class UIController {
             this._queueRecipe = null;
             this.renderQueue();
         });
+    }
+
+    /** Where a queue run should put its files. */
+    queueDestination() {
+        const el = document.getElementById('queueDestination');
+        return (el && el.value) || 'downloads';
+    }
+
+    async _pickOutputDir() {
+        try {
+            this._outputDir = await window.showDirectoryPicker({ mode: 'readwrite' });
+        } catch (e) {
+            // The user closed the picker, or the browser refused: fall back to
+            // the zip rather than silently exporting somewhere they did not ask.
+            this._outputDir = null;
+            const el = document.getElementById('queueDestination');
+            if (el) el.value = 'zip';
+        }
+    }
+
+    _renderDestinationNote() {
+        const note = document.getElementById('queueDestinationNote');
+        if (!note) return;
+        const where = this.queueDestination();
+        if (where === 'zip') {
+            note.textContent = 'One download at the end, with every file in it.';
+        } else if (where === 'folder') {
+            note.textContent = this._outputDir
+                ? `Writing into “${this._outputDir.name}”.`
+                : 'Choose the folder when the run starts.';
+        } else {
+            note.textContent = 'One download per tune.';
+        }
     }
 
     // Export every queued tune with the current settings. The visualizer choice
@@ -855,6 +906,16 @@ class UIController {
         this._queueStop = false;
         const wanted = this._lastVisualizerId;
         const recipe = this._queueRecipe || null;
+
+        // Collect what the run produces instead of downloading each file.
+        const where = this.queueDestination();
+        if (where === 'folder' && !this._outputDir) {
+            await this._pickOutputDir();
+            this._renderDestinationNote();
+        }
+        const collected = [];
+        if (where !== 'downloads') this._fileSink = (data, name) => collected.push({ data, name });
+
         this.renderQueue();
         try {
             for (const item of this._queue) {
@@ -883,10 +944,63 @@ class UIController {
                 this.renderQueue();
             }
         } finally {
+            this._fileSink = null;
             this._queueRunning = false;
             this._queueStop = false;
+            await this._deliverQueueFiles(collected);
             this.renderQueue();
         }
+    }
+
+    /**
+     * Hand over what a run collected: written into the chosen folder, or bundled
+     * into one zip. Anything that cannot be written falls back to a download, so
+     * a refused permission never loses a file the user has already waited for.
+     */
+    async _deliverQueueFiles(files) {
+        if (!files.length) return;
+        const dir = this._outputDir;
+        if (dir) {
+            const failed = [];
+            for (const f of files) {
+                try {
+                    const handle = await dir.getFileHandle(f.name, { create: true });
+                    const w = await handle.createWritable();
+                    await w.write(f.data);
+                    await w.close();
+                } catch (e) {
+                    failed.push(f);
+                }
+            }
+            if (!failed.length) {
+                this.showExportStatus(`${files.length} files written into “${dir.name}”.`, 'success');
+                return;
+            }
+            this.showExportStatus(
+                `${failed.length} of ${files.length} files could not be written into “${dir.name}” — `
+                + 'they are in your downloads instead.', 'warning');
+            for (const f of failed) this._downloadDirect(f.data, f.name);
+            return;
+        }
+
+        if (typeof window.makeZip !== 'function') {
+            for (const f of files) this._downloadDirect(f.data, f.name);
+            return;
+        }
+        this._downloadDirect(
+            window.makeZip(files.map(f => ({
+                name: f.name,
+                bytes: f.data instanceof Uint8Array ? f.data : new Uint8Array(f.data),
+            }))),
+            'sidquake-set.zip');
+        this.showExportStatus(`${files.length} files bundled into sidquake-set.zip.`, 'success');
+    }
+
+    /** downloadFile without the queue's diversion. */
+    _downloadDirect(data, filename) {
+        const sink = this._fileSink;
+        this._fileSink = null;
+        try { this.downloadFile(data, filename); } finally { this._fileSink = sink; }
     }
 
     // opts.autoplay: the tune was chosen by an explicit click (Random SID, an
@@ -4656,6 +4770,9 @@ class UIController {
     }
 
     downloadFile(data, filename) {
+        // A queue run diverts every file it produces - into a zip it builds, or
+        // straight into a folder the user picked - rather than 14 downloads.
+        if (this._fileSink) { this._fileSink(data, filename); return; }
         const blob = new Blob([data], { type: 'application/octet-stream' });
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');

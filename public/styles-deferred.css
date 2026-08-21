@@ -4785,6 +4785,18 @@
     border-color: var(--accent);
 }
 
+.sid-queue-where {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: var(--space-sm);
+    margin-top: var(--space-sm);
+}
+
+.sid-queue-where select {
+    width: auto;
+}
+
 .sid-queue-note {
     margin: var(--space-sm) 0 0;
     color: var(--text-muted);

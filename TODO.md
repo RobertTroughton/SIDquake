@@ -355,9 +355,14 @@ a human required between every blocking wait.
   the rest; "Export all with these settings" walks the queue, reporting per-tune
   state and noting any tune that had to fall back to a different player. The
   fade-out prompt is suppressed during a run so a batch cannot stall on a modal.
-- **Still open: choose an output directory.** Every file lands in the browser's
-  downloads folder. `showDirectoryPicker()` would fix it where supported, but it
-  is Chromium-only, so it needs a fallback (a zip) rather than a hard dependency.
+- **Done: choose where a set goes.** Downloads folder (as before), one zip, or a
+  folder picked with `showDirectoryPicker()` — that last option only appears where
+  the browser has it. The choice is remembered. A file that cannot be written into
+  the chosen folder falls back to a download rather than being lost after the user
+  has already waited for it. The zip is written by `public/zip-writer.js`: stored
+  entries, no dependency (an exomizer-crunched PRG is already compressed, so
+  deflate would buy nothing), covered by `scripts/test-zip-writer.js`. Recipes
+  written by the "with every PRG" switch go into the same place.
 - **The queue no longer re-measures a tune it has already measured.** Each export
   still blocks on the first scan of a tune it has never seen, but the persisted
   analysis cache (above) means a second run of the same set — or the same set
