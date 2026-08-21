@@ -1145,6 +1145,62 @@ async function loadSid(page, file) {
         check('And reserving everything is refused rather than ignored',
             respected.refused === true, JSON.stringify(respected));
 
+        // --- the text lines, as the C64 will draw them ------------------------
+        const textPreview = await page.evaluate(async () => {
+            const ui = window.uiController;
+            window.studioModal.activate('song');
+            const title = document.getElementById('sidTitle');
+            title.value = 'PREVIEW TEST';
+            title.dispatchEvent(new Event('input', { bubbles: true }));
+            await new Promise(r => setTimeout(r, 600));
+            await ui.renderTextPreview();
+
+            const row = document.getElementById('textPreviewRow');
+            const canvas = document.getElementById('textPreview');
+            const ctx = canvas.getContext('2d');
+            const px = ctx.getImageData(0, 0, canvas.width, canvas.height).data;
+            // Ink pixels per row of the title line, so "is anything drawn" and
+            // "is it centred" can both be answered.
+            let ink = 0, firstX = -1, lastX = -1;
+            const bg = [px[0], px[1], px[2]];
+            for (let y = 0; y < 8; y++) {
+                for (let x = 0; x < canvas.width; x++) {
+                    const o = (y * canvas.width + x) * 4;
+                    if (px[o] !== bg[0] || px[o + 1] !== bg[1] || px[o + 2] !== bg[2]) {
+                        ink++;
+                        if (firstX < 0 || x < firstX) firstX = x;
+                        if (x > lastX) lastX = x;
+                    }
+                }
+            }
+
+            // A title too long for 32 columns must say so.
+            title.value = 'A TITLE FAR TOO LONG FOR THIRTY TWO COLUMNS OF SCREEN';
+            title.dispatchEvent(new Event('input', { bubbles: true }));
+            await new Promise(r => setTimeout(r, 600));
+            await ui.renderTextPreview();
+            const warned = document.getElementById('textPreviewNote').textContent;
+
+            title.value = 'Lundiax';
+            title.dispatchEvent(new Event('input', { bubbles: true }));
+            return {
+                shown: !row.hidden,
+                size: `${canvas.width}x${canvas.height}`,
+                ink, firstX, lastX,
+                leftGap: firstX, rightGap: canvas.width - 1 - lastX,
+                warned,
+            };
+        });
+        check('The text lines are shown as the C64 will draw them',
+            textPreview.shown && textPreview.size === '256x24', JSON.stringify(textPreview));
+        check('With real glyphs on them', textPreview.ink > 50, `${textPreview.ink} ink pixels`);
+        // 32 columns, "PREVIEW TEST" is 12: centring leaves 10 columns each side.
+        check('And centred the way the export centres them',
+            Math.abs(textPreview.leftGap - textPreview.rightGap) <= 8,
+            `${textPreview.leftGap}px left, ${textPreview.rightGap}px right`);
+        check('A line too long for the screen says so, by the name on the field',
+            /^Title will not fit the 32 columns/i.test(textPreview.warned), textPreview.warned);
+
         // --- where it goes, before the export ---------------------------------
         const plan = await page.evaluate(async () => {
             const ui = window.uiController;

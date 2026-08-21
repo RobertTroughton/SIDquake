@@ -63,6 +63,7 @@ class UIController {
         this._planToken = 0;
         // Same guard for the VU-visibility check, which also runs per selection.
         this._vuToken = 0;
+        this._textPreviewToken = 0;
         this.hvscBrowserWindow = null;
         this.mainPlayer = null;
         this.elements = this.cacheElements();
@@ -618,6 +619,10 @@ class UIController {
         if (window.studioModal) window.studioModal.refreshHeader();
         this.updateMetadataCounts();
         this.checkForModifications();
+        // What these lines will look like on the C64. Debounced: it decodes a
+        // charset and repaints, and someone typing a title does it per keystroke.
+        clearTimeout(this._textPreviewTimer);
+        this._textPreviewTimer = setTimeout(() => this.renderTextPreview(), 200);
         if (window.studioModal) window.studioModal.queueRefresh();
     }
 
@@ -1522,6 +1527,9 @@ class UIController {
         // rather than making the user export to find out. Not awaited: it
         // fetches the player's reloc table, and the panels must not wait on it.
         this.renderPlacementPlan();
+        // The font and text colours come with the player, so the on-screen text
+        // changes with it.
+        this.renderTextPreview();
     }
 
     // What the user gets after Generate: the file, what it is, and how to run it.
@@ -4916,6 +4924,91 @@ class UIController {
             <p class="pp-note">${missedBank
                 ? 'This tune leaves no room in the bank you asked for, so a bank that works was chosen. '
                 : ''}A plan, not the finished file: the song data and anything you add still have to go in.</p>`;
+    }
+
+    /**
+     * The three metadata lines as the C64 will show them: the same case
+     * conversion, PETSCII substitution, 32-column centring and font the export
+     * applies, drawn with the selected charset. Typing a title with a character
+     * the machine has no glyph for, or one that will not fit, used to be
+     * invisible until the export.
+     */
+    async renderTextPreview() {
+        const row = document.getElementById('textPreviewRow');
+        const canvas = document.getElementById('textPreview');
+        const note = document.getElementById('textPreviewNote');
+        if (!row || !canvas) return;
+        const config = this.currentVisualizerConfig;
+        if (!this.sidHeader || !config || !this.prgExporter) { row.hidden = true; return; }
+
+        const token = ++this._textPreviewToken;
+        const cb = window.cacheBust || (s => s);
+        let charset = null, caseType;
+        try {
+            if (typeof FONT_DATA === 'undefined') await window.loadScript('font-data.js');
+            if (config.fontType) {
+                const idx = parseInt(this.getOptionValue('font'), 10) || 0;
+                caseType = await FONT_DATA.getFontCaseType(config.fontType, idx);
+                // null means the ROM charset: the player keeps its baked-in
+                // $d018 path, and we draw with the ROM glyphs too.
+                charset = await FONT_DATA.getFontData(config.fontType, idx);
+            }
+            if (!charset) {
+                if (typeof C64Fonts === 'undefined') await window.loadScript('c64fonts.js');
+                charset = C64Fonts && (caseType === 1 ? C64Fonts.lowercase : C64Fonts.uppercase);
+            }
+        } catch (e) {
+            row.hidden = true;
+            return;
+        }
+        if (token !== this._textPreviewToken || !charset) { row.hidden = true; return; }
+
+        const ex = this.prgExporter;
+        const lines = ['name', 'author', 'copyright'].map((f) => {
+            let str = this.sidHeader[f] || '';
+            if (typeof FONT_DATA !== 'undefined' && caseType !== undefined) {
+                str = FONT_DATA.convertTextForFont(str, caseType);
+            }
+            return ex.stringToPETSCII(ex.centerString(str, 32), 32);
+        });
+
+        const COLS = 32, CELL = 8;
+        canvas.width = COLS * CELL;
+        canvas.height = lines.length * CELL;
+        const pal = window.C64_PALETTE_RGB;
+        const bg = pal[parseInt(this.getOptionValue('backgroundColor'), 10) || 0] || pal[0];
+        const fg = pal[(parseInt(this.getOptionValue('textColor'), 10)) || 1] || pal[1];
+        const ctx = canvas.getContext('2d');
+        const img = ctx.createImageData(canvas.width, canvas.height);
+        for (let y = 0; y < canvas.height; y++) {
+            for (let x = 0; x < canvas.width; x++) {
+                const code = lines[Math.floor(y / CELL)][Math.floor(x / CELL)] & 0xff;
+                const byte = charset[code * 8 + (y % CELL)] || 0;
+                const on = byte & (0x80 >> (x % CELL));
+                const c = on ? fg : bg;
+                const o = (y * canvas.width + x) * 4;
+                img.data[o] = c[0]; img.data[o + 1] = c[1]; img.data[o + 2] = c[2]; img.data[o + 3] = 255;
+            }
+        }
+        ctx.putImageData(img, 0, 0);
+        row.hidden = false;
+
+        if (note) {
+            // Say when a line was trimmed to fit, since the preview alone shows
+            // the result without saying why.
+            const tooLong = [['name', 'Title'], ['author', 'Author'], ['copyright', 'Copyright']]
+                .filter(([f]) => (this.sidHeader[f] || '').trim().length > 32)
+                .map(([, label]) => label);
+            note.textContent = tooLong.length
+                ? `${tooLong.join(' and ')} will not fit the 32 columns and ${tooLong.length > 1 ? 'are' : 'is'} cut short.`
+                : '';
+        }
+    }
+
+    /** An option's current value, from the live control. */
+    getOptionValue(id) {
+        const el = document.getElementById(id);
+        return el ? el.value : '';
     }
 
     renderMemoryMap(info, meta = {}) {

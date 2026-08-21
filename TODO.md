@@ -488,8 +488,12 @@ wish of both experienced musicians and the beginner alike.
   than quietly showing the user something the export will not produce.
 - **Live palette preview for custom fades**, not just the five presets — the
   presets already render through the real `getHeightColorTable` (`ui.js:1999`).
-- **A text-layout preview** of the three 32-column rows with real centring, font
-  case and PETSCII substitution applied.
+- **Done: a text-layout preview** of the three 32-column rows, drawn under the
+  metadata fields with the selected font's own charset and the same case
+  conversion, PETSCII substitution and centring the export applies — so it comes
+  from the exporter's own `centerString`/`stringToPETSCII` rather than a second
+  implementation that could disagree. It also says when a line is too long for
+  the 32 columns, naming the field the way the form does.
 
 ## Creative control gaps
 
