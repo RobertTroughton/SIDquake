@@ -248,6 +248,8 @@ toolchain, takes minutes).
   length scanners.
 - Docs: `docs/ARCHITECTURE.md`, `docs/EMBED.md`,
   `docs/CPU_CORES.md` (the shared 6510 decoder and its two bus adapters),
+  `docs/RESPONSIVE.md` (which media query answers which question, and why the
+  app asks about the pointer and the height as well as the width),
   `SIDPlayers/CODE_ONLY_GUIDE.md` (how a relocatable player is structured),
   `SIDPlayers/BAR_HEIGHT_METHODS.md` (the three bar-data methods). `TODO.md` is
   outstanding work only and is kept current.
