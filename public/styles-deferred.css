@@ -4482,3 +4482,95 @@
     background: var(--accent);
     color: var(--bg-primary);
 }
+
+/* ==========================================================================
+   Background analysis chip
+   --------------------------------------------------------------------------
+   The loop/length scan used to sit behind the full-screen busy overlay at the
+   end of the export. It now runs while the user configures, so it needs a
+   status that can be ignored: fixed to a corner, above the page but below any
+   modal, and dismissible.
+   ========================================================================== */
+.analysis-chip {
+    position: fixed;
+    right: 16px;
+    bottom: 16px;
+    z-index: 900;              /* under the modals (1000+), over the page */
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    max-width: min(360px, calc(100vw - 32px));
+    padding: 10px 12px;
+    background: var(--bg-elevated);
+    border: 1px solid var(--border-light);
+    border-left: 3px solid var(--accent);
+    border-radius: var(--radius-md);
+    box-shadow: var(--shadow-lg);
+    font-size: 0.85em;
+    color: var(--text-primary);
+}
+
+.analysis-chip[hidden] {
+    display: none;
+}
+
+.analysis-chip-spinner {
+    flex: 0 0 auto;
+    width: 14px;
+    height: 14px;
+    border: 2px solid var(--border-light);
+    border-top-color: var(--accent);
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+}
+
+.analysis-chip-text {
+    flex: 1 1 auto;
+    min-width: 0;
+}
+
+.analysis-chip-cancel {
+    flex: 0 0 auto;
+    width: 24px;
+    height: 24px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: transparent;
+    border: 1px solid var(--border-light);
+    border-radius: var(--radius-sm);
+    color: var(--text-secondary);
+    cursor: pointer;
+    font-size: 0.9em;
+    line-height: 1;
+    transition: color var(--transition-fast), border-color var(--transition-fast);
+}
+
+.analysis-chip-cancel:hover {
+    color: var(--text-primary);
+    border-color: var(--accent);
+}
+
+/* Done / failed states: the spinner stops and the accent edge changes, so a
+   glance says whether the length is available without reading the text. */
+.analysis-chip.is-done {
+    border-left-color: var(--success);
+}
+
+.analysis-chip.is-failed {
+    border-left-color: var(--text-muted);
+}
+
+.analysis-chip.is-done .analysis-chip-spinner,
+.analysis-chip.is-failed .analysis-chip-spinner {
+    display: none;
+}
+
+@media (max-width: 720px) {
+    .analysis-chip {
+        right: 10px;
+        left: 10px;
+        bottom: 10px;
+        max-width: none;
+    }
+}

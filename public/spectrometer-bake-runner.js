@@ -217,6 +217,14 @@ export async function renderAndBakeSpectrometer(sidBytes, options = {}) {
     return pickBakeResult(await fallbackCore.renderAndBake(sidBytes, opts));
 }
 
+// Does the analysis run off the main thread here? Callers that want to kick a
+// scan off in the BACKGROUND have to know: on the fallback path the render runs
+// on the page, so backgrounding it would freeze the UI it is meant to leave
+// responsive. Resolves the worker probe, so it is safe to await early.
+export async function analysisRunsOffMainThread() {
+    return !!(await getWorker());
+}
+
 // Analysis-only entry point (#2/#3): the tune's loop / length summary, with no
 // vector quantization. The heavy render is cached, so the later export bake for the
 // same tune/bars/engine reuses it.

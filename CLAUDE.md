@@ -209,8 +209,10 @@ timer routines and diffing memory to check where the play-time clock lands;
 `scripts/test-logo-fit.js` covers the logo placement maths. Almost nothing
 covers the browser UI — the exceptions are `scripts/mobile-layout-check.js`
 (HVSC and Studio modals at phone widths) and `scripts/logo-drop-check.js`
-(picking a logo lands in the input the exporter reads); neither is in `npm test`,
-both need Playwright, which isn't a dependency. Also run `scripts/build-players.sh
+(picking a logo lands in the input the exporter reads) and
+`scripts/studio-smoke-check.js` (load a SID -> Studio -> background analysis ->
+export manifest, and the sticky visualizer choice); none are in `npm test`, all
+need Playwright, which isn't a dependency (`npm install --no-save playwright`). Also run `scripts/build-players.sh
 --check` after touching `SIDPlayers/`, and `scripts/cpu-crosscheck/run.sh` after
 touching the 6510 decoder or either bus adapter (not in `npm test`: needs a C++
 toolchain, takes minutes).

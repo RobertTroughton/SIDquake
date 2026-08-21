@@ -16,9 +16,9 @@ source; where a claim still needs a browser to confirm it, it says so.
 Ranked by value against effort, not by section order. Each line names the section
 that holds the detail.
 
-1. Background the loop/length analysis from load with a corner status chip, and
-   turn the Song tab's row into "show the song length on screen?" *(Analysis
-   timing)*
+1. Turn the Song tab's looping panel into a song-length row: measured / measuring
+   / not measured, with [Measure] and a manual `m:ss` entry, and reframe the
+   question as "show the song length on screen?" *(Analysis timing)*
 2. Move Generate PRG onto every tab; collapse Technical Details; move the frame
    rate, stored bars and analysis engine behind an Advanced disclosure; restore
    the scan window, min-loop and bank override into it. *(Progressive disclosure)*
@@ -82,14 +82,12 @@ tab: **"Show the song length (MM:SS) on screen?"**, already answered by the time
 they get there. For spectrometer players the bake is simply ready when they reach
 Export, and no prompt is needed at all.
 
-- **Status chip, not an overlay.** Progress already flows back per job
-  (`spectrometer-bake-runner.js:100-112`); it just needs somewhere quiet to land.
-  Keep the existing full-screen overlay for one case only: Generate pressed while
-  the job is still running, where blocking is honest.
-- **Cancel on tune change, on dismiss, and on an engine-setting change.** Hold the
-  `AbortController` on the controller so `processFile` can abort the previous
-  tune's job; changing `bakeEngine` already invalidates the result (`ui.js:1518`)
-  and should abort too.
+- **Done: the scan runs in the background** from the moment the Studio opens,
+  reporting in a corner chip (`#analysisChip`), cancellable from the chip, and
+  aborted on a tune change or an engine-setting change. The full-screen overlay
+  now appears only when Generate is pressed before the scan has finished, and it
+  adopts the running job rather than starting a second render. A user who stops
+  the scan is not asked again at Generate.
 - **Reframe the Song tab.** Replace "Song end not analysed yet…"
   (`index.html:298`) with a live row: `Song length — analysing… 1:20` →
   `Song length — 3:42 · [x] show on screen` → `Song length — not measured ·
@@ -114,25 +112,15 @@ back per job id, and the job table is on a global so `ui.js` and `prg-builder.js
 share one worker and one render cache. Backgrounding needs no architectural
 change. The gaps:
 
-- **Nothing serialises jobs.** `self.onmessage` is `async` and starts each `run`
-  immediately (`spectrometer-bake-worker.js:71`), while `createBakeCore` holds a
-  single engine and a single `cache.rows` slot (`spectrometer-bake-core.js:276`).
-  Two overlapping runs would clobber each other's cache. Keep one in-flight
-  analysis per page: Generate must `await` the running job, not start a second.
-  Today the FFT branch (`ui.js:2966`) calls `runTuneAnalysis` unconditionally.
-- **A stale job must not write into the new tune's state.** `runTuneAnalysis`
-  assigns `this.tuneAnalysis` directly; a background job that resolves after
-  another SID has loaded would poison it. Use a request token, as
-  `loadVisualizerOptions` already does with `_optionsRequest` (`ui.js:1150`).
-- **A late result has to refresh the UI it feeds** — the Song-tab length row, the
-  Song Looping status, and the studio footer/manifest — since nothing is waiting
-  on it any more.
-- **Don't background on the main-thread fallback path.** When Workers or dynamic
-  `import()` inside one are unavailable, `spectrometer-bake-runner.js` runs the
-  core on the page; backgrounding there would jank the UI it is meant to keep
-  responsive. Fall back to running on demand.
-- Rendering while the tune plays is two cores' worth of work; check it on a phone
-  before making it the default there.
+- **Still open: the worker does not serialise jobs.** `self.onmessage` is `async`
+  and starts each `run` immediately (`spectrometer-bake-worker.js:71`), while
+  `createBakeCore` holds a single engine and a single `cache.rows` slot. `ui.js`
+  now keeps one in-flight analysis per page (`_ensureAnalysis`), so nothing
+  overlaps today, but the worker would still happily run two if asked. Queue them
+  worker-side rather than relying on the caller.
+- **Still open: rendering while the tune plays** is two cores' worth of work.
+  Check it on a phone before backgrounding there — the Studio does not auto-open
+  on phones once that change lands, which already limits the exposure.
 
 **Caching, which matters as much as the timing.** `createBakeCore` keeps exactly
 one render slot (`spectrometer-bake-core.js:276-300`), in memory only. So:

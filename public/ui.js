@@ -38,6 +38,16 @@ class UIController {
         // the user has decided, so the one-time fade-out prompt never nags.
         this._loopChoiceTouched = false;   // user set the toggle themselves
         this._loopChoiceAsked = false;     // fade-out prompt already shown for this SID
+        // The single in-flight loop/length scan. Both the background scan started
+        // on load and an export that needs the result go through _ensureAnalysis,
+        // so a Generate pressed mid-scan adopts the running job - two concurrent
+        // runs would fight over the bake core's one shared render cache.
+        this._analysisJob = null;
+        // Bumped on every SID load. A scan carries the token it started with, so a
+        // job that finishes after the user moved on cannot write its result into
+        // the new tune's state.
+        this._analysisToken = 0;
+        this._analysisCancelled = false;   // last scan ended because the user stopped it
         this.selectedVisualizer = null;
         this.visualizerConfig = null;
         // Sticky image selections (Logo / Bitmap) so a user's chosen image
@@ -688,6 +698,14 @@ class UIController {
         this.hasModifications = false;
         this.elements.exportModifiedSIDButton.disabled = true;
 
+        // A scan for the previous tune is now pointless, and its result must not
+        // land on this one: bump the token first, then stop it.
+        this._analysisToken++;
+        this.cancelAnalysis();
+        this._hideAnalysisChip();
+        // Stopping the previous tune's scan is not a decision about this one.
+        this._analysisCancelled = false;
+
         this.showBusy('Loading SID File', 'Initializing...');
         this.hideMessages();
 
@@ -749,11 +767,8 @@ class UIController {
 
             this.showExportSection();
 
-            // The loop/length analysis is NOT run here - it renders the tune and can be
-            // slow even for simple SIDs, which is annoying on every load. It runs
-            // on-demand instead (the first time a spectrometer visualizer needs it) and
-            // is cached, so it's paid for only when it's actually used. See
-            // runTuneAnalysis / refreshBakeMemoryReadout.
+            // Cleared for the new tune; startBackgroundAnalysis below refills it
+            // while the user is choosing a visualizer.
             this.tuneAnalysis = null;
 
             // New SID: the forced-loop decision belongs to the previous tune.
@@ -767,6 +782,10 @@ class UIController {
 
             // Everything from here on happens in the Studio modal.
             if (window.studioModal) window.studioModal.openForNewFile();
+
+            // Find the loop / end point in the background, so it is ready by the
+            // time the user reaches Export instead of stopping them there.
+            this.startBackgroundAnalysis();
 
             this.showModal(`Successfully analyzed: ${file.name}`, true);
         } catch (error) {
@@ -1566,10 +1585,16 @@ class UIController {
             cur.bakeEngine = eng.value === 'resid' ? 'resid' : 'fp';
             this._advanced = cur;
             // The rendered rows are engine-specific, so a previous analysis of this
-            // tune no longer describes what an export would bake. Drop it; the next
-            // analyse/export re-renders on the newly chosen engine.
+            // tune no longer describes what an export would bake - and a scan still
+            // running is rendering with the old engine. Drop both, then rescan in
+            // the background on the newly chosen one.
+            this._analysisToken++;
+            this.cancelAnalysis();
+            this._hideAnalysisChip();
             this.tuneAnalysis = null;
+            this._analysisCancelled = false;
             save();
+            this.startBackgroundAnalysis();
         });
     }
 
@@ -3018,17 +3043,25 @@ class UIController {
             // Silent analyse under the busy overlay - no export modal. Cancellable:
             // the spectrometer needs the bake, so cancelling aborts the whole export
             // (the user can then change the logo/settings and try again).
-            const ac = new AbortController();
-            this.showBusy('Analysing SID Music', 'Preparing…', () => ac.abort());
-            try {
-                await this.runTuneAnalysis({ signal: ac.signal, onProgress: this._analysisProgressCallback(
-                    'Analysing SID Music',
-                    'Deep-analysing the SID tune for a better visualisation. This finishes early ' +
-                    'as soon as the tune\'s loop is found, but can take several minutes on long ' +
-                    'tunes — or cancel to change settings first.') });
-            } finally { this.hideBusy(); }
-            // User cancelled: bail out of the export silently (no error, nothing built).
-            if (ac.signal.aborted) return;
+            if (!this.tuneAnalysis) {
+                // Usually already done or well under way - the scan started when the
+                // SID loaded. Adopt that job rather than starting a second render:
+                // the bake core keeps one shared cache, so two would fight.
+                this._hideAnalysisChip();
+                this.showBusy('Analysing SID Music', 'Preparing…', () => this.cancelAnalysis());
+                try {
+                    await this._ensureAnalysis({
+                        holdOnLoopFound: true,
+                        onProgress: this._analysisProgressCallback(
+                            'Analysing SID Music',
+                            'Deep-analysing the SID tune for a better visualisation. This finishes early ' +
+                            'as soon as the tune\'s loop is found, but can take several minutes on long ' +
+                            'tunes — or cancel to change settings first.'),
+                    });
+                } finally { this.hideBusy(); }
+                // User cancelled: bail out of the export silently (no error, nothing built).
+                if (this._analysisCancelled) return;
+            }
             const a = this.tuneAnalysis;
             if (!a) {
                 this.showModal('Could not analyse this tune for the spectrometer. Try a different visualizer.', false);
@@ -3053,25 +3086,26 @@ class UIController {
                 // export would re-render (and could resolve a different loop).
                 bakeEngine: adv.bakeEngine,
             };
-        } else if (!multiSong && !this.tuneAnalysis) {
+        } else if (!multiSong && !this.tuneAnalysis && !this._analysisCancelled) {
             // Every visualizer benefits from knowing how the song ends: players with
             // a timer show the length, and a detected FADE-OUT is what unlocks the
             // Song Looping option (restart the tune when it ends) - which works on
-            // all players. Finding it means rendering the tune, but the scan finishes
-            // early once the loop (or the fade to silence) is found and is
-            // cancellable, so calculate it by default rather than prompting.
+            // all players. The scan normally started when the SID loaded, so by now
+            // it has usually finished; this only blocks when it hasn't.
             //
-            // Cancellable: the length/loop info is a nice-to-have, so cancelling just
-            // drops it and the export continues with no length and no forced loop
-            // (runTuneAnalysis leaves tuneAnalysis null on abort).
-            const ac = new AbortController();
-            this.showBusy('Finding song length', 'Preparing…', () => ac.abort());
+            // If the user already stopped it from the corner chip, that answer
+            // stands: export with no length rather than asking again here.
+            this._hideAnalysisChip();
+            this.showBusy('Finding song length', 'Preparing…', () => this.cancelAnalysis());
             try {
-                await this.runTuneAnalysis({ signal: ac.signal, onProgress: this._analysisProgressCallback(
-                    'Finding song length',
-                    'Analysing the SID to find its loop or end point. This finishes early as ' +
-                    'soon as the loop is found, but can take several minutes on long tunes ' +
-                    '— or cancel to export without length/loop info.') });
+                await this._ensureAnalysis({
+                    holdOnLoopFound: true,
+                    onProgress: this._analysisProgressCallback(
+                        'Finding song length',
+                        'Analysing the SID to find its loop or end point. This finishes early as ' +
+                        'soon as the loop is found, but can take several minutes on long tunes ' +
+                        '— or cancel to export without length/loop info.'),
+                });
             }
             finally { this.hideBusy(); }
         }
@@ -3893,11 +3927,172 @@ class UIController {
         }
     }
 
-    // Render + loop-detect the tune's DEFAULT song once (on load), so the spectrometer
-    // memory readout and the baked song-length are ready with no separate Analyse
-    // button. Uses the default subtune (startSong-1), never a hard-coded song 0.
+    // ---------------------------------------------------------------------
+    // Loop/length analysis: one job, started early, joined later
+    // ---------------------------------------------------------------------
+
+    /** Is a loop/length scan running right now? */
+    get analysisRunning() { return !!this._analysisJob; }
+
+    // The single in-flight scan for the loaded tune. A caller that needs the
+    // result (an export) adopts the running job and receives its progress; the
+    // load path just starts it and ignores the promise. Resolves to the analysis
+    // or null (cancelled / failed / superseded).
+    _ensureAnalysis({ onProgress = null, holdOnLoopFound = false } = {}) {
+        if (this.tuneAnalysis) return Promise.resolve(this.tuneAnalysis);
+        if (this._analysisJob) {
+            const job = this._analysisJob;
+            if (onProgress) {
+                job.listeners.push(onProgress);
+                // Catch the new listener up, so an overlay opened mid-scan shows
+                // the current position instead of "Preparing…" until the next tick.
+                if (job.last) { try { onProgress(...job.last); } catch (e) { /* listener threw */ } }
+            }
+            return job.promise;
+        }
+        const ac = new AbortController();
+        const job = { ac, listeners: onProgress ? [onProgress] : [], last: null };
+        const fanout = (label, frac, extra) => {
+            job.last = [label, frac, extra];
+            for (const fn of job.listeners) {
+                try { fn(label, frac, extra); } catch (e) { /* listener threw; keep scanning */ }
+            }
+        };
+        this._analysisCancelled = false;
+        job.promise = this.runTuneAnalysis({ signal: ac.signal, onProgress: fanout, holdOnLoopFound })
+            .finally(() => { if (this._analysisJob === job) this._analysisJob = null; });
+        this._analysisJob = job;
+        return job.promise;
+    }
+
+    /** Stop the running scan, if any. The tune still exports, just without a length. */
+    cancelAnalysis() {
+        if (!this._analysisJob) return;
+        this._analysisCancelled = true;
+        this._analysisJob.ac.abort();
+    }
+
+    // Start the scan when the SID loads and report it in the corner chip, so the
+    // wait overlaps with choosing a visualizer instead of landing on the Generate
+    // button. Not started on the main-thread fallback path: there the render runs
+    // on the page and would freeze the UI it exists to keep usable.
+    async startBackgroundAnalysis() {
+        if (this.tuneAnalysis || this._analysisJob || !this.sidHeader) return;
+        // Only once the user is actually heading for an export. Someone who loaded
+        // a tune to listen to it should not pay for the engine WASM and a
+        // full-tune render they will never use; the Studio opening is the signal
+        // that they will. studio-modal.js calls this again from open().
+        if (!window.studioModal || !window.studioModal.isOpen) return;
+        const token = this._analysisToken;
+        const cb = window.cacheBust || (s => s);
+        let offMainThread = false;
+        try {
+            const { analysisRunsOffMainThread } = await import(cb('./spectrometer-bake-runner.js'));
+            offMainThread = await analysisRunsOffMainThread();
+        } catch (e) { /* no worker, no background scan */ }
+        // The probe is async - another SID may have loaded, or an export may have
+        // started the scan itself, while it resolved.
+        if (!offMainThread || token !== this._analysisToken) return;
+        if (this.tuneAnalysis || this._analysisJob) return;
+
+        this._showAnalysisChip('Analysing tune…');
+        this._ensureAnalysis({
+            onProgress: (label, frac, extra) => {
+                if (token !== this._analysisToken) return;
+                this._showAnalysisChip(this._analysisChipText(extra));
+            },
+        }).then(() => {
+            if (token !== this._analysisToken) return;
+            this._finishAnalysisChip();
+            this.updateSongLoopStatus();
+            if (window.studioModal) window.studioModal.queueRefresh();
+        });
+    }
+
+    _analysisChipText(extra) {
+        if (extra && extra.loopFound) return 'Loop found';
+        // extra.seconds counts the doubled search window, same as the overlay.
+        if (extra && extra.seconds != null) return `Analysing tune… ${this._mmss(extra.seconds / 2)} scanned`;
+        return 'Analysing tune…';
+    }
+
+    _showAnalysisChip(text) {
+        const chip = document.getElementById('analysisChip');
+        if (!chip) return;
+        chip.hidden = false;
+        chip.classList.remove('is-done', 'is-failed');
+        clearTimeout(this._analysisChipTimer);
+        const label = document.getElementById('analysisChipText');
+        if (label) label.textContent = text;
+        this._announceAnalysis(text);
+        if (!this._analysisChipWired) {
+            this._analysisChipWired = true;
+            const cancel = document.getElementById('analysisChipCancel');
+            if (cancel) cancel.addEventListener('click', () => {
+                this.cancelAnalysis();
+                this._hideAnalysisChip();
+            });
+        }
+    }
+
+    // The counter moves several times a second; feeding every tick to a live
+    // region makes a screen reader unusable, so announce on a slow throttle and
+    // force the final outcome through.
+    _announceAnalysis(text, force = false) {
+        const now = Date.now();
+        if (!force && now - (this._lastAnalysisAnnounce || 0) < 10000) return;
+        this._lastAnalysisAnnounce = now;
+        const el = document.getElementById('analysisChipAnnounce');
+        if (el) el.textContent = text;
+    }
+
+    _finishAnalysisChip() {
+        const chip = document.getElementById('analysisChip');
+        if (!chip || chip.hidden) return;
+        const label = document.getElementById('analysisChipText');
+        const a = this.tuneAnalysis;
+        let msg;
+        if (a) {
+            chip.classList.add('is-done');
+            const len = this._mmss(a.looped ? a.storedSeconds : (a.loopStartSeconds || a.storedSeconds));
+            msg = a.looped ? `Song length ${len} — loops`
+                : a.fadedOut ? `Song length ${len} — fades out`
+                    : `Analysed — ${len}`;
+        } else {
+            chip.classList.add('is-failed');
+            msg = this._analysisCancelled
+                ? 'Stopped — the export just won\'t show a song length'
+                : 'Couldn\'t work out the song length';
+        }
+        if (label) label.textContent = msg;
+        this._announceAnalysis(msg, true);
+        // The outcome also lands on the Song tab, so the chip gets out of the way.
+        clearTimeout(this._analysisChipTimer);
+        this._analysisChipTimer = setTimeout(() => this._hideAnalysisChip(), 8000);
+    }
+
+    _hideAnalysisChip() {
+        clearTimeout(this._analysisChipTimer);
+        const chip = document.getElementById('analysisChip');
+        if (!chip) return;
+        chip.hidden = true;
+        chip.classList.remove('is-done', 'is-failed');
+    }
+
+    // Render + loop-detect the tune's DEFAULT song, so the spectrometer memory
+    // readout and the baked song-length are ready with no separate Analyse button.
+    // Uses the default subtune (startSong-1), never a hard-coded song 0.
     // Fully guarded: any failure leaves tuneAnalysis null and never blocks the load.
+    //
+    // Call _ensureAnalysis rather than this directly - it owns the single in-flight
+    // job and the abort plumbing.
     async runTuneAnalysis(opts = {}) {
+        // The scan can outlive the tune it was started for (it now runs in the
+        // background). Carry the token it began with and only publish a result
+        // that still belongs to the loaded SID.
+        const token = this._analysisToken;
+        const mine = () => token === this._analysisToken;
+
         this.tuneAnalysis = null;
         if (!this.sidHeader) return null;
         let sidBytes = null;
@@ -3924,7 +4119,7 @@ class UIController {
         const cb = window.cacheBust || (s => s);
         try {
             const { analyzeSpectrometer } = await import(cb('./spectrometer-bake-runner.js'));
-            this.tuneAnalysis = await analyzeSpectrometer(sidBytes, {
+            const result = await analyzeSpectrometer(sidBytes, {
                 subtune: defaultSong, numBars: 40, maxHeight: 111,
                 maxSeconds: Math.max(30, maxLoopSeconds * 2),
                 minLoopSeconds,
@@ -3935,19 +4130,24 @@ class UIController {
                 onProgress,
                 signal: opts.signal,
             });
-            // The scan stopped early on a confirmed loop: without a pause the busy
+            // Another SID was loaded while this ran - the result describes a tune
+            // that is no longer open, so drop it rather than publish it.
+            if (!mine()) return null;
+            this.tuneAnalysis = result;
+            // The scan stopped early on a confirmed loop: without a pause a blocking
             // overlay closes the same instant the message appears, and the early
             // exit just looks like the progress broke. Give it a moment to be read.
-            if (loopFoundEarly && this.tuneAnalysis) {
+            // Only worth it when something is actually showing the message.
+            if (loopFoundEarly && this.tuneAnalysis && opts.holdOnLoopFound) {
                 await new Promise(resolve => setTimeout(resolve, 1500));
             }
         } catch (e) {
             // A user cancel (AbortError) is expected, not a failure - stay quiet and
             // just leave tuneAnalysis null; the caller checks signal.aborted to react.
             if (!(e && e.name === 'AbortError')) console.warn('Tune loop/length analysis failed:', e);
-            this.tuneAnalysis = null;
+            if (mine()) this.tuneAnalysis = null;
         }
-        return this.tuneAnalysis;
+        return mine() ? this.tuneAnalysis : null;
     }
 
     // Price each frame rate (50/25/16.66) against this tune's stored length and

@@ -85,6 +85,10 @@ class StudioModal {
         const close = document.getElementById('studioClose');
         if (close) close.focus();
         this.queueRefresh();
+        // Opening the Studio is the point the user is heading for an export, so
+        // start finding the tune's loop / end point now rather than at Generate.
+        // No-ops if it is already running, done, or the user stopped it.
+        this.ui?.startBackgroundAnalysis?.();
     }
 
     close() {
