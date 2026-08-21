@@ -1509,11 +1509,24 @@ async function loadSid(page, file) {
                 const input = document.getElementById('hvscSearchBar');
                 input.value = 'a';
                 input.dispatchEvent(new Event('input', { bubbles: true }));
-                await new Promise(r => setTimeout(r, 400));
-                return document.querySelectorAll('#fileList .file-item').length;
+
+                // Catch the first paint: the search is debounced, then the first
+                // chunk lands in the same turn and the rest over later frames.
+                // Sampling on a timer would count however many frames the timer
+                // happened to span.
+                const rows = () => document.querySelectorAll('#fileList .file-item').length;
+                // The previous query's rows are still up until the search runs,
+                // so wait for the count to CHANGE, not merely to be non-zero.
+                const before = rows();
+                for (let i = 0; i < 200; i++) {
+                    if (rows() !== before) return rows();
+                    await new Promise(r => setTimeout(r, 5));
+                }
+                return rows();
             });
             check('A broad search does not build every row up front',
-                first > 0 && first < 200, `${first} rows in the first paint`);
+                first > 0 && first < 500 && first % 60 === 0,
+                `${first} rows in the first paint, of a 500 cap`);
 
             const settled = await page.evaluate(async () => {
                 await new Promise(r => setTimeout(r, 1500));

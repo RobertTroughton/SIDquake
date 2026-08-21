@@ -206,6 +206,126 @@ export function analyzeShadow(module, sidBytes, opts) {
     };
 }
 
+/**
+ * How much of a tune the VU-meter bar methods can actually see.
+ *
+ * Both live methods claim a bar only for a voice with GATE=1, TEST=0 and a
+ * waveform selected - the same test `INC/spectrometer.asm`'s AnalyseSingleVoice
+ * applies. Some tunes drive the SID audibly without ever meeting it, so the
+ * bars sit empty while the music plays and nothing says why. (The open case is
+ * MUSICIANS/M/Mr_Mouse/Downhill_Rocks_Roll_the_Best.sid, whose first ~13.6 s
+ * runs with every voice's gate closed.)
+ *
+ * This is a warning, not a fix: the mechanism producing that audio is not
+ * understood yet (see TODO.md). Counting the frames no voice qualifies in at
+ * least makes the failure legible before the user exports.
+ *
+ * A frame with every gate closed is completely ordinary - gates close between
+ * notes - so the count alone means nothing: across the tunes in SID/ it runs
+ * from 26% to 95% on tunes whose bars are perfectly fine. What matters is a long
+ * *leading* stretch, and only when the tune is audible through it. So the lead-in
+ * is measured against the rendered audio: a tune that genuinely opens with
+ * silence is not a problem, and is not reported as one.
+ *
+ * @returns {{frames:number, quietFrames:number, leadingQuietFrames:number,
+ *            leadingSeconds:number, leadingAudible:boolean, quietFraction:number}}
+ */
+export function analyzeVuVisibility(module, sidBytes, opts) {
+    const api = makeApi(module);
+    const numChips = Math.min(Math.max(opts.numChips || 1, 1), MAX_SHADOW_CHIPS);
+    const frameHz = opts.frameHz || 50.1245;
+    const { initAddress, playAddress, loadAddress, subtune = 0, frames = 1500 } = opts;
+
+    const dataOffset = (sidBytes[6] << 8) | sidBytes[7];
+    const hdrLoad = (sidBytes[8] << 8) | sidBytes[9];
+    const musicStart = hdrLoad === 0 ? dataOffset + 2 : dataOffset;
+
+    api.cpuInit();
+    for (let i = musicStart; i < sidBytes.length; i++) {
+        api.wr((loadAddress + (i - musicStart)) & 0xffff, sidBytes[i]);
+    }
+    api.reset();
+    api.track(1);
+    api.setA(subtune); api.setX(subtune); api.setY(subtune);
+    api.exec(initAddress, 2000000);
+
+    // Control register per voice, per chip. Chips are $20 apart in $D400-$D7FF.
+    const controls = [];
+    for (let chip = 0; chip < numChips; chip++) {
+        const base = 0xD400 + chip * 0x20;
+        controls.push(base + 0x04, base + 0x0B, base + 0x12);
+    }
+
+    let ran = 0, quiet = 0, leading = 0, stillLeading = true;
+    for (let f = 0; f < frames; f++) {
+        if (api.exec(playAddress, 100000) === 0) break;
+        ran++;
+        let audible = false;
+        for (const addr of controls) {
+            const ctrl = api.rd(addr);
+            // bit 0 GATE, bit 3 TEST, bits 4-7 the waveform select.
+            if ((ctrl & 0x01) && !(ctrl & 0x08) && (ctrl & 0xF0)) { audible = true; break; }
+        }
+        if (audible) { stillLeading = false; continue; }
+        quiet++;
+        if (stillLeading) leading++;
+    }
+
+    const leadingSeconds = leading / frameHz;
+    return {
+        frames: ran,
+        quietFrames: quiet,
+        leadingQuietFrames: leading,
+        leadingSeconds,
+        // Only a lead-in the listener can actually hear is a defect. Rendering
+        // it costs a second or two of audio at most, and only when there is a
+        // lead-in worth asking about.
+        leadingAudible: leadingSeconds >= 1 && soundsDuring(module, sidBytes, subtune, leadingSeconds),
+        quietFraction: ran ? quiet / ran : 0,
+    };
+}
+
+/** Does the tune make a sound in its first `seconds`? */
+function soundsDuring(module, sidBytes, subtune, seconds) {
+    const SAMPLE_RATE = 22050;          // plenty to tell sound from silence
+    const SILENCE = 0.004;              // ~-48 dB, the same floor the bake uses
+    const cw = (n, r, a) => module.cwrap(n, r, a);
+    const api = {
+        init: cw('audio_init', null, ['number']),
+        load: cw('audio_load_sid', 'number', ['number', 'number']),
+        setSubtune: cw('audio_set_subtune', null, ['number']),
+        generate: cw('audio_generate', 'number', ['number', 'number']),
+        cleanup: cw('audio_cleanup', null, []),
+    };
+    let sidPtr = 0, bufPtr = 0;
+    try {
+        api.init(SAMPLE_RATE);
+        sidPtr = module._malloc(sidBytes.length);
+        module.HEAPU8.set(sidBytes, sidPtr);
+        if (api.load(sidPtr, sidBytes.length) < 0) return true;   // cannot tell: do not warn
+        if (subtune) api.setSubtune(subtune);
+        const CHUNK = 4096;
+        bufPtr = module._malloc(CHUNK * 2);
+        let left = Math.floor(seconds * SAMPLE_RATE);
+        while (left > 0) {
+            const want = Math.min(CHUNK, left);
+            const got = api.generate(bufPtr, want);
+            if (got <= 0) break;
+            const view = new Int16Array(module.HEAPU8.buffer, bufPtr, got);
+            for (let i = 0; i < got; i++) {
+                if (Math.abs(view[i] / 32768) >= SILENCE) return true;
+            }
+            left -= got;
+        }
+        return false;
+    } catch (e) {
+        return true;   // no measurement is not evidence of silence
+    } finally {
+        if (module._free) { if (bufPtr) module._free(bufPtr); if (sidPtr) module._free(sidPtr); }
+        try { api.cleanup(); } catch (e) { /* best-effort */ }
+    }
+}
+
 // Back-compat: just the order-consistency check.
 export function detectWriteOrder(module, sidBytes, opts) {
     const api = makeApi(module);

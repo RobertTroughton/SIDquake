@@ -5001,3 +5001,14 @@
     cursor: default;
     opacity: 0.6;
 }
+
+/* When the note-based bar methods cannot see a tune. */
+.method-vu-note {
+    margin: var(--space-sm) 0 0;
+    padding: 8px 10px;
+    border-left: 3px solid var(--warning);
+    background: rgba(232, 168, 56, 0.08);
+    color: var(--text-secondary);
+    font-size: 0.85em;
+    line-height: 1.5;
+}

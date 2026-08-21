@@ -61,6 +61,8 @@ class UIController {
         // Only the newest placement preview is shown; a user can change player
         // faster than the placement runs.
         this._planToken = 0;
+        // Same guard for the VU-visibility check, which also runs per selection.
+        this._vuToken = 0;
         this.hvscBrowserWindow = null;
         this.mainPlayer = null;
         this.elements = this.cacheElements();
@@ -1682,6 +1684,10 @@ class UIController {
             const methodHTML = this.createMethodPanelHTML(visualizer);
             methodMount.innerHTML = methodHTML
                 ? this._wrapOptionsPanel(`<div class="option-group">${methodHTML}</div>`) : '';
+            // The bars-from-notes methods can be blind to a tune; say so here
+            // rather than in the exported file. Not awaited - it runs the 6510
+            // over 1,200 frames.
+            if (methodHTML) this.checkVuVisibility();
             if (methodFold) {
                 methodFold.hidden = !methodHTML;
                 const cur = document.getElementById('methodFoldCurrent');
@@ -2597,7 +2603,55 @@ class UIController {
                 <ul class="mc-list">${rows}</ul>
             </button>`;
         }).join('');
-        return `<div class="method-cards">${html}</div>`;
+        return `<div class="method-cards">${html}</div>`
+            + '<p class="method-vu-note" id="methodVuNote" hidden></p>';
+    }
+
+    /**
+     * Both live methods claim a bar only for a voice with the gate open and a
+     * waveform selected. Some tunes drive the SID audibly without ever meeting
+     * that test, so the bars sit empty while the music plays. Say so on the
+     * picker rather than letting someone find out from the exported file.
+     *
+     * The FFT method reads the rendered audio, so it is unaffected - which makes
+     * it the answer whenever this fires.
+     */
+    async checkVuVisibility() {
+        const note = document.getElementById('methodVuNote');
+        if (!note) return;
+        note.hidden = true;
+        const h = this.sidHeader;
+        if (!h || !this.analyzer || !this.analyzer.Module) return;
+        const token = ++this._vuToken;
+        let res;
+        try {
+            const cb = window.cacheBust || (s => s);
+            const { analyzeVuVisibility } = await import(cb('./spectrometer-shadow-detect.js'));
+            const sidBytes = this.analyzer.createModifiedSID();
+            if (!sidBytes) return;
+            res = analyzeVuVisibility(this.analyzer.Module, sidBytes, {
+                initAddress: h.initAddress,
+                playAddress: h.playAddress,
+                loadAddress: h.loadAddress,
+                subtune: Math.max(0, (h.startSong || 1) - 1),
+                numChips: this.analysisResults?.sidChipCount || 1,
+                frames: 1200,
+            });
+        } catch (e) {
+            return;   // a warning that cannot be worked out is simply not shown
+        }
+        if (token !== this._vuToken || !res || !res.frames) return;
+
+        // Only a long leading stretch the listener can actually hear. Frames with
+        // every gate closed are ordinary - across the tunes in SID/ they run from
+        // 26% to 95% on tunes whose bars are fine - and a tune that genuinely
+        // opens with silence has nothing wrong with it either.
+        if (res.leadingSeconds < 3 || !res.leadingAudible) return;
+
+        note.hidden = false;
+        note.textContent = `Heads up: this tune plays its first ${this._mmss(res.leadingSeconds)} `
+            + 'without opening a note the way the live methods look for, so their bars will be '
+            + 'empty over that stretch. Best looking reads the sound itself and is unaffected.';
     }
 
     async createLayoutSelectorHTML(visualizer, config) {

@@ -624,13 +624,25 @@ model is simply the wrong model and bars could be driven from the envelope inste
 Zero ⇒ the sound comes from somewhere else entirely and the search reopens.
 
 Whatever the cause, the user-visible outcome (music playing, bars empty) is wrong.
-Until a real fix is known, at least make the failure legible:
-- During analysis, count frames with no audibly-active voice (the emulator glue in
-  `spectrometer-shadow-detect.js` already does load/init/step).
-- If a long leading stretch — or a large fraction — of the tune has none, flag it on
-  the VU-meter cards in the method picker: "the bars will be empty for the first
-  N seconds of this tune; Spectrometer reads the audio directly."
-- Spectrometer is unaffected (it FFTs rendered audio), so it stays the recommendation.
+The failure is at least legible now. `analyzeVuVisibility` in
+`spectrometer-shadow-detect.js` steps the tune on the 6510, applies the player's
+own GATE/TEST/waveform test per frame, and the method picker warns when a long
+*leading* stretch has nothing to draw. Two things it deliberately does not key on:
+
+- **The raw count of closed-gate frames.** Gates close between notes, so it is
+  ordinary — across the 67 tunes in `SID/` it runs from 26% to 95% on tunes whose
+  bars are fine. Using it would have warned on half the collection.
+- **A silent intro.** The lead-in is measured against the rendered audio, so a
+  tune that genuinely opens with silence is not reported.
+
+Three of those 67 tunes trip it — `mrmouse-downhill` (13.6 s), `toggle-fireflies`
+(10.0 s) and `lukhash-codeveronica` (3.6 s) — and all three really are audible
+through the stretch (rms 0.011–0.031, against ~0.020 for an ordinary tune), so
+they are the same defect rather than false alarms. `scripts/test-vu-visibility.js`
+drives the real 6510 over `SID/` and holds that line.
+
+Spectrometer is unaffected (it FFTs rendered audio), so it stays the
+recommendation, and the warning says so. **The underlying bug is still open.**
 
 ## Search / product
 - **Search relevance ranking** — results follow the Name/Year column sort. Add a "Relevance" sort mode (title/author-prefix weighting) so ranking doesn't fight the column sort. (Diacritic folding + true total count are done.)
