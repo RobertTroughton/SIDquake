@@ -1306,9 +1306,12 @@
     /* Pin to a definite width (never content-driven) so the browser stays the
        same size whether a folder holds sub-folders or tunes. Shrinks only on
        viewports narrower than the modal + its 20px overlay padding. */
-    width: min(780px, calc(100vw - 40px));
-    height: 90vh;
-    max-height: 650px;
+    /* Tall and wide enough to be a listing rather than a peephole: the height
+       cap used to be a flat 650px, which threw away most of a laptop's screen
+       and left three tunes visible out of a search's several hundred. */
+    width: min(1100px, calc(100vw - 40px));
+    height: 92vh;
+    max-height: 900px;
     display: flex;
     flex-direction: column;
     overflow: hidden;
@@ -1358,8 +1361,12 @@
 .browser-container {
     background: var(--bg-secondary);
     border-radius: var(--radius-sm);
+    /* Capped: the standalone page has no modal around it, so an uncapped
+       width stretched each row across the whole monitor and left a tune's
+       name and its year a screen apart. */
     width: 100%;
-    height: 600px;
+    max-width: 1100px;
+    height: min(900px, calc(100dvh - 40px));
     display: flex;
     flex-direction: column;
     overflow: hidden;
@@ -1607,6 +1614,11 @@
 
 .file-list {
     flex: 1;
+    /* The list is the only flexible child of a column of fixed-height chrome,
+       so it absorbs the whole shortfall on a short viewport - down to zero
+       rows, which reads as "no results" rather than "no room". Keep a few rows
+       always: the chrome below can scroll out of the way instead. */
+    min-height: 8rem;
     overflow-y: auto;
     background: var(--bg-primary);
     user-select: none;
@@ -1926,12 +1938,19 @@
     background: var(--text-muted);
 }
 
-/* ---------- narrow screens: fullscreen, info panel below the list ----------
+/* ---------- narrow or short screens: fullscreen, info panel below the list --
    The info panel's 382px minimum is wider than a phone, and the file panel is
    allowed to shrink, so side by side the file list collapses to zero width and
-   the listing renders invisibly. Stack them instead. */
+   the listing renders invisibly. Stack them instead.
 
-@media (max-width: 720px) {
+   Short viewports need the same treatment for the same reason turned ninety
+   degrees. A phone in landscape is ~850px wide and ~390px tall: too wide for a
+   width query, far too short for a floating 900px box whose fixed chrome alone
+   is taller than the screen. That left the list with no height at all - the
+   search found tunes and showed none of them. Browser zoom at 200% lands in
+   the same place. */
+
+@media (max-width: 720px), (max-height: 560px) {
     .hvsc-modal {
         padding: 0;
     }
@@ -1955,7 +1974,10 @@
     .sid-info-panel {
         width: auto;
         min-width: 0;
-        max-height: 40%;
+        /* Capped in pixels as well as in percent: on a tall phone 40% was
+           380px of details pushing the listing down to three rows the moment
+           you touched a tune. */
+        max-height: min(40%, 220px);
         border-left: none;
         border-top: 1px solid var(--border);
     }
@@ -2026,6 +2048,69 @@
     }
 
     .sid-info-panel:not(.has-info) {
+        display: none;
+    }
+}
+
+/* ---------- a phone held sideways ----------
+   ~390px of height for a browser whose chrome alone wants more than that. The
+   rules above already dropped everything inert; what is left has to give up
+   its padding and its second lines. Nothing here removes information: the
+   heading is decoration the search box explains, and the folder path is on
+   every search result anyway. */
+
+@media (max-height: 560px) and (orientation: landscape) {
+    .browser-title {
+        display: none;
+    }
+
+    .browser-header {
+        padding: 8px 10px;
+    }
+
+    .status-bar {
+        padding: 3px 12px;
+    }
+
+    .hvsc-attribution {
+        padding: 3px 12px 4px;
+    }
+
+    /* Wide enough for one row, so the footer stops spending a line on the
+       path and the buttons come back up beside it. */
+    .hvsc-modal-footer {
+        flex-wrap: nowrap;
+        padding: 6px 12px calc(6px + env(safe-area-inset-bottom, 0px));
+    }
+
+    .hvsc-path-text {
+        flex: 1 1 auto;
+        order: 0;
+    }
+
+    /* A search result stacks title, author and folder into three lines, which
+       is 64px of a 390px screen per tune. Sideways there is width going spare
+       instead, so put the title and author on one line and drop the folder -
+       the footer shows where you are. */
+    .file-item.search-result {
+        align-items: center;
+    }
+
+    .search-result-text {
+        flex-direction: row;
+        align-items: baseline;
+        gap: 8px;
+    }
+
+    .search-result-title {
+        flex: 0 1 auto;
+    }
+
+    .search-result-author {
+        flex: 1 1 auto;
+    }
+
+    .search-result-path {
         display: none;
     }
 }
@@ -2943,11 +3028,37 @@
     background: var(--bg-surface);
 }
 
+/* Below the listing sit the transport, the spectrum strip and the credit line.
+   None of them does anything until a tune is picked - every control is
+   disabled, the spectrum has no audio to draw - but together they were taking
+   a couple of hundred pixels off the listing for the whole time you were
+   looking for something. Hold them back until there is a tune to play; the
+   browser marks itself `.has-tune` when one is selected. */
+.browser-container:not(.has-tune) .hvsc-player-container,
+.browser-container:not(.has-tune) .hvsc-visualizer {
+    display: none;
+}
+
+/* The attribution has to stay on screen, but it is a credit and not a
+   paragraph: one line, ellipsised, rather than three wrapped ones. */
+.hvsc-attribution {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+/* An info panel showing nothing but "Select a SID file" is 382px of the
+   listing's width on a desktop and a slab of its height on a phone. The narrow
+   rules already dropped it; do the same at every size. */
+.sid-info-panel:not(.has-info) {
+    display: none;
+}
+
 /* Phone-sized transport controls, and a browser that spends its height on the
    listing: the spectrum strip is decoration and the credit line can be small.
    (These sit after the rules they override, not with the other narrow-screen
    HVSC rules further up.) */
-@media (max-width: 720px) {
+@media (max-width: 720px), (max-height: 560px) {
     .sid-player {
         gap: var(--space-sm);
         padding: 6px 10px;

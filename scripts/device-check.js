@@ -279,6 +279,13 @@ async function auditHvscDensity(browser, base, dev, shots) {
     try {
         await page.evaluate(() => window.uiController.openHVSCBrowser());
         await page.waitForSelector('#fileList .file-item', { timeout: 30000 });
+        // The root folder holds three entries, so counting it would measure the
+        // archive rather than the layout. Search instead: hundreds of hits, and
+        // it is what anyone actually looking for a tune does.
+        await page.fill('#hvscSearchBar', 'hubbard');
+        await page.waitForFunction(
+            () => /match/.test(document.getElementById('itemCount').textContent),
+            null, { timeout: 30000 });
         await page.waitForTimeout(600);
         rows = await page.evaluate(() => {
             const list = document.getElementById('fileList');
@@ -302,9 +309,16 @@ async function auditHvscDensity(browser, base, dev, shots) {
     }
     await ctx.close();
     if (!rows) return null;
-    check(rows.visible >= 6, `${dev.id} hvsc: shows a useful number of tunes at once`,
-        `${rows.visible} rows of ${rows.itemH}px in a ${rows.listH}px list (${rows.viewH}px viewport)`);
-    return { dev: dev.id, ...rows };
+    // A flat row count can't be the bar: a phone held sideways has 390px of
+    // height in total. What matters is that the listing gets the screen rather
+    // than the chrome around it, so hold it to a share of the viewport - and
+    // to enough rows that the list reads as a list.
+    const share = rows.listH / rows.viewH;
+    const detail = `${rows.visible} rows of ${rows.itemH}px in a ${rows.listH}px list` +
+        ` (${Math.round(share * 100)}% of a ${rows.viewH}px viewport)`;
+    check(share >= 0.4, `${dev.id} hvsc: the listing gets most of the height`, detail);
+    check(rows.visible >= 3, `${dev.id} hvsc: several tunes are visible at once`, detail);
+    return { dev: dev.id, share, ...rows };
 }
 
 (async () => {

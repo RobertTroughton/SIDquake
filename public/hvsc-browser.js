@@ -897,9 +897,14 @@ window.hvscBrowser = (function () {
 
     // Whether the panel holds real details or just its placeholder — on a
     // phone the placeholder is dropped entirely so the listing gets the room.
+    // The same flag rides on the browser itself, because the transport and the
+    // spectrum strip below the list are inert until a tune is picked and cost
+    // the listing a couple of hundred pixels while you are still looking.
     function markInfoPanel(hasInfo) {
         const panel = document.getElementById('sidInfoPanel');
         if (panel) panel.classList.toggle('has-info', hasInfo);
+        const browser = document.querySelector('.browser-container');
+        if (browser) browser.classList.toggle('has-tune', hasInfo);
     }
 
     function escapeHtml(str) {
