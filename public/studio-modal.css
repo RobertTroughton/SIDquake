@@ -277,6 +277,9 @@
     background: var(--bg-surface);
     border: 1px solid var(--border);
     margin-bottom: var(--space-md);
+    /* A long value plus its edit button can outgrow a narrow panel; scroll the
+       table inside its own box rather than widening the whole Studio. */
+    overflow-x: auto;
 }
 
 .studio-manifest table {
@@ -321,6 +324,43 @@
     width: 150px;
 }
 
+/* Phone widths: the fixed 110px label and 150px status columns leave the value
+   about 36px of a 320px screen, which is unreadable however it wraps. Stack the
+   three cells instead, so each row reads label / value / status down the page. */
+@media (max-width: 480px) {
+    .studio-manifest table,
+    .studio-manifest tbody,
+    .studio-manifest tr,
+    .studio-manifest td {
+        display: block;
+        width: auto;
+    }
+
+    .studio-manifest tr {
+        padding: 8px 10px;
+        border-bottom: 1px solid var(--border);
+    }
+
+    .studio-manifest tr:last-child {
+        border-bottom: none;
+    }
+
+    .studio-manifest td {
+        padding: 0;
+        border-bottom: none;
+    }
+
+    .studio-manifest td:first-child {
+        white-space: normal;
+        font-size: 0.85em;
+    }
+
+    .studio-manifest td:last-child {
+        text-align: left;
+        margin-top: 4px;
+    }
+}
+
 .mf-tag.inc { color: var(--success); border: 1px solid rgba(92, 184, 122, 0.4); }
 .mf-tag.skip { color: var(--text-muted); border: 1px solid var(--border-light); }
 .mf-tag.pend { color: var(--warning); border: 1px solid rgba(232, 168, 56, 0.4); }
@@ -343,12 +383,25 @@
 
 .studio-foot {
     display: flex;
+    /* At 200%+ browser zoom this row is about 700 CSS px holding a growing
+       summary, the status text, Prev/Next and Generate. Without wrapping, the
+       summary crushes and the status - the only report of a failed build -
+       clips out of sight. */
+    flex-wrap: wrap;
     align-items: center;
     gap: var(--space-md);
     padding: 10px 18px;
     border-top: 1px solid var(--border);
     background: var(--bg-surface);
     min-width: 0;
+}
+
+/* The per-tab summary is the first thing to go when the row is tight: the
+   manifest on the Export tab says the same, in full. */
+@media (max-width: 900px) {
+    .studio-foot-sum {
+        display: none;
+    }
 }
 
 .studio-foot-sum {
@@ -461,5 +514,18 @@
 @media (prefers-reduced-motion: reduce) {
     .studio-tab.entering {
         animation: none;
+    }
+}
+
+/* Only worth the room where the rail is gone; on wide screens the rail already
+   shows every tab's status. */
+.studio-nav-status {
+    display: none;
+    color: var(--text-muted);
+}
+
+@media (max-width: 720px) {
+    .studio-nav-status {
+        display: inline;
     }
 }

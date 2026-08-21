@@ -10,8 +10,14 @@ Sitemap: https://sidquake.c64demo.com/sitemap.xml
 User-agent: *
 Disallow: /HVSC/
 Disallow: /hvsc-index.json
+Disallow: /hvsc-index-lite.json
+Disallow: /hvsc-stil.json
+Disallow: /hvsc-random-pool.json
+Disallow: /share-meta/
 Disallow: /hvsc-token
 Disallow: /hvsc-embed.html
+# Internal QA output from tools/songlengths, not a page for readers.
+Disallow: /songlengths-report.html
 
 # AI-training / bulk crawlers: please stay off entirely. (HVSC is freely
 # available at its source; we'd rather not be hammered.)

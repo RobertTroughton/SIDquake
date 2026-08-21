@@ -1136,6 +1136,97 @@ NTSCVICE,$000000,$ffffff,$8f4230,$80d1e6,$9446b8,$64b844,$422ead,$e6fe74,$956321
         return blob;
     }
 
+    // ─── Rendering a result back to pixels ───
+    //
+    // What the C64 will actually put on screen, from the same fields
+    // buildLogoBlob ships to it - so a preview drawn from this cannot disagree
+    // with the export. The VIC rules, per mode:
+    //
+    //   Hires char   bit set -> colour RAM, clear -> $d021
+    //   Multicolour  colour-RAM bit 3 set: pixel PAIRS, %00 $d021, %01 $d022,
+    //                %10 $d023, %11 colour RAM low 3 bits. Bit 3 clear: the cell
+    //                is hires with fg = colour RAM low 3 bits (this is what
+    //                "Mixed" uses per cell).
+    //   ECM          screen bits 6-7 pick one of $d021-$d024 for the background;
+    //                the glyph is the low 6 bits; set bits take colour RAM.
+    //   Hires bitmap bit set -> screen high nibble, clear -> screen low nibble.
+    //   MC bitmap    pairs: %00 $d021, %01 screen high, %10 screen low,
+    //                %11 colour RAM low nibble.
+    //
+    // Returns { width, height, rgba } - rgba suits ImageData directly.
+    function renderResult(r) {
+        if (!r || !r.ok) return null;
+        var pal = (typeof globalThis !== 'undefined' && globalThis.C64_PALETTE_RGB)
+            || (typeof window !== 'undefined' && window.C64_PALETTE_RGB);
+        if (!pal) throw new Error('renderResult needs the shared C64 palette (c64-palette.js)');
+
+        var W = INNER_W, H = INNER_H;
+        var out = new Uint8ClampedArray(W * H * 4);
+        var cols = r.colours || {};
+        var bg = (cols.bg || 0) & 0x0f;
+        var backgrounds = [bg, (cols.bg2 || 0) & 0x0f, (cols.bg3 || 0) & 0x0f, (cols.bg4 || 0) & 0x0f];
+        var mc1 = (cols.mc1 || 0) & 0x0f, mc2 = (cols.mc2 || 0) & 0x0f;
+
+        function put(x, y, c) {
+            if (x < 0 || x >= W || y < 0 || y >= H) return;
+            var rgb = pal[c & 0x0f] || pal[0];
+            var o = (y * W + x) * 4;
+            out[o] = rgb[0]; out[o + 1] = rgb[1]; out[o + 2] = rgb[2]; out[o + 3] = 255;
+        }
+
+        var rows = Math.min(25, Math.floor(H / 8));
+        for (var cy = 0; cy < rows; cy++) {
+            for (var cx = 0; cx < 40; cx++) {
+                var cell = cy * 40 + cx;
+                var sc = r.screen[cell] & 0xff;
+                var cr = r.colour[cell] & 0x0f;
+                for (var ry = 0; ry < 8; ry++) {
+                    var y = cy * 8 + ry;
+                    var byte, wide, pairs;
+                    if (r.isBitmap) {
+                        byte = r.bitmap[cell * 8 + ry];
+                        if (r.bitmapMode === 'mc') {
+                            pairs = [bg, (sc >> 4) & 0x0f, sc & 0x0f, cr];
+                            for (var p = 0; p < 4; p++) {
+                                var v = (byte >> ((3 - p) * 2)) & 3;
+                                put(cx * 8 + p * 2, y, pairs[v]);
+                                put(cx * 8 + p * 2 + 1, y, pairs[v]);
+                            }
+                        } else {
+                            for (var b = 0; b < 8; b++) {
+                                put(cx * 8 + b, y, (byte & (0x80 >> b)) ? ((sc >> 4) & 0x0f) : (sc & 0x0f));
+                            }
+                        }
+                        continue;
+                    }
+
+                    var glyph = r.ecm ? (sc & 0x3f) : sc;
+                    byte = r.charset[glyph * 8 + ry] || 0;
+                    if (r.ecm) {
+                        var ebg = backgrounds[(sc >> 6) & 3];
+                        for (var e = 0; e < 8; e++) put(cx * 8 + e, y, (byte & (0x80 >> e)) ? cr : ebg);
+                        continue;
+                    }
+                    wide = r.mcm && (cr & 8);
+                    if (wide) {
+                        pairs = [bg, mc1, mc2, cr & 7];
+                        for (var q = 0; q < 4; q++) {
+                            var vv = (byte >> ((3 - q) * 2)) & 3;
+                            put(cx * 8 + q * 2, y, pairs[vv]);
+                            put(cx * 8 + q * 2 + 1, y, pairs[vv]);
+                        }
+                    } else {
+                        // Hires: in a multicolour-capable result the ink is the
+                        // low 3 bits (bit 3 is the mode flag), otherwise all four.
+                        var fg = r.mcm ? (cr & 7) : cr;
+                        for (var h = 0; h < 8; h++) put(cx * 8 + h, y, (byte & (0x80 >> h)) ? fg : bg);
+                    }
+                }
+            }
+        }
+        return { width: W, height: H, rgba: out };
+    }
+
     return {
         COLOUR_NAMES: COLOUR_NAMES,
         PALETTES: PALETTES,
@@ -1145,6 +1236,7 @@ NTSCVICE,$000000,$ffffff,$8f4230,$80d1e6,$9446b8,$64b844,$422ead,$e6fe74,$956321
         LOGO_MODES: LOGO_MODES,
         analyse: analyse,
         failureReason: failureReason,
-        buildLogoBlob: buildLogoBlob
+        buildLogoBlob: buildLogoBlob,
+        renderResult: renderResult
     };
 });

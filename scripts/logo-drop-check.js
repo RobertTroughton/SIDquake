@@ -25,7 +25,9 @@ const path = require('path');
 
 const ROOT = path.join(__dirname, '..', 'public');
 const SID = path.join(__dirname, '..', 'SID', 'SteelStinsen-DangerDawg.sid');
-const VISUALIZER = 'Raistlin Bars With Logo';   // logo input, top 11 character rows
+// By id, not by the name on the card: the display names are user-facing copy
+// and change. This one has a logo input over the top 11 character rows.
+const VISUALIZER = 'RaistlinBarsWithLogo';
 const BAND = 88;
 
 const TYPES = {
@@ -157,9 +159,8 @@ async function openStudioWithLogo(page) {
         await page.evaluate(() => window.studioModal.open());
         await page.waitForSelector('.visualizer-card', { state: 'attached', timeout: 30000 });
         await page.waitForTimeout(600 * (attempt + 1));
-        await page.evaluate((name) => {
-            const card = [...document.querySelectorAll('.visualizer-card')]
-                .find(e => e.textContent.trim().startsWith(name));
+        await page.evaluate((id) => {
+            const card = document.querySelector(`.visualizer-card[data-id="${id}"]`);
             if (card) card.click();
         }, VISUALIZER);
         try {
@@ -265,6 +266,90 @@ async function openStudioWithLogo(page) {
     check(Math.abs(halfWidth - fullWidth / 2) <= 4, 'and the size slider scales the logo',
         `${fullWidth}px -> ${halfWidth}px`);
 
+    // The converted logo can be seen before the export, not only after it.
+    const c64 = await page.evaluate(async () => {
+        const wrap = document.querySelector('.image-preview-wrapper');
+        const toggle = wrap.querySelector('.preview-c64-toggle');
+        const canvas = wrap.querySelector('.image-preview-c64');
+        if (!toggle || !canvas) return { missing: true };
+        const offered = !toggle.hidden;
+        toggle.click();
+        await new Promise(r => setTimeout(r, 200));
+        const ctx = canvas.getContext('2d');
+        const px = ctx.getImageData(0, 0, canvas.width, canvas.height).data;
+        // A blank canvas would pass a "is it shown" check for free, so count
+        // how many distinct colours actually got drawn.
+        const seen = new Set();
+        for (let i = 0; i < px.length; i += 4) {
+            seen.add((px[i] << 16) | (px[i + 1] << 8) | px[i + 2]);
+        }
+        const shown = !canvas.hidden && toggle.getAttribute('aria-pressed') === 'true';
+        toggle.click();
+        await new Promise(r => setTimeout(r, 200));
+        return {
+            offered, shown, colours: seen.size,
+            size: `${canvas.width}x${canvas.height}`,
+            backAgain: canvas.hidden && toggle.getAttribute('aria-pressed') === 'false',
+        };
+    });
+    check(!c64.missing && c64.offered, 'the converted logo can be previewed', JSON.stringify(c64));
+    check(c64.shown && c64.size === '320x200', 'it draws a full C64 screen', JSON.stringify(c64));
+    check(c64.colours > 1, 'with the picture actually on it', `${c64.colours} colours`);
+    check(c64.backAgain, 'and switches back to the original', JSON.stringify(c64));
+
+    // The tool is a modal dialog: Tab must stay inside it, its own controls must
+    // keep their arrow keys, and closing must hand focus back.
+    // The logo panel may not be the Studio's active tab, and a button on a
+    // hidden panel cannot take focus - so show it before testing focus at all.
+    await page.evaluate(() => {
+        const wrapper = document.querySelector('.image-preview-wrapper');
+        const panel = wrapper.closest('.studio-panel');
+        if (panel && panel.dataset.studioTab) window.studioModal.activate(panel.dataset.studioTab);
+    });
+    await page.waitForTimeout(500);
+    await page.evaluate(() => document.querySelector('[data-act="adjust"]').click());
+    await page.waitForSelector('#logoFitModal.visible', { timeout: 15000 });
+    const keys = await page.evaluate(() => {
+        const modal = document.getElementById('logoFitModal');
+        const content = modal.querySelector('.logo-fit-content');
+        const focusable = [...content.querySelectorAll(
+            'button, a[href], input, select, textarea, [tabindex]:not([tabindex="-1"])')]
+            .filter(el => !el.disabled && el.offsetParent !== null);
+        const last = focusable[focusable.length - 1];
+        last.focus();
+        document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Tab', bubbles: true }));
+        const trapped = content.contains(document.activeElement);
+
+        // Arrow keys used to be bound to the document, which ate these.
+        const slider = document.getElementById('logoFitScale');
+        slider.focus();
+        const arrow = new KeyboardEvent('keydown',
+            { key: 'ArrowRight', bubbles: true, cancelable: true });
+        slider.dispatchEvent(arrow);
+        const sliderKept = !arrow.defaultPrevented;
+
+        // The canvas still nudges.
+        const canvas = document.getElementById('logoFitCanvas');
+        canvas.focus();
+        const nudge = new KeyboardEvent('keydown',
+            { key: 'ArrowDown', bubbles: true, cancelable: true });
+        canvas.dispatchEvent(nudge);
+        return { trapped, sliderKept, canvasNudges: nudge.defaultPrevented,
+                 controls: focusable.length };
+    });
+    check(keys.trapped, 'Tab stays inside the Adjust tool', JSON.stringify(keys));
+    check(keys.sliderKept, 'the size slider keeps its own arrow keys', JSON.stringify(keys));
+    check(keys.canvasNudges, 'and the arrow keys still nudge on the canvas', JSON.stringify(keys));
+
+    const restored = await page.evaluate(() => {
+        const back = document.querySelector('[data-act="adjust"]');
+        document.getElementById('logoFitClose').click();
+        return { ok: document.activeElement === back, on: document.activeElement.tagName,
+                 shown: back ? back.offsetParent !== null : null };
+    });
+    check(restored.ok, 'closing it hands focus back where it came from', JSON.stringify(restored));
+    await page.waitForTimeout(400);
+
     // A real multicolour logo, moved down the screen and given the soft
     // transparent edges a logo exported from a modern tool has. Placing it must
     // not blend those edges into the background: the converter ignores alpha,
@@ -342,24 +427,20 @@ async function openStudioWithLogo(page) {
     check(r.note === '', 'and a logo that already fits is left alone', r.note);
 
     // An image that is no C64 size at all (the user's 360x194): 40 columns too
-    // many and a height off the character grid, so there's no offset that makes
-    // it work. It has to be refused outright, leaving the logo already chosen
-    // exactly as it was - that's what will be exported.
-    const kept = await readInput(page, inputId);
+    // many and a height off the character grid, so there is no offset that
+    // makes it work by itself. It is still accepted - the placement tool has a
+    // size slider and a position control and is exactly what this needs - and
+    // the note says the size is unusual so the user checks where it landed.
     await dropImage(page, {
         w: 360, h: 194, bg: '#000000', fg: '#ffffff',
         box: [20, 40, 339, 150], name: 'wrong-size.png'
     });
     r = await readInput(page, inputId);
-    check(r.name === kept.name && r.w === kept.w && r.h === kept.h
-        && JSON.stringify(r.box) === JSON.stringify(kept.box),
-        'a 360x194 image leaves the chosen logo alone', `still ${r.name} ${r.w}x${r.h}`);
-    const refusal = await page.evaluate(() => {
-        const warn = document.querySelector('.preview-note.warn');
-        return warn && !warn.hidden ? warn.textContent : '';
-    });
-    check(/360×194/.test(refusal) && /320×200/.test(refusal) && /384×272/.test(refusal),
-        'and says what sizes a logo can be', refusal || 'no message');
+    check(r.name === 'wrong-size.png' && r.w === 320,
+        'a 360x194 image is accepted and placed', `${r.name} ${r.w}x${r.h}`);
+    check(/360×194/.test(r.note) && /320×200/.test(r.note) && /Adjust logo/i.test(r.note),
+        'and the note names its size and points at the placement tool',
+        r.note || 'no message');
 
     await ctx.close();
     await browser.close();

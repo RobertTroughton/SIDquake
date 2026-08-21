@@ -17,7 +17,7 @@ class ImageSelectorModal {
 
     createModalHTML() {
         const modalHTML = `
-            <div class="image-selector-modal" id="imageSelectorModal">
+            <div class="image-selector-modal" id="imageSelectorModal" data-overlay>
                 <div class="image-selector-modal-content">
                     <button class="image-selector-modal-close" id="imageSelectorModalClose"><i class="fas fa-times"></i></button>
                     <div class="image-selector-modal-body">
@@ -279,6 +279,9 @@ class GalleryModal {
             return;
         }
 
+        gridContainer.setAttribute('role', 'radiogroup');
+        gridContainer.setAttribute('aria-label', 'Image gallery');
+
         gallery.forEach((item, index) => {
             const card = document.createElement('div');
             card.className = 'gallery-item-card';
@@ -309,13 +312,8 @@ class GalleryModal {
 
             card.append(preview, info, badge);
 
-            card.addEventListener('click', () => {
-                document.querySelectorAll('.gallery-item-card').forEach(c => {
-                    c.classList.remove('selected');
-                });
-                card.classList.add('selected');
+            this._makeGalleryCardRadio(gridContainer, card, false, () => {
                 this.selectedItem = item;
-
                 setTimeout(() => {
                     this.selectImage();
                 }, 200);
@@ -460,7 +458,10 @@ class ImagePreviewManager {
         return {
             ok: true,
             label: LABELS[r.label] || r.label,
-            title: r.label + (r.charCount != null ? ` — ${r.charCount} chars` : '') + (r.isBitmap ? ' bitmap' : '')
+            title: r.label + (r.charCount != null ? ` — ${r.charCount} chars` : '') + (r.isBitmap ? ' bitmap' : ''),
+            // The fitted result itself, so the preview can draw what the C64
+            // will actually show rather than the PNG that went in.
+            result: r,
         };
     }
 
@@ -504,6 +505,49 @@ class ImagePreviewManager {
         // stops the export dead - spell the reason out next to the preview.
         this.setPreviewNote(config, 'warn', info.ok ? ''
             : `This image can't be used here: ${info.title.replace(/^Not usable here:\s*/i, '')}`);
+        this.renderC64Preview(config, wrapper, info);
+    }
+
+    /**
+     * Draw the conversion, so what a logo will look like on the machine - the
+     * colour clash, the lost detail - is visible before the export rather than
+     * after a round trip through an emulator. The preview otherwise shows the
+     * source PNG, which is not what the C64 gets.
+     */
+    renderC64Preview(config, wrapper, info) {
+        const canvas = wrapper.querySelector('.image-preview-c64');
+        const toggle = wrapper.querySelector('.preview-c64-toggle');
+        const img = wrapper.querySelector('.image-preview-img');
+        if (!canvas || !toggle || !img) return;
+
+        const show = (on) => {
+            canvas.hidden = !on;
+            img.style.visibility = on ? 'hidden' : '';
+            toggle.setAttribute('aria-pressed', on ? 'true' : 'false');
+            toggle.innerHTML = on
+                ? '<i class="fas fa-image"></i> Show the original'
+                : '<i class="fas fa-tv"></i> Show it as the C64 will';
+        };
+
+        let drawn = null;
+        try {
+            drawn = info.ok && info.result && typeof CharsetLabCore !== 'undefined'
+                ? CharsetLabCore.renderResult(info.result) : null;
+        } catch (e) {
+            drawn = null;   // a preview that cannot be drawn is simply not offered
+        }
+        if (!drawn) { toggle.hidden = true; show(false); return; }
+
+        canvas.width = drawn.width;
+        canvas.height = drawn.height;
+        canvas.getContext('2d').putImageData(
+            new ImageData(drawn.rgba, drawn.width, drawn.height), 0, 0);
+        toggle.hidden = false;
+        show(false);
+        if (!toggle.dataset.wired) {
+            toggle.dataset.wired = '1';
+            toggle.addEventListener('click', () => show(canvas.hidden));
+        }
     }
 
     // ─── Logo fitting (auto-placement + the Adjust crop tool) ───
@@ -546,12 +590,12 @@ class ImagePreviewManager {
         const src = await this.decodeImage(file);
         // Sizes the C64 side isn't defined for are refused rather than cropped
         // or resampled into something the artist didn't draw.
-        const wrongSize = LogoFit.sizeError(src.width, src.height);
-        if (wrongSize) {
-            const err = new Error(wrongSize);
-            err.wrongSize = true;
-            throw err;
-        }
+        // An odd size is not a refusal any more. Throwing here happened BEFORE any
+        // state was stored, so the Adjust tool - which has a size slider and a
+        // position control and would have solved it in seconds - was unreachable
+        // for exactly the images that needed it. plan() marks these needsFit, so
+        // the user places them instead.
+        const oddSize = LogoFit.sizeError(src.width, src.height);
         const band = LogoFit.bandHeight(config.charsetRows);
         const place = LogoFit.plan(src.rgba, src.width, src.height, { band });
         this.logoFit.set(config.id, {
@@ -561,6 +605,7 @@ class ImagePreviewManager {
             auto: Object.assign({}, place, place.auto)
         });
         if (!place.needsFit) return { file, fitted: false, place };
+        if (oddSize) place.sizeNote = oddSize;
         return { file: await this.renderLogoFile(config), fitted: true, place };
     }
 
@@ -599,8 +644,11 @@ class ImagePreviewManager {
             this.setPreviewNote(config, 'fit', '');
             return;
         }
+        // An unusual size is worth naming: the placement is a guess the user
+        // should look at, not a result they can take on trust.
+        const odd = fit.place && fit.place.sizeNote ? `${fit.place.sizeNote} ` : '';
         this.setPreviewNote(config, 'fit',
-            `Auto-placed: ${LogoFit.describe(fit.place)}. Use "Adjust logo" to move or recolour it.`);
+            `${odd}Auto-placed: ${LogoFit.describe(fit.place)}. Use "Adjust logo" to move or recolour it.`);
     }
 
     // The placement state for an input, loading the current selection (or the
@@ -619,7 +667,7 @@ class ImagePreviewManager {
         return this.logoFit.get(config.id);
     }
 
-    async openLogoAdjust(config) {
+    async openLogoAdjust(config, opener = null) {
         const wrapper = document.querySelector(`[data-input-id="${config.id}"]`);
         const loading = wrapper && wrapper.querySelector('.image-preview-loading');
         let state;
@@ -643,6 +691,7 @@ class ImagePreviewManager {
             place: state.place,
             autoPlace: state.auto,
             title: `Adjust ${(config.label || 'logo').toLowerCase()}`,
+            returnFocusTo: opener || document.activeElement,
             onApply: place => this.applyLogoPlace(config, place)
         });
     }
@@ -724,9 +773,14 @@ class ImagePreviewManager {
                             <div class="preview-spinner"></div>
                             <div>Loading...</div>
                         </div>
+                        <canvas class="image-preview-c64" width="320" height="200" hidden
+                                aria-label="${config.label} as the C64 will show it"></canvas>
                         <div class="logo-type-badge"></div>
                     </div>
                 </div>
+                ${isLogo ? '<button type="button" class="file-button preview-c64-toggle" '
+                    + 'data-act="c64" aria-pressed="false" hidden>'
+                    + '<i class="fas fa-tv"></i> Show it as the C64 will</button>' : ''}
                 <div class="image-preview-hint"><i class="fas fa-hand-pointer"></i> Drag &amp; drop an image here, or:</div>
                 <div class="image-preview-actions">
                     <button type="button" class="file-button" data-act="browse"><i class="fas fa-folder-open"></i> Browse Files</button>
@@ -753,7 +807,12 @@ class ImagePreviewManager {
         previewFrame.addEventListener('click', () => fileInput.click());
         wrapper.querySelector('[data-act="browse"]').addEventListener('click', () => fileInput.click());
         if (isLogo) {
-            wrapper.querySelector('[data-act="adjust"]').addEventListener('click', () => this.openLogoAdjust(config));
+            // Look the button up again on close rather than passing the node:
+            // the Studio's panel-click refresh moves focus before this handler
+            // runs, and the preview is rebuilt while the dialog is open.
+            wrapper.querySelector('[data-act="adjust"]').addEventListener('click',
+                () => this.openLogoAdjust(config,
+                    () => document.querySelector(`[data-input-id="${config.id}"] [data-act="adjust"]`)));
         }
 
         // Inline gallery grid (matches the font picker's grid on the tab).
@@ -788,6 +847,8 @@ class ImagePreviewManager {
         if (!gridEl) return;
         const gallery = config.gallery || [];
         gridEl.innerHTML = '';
+        gridEl.setAttribute('role', 'radiogroup');
+        if (config.label) gridEl.setAttribute('aria-label', config.label);
 
         gallery.forEach((item) => {
             const card = document.createElement('div');
@@ -817,15 +878,51 @@ class ImagePreviewManager {
             badge.innerHTML = '<i class="fas fa-check"></i> Selected';
 
             card.append(preview, info, badge);
-            card.addEventListener('click', () => {
-                gridEl.querySelectorAll('.gallery-item-card').forEach(c => c.classList.remove('selected'));
-                card.classList.add('selected');
-                this.loadGalleryImage(container, config, item.file, item.name);
-            });
+            this._makeGalleryCardRadio(gridEl, card, card.classList.contains('selected'),
+                () => this.loadGalleryImage(container, config, item.file, item.name));
             gridEl.appendChild(card);
         });
 
         this.annotateInlineLogoTypes(gridEl, gallery, config);
+    }
+
+    // Gallery grids are radio groups: one tab stop for the grid, arrows to move
+    // between images, Enter/Space to choose. They were <div>s with a click
+    // handler, so picking a supplied logo was impossible without a mouse.
+    _makeGalleryCardRadio(gridEl, card, isSelected, choose) {
+        card.setAttribute('role', 'radio');
+        card.setAttribute('aria-checked', isSelected ? 'true' : 'false');
+        card.setAttribute('aria-label', card.dataset.name || 'image');
+        // Nothing selected yet: the first card carries the group's tab stop, or
+        // the whole grid would be unreachable.
+        const isFirst = !gridEl.querySelector('.gallery-item-card');
+        const hasSelection = !!gridEl.querySelector('.gallery-item-card.selected');
+        card.tabIndex = (isSelected || (isFirst && !hasSelection)) ? 0 : -1;
+        const select = () => {
+            for (const c of gridEl.querySelectorAll('.gallery-item-card')) {
+                const on = c === card;
+                c.classList.toggle('selected', on);
+                c.setAttribute('aria-checked', on ? 'true' : 'false');
+                c.tabIndex = on ? 0 : -1;
+            }
+            choose();
+        };
+        card.addEventListener('click', select);
+        card.addEventListener('keydown', (e) => {
+            const cards = [...gridEl.querySelectorAll('.gallery-item-card')];
+            const i = cards.indexOf(card);
+            let next = null;
+            switch (e.key) {
+                case 'ArrowRight': case 'ArrowDown': next = cards[(i + 1) % cards.length]; break;
+                case 'ArrowLeft': case 'ArrowUp': next = cards[(i - 1 + cards.length) % cards.length]; break;
+                case 'Home': next = cards[0]; break;
+                case 'End': next = cards[cards.length - 1]; break;
+                case ' ': case 'Enter': e.preventDefault(); select(); return;
+                default: return;
+            }
+            e.preventDefault();
+            if (next) { next.tabIndex = 0; next.focus(); }
+        });
     }
 
     // Badge each inline gallery card with its detected logo type (scoped to
@@ -929,14 +1026,6 @@ class ImagePreviewManager {
                         fit = await this.prepareLogoImage(config, file);
                         file = fit.file;
                     } catch (fitError) {
-                        if (fitError.wrongSize) {
-                            // A gallery entry the converter can't take at all -
-                            // keep whatever was chosen before rather than
-                            // swapping in something that won't export.
-                            this.setPreviewNote(config, 'warn', fitError.message);
-                            this.showError(container, fitError.message);
-                            return;
-                        }
                         console.warn('Logo fit skipped:', fitError);
                     }
                     this.updateLogoNotice(config, fit);
@@ -1001,14 +1090,6 @@ class ImagePreviewManager {
                     fit = await this.prepareLogoImage(config, file);
                     useFile = fit.file;
                 } catch (fitError) {
-                    if (fitError.wrongSize) {
-                        // Leave the input, the preview and the notes as they
-                        // were: the logo already chosen is still the one that
-                        // will be exported.
-                        this.setPreviewNote(config, 'warn', fitError.message);
-                        this.showError(wrapper, fitError.message);
-                        return;
-                    }
                     // Undecodable image - carry on with the original and let the
                     // classifier report what's wrong with it.
                     console.warn('Logo fit skipped:', fitError);

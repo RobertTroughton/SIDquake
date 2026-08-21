@@ -5,20 +5,21 @@
 // JavaScript, so this has to happen at the edge.
 //
 // Metadata comes from public/share-meta/<shard>.json, generated at build time
-// by scripts/build-share-meta.js (256 small shards of hvsc-index.json, so a
+// by scripts/build-share-meta.js (4,096 small shards of hvsc-index.json, so a
 // lookup fetches a few KB, cached per isolate). Unknown tunes and requests
 // without ?tune= pass through untouched.
 
 const shardCache = new Map();
 
-// FNV-1a 32-bit, low byte selects the shard. Must match build-share-meta.js.
+// FNV-1a 32-bit, low 12 bits select the shard. Must match build-share-meta.js
+// and hvsc-browser.js - see the note there on Math.imul and on 12 bits.
 function shardOf(p) {
     let h = 0x811c9dc5;
     for (let i = 0; i < p.length; i++) {
         h ^= p.charCodeAt(i);
-        h = (h * 0x01000193) >>> 0;
+        h = Math.imul(h, 0x01000193);
     }
-    return (h & 0xff).toString(16).padStart(2, '0');
+    return ((h >>> 0) & 0xfff).toString(16).padStart(3, '0');
 }
 
 function escapeHtml(s) {

@@ -203,20 +203,14 @@ class SIDAnalyzer {
         }
 
         let callbackPtr = 0;
-        let progressInterval = null;
 
-        if (progressCallback) {
-            // Direct WASM->JS callbacks are awkward to wire through cwrap, so we
-            // simulate progress on a timer while the synchronous analyze() runs.
-            let currentProgress = 0;
-            const progressIncrement = 100 / (frameCount / 1000);
-
-            progressInterval = setInterval(() => {
-                currentProgress = Math.min(currentProgress + progressIncrement, 99);
-                progressCallback(Math.floor(currentProgress * frameCount / 100), frameCount);
-            }, 50);
-        }
-
+        // sid_analyze is one synchronous WASM call: it holds the main thread for
+        // its whole run, so nothing here can report progress while it works and
+        // a Cancel button would be unclickable. This used to tick a setInterval
+        // that the browser could not deliver until the call had already
+        // finished, so the readout sat at 0% and then jumped. Report the start
+        // and the finish, and let the caller say what is happening in between.
+        if (progressCallback) progressCallback(0, frameCount);
         try {
             const result = this.api.sid_analyze(frameCount, callbackPtr);
 
@@ -289,9 +283,7 @@ class SIDAnalyzer {
                 longestInitCycles: this.api.sid_get_longest_init_cycles ? this.api.sid_get_longest_init_cycles() : 0
             };
         } finally {
-            if (progressInterval) {
-                clearInterval(progressInterval);
-            }
+            // Nothing to unwind: the run is one blocking call.
         }
     }
 

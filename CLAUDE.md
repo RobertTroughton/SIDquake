@@ -197,7 +197,11 @@ KickAssembler 6502 source for the visualiser players.
   binary?". Needs `java` only.
 - WASM: `scripts/build-*-wasm.sh`, needs emsdk. `0-build.bat` hardcodes
   `EMSDK_PATH`. The `.wasm` + their emscripten JS glue are committed.
-- Site: `npm run build` (HVSC extract + SEO pages + share meta). Netlify serves
+- Icons: `scripts/build-icon-font.py`, needs Python with `fonttools` + `brotli`
+  and network access to cdnjs. Run it after adding or removing an `fa-` class;
+  `--check` diffs instead of overwriting. Output is committed.
+- Site: `npm run build` (HVSC extract + SEO pages + share meta + random pool +
+  index/STIL split). Netlify serves
   `public/` as-is; there is no compile step for the app JS.
 
 **Test** — `npm test`. Two harnesses drive the *real assembled 6502* in the WASM
@@ -209,8 +213,10 @@ timer routines and diffing memory to check where the play-time clock lands;
 `scripts/test-logo-fit.js` covers the logo placement maths. Almost nothing
 covers the browser UI — the exceptions are `scripts/mobile-layout-check.js`
 (HVSC and Studio modals at phone widths) and `scripts/logo-drop-check.js`
-(picking a logo lands in the input the exporter reads); neither is in `npm test`,
-both need Playwright, which isn't a dependency. Also run `scripts/build-players.sh
+(picking a logo lands in the input the exporter reads) and
+`scripts/studio-smoke-check.js` (load a SID -> Studio -> background analysis ->
+export manifest, and the sticky visualizer choice); none are in `npm test`, all
+need Playwright, which isn't a dependency (`npm install --no-save playwright`). Also run `scripts/build-players.sh
 --check` after touching `SIDPlayers/`, and `scripts/cpu-crosscheck/run.sh` after
 touching the 6510 decoder or either bus adapter (not in `npm test`: needs a C++
 toolchain, takes minutes).
@@ -232,11 +238,12 @@ toolchain, takes minutes).
   `SIDPlayers/BAR_HEIGHT_METHODS.md` (the three bar-data methods). `TODO.md` is
   outstanding work only and is kept current.
 
-**Generated output — never edit by hand** — `public/prg/*-code.bin`,
+**Generated output — never edit by hand** — `public/icons.css` +
+`public/fonts/sidquake-icons.woff2`, `public/prg/*-code.bin`,
 `*.codereloc.json`, `*.reloc.json`, `*.gfx.json`, the fixed-bank `*.bin`,
 `public/*.wasm` and their emscripten JS glue (`sidquake.js`, `sidplayfp.js`,
-`exomizer.js`), and `SIDPlayers/INC/FreqTable*.bin`. Regenerate rather than
-patch.
+`exomizer.js`), `public/hvsc-random-pool.json` and `SIDPlayers/INC/FreqTable*.bin`.
+Regenerate rather than patch.
 
 **Gotchas**
 

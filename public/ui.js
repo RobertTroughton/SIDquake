@@ -1,24 +1,9 @@
 ﻿// UI controller for SIDquake web app.
 
 // C64 hardware palette (16 colors). Index matches the C64 color number.
-const C64_COLORS = [
-    { value: 0, name: 'Black', hex: '#000000' },
-    { value: 1, name: 'White', hex: '#FFFFFF' },
-    { value: 2, name: 'Red', hex: '#753d3d' },
-    { value: 3, name: 'Cyan', hex: '#7bb4b4' },
-    { value: 4, name: 'Purple', hex: '#7d4488' },
-    { value: 5, name: 'Green', hex: '#5c985c' },
-    { value: 6, name: 'Blue', hex: '#343383' },
-    { value: 7, name: 'Yellow', hex: '#cbcc7c' },
-    { value: 8, name: 'Orange', hex: '#7c552f' },
-    { value: 9, name: 'Brown', hex: '#523e00' },
-    { value: 10, name: 'Light Red', hex: '#a76f6f' },
-    { value: 11, name: 'Dark Grey', hex: '#4e4e4e' },
-    { value: 12, name: 'Grey', hex: '#767676' },
-    { value: 13, name: 'Light Green', hex: '#9fdb9f' },
-    { value: 14, name: 'Light Blue', hex: '#6d6cbc' },
-    { value: 15, name: 'Light Grey', hex: '#a3a3a3' }
-];
+// The swatches, colour pickers and palette editors all draw from the shared
+// table in c64-palette.js - see the note there about why there used to be two.
+const C64_COLORS = window.C64_PALETTE;
 
 class UIController {
     constructor() {
@@ -38,6 +23,16 @@ class UIController {
         // the user has decided, so the one-time fade-out prompt never nags.
         this._loopChoiceTouched = false;   // user set the toggle themselves
         this._loopChoiceAsked = false;     // fade-out prompt already shown for this SID
+        // The single in-flight loop/length scan. Both the background scan started
+        // on load and an export that needs the result go through _ensureAnalysis,
+        // so a Generate pressed mid-scan adopts the running job - two concurrent
+        // runs would fight over the bake core's one shared render cache.
+        this._analysisJob = null;
+        // Bumped on every SID load. A scan carries the token it started with, so a
+        // job that finishes after the user moved on cannot write its result into
+        // the new tune's state.
+        this._analysisToken = 0;
+        this._analysisCancelled = false;   // last scan ended because the user stopped it
         this.selectedVisualizer = null;
         this.visualizerConfig = null;
         // Sticky image selections (Logo / Bitmap) so a user's chosen image
@@ -46,6 +41,29 @@ class UIController {
         // has different element ids across configs (logo-input / bitmap-input).
         this._imageSelectionMemory = {};
         this._pendingImageRestore = null;
+        // Sticky visualizer choice for the session: the grid card the user picked
+        // and the data source they settled on. A new SID re-selects them when the
+        // tune can take them, instead of dropping back to the alphabetically
+        // first compatible player. Only a deliberate pick writes these - an
+        // auto-selected fallback leaves them alone, so the choice comes back on
+        // the next tune that can take it.
+        this._lastVisualizerId = null;
+        this._lastDataSource = null;
+        // Sticky option values for the session, keyed by option element id, so a
+        // new tune keeps the bar style / colours / palettes / font the user set.
+        // Holds only values the user actually changed (see _rememberOptionValues).
+        this._optionMemory = {};
+        // ...and the same choices come back after a refresh or in a new tab.
+        // Someone setting up a music disk closes the tab between tunes, and
+        // starting from the alphabetically first player every time is the same
+        // annoyance a reload should not reintroduce.
+        this._restoreSessionMemory();
+        // Only the newest placement preview is shown; a user can change player
+        // faster than the placement runs.
+        this._planToken = 0;
+        // Same guard for the VU-visibility check, which also runs per selection.
+        this._vuToken = 0;
+        this._textPreviewToken = 0;
         this.hvscBrowserWindow = null;
         this.mainPlayer = null;
         this.elements = this.cacheElements();
@@ -196,10 +214,11 @@ class UIController {
         });
 
         const closeBtn = document.getElementById('hvscModalClose');
-        const closeHVSCModal = () => {
+        const closeHVSCModal = (fromHistory = false) => {
             const modal = document.getElementById('hvscModal');
             if (!modal.classList.contains('visible')) return;
             modal.classList.remove('visible');
+            if (!fromHistory) this.popModalHistory();
             if (window.hvscBrowser) {
                 hvscBrowser.stopPreview();
                 // Browser closed: drop the shareable ?tune= param from the URL.
@@ -213,7 +232,7 @@ class UIController {
         };
 
         if (closeBtn) {
-            closeBtn.addEventListener('click', closeHVSCModal);
+            closeBtn.addEventListener('click', () => closeHVSCModal());
         }
 
         // Click on backdrop (not modal content) closes the modal.
@@ -223,19 +242,39 @@ class UIController {
                 if (e.target === hvscModal) closeHVSCModal();
             });
         }
+        this._closeHVSCModal = closeHVSCModal;
+        this.wireModalHistory();
 
         // While the browser is open it owns the keyboard: Escape closes it and
         // Tab is trapped inside so focus can't fall through to the covered page.
         // Defer when another modal is layered above (that modal owns the keyboard).
+        // This list used to be maintained by hand here and had already drifted -
+        // overlay-stack.js reads it off the overlays actually on screen instead.
         document.addEventListener('keydown', (e) => {
             if (!document.getElementById('hvscModal')?.classList.contains('visible')) return;
-            const above = ['galleryModal', 'busyOverlay', 'modalOverlay',
-                'imageSelectorModal', 'colorPickerModal']
-                .some(id => document.getElementById(id)?.classList.contains('visible'));
-            if (above) return;
+            if (window.overlayAbove && window.overlayAbove('hvscModal')) return;
             if (e.key === 'Escape') closeHVSCModal();
             else if (e.key === 'Tab') this._trapHvscTab(e);
+            return;
         });
+
+        // The drifting background notes: an off switch of their own, because
+        // "I find this distracting" is not the same preference as the OS
+        // reduced-motion setting.
+        // Reads and writes the stored preference directly: floating-notes.js
+        // loads when the browser is idle, so its class may not exist yet - and
+        // when it does not, the preference it reads on arrival is already right.
+        const notesToggle = document.getElementById('notesToggle');
+        if (notesToggle) {
+            let off = false;
+            try { off = localStorage.getItem('sidquakeNotesOff') === '1'; } catch (e) { /* blocked */ }
+            notesToggle.checked = !off;
+            notesToggle.addEventListener('change', () => {
+                const nowOff = !notesToggle.checked;
+                try { localStorage.setItem('sidquakeNotesOff', nowOff ? '1' : '0'); } catch (e) { /* blocked */ }
+                if (window.FreshFloatingNotes) window.FreshFloatingNotes.setTurnedOff(nowOff);
+            });
+        }
 
         // Show placeholder content until a SID is loaded.
         this.initializeAttractMode();
@@ -253,11 +292,46 @@ class UIController {
         return this.mainPlayer;
     }
 
+    // Android has no Escape key, and Back is what people press to leave a
+    // full-screen thing. Without this it navigates off the site instead, which
+    // on a phone is the only way out of a modal.
+    pushModalHistory(id) {
+        try {
+            history.pushState(Object.assign({}, history.state || {}, { sqModal: id }), '', location.href);
+            this._modalHistoryDepth = (this._modalHistoryDepth || 0) + 1;
+        } catch (e) { /* history unavailable - Escape and the close button still work */ }
+    }
+
+    /** Consume the entry pushed for a modal the user just closed some other way. */
+    popModalHistory() {
+        if (!this._modalHistoryDepth) return;
+        this._modalHistoryDepth--;
+        try { history.back(); } catch (e) { /* nothing to go back to */ }
+    }
+
+    wireModalHistory() {
+        if (this._modalHistoryWired) return;
+        this._modalHistoryWired = true;
+        window.addEventListener('popstate', () => {
+            // Topmost first, so Back peels one layer at a time.
+            if (this._modalHistoryDepth) this._modalHistoryDepth--;
+            const hvsc = document.getElementById('hvscModal');
+            if (hvsc && hvsc.classList.contains('visible')) {
+                if (this._closeHVSCModal) this._closeHVSCModal(true);
+                return;
+            }
+            if (window.studioModal && window.studioModal.isOpen) {
+                window.studioModal.close(true);
+            }
+        });
+    }
+
     async openHVSCBrowser() {
         const modal = document.getElementById('hvscModal');
         // Remember what to restore focus to, then move focus into the browser.
         this._hvscPreviouslyFocused = document.activeElement;
         modal.classList.add('visible');
+        this.pushModalHistory('hvsc');
         const searchBar = document.getElementById('hvscSearchBar');
         if (searchBar) searchBar.focus();
 
@@ -297,7 +371,10 @@ class UIController {
     }
 
     async selectRandomSID() {
-        this.showBusy('Finding Random SID', 'Exploring HVSC collection...');
+        // Cancellable: this fetches a pool file and then a tune, and a phone on a
+        // slow connection should not be stuck behind an overlay with no way out.
+        const randomAc = new AbortController();
+        this.showBusy('Finding Random SID', 'Exploring HVSC collection...', () => randomAc.abort());
 
         try {
             await window.loadScript('hvsc-random.js');
@@ -313,7 +390,7 @@ class UIController {
 
             this.showModal('Downloading SID from HVSC...', true);
 
-            const response = await fetch(result.url);
+            const response = await fetch(result.url, { signal: randomAc.signal });
 
             if (!response.ok) {
                 throw new Error('Failed to download SID file');
@@ -322,10 +399,13 @@ class UIController {
             const blob = await response.blob();
             const file = new File([blob], result.name, { type: 'application/octet-stream' });
 
-            await this.processFile(file);
+            await this.processFile(file, { autoplay: true });
 
         } catch (error) {
             this.hideBusy();
+            // A user cancel is not a failure - say nothing and leave them where
+            // they were.
+            if (error && error.name === 'AbortError') return;
             console.error('Error selecting random SID:', error);
             this.showModal('Failed to select random SID: ' + error.message, false);
         }
@@ -351,7 +431,7 @@ class UIController {
             const blob = await response.blob();
             const file = new File([blob], data.name, { type: 'application/octet-stream' });
 
-            await this.processFile(file);
+            await this.processFile(file, { autoplay: true });
 
         } catch (error) {
             console.error('Error downloading HVSC file:', error);
@@ -364,9 +444,9 @@ class UIController {
     }
 
     initializeAttractMode() {
-        this.elements.sidTitle.querySelector('.text').textContent = 'Song Title';
-        this.elements.sidAuthor.querySelector('.text').textContent = 'Artist Name';
-        this.elements.sidCopyright.querySelector('.text').textContent = 'Copyright Info';
+        this.elements.sidTitle.value = 'Song Title';
+        this.elements.sidAuthor.value = 'Artist Name';
+        this.elements.sidCopyright.value = 'Copyright Info';
 
         this.elements.sidFormat.textContent = 'PSID';
         this.elements.sidVersion.textContent = 'v2';
@@ -428,8 +508,12 @@ class UIController {
 
         grid.innerHTML = '';
 
-        for (let i = 0; i < VISUALIZERS.length; i++) {
-            const viz = VISUALIZERS[i];
+        // Same filter the real grid applies: the shadow / spectrometer variants
+        // are reached through the Method tab, not as separate cards, so showing
+        // them here rendered the same list two different ways.
+        const shown = VISUALIZERS.filter(v => !v.hidden);
+        for (let i = 0; i < shown.length; i++) {
+            const viz = shown[i];
             const card = this.createVisualizerCard(viz);
             card.classList.add('disabled');
             card.style.pointerEvents = 'none';
@@ -491,147 +575,101 @@ class UIController {
             dragDepth = 0;
             document.body.classList.remove('file-dragging');
             uploadSection.classList.remove('dragover');
-            const files = e.dataTransfer.files;
-            if (files.length > 0) {
-                this.processFile(files[0]).catch((err) => {
-                    console.error('Error processing dropped file:', err);
-                });
-            }
+            this.acceptFiles(e.dataTransfer.files).catch((err) => {
+                console.error('Error processing dropped file:', err);
+            });
         });
     }
 
+    // Title / Author / Copyright. Real inputs: they were contenteditable spans
+    // with role="button" and an aria-label that overrode their contents, so a
+    // screen reader announced "Edit title, button" and never the title. This is
+    // a form, and the text goes on the C64 screen, so it says how much room is
+    // left and warns when a character cannot survive the trip.
     setupEditableFields() {
-        const editableFields = [this.elements.sidTitle, this.elements.sidAuthor, this.elements.sidCopyright];
-
-        editableFields.forEach(field => {
-            const textSpan = field.querySelector('.text');
-
-            // Keyboard users need to reach and trigger the field the same way a
-            // mouse click does.
-            field.tabIndex = 0;
-            field.setAttribute('role', 'button');
-            field.setAttribute('aria-label', `Edit ${field.dataset.field || 'field'}`);
-
-            field.addEventListener('click', (e) => {
-                if (!field.classList.contains('editing') && !field.classList.contains('disabled')) {
-                    this.startEditing(field);
+        for (const field of [this.elements.sidTitle, this.elements.sidAuthor, this.elements.sidCopyright]) {
+            if (!field) continue;
+            field.addEventListener('input', () => this.onMetadataInput(field));
+            field.addEventListener('blur', () => {
+                // Collapse the whitespace only once the user has stopped typing;
+                // doing it per keystroke fights them mid-word.
+                const tidy = field.value.replace(/[\r\n\t]/g, ' ').replace(/\s+/g, ' ').trim();
+                if (tidy !== field.value) {
+                    field.value = tidy;
+                    this.onMetadataInput(field);
                 }
             });
-
-            field.addEventListener('keydown', (e) => {
-                if (!field.classList.contains('editing')) {
-                    // Enter/Space begins editing (mirrors a click).
-                    if ((e.key === 'Enter' || e.key === ' ') && !field.classList.contains('disabled')) {
-                        e.preventDefault();
-                        this.startEditing(field);
-                    }
-                    return;
-                }
-                if (e.key === 'Enter') {
-                    e.preventDefault();
-                    this.stopEditing(field);
-                } else if (e.key === 'Escape') {
-                    e.preventDefault();
-                    this.cancelEditing(field);
-                }
-            });
-
-            // Blur on the inner text span fires when the user tabs/clicks away.
-            // The 200ms delay lets a click on another control fire first so we
-            // don't tear down editing state mid-interaction.
-            textSpan.addEventListener('blur', () => {
-                if (field.classList.contains('editing')) {
-                    setTimeout(() => {
-                        if (field.classList.contains('editing')) {
-                            this.stopEditing(field);
-                        }
-                    }, 200);
-                }
-            });
-
-            // Strip formatting from pasted content; SID metadata is plain text only.
-            textSpan.addEventListener('paste', (e) => {
-                e.preventDefault();
-
-                let text = '';
-                const clipboard = e.clipboardData || window.clipboardData;
-                if (clipboard) {
-                    text = clipboard.getData('text/plain') || clipboard.getData('Text') || '';
-                }
-
-                text = text.replace(/[\r\n\t]/g, ' ');
-                text = text.replace(/\s+/g, ' ');
-                text = text.trim();
-
-                if (window.getSelection) {
-                    const selection = window.getSelection();
-                    if (!selection.rangeCount) return;
-                    selection.deleteFromDocument();
-                    selection.getRangeAt(0).insertNode(document.createTextNode(text));
-                    selection.collapseToEnd();
-                }
-            });
-        });
-    }
-
-    startEditing(field) {
-        field.classList.add('editing');
-
-        const textSpan = field.querySelector('.text');
-        textSpan.contentEditable = 'true';
-        textSpan.focus();
-
-        field.dataset.originalValue = textSpan.textContent;
-
-        const range = document.createRange();
-        range.selectNodeContents(textSpan);
-        const sel = window.getSelection();
-        sel.removeAllRanges();
-        sel.addRange(range);
-    }
-
-    stopEditing(field) {
-        field.classList.remove('editing');
-
-        const textSpan = field.querySelector('.text');
-        textSpan.contentEditable = 'false';
-
-        let text = textSpan.textContent || '';
-
-        text = text.replace(/<[^>]*>/g, '');
-
-        text = text.replace(/[\r\n\t]/g, ' ');
-        text = text.replace(/\s+/g, ' ');
-        text = text.trim();
-
-        // SID header fields are limited to 31 chars (32 bytes including null terminator).
-        if (text.length > 31) {
-            text = text.substring(0, 31);
         }
+        this.updateMetadataCounts();
+    }
 
-        textSpan.textContent = text;
-
+    // One edit: push it to the WASM header (what a saved .sid is built from), to
+    // the cached header (what the PRG's text rows are painted from), and to the
+    // counters and the warning line.
+    onMetadataInput(field) {
+        const text = field.value;
         // The DOM field uses 'title' but the WASM analyzer expects 'name'.
         const fieldName = field.dataset.field;
-        let analyzerFieldName = fieldName;
-        if (fieldName === 'title') analyzerFieldName = 'name';
+        const analyzerFieldName = fieldName === 'title' ? 'name' : fieldName;
 
         this.analyzer.updateMetadata(analyzerFieldName, text);
-
+        for (const h of [this.sidHeader, this.analyzer.sidHeader]) {
+            if (h) h[analyzerFieldName] = text;
+        }
+        if (window.studioModal) window.studioModal.refreshHeader();
+        this.updateMetadataCounts();
         this.checkForModifications();
+        // What these lines will look like on the C64. Debounced: it decodes a
+        // charset and repaints, and someone typing a title does it per keystroke.
+        clearTimeout(this._textPreviewTimer);
+        this._textPreviewTimer = setTimeout(() => this.renderTextPreview(), 200);
+        if (window.studioModal) window.studioModal.queueRefresh();
     }
 
-    cancelEditing(field) {
-        const textSpan = field.querySelector('.text');
-        textSpan.textContent = field.dataset.originalValue || '';
-        field.classList.remove('editing');
-        textSpan.contentEditable = 'false';
+    /** Characters left in each 31-char header field, and what the C64 can't show. */
+    updateMetadataCounts() {
+        const fields = [this.elements.sidTitle, this.elements.sidAuthor, this.elements.sidCopyright];
+        const lost = new Set();
+        for (const field of fields) {
+            if (!field) continue;
+            const count = document.getElementById(field.id + 'Count');
+            const left = 31 - field.value.length;
+            if (count) {
+                count.textContent = left <= 8 ? `${left} left` : '';
+                count.classList.toggle('is-low', left <= 3);
+            }
+            for (const ch of this.unrepresentableChars(field.value)) lost.add(ch);
+        }
+
+        const warn = document.getElementById('metadataWarning');
+        if (!warn) return;
+        if (!lost.size) { warn.hidden = true; warn.textContent = ''; return; }
+        const list = [...lost].map(c => `"${c}"`).join(' ');
+        warn.hidden = false;
+        warn.textContent = `The C64 has no ${list} — ${lost.size === 1 ? 'it' : 'they'} `
+            + `will show as ${lost.size === 1 ? 'a space' : 'spaces'}.`;
+    }
+
+    // Which characters of `text` the PETSCII conversion would silently replace.
+    // prg-builder sanitises metadata with reportUnknown off, so this was only
+    // ever discovered by looking at the exported PRG in an emulator.
+    unrepresentableChars(text) {
+        if (!text || typeof PETSCIISanitizer === 'undefined') return [];
+        try {
+            const result = new PETSCIISanitizer().sanitize(text, { reportUnknown: true });
+            const warning = (result.warnings || []).find(w => w.type === 'unknown_characters');
+            // The sanitizer reports them quoted or as U+XXXX; show the character
+            // where it is printable, since that is what the user typed.
+            return warning ? warning.characters.map(c => c.replace(/^"|"$/g, '')) : [];
+        } catch (e) {
+            return [];
+        }
     }
 
     checkForModifications() {
-        const currentTitle = this.elements.sidTitle.querySelector('.text').textContent.trim();
-        const currentAuthor = this.elements.sidAuthor.querySelector('.text').textContent.trim();
-        const currentCopyright = this.elements.sidCopyright.querySelector('.text').textContent.trim();
+        const currentTitle = this.elements.sidTitle.value.trim();
+        const currentAuthor = this.elements.sidAuthor.value.trim();
+        const currentCopyright = this.elements.sidCopyright.value.trim();
 
         const hasChanges =
             currentTitle !== this.originalMetadata.title ||
@@ -648,14 +686,342 @@ class UIController {
     }
 
     async handleFileSelect(event) {
-        const file = event.target.files[0];
-        if (file) {
-            this.elements.hvscSelected.style.display = 'none';
-            await this.processFile(file);
+        await this.acceptFiles(event.target.files);
+    }
+
+    // ---------------------------------------------------------------------
+    // Quick export
+    // ---------------------------------------------------------------------
+
+    // Two decisions and a button: which look, then press it. Everything the
+    // Studio offers still applies - this just sets the look and reuses the same
+    // export - but a first release should not require walking six tabs to find
+    // out that every default was already correct.
+    renderQuickExport() {
+        const box = document.getElementById('quickExport');
+        const looks = document.getElementById('quickExportLooks');
+        if (!box || !looks) return;
+        if (!this.sidHeader) { box.hidden = true; return; }
+
+        const compatible = (typeof VISUALIZERS !== 'undefined' ? VISUALIZERS : [])
+            .filter(v => !v.hidden && this.visualizerExportable(v).ok);
+        if (!compatible.length) { box.hidden = true; return; }
+
+        // A handful of clearly different looks, in the order someone would
+        // scan them - not the whole grid again.
+        const order = ['RaistlinBars', 'RaistlinBarsWithLogo', 'RaistlinMirrorBars',
+            'ScrapColumns', 'SimpleRaster', 'default'];
+        const picks = order.map(id => compatible.find(v => v.id === id)).filter(Boolean).slice(0, 4);
+        if (!picks.length) picks.push(compatible[0]);
+
+        const current = this.selectedVisualizer?.dataSourceGroup || this.selectedVisualizer?.id;
+        // The selected player may not be one of the few offered here. Something
+        // still has to carry the group's tab stop, or it cannot be reached by
+        // keyboard at all.
+        const marked = picks.some(v => v.id === current) ? current : null;
+        const esc = (t) => String(t).replace(/[&<>"]/g, c =>
+            ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+        looks.innerHTML = picks.map((v, i) => {
+            const on = v.id === marked;
+            const tabbable = marked ? on : i === 0;
+            return `<button type="button" class="quick-look${on ? ' selected' : ''}"
+                     role="radio" aria-checked="${on}" tabindex="${tabbable ? 0 : -1}"
+                     data-id="${esc(v.id)}">
+                <img src="${esc(v.preview)}" alt="" aria-hidden="true">
+                <span>${esc(v.name)}</span>
+            </button>`;
+        }).join('');
+        box.hidden = false;
+        this._wireQuickExport();
+    }
+
+    _wireQuickExport() {
+        const looks = document.getElementById('quickExportLooks');
+        if (looks && !looks.dataset.wired) {
+            looks.dataset.wired = '1';
+            looks.addEventListener('click', (e) => {
+                const btn = e.target.closest('.quick-look');
+                if (btn) this.quickPickLook(btn.dataset.id);
+            });
+            looks.addEventListener('keydown', (e) => {
+                const btns = [...looks.querySelectorAll('.quick-look')];
+                const here = e.target.closest('.quick-look');
+                const i = here ? btns.indexOf(here) : 0;
+                let next = null;
+                if (e.key === 'ArrowRight' || e.key === 'ArrowDown') next = btns[(i + 1) % btns.length];
+                else if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') next = btns[(i - 1 + btns.length) % btns.length];
+                else if (e.key === ' ' || e.key === 'Enter') next = here;
+                else return;
+                e.preventDefault();
+                if (next) { this.quickPickLook(next.dataset.id); next.focus(); }
+            });
+        }
+        const go = document.getElementById('quickExportBtn');
+        if (go && !go.dataset.wired) {
+            go.dataset.wired = '1';
+            go.addEventListener('click', () => this.exportPRGWithVisualizer());
         }
     }
 
-    async processFile(file) {
+    async quickPickLook(id) {
+        const viz = (typeof VISUALIZERS !== 'undefined') && VISUALIZERS.find(v => v.id === id);
+        if (!viz) return;
+        await this.selectVisualizer(viz);
+        this.renderQuickExport();
+    }
+
+    // ---------------------------------------------------------------------
+    // Batch queue
+    // ---------------------------------------------------------------------
+
+    // One or many SIDs, from the picker or a drop. The first is loaded as
+    // always; the rest wait in a queue that can be exported with whatever
+    // settings the user then chooses. Dropping a folder of tunes used to load
+    // one and silently discard the others.
+    async acceptFiles(fileList) {
+        const all = [...(fileList || [])];
+        // A settings file dropped on the page applies itself. It carries no
+        // tune, so it never disturbs what is loaded.
+        const recipes = all.filter(f => /\.json$/i.test(f.name));
+        for (const f of recipes) {
+            try {
+                const parsed = JSON.parse(await f.text());
+                // Held for the run: every tune in a queue gets these settings,
+                // rather than the first one's carrying over by luck.
+                if (await this.applyRecipe(parsed)) this._queueRecipe = parsed;
+            } catch (e) {
+                this.setRecipeNote(`Could not read ${f.name}.`, true);
+            }
+        }
+        const files = all.filter(f => /\.sid$/i.test(f.name));
+        if (!files.length) return;
+        this.elements.hvscSelected.style.display = 'none';
+        this._queue = files.map(f => ({ file: f, state: 'pending', note: '' }));
+        this._queue[0].state = 'loaded';
+        this.renderQueue();
+        await this.processFile(files[0]);
+    }
+
+    renderQueue() {
+        const box = document.getElementById('sidQueue');
+        if (!box) return;
+        this._wireQueueControls();
+        const q = this._queue || [];
+        // One file is not a queue - the Studio already tells you what is loaded.
+        if (q.length < 2) { box.hidden = true; return; }
+        box.hidden = false;
+
+        const done = q.filter(i => i.state === 'done').length;
+        const failed = q.filter(i => i.state === 'failed').length;
+        document.getElementById('sidQueueTitle').textContent =
+            `${q.length} tunes queued${done ? ` · ${done} exported` : ''}${failed ? ` · ${failed} failed` : ''}`;
+
+        const note = document.getElementById('sidQueueNote');
+        if (note) {
+            // Say when a dropped settings file - not the panels in front of the
+            // user - is what every tune will be built with.
+            const fromRecipe = this._queueRecipe
+                ? ' Every tune is built from the settings file you dropped.' : '';
+            note.textContent = (this._queueRunning
+                ? 'Exporting each tune with the settings below. Every file lands in your downloads.'
+                : 'Set up the first tune the way you want the whole set, then export them all. '
+                + 'Each one is measured and built with the same visualizer and options.')
+                + fromRecipe;
+        }
+
+        const icon = { pending: '·', loaded: '▸', building: '…', done: '✓', failed: '✕' };
+        document.getElementById('sidQueueList').innerHTML = q.map((item, i) => `
+            <li class="sq-item sq-${item.state}">
+                <span class="sq-mark" aria-hidden="true">${icon[item.state] || '·'}</span>
+                <span class="sq-name">${String(item.file.name).replace(/[&<>"]/g, c =>
+                    ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]))}</span>
+                <span class="sq-note">${item.note ? String(item.note).replace(/[&<>]/g, '') : ''}</span>
+            </li>`).join('');
+
+        document.getElementById('sidQueueRun').hidden = this._queueRunning;
+        document.getElementById('sidQueueStop').hidden = !this._queueRunning;
+    }
+
+    _wireQueueControls() {
+        if (this._queueWired) return;
+        this._queueWired = true;
+        const on = (id, fn) => {
+            const el = document.getElementById(id);
+            if (el) el.addEventListener('click', fn);
+        };
+        on('sidQueueRun', () => this.runQueue());
+        const dest = document.getElementById('queueDestination');
+        if (dest) {
+            // showDirectoryPicker is Chromium-only, so the folder option is only
+            // offered where it exists; the zip is the answer everywhere else.
+            const folderOpt = dest.querySelector('option[value="folder"]');
+            if (folderOpt && typeof window.showDirectoryPicker !== 'function') folderOpt.remove();
+            try {
+                const saved = localStorage.getItem('sidquakeQueueDest');
+                if (saved && dest.querySelector(`option[value="${saved}"]`)) dest.value = saved;
+            } catch (e) { /* blocked */ }
+            dest.addEventListener('change', async () => {
+                try { localStorage.setItem('sidquakeQueueDest', dest.value); } catch (e) { /* blocked */ }
+                this._outputDir = null;
+                if (dest.value === 'folder') await this._pickOutputDir();
+                this._renderDestinationNote();
+            });
+            this._renderDestinationNote();
+        }
+        on('sidQueueStop', () => { this._queueStop = true; });
+        on('sidQueueClear', () => {
+            this._queue = [];
+            this._queueStop = true;
+            // Clearing the set clears what it was going to be built from too.
+            this._queueRecipe = null;
+            this.renderQueue();
+        });
+    }
+
+    /** Where a queue run should put its files. */
+    queueDestination() {
+        const el = document.getElementById('queueDestination');
+        return (el && el.value) || 'downloads';
+    }
+
+    async _pickOutputDir() {
+        try {
+            this._outputDir = await window.showDirectoryPicker({ mode: 'readwrite' });
+        } catch (e) {
+            // The user closed the picker, or the browser refused: fall back to
+            // the zip rather than silently exporting somewhere they did not ask.
+            this._outputDir = null;
+            const el = document.getElementById('queueDestination');
+            if (el) el.value = 'zip';
+        }
+    }
+
+    _renderDestinationNote() {
+        const note = document.getElementById('queueDestinationNote');
+        if (!note) return;
+        const where = this.queueDestination();
+        if (where === 'zip') {
+            note.textContent = 'One download at the end, with every file in it.';
+        } else if (where === 'folder') {
+            note.textContent = this._outputDir
+                ? `Writing into “${this._outputDir.name}”.`
+                : 'Choose the folder when the run starts.';
+        } else {
+            note.textContent = 'One download per tune.';
+        }
+    }
+
+    // Export every queued tune with the current settings. The visualizer choice
+    // and the option values are already sticky across a load, so "the same look
+    // for the whole set" needs nothing extra - but a tune the chosen visualizer
+    // cannot fit falls back to another one, and that is worth reporting.
+    async runQueue() {
+        if (this._queueRunning || !(this._queue || []).length) return;
+        this._queueRunning = true;
+        this._queueStop = false;
+        const wanted = this._lastVisualizerId;
+        const recipe = this._queueRecipe || null;
+
+        // Collect what the run produces instead of downloading each file.
+        const where = this.queueDestination();
+        if (where === 'folder' && !this._outputDir) {
+            await this._pickOutputDir();
+            this._renderDestinationNote();
+        }
+        const collected = [];
+        if (where !== 'downloads') this._fileSink = (data, name) => collected.push({ data, name });
+
+        this.renderQueue();
+        try {
+            for (const item of this._queue) {
+                if (this._queueStop) { item.state = item.state === 'done' ? 'done' : 'pending'; continue; }
+                item.state = 'building';
+                item.note = '';
+                this.renderQueue();
+                try {
+                    await this.processFile(item.file);
+                    // Re-apply the settings file the set was dropped with. Not
+                    // its song block: sub-tune and loop answer belong to the
+                    // tune it was made from.
+                    if (recipe) await this.applyRecipe(recipe, { perTune: false, quiet: true });
+                    const got = this.selectedVisualizer?.dataSourceGroup
+                        || this.selectedVisualizer?.id;
+                    if (wanted && got !== wanted) {
+                        item.note = `used ${this.selectedVisualizer?.name || 'another player'}`;
+                    }
+                    await this.exportPRGWithVisualizer();
+                    item.state = this._lastExportOk ? 'done' : 'failed';
+                    if (!this._lastExportOk) item.note = this._lastExportMessage || 'export failed';
+                } catch (e) {
+                    item.state = 'failed';
+                    item.note = e && e.message ? e.message : 'failed';
+                }
+                this.renderQueue();
+            }
+        } finally {
+            this._fileSink = null;
+            this._queueRunning = false;
+            this._queueStop = false;
+            await this._deliverQueueFiles(collected);
+            this.renderQueue();
+        }
+    }
+
+    /**
+     * Hand over what a run collected: written into the chosen folder, or bundled
+     * into one zip. Anything that cannot be written falls back to a download, so
+     * a refused permission never loses a file the user has already waited for.
+     */
+    async _deliverQueueFiles(files) {
+        if (!files.length) return;
+        const dir = this._outputDir;
+        if (dir) {
+            const failed = [];
+            for (const f of files) {
+                try {
+                    const handle = await dir.getFileHandle(f.name, { create: true });
+                    const w = await handle.createWritable();
+                    await w.write(f.data);
+                    await w.close();
+                } catch (e) {
+                    failed.push(f);
+                }
+            }
+            if (!failed.length) {
+                this.showExportStatus(`${files.length} files written into “${dir.name}”.`, 'success');
+                return;
+            }
+            this.showExportStatus(
+                `${failed.length} of ${files.length} files could not be written into “${dir.name}” — `
+                + 'they are in your downloads instead.', 'warning');
+            for (const f of failed) this._downloadDirect(f.data, f.name);
+            return;
+        }
+
+        if (typeof window.makeZip !== 'function') {
+            for (const f of files) this._downloadDirect(f.data, f.name);
+            return;
+        }
+        this._downloadDirect(
+            window.makeZip(files.map(f => ({
+                name: f.name,
+                bytes: f.data instanceof Uint8Array ? f.data : new Uint8Array(f.data),
+            }))),
+            'sidquake-set.zip');
+        this.showExportStatus(`${files.length} files bundled into sidquake-set.zip.`, 'success');
+    }
+
+    /** downloadFile without the queue's diversion. */
+    _downloadDirect(data, filename) {
+        const sink = this._fileSink;
+        this._fileSink = null;
+        try { this.downloadFile(data, filename); } finally { this._fileSink = sink; }
+    }
+
+    // opts.autoplay: the tune was chosen by an explicit click (Random SID, an
+    // HVSC pick), so start it playing rather than making the user hunt for the
+    // play button under whatever opened on top.
+    async processFile(file, opts = {}) {
         if (!file.name.toLowerCase().endsWith('.sid')) {
             this.showModal('Please select a valid SID file', false);
             return;
@@ -663,7 +1029,16 @@ class UIController {
 
         this.currentFileName = file.name;
         this.hasModifications = false;
+        const autoplay = !!(opts && opts.autoplay);
         this.elements.exportModifiedSIDButton.disabled = true;
+
+        // A scan for the previous tune is now pointless, and its result must not
+        // land on this one: bump the token first, then stop it.
+        this._analysisToken++;
+        this.cancelAnalysis();
+        this._hideAnalysisChip();
+        // Stopping the previous tune's scan is not a decision about this one.
+        this._analysisCancelled = false;
 
         this.showBusy('Loading SID File', 'Initializing...');
         this.hideMessages();
@@ -678,7 +1053,7 @@ class UIController {
 
             const player = await this.ensureMainPlayer();
             if (player) {
-                player.loadFromBinary(new Uint8Array(buffer), file.name);
+                player.loadFromBinary(new Uint8Array(buffer), file.name, { autoplay });
             }
 
             this.updateBusy('Parsing SID Header', 'Extracting metadata...');
@@ -698,18 +1073,19 @@ class UIController {
             this.updateTechnicalInfo(header);
             this.updateSongTitle(header);
 
-            this.updateBusy('Analyzing SID Music', 'This may take a few moments...');
+            const songs = header.songs || 1;
+            this.updateBusy('Analyzing SID Music',
+                songs > 1
+                    ? `Running all ${songs} tunes to see what the music touches. The page pauses while it does.`
+                    : 'Running the music to see what it touches. The page pauses while it does.');
 
             const frameCount = 30000;
-            let lastProgress = 0;
+            // sid_analyze blocks the main thread, so give the browser a frame to
+            // put the message above on screen first - otherwise the freeze
+            // arrives before the explanation for it does.
+            await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
 
-            this.analysisResults = await this.analyzer.analyze(frameCount, (current, total) => {
-                const percent = Math.floor((current / total) * 100);
-                if (percent !== lastProgress) {
-                    lastProgress = percent;
-                    this.updateBusy('Analyzing SID Music', `Processing frame ${current.toLocaleString()} of ${total.toLocaleString()} (${percent}%)`);
-                }
-            });
+            this.analysisResults = await this.analyzer.analyze(frameCount);
 
             this.analyzer.analysisResults = this.analysisResults;
 
@@ -725,12 +1101,10 @@ class UIController {
             if (openStudioBtn) openStudioBtn.style.display = '';
 
             this.showExportSection();
+            this.renderQuickExport();
 
-            // The loop/length analysis is NOT run here - it renders the tune and can be
-            // slow even for simple SIDs, which is annoying on every load. It runs
-            // on-demand instead (the first time a spectrometer visualizer needs it) and
-            // is cached, so it's paid for only when it's actually used. See
-            // runTuneAnalysis / refreshBakeMemoryReadout.
+            // Cleared for the new tune; startBackgroundAnalysis below refills it
+            // while the user is choosing a visualizer.
             this.tuneAnalysis = null;
 
             // New SID: the forced-loop decision belongs to the previous tune.
@@ -738,12 +1112,19 @@ class UIController {
             this._loopChoiceAsked = false;
             const forceLoopToggle = document.getElementById('forceLoopToggle');
             if (forceLoopToggle) forceLoopToggle.checked = false;
+            // A length typed for the previous tune says nothing about this one.
+            const manualLen = document.getElementById('songLengthManual');
+            if (manualLen) manualLen.value = '';
             this.updateSongLoopStatus();
 
             this.hideBusy();
 
             // Everything from here on happens in the Studio modal.
             if (window.studioModal) window.studioModal.openForNewFile();
+
+            // Find the loop / end point in the background, so it is ready by the
+            // time the user reaches Export instead of stopping them there.
+            this.startBackgroundAnalysis();
 
             this.showModal(`Successfully analyzed: ${file.name}`, true);
         } catch (error) {
@@ -764,34 +1145,40 @@ class UIController {
         });
     }
 
+    // The tune selector is song metadata, so it sits on the Song tab - the
+    // export manifest's "Music -> edit" has always pointed there, at a panel
+    // that did not have it. The Spectrometer's multi-tune caveat is about the
+    // visualizer choice instead, so it stays on the Visualizer tab.
     addSongSelector() {
-        const existingSelector = document.getElementById('songSelectorContainer');
-        if (existingSelector) {
-            existingSelector.remove();
+        const mount = document.getElementById('songSelectorMount');
+        const noteMount = document.getElementById('fftMultiSongMount');
+        if (mount) mount.innerHTML = '';
+        if (noteMount) noteMount.innerHTML = '';
+
+        if (mount && this.sidHeader && this.sidHeader.songs > 1) {
+            mount.innerHTML = `
+            <div id="songSelectorContainer" class="export-option song-selector-container">
+                <label for="songSelector">Which tune to use:</label>
+                <select id="songSelector">
+                    ${Array.from({ length: Math.min(this.sidHeader.songs, 256) }, (_, i) => i + 1)
+                    .map(num => `<option value="${num}" ${num === this.sidHeader.startSong ? 'selected' : ''}>
+                        Tune ${num} of ${this.sidHeader.songs}${num === this.sidHeader.startSong ? ' (the usual one)' : ''}
+                    </option>`).join('')}
+                </select>
+            </div>`;
         }
 
-        if (this.sidHeader && this.sidHeader.songs > 1) {
-            const visualizerGrid = document.getElementById('visualizerGrid');
-            const selectorContainer = document.createElement('div');
-            selectorContainer.id = 'songSelectorContainer';
-            selectorContainer.className = 'export-option song-selector-container';
-            selectorContainer.innerHTML = `
-            <label for="songSelector">Select Song:</label>
-            <select id="songSelector">
-                ${Array.from({ length: Math.min(this.sidHeader.songs, 256) }, (_, i) => i + 1)
-                    .map(num => `<option value="${num}" ${num === this.sidHeader.startSong ? 'selected' : ''}>
-                        Song ${num} of ${this.sidHeader.songs}${num === this.sidHeader.startSong ? ' (default)' : ''}
-                    </option>`).join('')}
-            </select>
+        if (noteMount && this.sidHeader && this.sidHeader.songs > 1) {
+            noteMount.innerHTML = `
             <div id="fftMultiSongNote" style="display:none;margin-top:8px;padding:8px 10px;border:1px solid rgba(255,183,77,.4);border-radius:6px;background:rgba(255,183,77,.08);font-size:12px;line-height:1.4">
-                <b style="color:#ffb74d">⚠ Multi-song + Spectrometer:</b> only the <b>default song</b> is visualised — song-switching is <b>disabled</b> and the song length is hidden. For full multi-song support, choose a <b>VU meter</b> method on the Method tab.
+                <b style="color:#ffb74d">This file holds several tunes.</b> The best-looking bars are worked
+                out in advance, and that can only be done for one tune. If you carry on: the exported
+                program plays and shows <b>only the tune chosen on the Song tab</b>, the buttons that switch
+                between tunes stop working, and no song length is shown.
+                To keep every tune, pick one of the live methods on the Method tab instead.
                 <label style="display:flex;gap:6px;margin-top:8px;align-items:center;cursor:pointer">
-                    <input type="checkbox" id="fftMultiSongConsent"> I understand — visualise the default song only
-                </label>
-            </div>
-        `;
-
-            visualizerGrid.parentNode.insertBefore(selectorContainer, visualizerGrid);
+                    <input type="checkbox" id="fftMultiSongConsent"> Yes — just the one tune</label>
+            </div>`;
         }
         this.updateMultiSongNote();
     }
@@ -842,6 +1229,9 @@ class UIController {
         if (!grid) return;
 
         grid.innerHTML = '';
+        // Cards are radios (see createVisualizerCard), so the grid is the group.
+        grid.setAttribute('role', 'radiogroup');
+        grid.setAttribute('aria-label', 'Visualizer');
 
         const requiredCalls = this.analysisResults?.numCallsPerFrame || 1;
 
@@ -878,14 +1268,19 @@ class UIController {
         compatible.sort((a, b) => a.name.localeCompare(b.name));
         incompatible.sort((a, b) => a.name.localeCompare(b.name));
 
-        for (let i = 0; i < compatible.length; i++) {
-            const viz = compatible[i];
+        // Re-select the session's visualizer if this tune can take it; otherwise
+        // fall back to the first compatible one so the export button is usable
+        // immediately. Neither is a deliberate pick, so neither updates the
+        // sticky choice (remember: false).
+        const remembered = compatible.find(v => v.id === this._lastVisualizerId);
+        const autoSelect = remembered || compatible.find(v => v.defaultPick) || compatible[0];
+
+        for (const viz of compatible) {
             const card = this.createVisualizerCard(viz);
             grid.appendChild(card);
 
-            // Auto-select the first compatible visualizer so the export button is usable immediately.
-            if (i === 0) {
-                this.selectVisualizer(viz);
+            if (viz === autoSelect) {
+                this.selectVisualizer(viz, { remember: false });
                 card.classList.add('selected');
             }
         }
@@ -893,7 +1288,7 @@ class UIController {
         if (compatible.length > 0 && incompatible.length > 0) {
             const separator = document.createElement('div');
             separator.className = 'visualizer-separator';
-            separator.innerHTML = '<span>Incompatible with this SID (no room in C64 memory alongside the tune)</span>';
+            separator.innerHTML = '<span>These looks won\'t work with this tune — each says why</span>';
             separator.style.cssText = `
             grid-column: 1 / -1;
             text-align: center;
@@ -936,34 +1331,59 @@ class UIController {
             card.classList.add('disabled');
         }
 
+        // Why a look can't be built for THIS tune. Phrased around the look, not
+        // the tune: "needs a slower tune" reads as "your music is wrong", and a
+        // first-timer takes that personally. The specifics an expert wants (which
+        // addresses are in the way, what the cap is) come after the plain
+        // sentence rather than instead of it.
         let disabledMessage = '';
         if (noMemoryFit) {
-            disabledMessage = `No room in C64 memory alongside this tune`;
+            const lo = this.sidHeader?.loadAddress;
+            const size = this.sidHeader?.fileSize || this.analysisResults?.dataBytes || 0;
+            const hex = (n) => '$' + n.toString(16).toUpperCase().padStart(4, '0');
+            const where = (lo != null && size)
+                ? ` (it sits at ${hex(lo)}-${hex(lo + size - 1)})` : '';
+            disabledMessage = `This look needs C64 memory your tune is already using${where}.`;
         } else if (tooManyCalls) {
-            disabledMessage = `Needs a slower tune (max ${caps.maxCalls} call${caps.maxCalls > 1 ? 's' : ''}/frame)`;
+            disabledMessage = `This look can't keep up with your tune — it plays `
+                + `${requiredCalls} times per frame and this one handles `
+                + `${caps.maxCalls}.`;
         } else if (tooManySidChips) {
             disabledMessage = caps.maxSid === 1
-                ? `Single-SID tunes only`
-                : `Up to ${caps.maxSid} SID chips only`;
+                ? `This look works with one SID chip; your tune uses ${requiredSidChips}.`
+                : `This look works with up to ${caps.maxSid} SID chips; your tune uses ${requiredSidChips}.`;
         }
+
+        const esc = (t) => String(t).replace(/[&<>"]/g, c =>
+            ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 
         card.innerHTML = `
         <div class="visualizer-preview">
-            <img src="${visualizer.preview}" alt="${visualizer.name}" 
+            <img src="${visualizer.preview}" alt="" aria-hidden="true"
                  onerror="this.onerror=null;this.src='previews/default.png'">
         </div>
-        <div class="visualizer-info" ${isDisabled ? `data-reason="${disabledMessage}"` : ''}>
+        <div class="visualizer-info">
             <h3>${visualizer.name}</h3>
+            ${visualizer.sceneName ? `<p class="visualizer-scene-name">${esc(visualizer.sceneName)}</p>` : ''}
             <p>${visualizer.description}</p>
+            ${isDisabled ? `<p class="visualizer-reason">${esc(disabledMessage)}</p>` : ''}
         </div>
-        <div class="visualizer-selected-badge"><i class="fas fa-check"></i> Selected</div>
+        <div class="visualizer-selected-badge"><i class="fas fa-check" aria-hidden="true"></i> Selected</div>
     `;
 
-        if (!isDisabled) {
+        // Radio semantics rather than a blanket aria-label: the label used to
+        // override the card's contents, so neither the description nor the
+        // "Selected" state was ever spoken.
+        card.setAttribute('role', 'radio');
+        card.setAttribute('aria-checked', 'false');
+        if (isDisabled) {
+            // Reachable, and it says why. Skipping it entirely left the user
+            // asking a question the interface refused to answer.
+            card.tabIndex = -1;
+            card.setAttribute('aria-disabled', 'true');
+        } else {
             const choose = () => this.selectVisualizer(visualizer);
             card.tabIndex = 0;
-            card.setAttribute('role', 'button');
-            card.setAttribute('aria-label', `Select visualizer: ${visualizer.name}`);
             card.addEventListener('click', choose);
             card.addEventListener('keydown', (e) => {
                 if (e.key === 'Enter' || e.key === ' ') {
@@ -977,6 +1397,12 @@ class UIController {
         // version. Opt-in via `animated: true` in the registry (with a
         // prg/<id>.gif next to the .png) - that way we don't probe/404 for the
         // ones that only have a still. Probe first so a missing GIF never flickers.
+        //
+        // UNREACHABLE TODAY: no registry entry sets `animated: true` and there
+        // are no .gif files in public/prg/, so every card shows a still of a
+        // motion effect. The code is correct and waits on the assets - one
+        // recording per visualizer, which has to be made in an emulator. Keep it
+        // rather than rewriting it when they arrive.
         const img = card.querySelector('.visualizer-preview img');
         if (img && visualizer.animated && /\.png$/i.test(visualizer.preview)) {
             const still = visualizer.preview;
@@ -1057,20 +1483,27 @@ class UIController {
         return { ok: true };
     }
 
-    async selectVisualizer(visualizer) {
+    async selectVisualizer(visualizer, { remember = true } = {}) {
         const cards = document.querySelectorAll('.visualizer-card');
         cards.forEach(card => {
-            card.classList.toggle('selected', card.dataset.id === visualizer.id);
+            const on = card.dataset.id === visualizer.id;
+            card.classList.toggle('selected', on);
+            card.setAttribute('aria-checked', on ? 'true' : 'false');
         });
 
         // Bar styles default to the Spectrometer (precomputed) source - the best
         // looking / lowest CPU option. If the tune is too fast/multi-SID for it,
         // fall back to the first source that can handle it (realtime, then shadow).
+        // A source the user chose earlier in the session is tried first, so a
+        // deliberate "shadow for this release" survives loading the next tune.
         let target = visualizer;
         if (visualizer.dataSourceGroup) {
             const members = VISUALIZERS.filter(v => v.dataSourceGroup === visualizer.dataSourceGroup);
             const byMethod = m => members.find(v => v.dataSource === m);
-            const preferred = ['fft', 'realtime', 'shadow'].map(byMethod).filter(Boolean);
+            const order = this._lastDataSource
+                ? [this._lastDataSource, ...['fft', 'realtime', 'shadow'].filter(m => m !== this._lastDataSource)]
+                : ['fft', 'realtime', 'shadow'];
+            const preferred = order.map(byMethod).filter(Boolean);
             // Prefer a source that can actually be built for this tune (fits memory
             // + within the calls/SID caps); fall back to calls-usable, then FFT.
             target = preferred.find(v => this.visualizerExportable(v).ok)
@@ -1078,6 +1511,14 @@ class UIController {
                 || byMethod('fft') || visualizer;
         }
         this.selectedVisualizer = target;
+
+        if (remember) {
+            this._lastVisualizerId = visualizer.id;
+            this._saveSessionMemory();
+        }
+
+        // The quick path shows the same choice; keep the two from disagreeing.
+        this.renderQuickExport();
 
         this.elements.exportPRGButton.disabled = false;
 
@@ -1087,6 +1528,103 @@ class UIController {
         this.updateMultiSongNote();
 
         this.loadVisualizerOptions(target);
+
+        // ...but where this player WILL go can be worked out now, so say so
+        // rather than making the user export to find out. Not awaited: it
+        // fetches the player's reloc table, and the panels must not wait on it.
+        this.renderPlacementPlan();
+        // The font and text colours come with the player, so the on-screen text
+        // changes with it.
+        this.renderTextPreview();
+    }
+
+    // What the user gets after Generate: the file, what it is, and how to run it.
+    // A .prg means nothing to someone six weeks into the C64, and "run it with
+    // SYS 16640" was the entire previous explanation, arriving in a dialog that
+    // dismissed itself.
+    renderExportDone(info) {
+        const el = document.getElementById('exportDone');
+        if (!el) return;
+        const esc = (s) => String(s).replace(/[&<>"]/g, c =>
+            ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+
+        const notes = [];
+        if (info.compressionFailed) {
+            notes.push(`<p class="ed-note ed-warn">${esc(info.compressionType.toUpperCase())} compression `
+                + `wasn't available, so this one is uncompressed. It still runs — after loading it, `
+                + `type <code>SYS ${info.sysAddress}</code> and press Return.</p>`);
+        } else if (!info.isCompressed) {
+            notes.push(`<p class="ed-note">This one is uncompressed, so it doesn't start on its own: `
+                + `after loading it, type <code>SYS ${info.sysAddress}</code> and press Return.</p>`);
+        }
+
+        // The length is a nice-to-have that is easy to skip by accident; offer it
+        // back here rather than leaving the user to work out what they lost.
+        const multiSong = !!(this.sidHeader && this.sidHeader.songs > 1);
+        const noLength = !multiSong && this.showSongLength()
+            && !this.manualSongLengthSeconds()
+            && !(this.tuneAnalysis && (this.tuneAnalysis.looped || this.tuneAnalysis.fadedOut));
+        if (noLength) {
+            notes.push('<p class="ed-note">The C64 shows a running clock but no total length, '
+                + 'because the tune was never measured. '
+                + '<button type="button" class="ed-link" id="exportDoneMeasure">Measure it and build again</button></p>');
+        }
+
+        // Remembered once dismissed: an experienced user does not need to be told
+        // what an emulator is on every export.
+        let howOpen = true;
+        try { howOpen = localStorage.getItem('sidquakeHowToRunClosed') !== '1'; } catch (e) { /* blocked */ }
+
+        // Disk blocks, because that is the unit a release is budgeted in - a .d64
+        // side holds 664. 254 usable bytes per block, plus the two-byte load
+        // address the PRG carries.
+        const blocks = info.bytes ? Math.ceil(info.bytes / 254) : null;
+        const hex = (n) => '$' + n.toString(16).toUpperCase().padStart(4, '0');
+        const facts = [`${esc(info.sizeKB)} KB`];
+        if (blocks) facts.push(`${blocks} disk block${blocks === 1 ? '' : 's'}`);
+        if (info.span) facts.push(`runs at ${hex(info.span.lo)}-${hex(info.span.hi)}`);
+
+        // An uncompressed export writes the gaps between components out as
+        // zeros, so a scattered layout costs real bytes and real blocks.
+        if (!info.isCompressed && info.spanBytes && info.usedBytes
+            && info.spanBytes - info.usedBytes > 8 * 1024) {
+            const wasted = ((info.spanBytes - info.usedBytes) / 1024).toFixed(1);
+            notes.push(`<p class="ed-note">About ${wasted} KB of this file is empty space `
+                + `between the parts, written out because the file has to be one `
+                + `continuous block. Compressing it removes that.</p>`);
+        }
+
+        el.innerHTML = `
+            <h4 class="ed-title">Your file is ready</h4>
+            <p class="ed-file"><strong>${esc(info.filename)}</strong> · ${facts.join(' · ')} · saved to your downloads</p>
+            <p class="ed-what">It's a Commodore 64 program. It runs on a real C64, or on a C64 emulator on your computer.</p>
+            ${notes.join('')}
+            <details class="ed-how" id="exportDoneHow"${howOpen ? ' open' : ''}>
+                <summary>How to run it</summary>
+                <ol>
+                    <li>Get <a href="https://vice-emu.sourceforge.io/" target="_blank" rel="noopener">VICE</a>, a free Commodore 64 emulator, and install it.</li>
+                    <li>Open the C64 emulator (<code>x64sc</code>).</li>
+                    <li>Drag <strong>${esc(info.filename)}</strong> onto its window. That's it — your tune plays.</li>
+                </ol>
+                <p class="ed-note">On real hardware, copy it to a disk or an SD2IEC / Ultimate cartridge and load it as usual.</p>
+            </details>
+            <p class="ed-share">Releasing it? C64 music and demos get shared on
+                <a href="https://csdb.dk/" target="_blank" rel="noopener">CSDb</a>.
+                Tunes made with SIDquake are listed on the Releases tab.</p>
+        `;
+        el.hidden = false;
+
+        const how = document.getElementById('exportDoneHow');
+        if (how) how.addEventListener('toggle', () => {
+            try { localStorage.setItem('sidquakeHowToRunClosed', how.open ? '0' : '1'); } catch (e) { /* blocked */ }
+        });
+        const measure = document.getElementById('exportDoneMeasure');
+        if (measure) measure.addEventListener('click', () => {
+            this._analysisCancelled = false;
+            this.startBackgroundAnalysis();
+            if (window.studioModal) window.studioModal.activate('song');
+            this.updateSongLoopStatus();
+        });
     }
 
     /** Hide + empty the memory-map + bake-timeline panels (they describe the last export). */
@@ -1096,6 +1634,9 @@ class UIController {
             el.style.display = 'none';
             el.innerHTML = '';
         }
+        // The "your file is ready" panel describes the same last export.
+        const done = document.getElementById('exportDone');
+        if (done) { done.hidden = true; done.innerHTML = ''; }
     }
 
     // Switch the active visualizer to another data-source variant in the same
@@ -1107,9 +1648,12 @@ class UIController {
         const variant = VISUALIZERS.find(v => v.dataSourceGroup === group && v.dataSource === method);
         if (variant && variant !== this.selectedVisualizer) {
             this.selectedVisualizer = variant;
+            this._lastDataSource = method;
+            this._saveSessionMemory();
             this.clearMemoryMap();
             this.updateMultiSongNote();
             this.loadVisualizerOptions(variant);
+            this.renderPlacementPlan();
         }
     }
 
@@ -1122,15 +1666,16 @@ class UIController {
         const config = visualizer.config ? await this.visualizerConfig.loadConfig(visualizer.id) : null;
         if (req !== this._optionsRequest) return;  // superseded by a newer selection
 
-        // Values persist by option id across visualizer switches: capture the
-        // current panel values before re-render, restore matching ids after.
-        // Also snapshot the OUTGOING config's per-option defaults - a value that
-        // still equals its old default was never touched by the user, so it must
-        // NOT override the new config's own default (e.g. switching from the FFT
-        // player, whose colour effect defaults to Dynamic Pulse, to a Real-time
-        // player that defaults to Waveform).
+        // Values persist by option id across visualizer switches AND across SID
+        // loads: fold the current panel values into the session memory before
+        // re-render, restore matching ids after. The OUTGOING config's per-option
+        // defaults decide what gets remembered - a value that still equals its
+        // old default was never touched by the user, so it must NOT override the
+        // new config's own default (e.g. switching from the FFT player, whose
+        // colour effect defaults to Dynamic Pulse, to a Real-time player that
+        // defaults to Waveform).
         const prevDefaults = this._configDefaults(this.currentVisualizerConfig);
-        const prevValues = this._captureOptionValues();
+        this._rememberOptionValues(this._captureOptionValues(), prevDefaults);
 
         // File inputs (Logo / Bitmap) aren't captured above - the browser won't
         // let us re-assign their value, and they're skipped by the snapshot.
@@ -1145,13 +1690,27 @@ class UIController {
         // to thread it through every call site.
         this.currentVisualizerConfig = config;
 
-        // Method tab: how the bars are generated (its own tab now, not tucked
-        // under the visualizer grid). vizExtras is left empty.
+        // How the bars are worked out: folded under the visualizer grid, and
+        // present only for the players that offer a choice.
         const methodMount = document.getElementById('methodMount');
+        const methodFold = document.getElementById('methodFold');
         if (methodMount) {
             const methodHTML = this.createMethodPanelHTML(visualizer);
             methodMount.innerHTML = methodHTML
                 ? this._wrapOptionsPanel(`<div class="option-group">${methodHTML}</div>`) : '';
+            // The bars-from-notes methods can be blind to a tune; say so here
+            // rather than in the exported file. Not awaited - it runs the 6510
+            // over 1,200 frames.
+            if (methodHTML) this.checkVuVisibility();
+            if (methodFold) {
+                methodFold.hidden = !methodHTML;
+                const cur = document.getElementById('methodFoldCurrent');
+                if (cur) {
+                    const label = window.studioModal
+                        ? window.studioModal.dataSourceLabel(visualizer) : '';
+                    cur.textContent = label ? ` · ${label}` : '';
+                }
+            }
         }
         const vizExtras = document.getElementById('vizExtras');
         if (vizExtras) vizExtras.innerHTML = '';
@@ -1187,20 +1746,21 @@ class UIController {
         }
         if (window.studioModal) window.studioModal.setDerivedTabs(groups);
 
-        // Export tab: compression options, the spectrometer frame rate for FFT
-        // players, and the analysis engine - which is NOT spectrometer-specific
-        // (every visualizer runs the tune analysis), so it is always shown.
+        // Export tab: compression, then everything else folded away. Compression
+        // is a real choice with a visible consequence (file size vs depack time);
+        // the frame rate, stored length, analysis engine and loop-search window
+        // are knobs most users should never have to judge.
         const exportMount = document.getElementById('exportConfigMount');
         if (exportMount) {
             exportMount.innerHTML = this._wrapOptionsPanel(
                 this.createCompressionOptionsHTML() +
-                (config?.spectrometerBake ? this.createFrameRateOptionHTML() : '') +
-                this.createAnalysisEngineOptionHTML());
+                this.createAdvancedSettingsHTML(config));
         }
 
         this._wireAdvancedSettings();
+        this._wireRecipeControls();
         await this.attachOptionEventListeners(config);
-        this._restoreOptionValues(prevValues, prevDefaults);
+        this._restoreOptionValues(this._optionMemory);
         await this._restoreImageSelections(config, req);
         this._pendingImageRestore = null;
         this.updateConditionalVisibility();
@@ -1224,6 +1784,73 @@ class UIController {
         const compression = document.querySelector('input[name="compression-type"]:checked');
         if (compression) values['__compression'] = compression.value;
         return values;
+    }
+
+    // Fold a snapshot into the session's sticky option values. `defaults` is the
+    // OUTGOING config's per-option defaults: a value still equal to its default
+    // was never chosen, so it must not be remembered (and must clear an earlier
+    // memory of the same option, or a value the user has since reverted would
+    // keep coming back). What survives is only what the user actually set, which
+    // is what a new tune should inherit.
+    _rememberOptionValues(values, defaults = {}) {
+        for (const [id, value] of Object.entries(values)) {
+            if (defaults[id] !== undefined && String(defaults[id]) === String(value)) {
+                delete this._optionMemory[id];
+            } else {
+                this._optionMemory[id] = value;
+            }
+        }
+        this._saveSessionMemory();
+    }
+
+    /**
+     * The player, data source, option values and gallery image picks, so a
+     * reload does not start over. Only gallery picks are kept: a file the user
+     * uploaded cannot be re-read from a name, and storing one would promise
+     * something the next page load could not deliver.
+     */
+    _saveSessionMemory() {
+        // The option snapshot is a sweep of every control on the Studio panels,
+        // so it also picks up things that belong to the tune in front of the
+        // user rather than to the session: its title, author, copyright,
+        // sub-tune and typed-in length. Carrying those into a NEW session would
+        // stamp one tune's credits onto the next. The advanced settings are
+        // excluded for a different reason - they have their own store
+        // (sidquakeAdvanced), and two copies of one setting drift apart.
+        const options = {};
+        for (const [id, value] of Object.entries(this._optionMemory || {})) {
+            if (UIController.PER_TUNE_OPTION_IDS.has(id)) continue;
+            if (/^adv[A-Z]/.test(id)) continue;
+            options[id] = value;
+        }
+        const images = {};
+        for (const [slot, sel] of Object.entries(this._imageSelectionMemory || {})) {
+            if (sel && sel.kind === 'gallery' && sel.file) images[slot] = { kind: 'gallery', file: sel.file };
+        }
+        try {
+            localStorage.setItem('sidquakeSession', JSON.stringify({
+                v: 1,
+                visualizer: this._lastVisualizerId,
+                dataSource: this._lastDataSource,
+                options,
+                images,
+            }));
+        } catch (e) { /* storage blocked: the session memory is just not kept */ }
+    }
+
+    _restoreSessionMemory() {
+        let saved = null;
+        try { saved = JSON.parse(localStorage.getItem('sidquakeSession') || 'null'); }
+        catch (e) { return; }
+        if (!saved || saved.v !== 1) return;
+        this._lastVisualizerId = saved.visualizer || null;
+        this._lastDataSource = saved.dataSource || null;
+        if (saved.options && typeof saved.options === 'object') {
+            this._optionMemory = { ...saved.options };
+        }
+        if (saved.images && typeof saved.images === 'object') {
+            this._imageSelectionMemory = { ...saved.images };
+        }
     }
 
     // Per-option default values (keyed by id) for a parsed visualizer config,
@@ -1270,9 +1897,7 @@ class UIController {
             if (grid) {
                 const thumb = grid.querySelector(`.bar-style-thumbnail[data-value="${value}"]`);
                 if (!thumb) continue;
-                el.value = value;
-                grid.querySelectorAll('.bar-style-thumbnail').forEach(t => t.classList.remove('selected'));
-                thumb.classList.add('selected');
+                this.selectGridThumb(grid, thumb);
                 continue;
             }
             // Palette editors carry their state in a hidden input; move the
@@ -1323,6 +1948,7 @@ class UIController {
             if (!el) continue;
             if (el.dataset.gallerySelected === 'true' && el.dataset.galleryFile) {
                 this._imageSelectionMemory[this._imageSlot(input)] = { kind: 'gallery', file: el.dataset.galleryFile };
+                this._saveSessionMemory();
             } else if (el.files && el.files.length) {
                 this._imageSelectionMemory[this._imageSlot(input)] = { kind: 'custom', fileObj: el.files[0] };
             }
@@ -1407,6 +2033,13 @@ class UIController {
                 // budget, so a shorter stream buys back spectral detail - see
                 // UIController.STORED_LENGTH_CHOICES.
                 storedSeconds: Number.isFinite(s.storedSeconds) ? Math.min(600, Math.max(30, s.storedSeconds)) : 480,
+                // A VIC bank base the user would rather the graphics went in, or
+                // 0 for automatic. Soft - see createBankOptionHTML.
+                preferredGfxBank: [0x4000, 0x8000, 0xC000].includes(s.preferredGfxBank) ? s.preferredGfxBank : 0,
+                // Memory the export must not touch, as the user typed it. Kept
+                // as text so a half-finished entry survives a re-render;
+                // parseReservedRanges turns it into ranges.
+                reservedText: typeof s.reservedText === 'string' ? s.reservedText : '',
                 // SID engine the spectrometer analysis renders with. 'fp'
                 // (libsidplayfp) is the default because it plays every tune; 'resid'
                 // (the lightweight core in sidquake.wasm) is ~2.1x faster but gets a
@@ -1418,7 +2051,11 @@ class UIController {
         }
         // maxLoopSeconds is derived from the typed "m:ss" (blank => undefined,
         // so callers fall back to their own default scan window).
-        return { ...this._advanced, maxLoopSeconds: this._parseMMSS(this._advanced.scanLenText) || undefined };
+        return {
+            ...this._advanced,
+            maxLoopSeconds: this._parseMMSS(this._advanced.scanLenText) || undefined,
+            reservedRanges: UIController.parseReservedRanges(this._advanced.reservedText).ranges,
+        };
     }
 
     // Two export knobs spectrometer players expose: the output frame rate, and how
@@ -1507,17 +2144,376 @@ class UIController {
             this._advanced = cur;
             save();
         });
+        const details = document.getElementById('advancedSettings');
+        if (details) details.addEventListener('toggle', () => {
+            const cur = this._advanced || {};
+            cur.open = details.open;
+            this._advanced = cur;
+            save();
+        });
+        // The scan window and the shortest-loop threshold are both part of the
+        // analysis cache key, so changing either makes anything already measured
+        // describe a different search. Same treatment as the engine below.
+        const rescan = () => {
+            this._analysisToken++;
+            this.cancelAnalysis();
+            this._hideAnalysisChip();
+            this.tuneAnalysis = null;
+            this._analysisCancelled = false;
+            save();
+            this.updateSongLoopStatus();
+            this.startBackgroundAnalysis();
+        };
+        const scanLen = document.getElementById('advScanLen');
+        if (scanLen) scanLen.addEventListener('change', () => {
+            const cur = this._advanced || {};
+            // Kept as typed: getAdvancedSettings parses it, and blank means
+            // "use the caller's own default" rather than zero.
+            cur.scanLenText = this._parseMMSS(scanLen.value) ? scanLen.value.trim() : '';
+            scanLen.value = cur.scanLenText;
+            this._advanced = cur;
+            rescan();
+        });
+        const minLoop = document.getElementById('advMinLoop');
+        if (minLoop) minLoop.addEventListener('change', () => {
+            const cur = this._advanced || {};
+            cur.minLoopSeconds = Math.min(60, Math.max(1, parseInt(minLoop.value, 10) || 2));
+            minLoop.value = cur.minLoopSeconds;
+            this._advanced = cur;
+            rescan();
+        });
+        const bank = document.getElementById('advGfxBank');
+        if (bank) bank.addEventListener('change', () => {
+            const cur = this._advanced || {};
+            cur.preferredGfxBank = parseInt(bank.value, 10) || 0;
+            this._advanced = cur;
+            save();
+            // Placement is decided at build time, so nothing to re-analyse.
+        });
+        const reserved = document.getElementById('advReserved');
+        if (reserved) reserved.addEventListener('change', () => {
+            const cur = this._advanced || {};
+            const parsed = UIController.parseReservedRanges(reserved.value);
+            cur.reservedText = reserved.value.trim();
+            this._advanced = cur;
+            save();
+            const note = document.getElementById('advReservedNote');
+            if (note) {
+                // Keep the explanation to put back: a typo should not cost the
+                // user the only description of what the field is for.
+                if (!note.dataset.help) note.dataset.help = note.textContent;
+                note.classList.toggle('is-bad', parsed.bad.length > 0);
+                note.textContent = parsed.bad.length
+                    ? `Not an address range: ${parsed.bad.join(', ')} — the rest of what you typed is being used.`
+                    : note.dataset.help;
+            }
+            // Placement is decided at build time, so nothing to re-analyse -
+            // but what the page says about placement is now out of date.
+            this.renderPlacementPlan();
+        });
         const eng = document.getElementById('advBakeEngine');
         if (eng) eng.addEventListener('change', () => {
             const cur = this._advanced || {};
             cur.bakeEngine = eng.value === 'resid' ? 'resid' : 'fp';
             this._advanced = cur;
             // The rendered rows are engine-specific, so a previous analysis of this
-            // tune no longer describes what an export would bake. Drop it; the next
-            // analyse/export re-renders on the newly chosen engine.
-            this.tuneAnalysis = null;
-            save();
+            // tune no longer describes what an export would bake - and a scan still
+            // running is rendering with the old engine.
+            rescan();
         });
+    }
+
+    // The loop-search knobs. Both are part of the analysis cache key, so changing
+    // either invalidates whatever has been measured (see _wireAdvancedSettings).
+    createScanWindowOptionHTML() {
+        const a = this.getAdvancedSettings();
+        return `
+        <div class="option-group">
+            <div class="option-group-title">Loop search</div>
+            <div class="option-row">
+                <label class="option-label" for="advScanLen">Give up searching after</label>
+                <div class="option-control advanced-num">
+                    <input type="text" id="advScanLen" class="number-input" inputmode="numeric"
+                           size="5" placeholder="10:00" value="${a.scanLenText || ''}">
+                    <span class="advanced-unit">m:ss</span>
+                </div>
+            </div>
+            <p class="flow-note">How much of the tune to play through looking for its loop. Blank uses the default, 10:00. A tune whose loop is longer than this is stored as a fade-out instead.</p>
+            <div class="option-row">
+                <label class="option-label" for="advMinLoop">Shortest loop to believe</label>
+                <div class="option-control advanced-num">
+                    <input type="number" id="advMinLoop" class="number-input" min="1" max="60" step="1"
+                           value="${a.minLoopSeconds}">
+                    <span class="advanced-unit">seconds</span>
+                </div>
+            </div>
+            <p class="flow-note">A repeat shorter than this is treated as a repeated phrase rather than the tune looping.</p>
+        </div>`;
+    }
+
+    // Which VIC bank the graphics go in. Automatic placement maximises the
+    // largest free CPU block, which is right when nothing else has a claim on
+    // memory - but a disk with a shared loader wants every PRG in the same bank,
+    // and only the person building it knows that. A preference that cannot be
+    // made to work is ignored rather than failing the export, and the export
+    // says so.
+    createBankOptionHTML() {
+        const cur = this.getAdvancedSettings().preferredGfxBank || '';
+        const opt = (v, label) =>
+            `<option value="${v}"${String(cur) === String(v) ? ' selected' : ''}>${label}</option>`;
+        return `
+        <div class="option-group">
+            <div class="option-group-title">Memory</div>
+            <div class="option-row">
+                <label class="option-label" for="advGfxBank">Put the graphics in</label>
+                <div class="option-control">
+                    <select id="advGfxBank" class="number-input">
+                        ${opt('', 'Wherever leaves most room (the default)')}
+                        ${opt(0x4000, 'VIC bank 1 — $4000')}
+                        ${opt(0x8000, 'VIC bank 2 — $8000')}
+                        ${opt(0xC000, 'VIC bank 3 — $C000')}
+                    </select>
+                </div>
+            </div>
+            <p class="flow-note">Only matters if something else has a claim on C64 memory — a shared loader across a disk, say. If the tune leaves no room in the bank you choose, the export uses one that works and tells you.</p>
+            <div class="option-row">
+                <label class="option-label" for="advReserved">Keep this memory free</label>
+                <div class="option-control">
+                    <input type="text" id="advReserved" class="number-input" style="width:16em"
+                           spellcheck="false" placeholder="e.g. $C000-$CFFF"
+                           value="${String(this.getAdvancedSettings().reservedText || '').replace(/"/g, '&quot;')}"
+                           aria-describedby="advReservedNote">
+                </div>
+            </div>
+            <p class="flow-note" id="advReservedNote">Addresses the export must not use, so a loader or an intro can keep them. Separate several with commas; a bare address means its page. Unlike the bank above this is not a preference — if what is left cannot hold the player, the export says so rather than using the memory anyway.</p>
+        </div>`;
+    }
+
+    // Everything on the Export tab that a normal export never needs. Collapsed by
+    // default; the open/closed state is remembered like the settings themselves.
+    createAdvancedSettingsHTML(config) {
+        const a = this.getAdvancedSettings();
+        return `
+        <details class="advanced-settings" id="advancedSettings"${a.open ? ' open' : ''}>
+            <summary class="advanced-summary">Advanced settings</summary>
+            <div class="advanced-body">
+                <p class="flow-note">These are already set to what a normal export wants. Nothing here needs changing to build a working PRG.</p>
+                ${config?.spectrometerBake ? this.createFrameRateOptionHTML() : ''}
+                ${this.createAnalysisEngineOptionHTML()}
+                ${this.createScanWindowOptionHTML()}
+                ${this.createBankOptionHTML()}
+            </div>
+        </details>`;
+    }
+
+    // ---------------------------------------------------------------------
+    // Recipes: the whole setup as a small file
+    // ---------------------------------------------------------------------
+
+    // Everything that decides what an export looks like, in one JSON. A music
+    // disk wants every tune built the same way, and a release ought to be
+    // rebuildable next year - neither was possible when the settings existed
+    // only as live DOM state in one browser tab.
+    //
+    // A custom uploaded image can only be referenced by name: the file itself is
+    // not ours to keep, and a JSON cannot carry a file handle the browser will
+    // accept back. Gallery picks restore in full.
+    /**
+     * @param {object|null} built - what an export produced, recorded so two
+     *   builds of the same recipe can be diffed. The pipeline is deterministic
+     *   (no timestamp reaches the PRG), so the same inputs give the same bytes.
+     */
+    buildRecipe(built = null) {
+        const viz = this.selectedVisualizer;
+        const images = {};
+        for (const [slot, sel] of Object.entries(this._imageSelectionMemory || {})) {
+            if (!sel) continue;
+            images[slot] = sel.kind === 'gallery'
+                ? { kind: 'gallery', file: sel.file }
+                : { kind: 'custom', name: (sel.fileObj && sel.fileObj.name) || 'your own image' };
+        }
+        const songSel = document.getElementById('songSelector');
+        const forceLoop = document.getElementById('forceLoopToggle');
+        return {
+            sidquake: { recipe: 1 },
+            player: viz ? { card: this._lastVisualizerId || viz.id, dataSource: viz.dataSource || null } : null,
+            // The session memory holds only values the user actually chose; the
+            // live panels add whatever this player exposes right now.
+            options: Object.assign({}, this._optionMemory, this._captureOptionValues()),
+            images,
+            song: {
+                subtune: songSel ? parseInt(songSel.value, 10) : null,
+                forceLoop: !!(forceLoop && forceLoop.checked),
+                showLength: this.showSongLength(),
+                manualLengthSeconds: this.manualSongLengthSeconds(),
+            },
+            analysis: this.getAdvancedSettings(),
+            naming: { template: (document.getElementById('filenameTemplate') || {}).value || '{name}' },
+            ...(built ? { built } : {}),
+        };
+    }
+
+    /** FNV-1a over the PRG bytes: enough to tell two builds apart. */
+    static prgHash(bytes) {
+        let h = 0x811c9dc5;
+        for (let i = 0; i < bytes.length; i++) { h ^= bytes[i]; h = Math.imul(h, 0x01000193); }
+        return (h >>> 0).toString(16).padStart(8, '0');
+    }
+
+    /**
+     * The last export's `built` block, but only while the settings still match
+     * the ones that produced it - otherwise the recipe would claim a build its
+     * own settings would not reproduce.
+     */
+    _builtIfStillCurrent() {
+        if (!this._lastBuilt) return null;
+        return JSON.stringify(this.buildRecipe()) === this._lastBuiltFrom ? this._lastBuilt : null;
+    }
+
+    /** Whether to drop a settings file next to every PRG. */
+    recipeAlways() {
+        const el = document.getElementById('recipeAlways');
+        return !!(el && el.checked);
+    }
+
+    saveRecipe(built = null, baseName = null) {
+        const recipe = this.buildRecipe(built);
+        const base = baseName || (this.currentFileName || 'sidquake').replace(/\.sid$/i, '');
+        this.downloadFile(JSON.stringify(recipe, null, 2), `${base}.sqrecipe.json`);
+        this.setRecipeNote(`Saved ${base}.sqrecipe.json.`);
+        return `${base}.sqrecipe.json`;
+    }
+
+    /**
+     * @param {object} recipe
+     * @param {object} [opts]
+     * @param {boolean} [opts.perTune=true] - apply the song block too. False
+     *   when replaying a recipe across a queue: sub-tune, forced loop and a
+     *   typed-in length describe the tune the recipe was made from, not the
+     *   next one.
+     * @param {boolean} [opts.quiet=false] - skip the note; a queue run reports
+     *   per tune instead.
+     */
+    async applyRecipe(recipe, opts = {}) {
+        const { perTune = true, quiet = false } = opts;
+        if (!recipe || !recipe.sidquake || recipe.sidquake.recipe !== 1) {
+            this.setRecipeNote('That does not look like a SIDquake settings file.', true);
+            return false;
+        }
+
+        // Advanced settings first: they change what an analysis means, and
+        // getAdvancedSettings is read by everything downstream.
+        if (recipe.analysis) {
+            const a = this.getAdvancedSettings();
+            this._advanced = Object.assign({}, a, recipe.analysis);
+            try { localStorage.setItem('sidquakeAdvanced', JSON.stringify(this._advanced)); } catch (e) { /* blocked */ }
+        }
+
+        // The option memory is what survives a player switch, so seed it before
+        // selecting the player and its panels will pick the values up.
+        if (recipe.options) this._optionMemory = Object.assign({}, recipe.options);
+        if (recipe.images) {
+            this._imageSelectionMemory = {};
+            for (const [slot, sel] of Object.entries(recipe.images)) {
+                if (sel && sel.kind === 'gallery' && sel.file) {
+                    this._imageSelectionMemory[slot] = { kind: 'gallery', file: sel.file };
+                }
+            }
+        }
+
+        const missing = Object.entries(recipe.images || {})
+            .filter(([, sel]) => sel && sel.kind === 'custom')
+            .map(([, sel]) => sel.name);
+
+        if (recipe.player && recipe.player.card) {
+            const card = (typeof VISUALIZERS !== 'undefined')
+                && VISUALIZERS.find(v => v.id === recipe.player.card);
+            if (card) {
+                this._lastDataSource = recipe.player.dataSource || this._lastDataSource;
+                await this.selectVisualizer(card);
+            }
+        }
+
+        // Seeding the memory alone is not enough: rendering the panels folds the
+        // live DOM into that memory FIRST (loadVisualizerOptions), so whatever
+        // was on screen would overwrite the recipe on its way past. Put the
+        // values on the controls now the panels exist, and restore the memory
+        // behind them so a later player switch still carries them.
+        if (recipe.options) {
+            this._restoreOptionValues(recipe.options);
+            this._optionMemory = Object.assign({}, recipe.options);
+        }
+
+        if (recipe.song && perTune) {
+            const songSel = document.getElementById('songSelector');
+            if (songSel && recipe.song.subtune) songSel.value = String(recipe.song.subtune);
+            const forceLoop = document.getElementById('forceLoopToggle');
+            if (forceLoop) forceLoop.checked = !!recipe.song.forceLoop;
+            this._loopChoiceTouched = true;   // the recipe decided; don't prompt
+            const show = document.getElementById('showSongLengthToggle');
+            if (show) show.checked = recipe.song.showLength !== false;
+            const manual = document.getElementById('songLengthManual');
+            if (manual) manual.value = recipe.song.manualLengthSeconds
+                ? this._mmss(recipe.song.manualLengthSeconds) : '';
+            this.updateSongLoopStatus();
+        }
+
+        if (recipe.naming && recipe.naming.template) {
+            const tpl = document.getElementById('filenameTemplate');
+            if (tpl) tpl.value = recipe.naming.template;
+        }
+
+        if (recipe.options && recipe.options.__compression) {
+            const radio = document.querySelector(
+                `input[name="compression-type"][value="${recipe.options.__compression}"]`);
+            if (radio) radio.checked = true;
+        }
+
+        if (window.studioModal) window.studioModal.queueRefresh();
+        if (!quiet) {
+            this.setRecipeNote(missing.length
+                ? `Settings applied. Pick your own image again for: ${missing.join(', ')} — a settings file can't carry the image itself.`
+                : 'Settings applied.');
+        }
+        return true;
+    }
+
+    setRecipeNote(text, isError = false) {
+        const el = document.getElementById('recipeNote');
+        if (!el) return;
+        el.textContent = text;
+        el.style.color = isError ? 'var(--warning)' : '';
+    }
+
+    _wireRecipeControls() {
+        if (this._recipeWired) return;
+        this._recipeWired = true;
+        const save = document.getElementById('recipeSave');
+        if (save) save.addEventListener('click', () => this.saveRecipe(this._builtIfStillCurrent()));
+        const always = document.getElementById('recipeAlways');
+        if (always) {
+            try { always.checked = localStorage.getItem('sidquakeRecipeAlways') === '1'; }
+            catch (e) { /* storage blocked: leave it off */ }
+            always.addEventListener('change', () => {
+                try { localStorage.setItem('sidquakeRecipeAlways', always.checked ? '1' : '0'); }
+                catch (e) { /* blocked */ }
+            });
+        }
+        const btn = document.getElementById('recipeLoadBtn');
+        const input = document.getElementById('recipeLoad');
+        if (btn && input) {
+            btn.addEventListener('click', () => input.click());
+            input.addEventListener('change', async () => {
+                const file = input.files && input.files[0];
+                input.value = '';
+                if (!file) return;
+                try {
+                    await this.applyRecipe(JSON.parse(await file.text()));
+                } catch (e) {
+                    this.setRecipeNote('Could not read that settings file.', true);
+                }
+            });
+        }
     }
 
     createCompressionOptionsHTML() {
@@ -1526,12 +2522,12 @@ class UIController {
             <div class="option-group-title">Compression</div>
             <div class="compression-options">
                 <label class="compression-radio-option">
-                    <input type="radio" 
-                           name="compression-type" 
+                    <input type="radio"
+                           name="compression-type"
                            value="none">
                     <div class="compression-details">
                         <span class="compression-name">None</span>
-                        <span class="compression-desc">Uncompressed PRG</span>
+                        <span class="compression-desc">Biggest file, and you have to type a SYS command to start it</span>
                     </div>
                 </label>
                 <label class="compression-radio-option">
@@ -1541,7 +2537,7 @@ class UIController {
                            checked>
                     <div class="compression-details">
                         <span class="compression-name">Exomizer</span>
-                        <span class="compression-desc">Smallest file, slower to depack</span>
+                        <span class="compression-desc">Smallest file. Starts on its own, after a short pause while it unpacks.</span>
                     </div>
                 </label>
                 <label class="compression-radio-option">
@@ -1550,7 +2546,7 @@ class UIController {
                            value="tscrunch">
                     <div class="compression-details">
                         <span class="compression-name">TSCrunch</span>
-                        <span class="compression-desc">Fast to depack on the C64</span>
+                        <span class="compression-desc">Slightly bigger, but starts almost instantly on the C64.</span>
                     </div>
                 </label>
             </div>
@@ -1579,26 +2575,30 @@ class UIController {
         const variantOf = m => members.find(v => v.dataSource === m);
 
         const cards = [
-            { m: 'fft', name: 'Spectrometer', tags: ['perfect sound', 'reads audio spectrum'],
-              desc: 'A true frequency spectrum of the audio, “baked” into the file.',
-              rows: [['pro', 'Looks best — a real audio spectrum'],
-                     ['pro', 'Perfect sound, even multispeed SIDs'],
-                     ['pro', 'Lowest runtime CPU'],
-                     ['con', 'Larger file'],
-                     ['con', 'Single song only']] },
-            { m: 'realtime', name: 'VU meter · Clever', tags: ['real-time', 'perfect sound', 'smaller file'],
-              desc: 'Bars from the notes played + an ADSR approximation, generated live. Uses a “restore modified memory” trick so the visual sees the data it needs without touching the sound.',
-              rows: [['pro', 'Perfect sound quality'],
-                     ['pro', 'Full multi-song support'],
+            { m: 'fft', name: 'Best looking', tags: ['recommended', 'follows the actual sound'],
+              desc: 'SIDquake listens to the whole tune here in the browser and stores what it '
+                  + 'hears, so the bars follow the real sound exactly.',
+              rows: [['pro', 'The bars match the music closely'],
+                     ['pro', 'Works with any tune, however it is written'],
+                     ['pro', 'Leaves the C64 the most time for other things'],
+                     ['con', 'Makes a bigger file'],
+                     ['con', 'Only one tune per file'],
+                     ['con', 'Has to listen to the tune first — usually under a minute']] },
+            { m: 'realtime', name: 'Live · careful', tags: ['works out the bars on the C64', 'smaller file'],
+              desc: 'The C64 works the bars out as it plays, from the notes the tune is playing. '
+                  + 'This version takes extra care not to disturb the music.',
+              rows: [['pro', 'The music sounds exactly as written'],
+                     ['pro', 'Keeps every tune in a multi-tune file'],
                      ['pro', 'Smaller file'],
-                     ['con', 'Higher CPU (plays the tune twice)'],
-                     ['con', 'Slightly larger (save/restore code)']] },
-            { m: 'shadow', name: 'VU meter · Shadow', tags: ['real-time', 'lowest CPU', 'smallest file'],
-              desc: 'The traditional live route — the same note-based bars, captured with a lighter single-play method.',
-              rows: [['pro', 'Lower CPU'],
-                     ['pro', 'Full multi-song support'],
+                     ['pro', 'Nothing to work out first — exports straight away'],
+                     ['con', 'Leaves the C64 less spare time (it plays the tune twice over)']] },
+            { m: 'shadow', name: 'Live · light', tags: ['works out the bars on the C64', 'smallest file'],
+              desc: 'The same note-based bars by the older, lighter route.',
+              rows: [['pro', 'Leaves the C64 more spare time than the careful version'],
+                     ['pro', 'Keeps every tune in a multi-tune file'],
                      ['pro', 'Smallest file'],
-                     ['con', 'Sound quality may be affected']] },
+                     ['pro', 'Nothing to work out first — exports straight away'],
+                     ['con', 'A few tunes sound slightly different this way']] },
         ].filter(c => variantOf(c.m));
 
         const html = cards.map(c => {
@@ -1617,7 +2617,55 @@ class UIController {
                 <ul class="mc-list">${rows}</ul>
             </button>`;
         }).join('');
-        return `<div class="method-cards">${html}</div>`;
+        return `<div class="method-cards">${html}</div>`
+            + '<p class="method-vu-note" id="methodVuNote" hidden></p>';
+    }
+
+    /**
+     * Both live methods claim a bar only for a voice with the gate open and a
+     * waveform selected. Some tunes drive the SID audibly without ever meeting
+     * that test, so the bars sit empty while the music plays. Say so on the
+     * picker rather than letting someone find out from the exported file.
+     *
+     * The FFT method reads the rendered audio, so it is unaffected - which makes
+     * it the answer whenever this fires.
+     */
+    async checkVuVisibility() {
+        const note = document.getElementById('methodVuNote');
+        if (!note) return;
+        note.hidden = true;
+        const h = this.sidHeader;
+        if (!h || !this.analyzer || !this.analyzer.Module) return;
+        const token = ++this._vuToken;
+        let res;
+        try {
+            const cb = window.cacheBust || (s => s);
+            const { analyzeVuVisibility } = await import(cb('./spectrometer-shadow-detect.js'));
+            const sidBytes = this.analyzer.createModifiedSID();
+            if (!sidBytes) return;
+            res = analyzeVuVisibility(this.analyzer.Module, sidBytes, {
+                initAddress: h.initAddress,
+                playAddress: h.playAddress,
+                loadAddress: h.loadAddress,
+                subtune: Math.max(0, (h.startSong || 1) - 1),
+                numChips: this.analysisResults?.sidChipCount || 1,
+                frames: 1200,
+            });
+        } catch (e) {
+            return;   // a warning that cannot be worked out is simply not shown
+        }
+        if (token !== this._vuToken || !res || !res.frames) return;
+
+        // Only a long leading stretch the listener can actually hear. Frames with
+        // every gate closed are ordinary - across the tunes in SID/ they run from
+        // 26% to 95% on tunes whose bars are fine - and a tune that genuinely
+        // opens with silence has nothing wrong with it either.
+        if (res.leadingSeconds < 3 || !res.leadingAudible) return;
+
+        note.hidden = false;
+        note.textContent = `Heads up: this tune plays its first ${this._mmss(res.leadingSeconds)} `
+            + 'without opening a note the way the live methods look for, so their bars will be '
+            + 'empty over that stretch. Best looking reads the sound itself and is unaffected.';
     }
 
     async createLayoutSelectorHTML(visualizer, config) {
@@ -1700,9 +2748,9 @@ class UIController {
         if (isImageInput) {
             return `
         <div class="option-row option-row-full">
-            <label class="option-label">${config.label}</label>
+            <label class="option-label" id="${config.id}-label">${config.label}</label>
             <div class="option-control">
-                <div id="${config.id}-preview-container" class="image-input-container">
+                <div id="${config.id}-preview-container" class="image-input-container" role="group" aria-labelledby="${config.id}-label">
                 </div>
             </div>
         </div>
@@ -1710,14 +2758,15 @@ class UIController {
         } else {
             return `
         <div class="option-row">
-            <label class="option-label">${config.label}</label>
+            <label class="option-label" for="${config.id}">${config.label}</label>
             <div class="option-control">
                 <input type="file" 
                        id="${config.id}" 
                        accept="${config.accept}" 
                        style="display: none;">
-                <button type="button" 
-                        class="file-button" 
+                <button type="button"
+                        class="file-button"
+                        aria-label="${config.label}: choose file"
                         data-file-input="${config.id}">
                     Choose File
                 </button>
@@ -1746,7 +2795,7 @@ class UIController {
                 html += this.createColorSliderHTML(config);
             } else {
                 html += `
-                <label class="option-label">${config.label}</label>
+                <label class="option-label" for="${config.id}">${config.label}</label>
                 <div class="option-control">
                     <input type="number"
                            id="${config.id}"
@@ -1763,7 +2812,7 @@ class UIController {
             const def = config.default != null ? config.default : (config.min || 0);
             const unit = config.unit || '';
             html += `
-            <label class="option-label">${config.label}</label>
+            <label class="option-label" for="${config.id}">${config.label}</label>
             <div class="option-control">
                 <div class="range-control">
                     <input type="range"
@@ -1789,7 +2838,7 @@ class UIController {
             // Regular select dropdown
             const selectClass = 'select-input';
             html += `
-            <label class="option-label">${config.label}</label>
+            <label class="option-label" for="${config.id}">${config.label}</label>
             <div class="option-control">
                 <select id="${config.id}" class="${selectClass}">
                     ${config.values.map(v =>
@@ -1802,7 +2851,7 @@ class UIController {
         `;
         } else if (config.type === 'date') {
             html += `
-            <label class="option-label">${config.label}</label>
+            <label class="option-label" for="${config.id}">${config.label}</label>
             <div class="option-control">
                 <input type="date" id="${config.id}" class="date-input">
                 <span class="date-preview" id="${config.id}-preview">Not set</span>
@@ -1810,7 +2859,7 @@ class UIController {
         `;
         } else if (config.type === 'textarea') {
             html += `
-            <label class="option-label">${config.label}</label>
+            <label class="option-label" for="${config.id}">${config.label}</label>
             <div class="option-control">
                 <div class="textarea-container">
                     <textarea
@@ -1896,13 +2945,18 @@ class UIController {
                 : 'Click a colour to change it.';
 
         return `
-        <label class="option-label">${config.label}</label>
-        <div class="option-control palette-editor" data-editor-id="${config.id}" data-kind="${kind}">
+        <label class="option-label" id="${config.id}-label">${config.label}</label>
+        <div class="option-control palette-editor" role="group" aria-labelledby="${config.id}-label" data-editor-id="${config.id}" data-kind="${kind}">
             <div class="palette-frame">
                 <div class="palette-frame-head">
                     <span class="palette-frame-title">${frameTitle}</span>
                     ${customFlag}
                 </div>
+                ${kind === 'fade' ? `<div class="palette-live">
+                    <canvas class="palette-live-canvas" width="240" height="80"
+                            aria-label="These colours on the bars"></canvas>
+                    <span class="palette-live-label">Your colours</span>
+                </div>` : ''}
                 ${presetGrid}
                 ${swatchesBlock}
                 <div class="palette-hint">${hint}</div>
@@ -1993,6 +3047,21 @@ class UIController {
         this._selectFadePreset(editor, this._matchFadePreset(values));
     }
 
+    /**
+     * Redraw the fade editor's own preview from the values currently in it. The
+     * presets have always shown what they produce; the colours the user then
+     * edits by hand did not, so fine-tuning was done against six flat swatches
+     * with no idea what the bars would look like.
+     */
+    _drawLivePalette(editor) {
+        if (!editor || editor.dataset.kind !== 'fade') return;
+        const canvas = editor.querySelector('.palette-live-canvas');
+        const input = document.getElementById(editor.dataset.editorId);
+        if (!canvas || !input) return;
+        const values = input.value.split(',').map(v => parseInt(v, 10) & 0x0F);
+        this._drawFadePresetCanvas(canvas, values);
+    }
+
     // Draw a preset's live preview: a small spectrum whose bars are coloured by
     // the preset's own fade (the Dynamic Pulse mapping), so the thumbnail can
     // never drift from what the preset actually produces.
@@ -2028,7 +3097,7 @@ class UIController {
         const defaultColor = C64_COLORS[defaultValue];
 
         return `
-        <label class="option-label">${config.label}</label>
+        <label class="option-label" for="${config.id}">${config.label}</label>
         <div class="option-control color-slider-control">
             <div class="slider-wrapper">
                 <input type="range"
@@ -2096,13 +3165,17 @@ class UIController {
     _fontThumbHTML(v, isSelected) {
         if (v.isROM) {
             return `<div class="bar-style-thumbnail placeholder ${isSelected ? 'selected' : ''}"
-                     data-value="${v.value}" data-font-id="${v.id}" title="${v.label}">
+                     role="radio" aria-checked="${isSelected}" tabindex="${isSelected ? 0 : -1}"
+                     data-value="${v.value}" data-font-id="${v.id}"
+                     aria-label="${v.label}" title="${v.label}">
                     <span>ROM</span>${this._fontCaseBadge(v.caseType)}
                     <span class="selected-check"><i class="fas fa-check"></i></span>
                     <span class="style-name">${v.label}</span></div>`;
         }
         return `<div class="bar-style-thumbnail ${isSelected ? 'selected' : ''}"
-                 data-value="${v.value}" data-font-id="${v.id}" data-font-path="${v.imagePath}" title="${v.label}">
+                 role="radio" aria-checked="${isSelected}" tabindex="${isSelected ? 0 : -1}"
+                 data-value="${v.value}" data-font-id="${v.id}" data-font-path="${v.imagePath}"
+                 aria-label="${v.label}" title="${v.label}">
                 <img class="font-thumbnail-img" alt="${v.label}">
                 ${this._fontCaseBadge(v.caseType)}
                 <span class="selected-check"><i class="fas fa-check"></i></span>
@@ -2138,11 +3211,15 @@ class UIController {
 
         return `
             <div class="bar-style-container font-selector" data-config-id="${config.id}" data-font-type="${fontType}">
-                <span class="bar-style-label">${config.label}</span>
-                <div class="font-selector-current" id="${config.id}-current-grid">
+                <span class="bar-style-label" id="${config.id}-grid-label">${config.label}</span>
+                <!-- The current-font preview mirrors the grid below; it is not a
+                     second control, so it stays out of the tab order and the
+                     accessibility tree. -->
+                <div class="font-selector-current" id="${config.id}-current-grid" aria-hidden="true">
                     ${this._fontThumbHTML(selected, true)}
                 </div>
-                <div class="bar-style-grid font-selector-grid" id="${config.id}-grid" data-config-id="${config.id}">
+                <div class="bar-style-grid font-selector-grid" id="${config.id}-grid" data-config-id="${config.id}"
+                     role="radiogroup" aria-labelledby="${config.id}-grid-label">
                     ${thumbs}
                 </div>
                 <input type="hidden" id="${config.id}" value="${defaultValue}">
@@ -2186,6 +3263,27 @@ class UIController {
         }
     }
 
+    // Move a grid's selection: the hidden input the exporter reads, the visual
+    // state, the radio state, and the roving tabindex that keeps the group to a
+    // single tab stop. Used by clicks, by the arrow keys, and by the session
+    // option memory when it restores a value.
+    selectGridThumb(grid, thumbnail) {
+        if (!grid || !thumbnail) return;
+        const configId = grid.dataset.configId;
+        const hiddenInput = configId && document.getElementById(configId);
+        if (hiddenInput) hiddenInput.value = parseInt(thumbnail.dataset.value);
+
+        for (const t of grid.querySelectorAll('.bar-style-thumbnail')) {
+            const on = t === thumbnail;
+            t.classList.toggle('selected', on);
+            t.setAttribute('aria-checked', on ? 'true' : 'false');
+            t.tabIndex = on ? 0 : -1;
+        }
+
+        // The colour-effect grid gates which palette editor is shown.
+        if (configId === 'colorEffect') this.updateConditionalVisibility();
+    }
+
     createBarStyleGridHTML(config) {
         const defaultValue = config.default || 0;
 
@@ -2199,7 +3297,9 @@ class UIController {
 
             return `
                 <div class="bar-style-thumbnail ${isSelected ? 'selected' : ''}"
+                     role="radio" aria-checked="${isSelected}" tabindex="${isSelected ? 0 : -1}"
                      data-value="${v.value}"
+                     aria-label="${v.label}"
                      title="${v.label}">
                     <img src="${imagePath}"
                          alt="Style ${v.value}"
@@ -2212,8 +3312,9 @@ class UIController {
 
         return `
             <div class="bar-style-container">
-                <span class="bar-style-label">${config.label}</span>
-                <div class="bar-style-grid" id="${config.id}-grid" data-config-id="${config.id}">
+                <span class="bar-style-label" id="${config.id}-grid-label">${config.label}</span>
+                <div class="bar-style-grid" id="${config.id}-grid" data-config-id="${config.id}"
+                     role="radiogroup" aria-labelledby="${config.id}-grid-label">
                     ${thumbnailsHTML}
                 </div>
                 <input type="hidden" id="${config.id}" value="${defaultValue}">
@@ -2438,30 +3539,33 @@ class UIController {
             });
         });
 
-        // Bar style grid thumbnail handlers
+        // Bar style / colour effect / font grids. They are radio groups: one tab
+        // stop for the whole grid, arrows to move (so a 30-font grid costs one
+        // Tab, not thirty), and the value lives in the hidden input as before.
         panel.querySelectorAll('.bar-style-grid').forEach(grid => {
             grid.addEventListener('click', (e) => {
                 const thumbnail = e.target.closest('.bar-style-thumbnail');
-                if (!thumbnail) return;
+                if (thumbnail) this.selectGridThumb(grid, thumbnail);
+            });
 
-                const value = parseInt(thumbnail.dataset.value);
-                const configId = grid.dataset.configId;
-                const hiddenInput = document.getElementById(configId);
-
-                // Update hidden input value
-                if (hiddenInput) {
-                    hiddenInput.value = value;
+            grid.addEventListener('keydown', (e) => {
+                const thumbs = [...grid.querySelectorAll('.bar-style-thumbnail')];
+                if (!thumbs.length) return;
+                const here = e.target.closest('.bar-style-thumbnail');
+                const i = here ? thumbs.indexOf(here) : 0;
+                let next = null;
+                switch (e.key) {
+                    case 'ArrowRight': case 'ArrowDown': next = thumbs[(i + 1) % thumbs.length]; break;
+                    case 'ArrowLeft': case 'ArrowUp': next = thumbs[(i - 1 + thumbs.length) % thumbs.length]; break;
+                    case 'Home': next = thumbs[0]; break;
+                    case 'End': next = thumbs[thumbs.length - 1]; break;
+                    case ' ': case 'Enter': next = here; break;
+                    default: return;
                 }
-
-                // Update visual selection
-                grid.querySelectorAll('.bar-style-thumbnail').forEach(thumb => {
-                    thumb.classList.remove('selected');
-                });
-                thumbnail.classList.add('selected');
-
-                // If this is the colorEffect grid, update conditional visibility
-                if (configId === 'colorEffect') {
-                    this.updateConditionalVisibility();
+                e.preventDefault();
+                if (next) {
+                    this.selectGridThumb(grid, next);
+                    next.focus();
                 }
             });
         });
@@ -2529,6 +3633,8 @@ class UIController {
                     this.markPaletteDirty(editor);
                 });
             });
+            // ...and the editor's own preview, from whatever is in it now.
+            this._drawLivePalette(editor);
             editor.querySelector('.palette-load')?.addEventListener('click', () => this.loadPalette(editor));
             editor.querySelector('.palette-save')?.addEventListener('click', () => this.savePalette(editor));
         });
@@ -2549,6 +3655,7 @@ class UIController {
             overlay = document.createElement('div');
             overlay.id = 'colorPickerModal';
             overlay.className = 'color-picker-overlay';
+            overlay.setAttribute('data-overlay', '');
             overlay.innerHTML = `
                 <div class="color-picker-dialog" role="dialog" aria-label="Choose colour">
                     <div class="color-picker-head">
@@ -2630,6 +3737,7 @@ class UIController {
         if (!input) return;
         input.value = Array.from(editor.querySelectorAll('.palette-swatch'))
             .map(s => parseInt(s.dataset.value) & 0x0F).join(',');
+        this._drawLivePalette(editor);
     }
 
     applyPaletteValues(editor, values) {
@@ -2733,9 +3841,10 @@ class UIController {
     }
 
     updateFileInfo(header) {
-        this.elements.sidTitle.querySelector('.text').textContent = header.name || 'Unknown';
-        this.elements.sidAuthor.querySelector('.text').textContent = header.author || 'Unknown';
-        this.elements.sidCopyright.querySelector('.text').textContent = header.copyright || 'Unknown';
+        this.elements.sidTitle.value = header.name || '';
+        this.elements.sidAuthor.value = header.author || '';
+        this.elements.sidCopyright.value = header.copyright || '';
+        this.updateMetadataCounts();
 
         this.elements.sidFormat.textContent = header.format;
         this.elements.sidVersion.textContent = `v${header.version}`;
@@ -2905,9 +4014,9 @@ class UIController {
 
         // Update the original metadata to reflect the saved state
         this.originalMetadata = {
-            title: this.elements.sidTitle.querySelector('.text').textContent.trim(),
-            author: this.elements.sidAuthor.querySelector('.text').textContent.trim(),
-            copyright: this.elements.sidCopyright.querySelector('.text').textContent.trim()
+            title: this.elements.sidTitle.value.trim(),
+            author: this.elements.sidAuthor.value.trim(),
+            copyright: this.elements.sidCopyright.value.trim()
         };
 
         // Reset modification state
@@ -2919,8 +4028,11 @@ class UIController {
     }
 
     async exportPRGWithVisualizer() {
+        // The queue needs to know how each build went; this method reports
+        // everything through the UI and returns nothing.
+        this._lastExportOk = false;
         if (!this.selectedVisualizer) {
-            this.showExportStatus('Please select a visualizer', 'error');
+            this.showExportStatus('Choose what people will see first — pick one on the Visualizer tab.', 'error');
             return;
         }
 
@@ -2942,11 +4054,22 @@ class UIController {
         if (multiSong && isFFT) {
             const consent = document.getElementById('fftMultiSongConsent');
             if (!consent || !consent.checked) {
-                this.showExportStatus('This is a multi-song SID. Tick “visualise the default song only” to export the spectrometer, or pick a VU meter method.', 'error');
+                this.showExportStatus('This file holds several tunes. Confirm on the Visualizer tab '
+                    + 'that only one of them should be used, or pick a live method on the Method tab.', 'error');
                 const note = document.getElementById('fftMultiSongNote');
                 if (note) note.style.outline = '2px solid #ffb74d';
-                // The consent checkbox lives on the Visualizer tab - show it.
+                // Take the user to the thing they have to answer, and put focus
+                // on it - a highlight on a tab they cannot see says nothing, and
+                // an outline alone is colour-only.
                 if (window.studioModal) window.studioModal.activate('visualizer');
+                const fold = document.getElementById('methodFold');
+                if (fold && !fold.hidden) fold.open = true;
+                if (consent) {
+                    consent.setAttribute('aria-invalid', 'true');
+                    consent.focus();
+                } else if (note) {
+                    note.scrollIntoView({ block: 'nearest' });
+                }
                 return;
             }
         }
@@ -2964,17 +4087,25 @@ class UIController {
             // Silent analyse under the busy overlay - no export modal. Cancellable:
             // the spectrometer needs the bake, so cancelling aborts the whole export
             // (the user can then change the logo/settings and try again).
-            const ac = new AbortController();
-            this.showBusy('Analysing SID Music', 'Preparing…', () => ac.abort());
-            try {
-                await this.runTuneAnalysis({ signal: ac.signal, onProgress: this._analysisProgressCallback(
-                    'Analysing SID Music',
-                    'Deep-analysing the SID tune for a better visualisation. This finishes early ' +
-                    'as soon as the tune\'s loop is found, but can take several minutes on long ' +
-                    'tunes — or cancel to change settings first.') });
-            } finally { this.hideBusy(); }
-            // User cancelled: bail out of the export silently (no error, nothing built).
-            if (ac.signal.aborted) return;
+            if (!this.tuneAnalysis) {
+                // Usually already done or well under way - the scan started when the
+                // SID loaded. Adopt that job rather than starting a second render:
+                // the bake core keeps one shared cache, so two would fight.
+                this._hideAnalysisChip();
+                this.showBusy('Analysing SID Music', 'Preparing…', () => this.cancelAnalysis());
+                try {
+                    await this._ensureAnalysis({
+                        holdOnLoopFound: true,
+                        onProgress: this._analysisProgressCallback(
+                            'Analysing SID Music',
+                            'Deep-analysing the SID tune for a better visualisation. This finishes early ' +
+                            'as soon as the tune\'s loop is found, but can take several minutes on long ' +
+                            'tunes — or cancel to change settings first.'),
+                    });
+                } finally { this.hideBusy(); }
+                // User cancelled: bail out of the export silently (no error, nothing built).
+                if (this._analysisCancelled) return;
+            }
             const a = this.tuneAnalysis;
             if (!a) {
                 this.showModal('Could not analyse this tune for the spectrometer. Try a different visualizer.', false);
@@ -2999,25 +4130,27 @@ class UIController {
                 // export would re-render (and could resolve a different loop).
                 bakeEngine: adv.bakeEngine,
             };
-        } else if (!multiSong && !this.tuneAnalysis) {
+        } else if (!multiSong && !this.tuneAnalysis && !this._analysisCancelled
+            && this.showSongLength() && !this.manualSongLengthSeconds()) {
             // Every visualizer benefits from knowing how the song ends: players with
             // a timer show the length, and a detected FADE-OUT is what unlocks the
             // Song Looping option (restart the tune when it ends) - which works on
-            // all players. Finding it means rendering the tune, but the scan finishes
-            // early once the loop (or the fade to silence) is found and is
-            // cancellable, so calculate it by default rather than prompting.
+            // all players. The scan normally started when the SID loaded, so by now
+            // it has usually finished; this only blocks when it hasn't.
             //
-            // Cancellable: the length/loop info is a nice-to-have, so cancelling just
-            // drops it and the export continues with no length and no forced loop
-            // (runTuneAnalysis leaves tuneAnalysis null on abort).
-            const ac = new AbortController();
-            this.showBusy('Finding song length', 'Preparing…', () => ac.abort());
+            // If the user already stopped it from the corner chip, that answer
+            // stands: export with no length rather than asking again here.
+            this._hideAnalysisChip();
+            this.showBusy('Finding song length', 'Preparing…', () => this.cancelAnalysis());
             try {
-                await this.runTuneAnalysis({ signal: ac.signal, onProgress: this._analysisProgressCallback(
-                    'Finding song length',
-                    'Analysing the SID to find its loop or end point. This finishes early as ' +
-                    'soon as the loop is found, but can take several minutes on long tunes ' +
-                    '— or cancel to export without length/loop info.') });
+                await this._ensureAnalysis({
+                    holdOnLoopFound: true,
+                    onProgress: this._analysisProgressCallback(
+                        'Finding song length',
+                        'Analysing the SID to find its loop or end point. This finishes early as ' +
+                        'soon as the loop is found, but can take several minutes on long tunes ' +
+                        '— or cancel to export without length/loop info.'),
+                });
             }
             finally { this.hideBusy(); }
         }
@@ -3055,12 +4188,7 @@ class UIController {
         const selectedSong = songSelector ? parseInt(songSelector.value) : this.sidHeader.startSong;
 
         try {
-            // Sanitize filename: lowercase, remove .sid extension, keep only a-z, 0-9, -, !
-            const baseName = this.currentFileName ?
-                this.currentFileName
-                    .replace(/\.sid$/i, '')
-                    .toLowerCase()
-                    .replace(/[^a-z0-9\-!]/g, '') : 'output';
+            const baseName = this.exportBaseName();
 
             // Update progress
             this.updateBusy('Loading Visualizer', 'Reading configuration...');
@@ -3098,6 +4226,19 @@ class UIController {
                 // Forced song loop (Song tab toggle): restart fade-out tunes when
                 // they end. The exporter applies it to single-song tunes only.
                 forceSongLoop: forceSongLoop,
+                // Every option's value as it stands now. The builder used to read
+                // the DOM as each option came up, so anything that changed
+                // mid-build would land half-applied - and it is what a caller
+                // without a page would have to supply.
+                optionValues: this._captureOptionValues(),
+                // Soft VIC-bank preference (Advanced settings). Ignored when the
+                // tune leaves no room for it.
+                preferredGfxBank: this.getAdvancedSettings().preferredGfxBank || null,
+                reservedRanges: this.getAdvancedSettings().reservedRanges,
+                // Song length on the C64 (Song tab): whether to show one at all, and
+                // a length the user typed rather than one the scan measured.
+                showSongLength: this.showSongLength(),
+                manualLengthSeconds: this.manualSongLengthSeconds(),
                 // Frame rate + loop-search window chosen in the spectrometer export modal.
                 bakeParams: bakeParams,
                 // Progress for the visualisation build (the slow analysis is already
@@ -3175,18 +4316,51 @@ class UIController {
             // plain success so it's clear why the file is larger and -sys named.
             this.showExportStatus(statusMsg, compressionFailed ? 'warning' : 'success');
 
-            // Also surface a confirmation modal (matching the analyze/error modals)
-            // so it's clear the file was saved and under what name.
-            let savedMsg = `Saved ${filename} (${sizeKB}KB`;
-            if (isCompressed) {
-                savedMsg += `, ${compressionType.toUpperCase()} compressed).`;
-            } else if (compressionFailed) {
-                savedMsg += `). ${compressionType.toUpperCase()} compression was unavailable, ` +
-                    `so this is an uncompressed PRG - run it with SYS ${realSysAddress}.`;
-            } else {
-                savedMsg += ').';
+            // The file is the result, so say what it is and what to do with it on
+            // the page rather than in a dialog that dismisses itself after two
+            // seconds. (It used to do both, for one event.)
+            this._lastExportOk = true;
+            const wanted = this.getAdvancedSettings().preferredGfxBank;
+            if (wanted && this.prgExporter.lastGfxBankPreferenceHonoured === false) {
+                this.showExportStatus('The graphics could not go in the bank you asked for — '
+                    + 'this tune leaves no room there, so a bank that works was used instead.', 'warning');
             }
-            this.showModal(savedMsg, true);
+            this.renderExportDone({
+                filename,
+                sizeKB,
+                isCompressed,
+                compressionFailed,
+                compressionType,
+                sysAddress: realSysAddress,
+                bytes: prgData.length,
+                // The runtime span the PRG covers. build() allocates
+                // highest-lowest+1 and zero-fills, so a tune low in memory with
+                // graphics high leaves a large hole that is still written out.
+                span: memInfo ? { lo: memInfo.lowestAddress, hi: memInfo.highestAddress } : null,
+                spanBytes: memInfo ? memInfo.totalSize : null,
+                usedBytes: memInfo
+                    ? memInfo.components.reduce((n, c) => n + c.size, 0) : null,
+            });
+
+            // Record what this build actually produced, so a recipe kept next to
+            // the PRG says which bytes it made as well as which settings.
+            const built = {
+                filename,
+                bytes: prgData.length,
+                blocks: Math.ceil(prgData.length / 254),
+                loadAddress: prgData.length >= 2 ? prgData[0] | (prgData[1] << 8) : null,
+                sysAddress: realSysAddress,
+                compression: isCompressed ? compressionType : 'none',
+                span: memInfo ? { lo: memInfo.lowestAddress, hi: memInfo.highestAddress } : null,
+                spanBytes: memInfo ? memInfo.totalSize : null,
+                loopFrames: this.tuneAnalysis ? (this.tuneAnalysis.loopFrames ?? null) : null,
+                prgHash: UIController.prgHash(prgData),
+            };
+            // Remember the settings that produced it too: a later "Save these
+            // settings" must not attach this build to a changed recipe.
+            this._lastBuilt = built;
+            this._lastBuiltFrom = JSON.stringify(this.buildRecipe());
+            if (this.recipeAlways()) this.saveRecipe(built, baseName);
 
             this.renderBakeTimeline(bakeInfo);
             this.renderLoopInfo();
@@ -3221,6 +4395,45 @@ class UIController {
     // easy to see where the SID, player code+graphics, spectrometer data and free
     // RAM all ended up. Reads the (uncompressed) component list the builder placed.
     // -------------------------------------------------------------------------
+    /**
+     * Option ids that describe the tune currently open, not the session. They
+     * come out of _captureOptionValues because it sweeps the whole panel, but
+     * they must never be carried into a new session.
+     */
+    /**
+     * Parse "keep this memory free" as the user types it: a comma or
+     * space-separated list of `$C000-$CFFF` style ranges. Hex with or without
+     * the `$`, and a bare address means that single page.
+     * @returns {{ranges: Array<{start:number,end:number}>, bad: string[]}}
+     *   ranges are [start, end) so they drop straight into the placement code.
+     */
+    static parseReservedRanges(text) {
+        const ranges = [];
+        const bad = [];
+        for (const piece of String(text || '').split(/[,\s]+/).filter(Boolean)) {
+            const m = /^\$?([0-9a-f]{1,4})(?:\s*-\s*\$?([0-9a-f]{1,4}))?$/i.exec(piece);
+            if (!m) { bad.push(piece); continue; }
+            const start = parseInt(m[1], 16);
+            // A bare address reserves its page: "$C000" plainly means the page,
+            // not the single byte, and a one-byte reservation is never useful.
+            const end = m[2] !== undefined ? parseInt(m[2], 16) + 1 : (start & 0xff00) + 0x100;
+            if (!(end > start) || end > 0x10000) { bad.push(piece); continue; }
+            ranges.push({ start, end });
+        }
+        return { ranges, bad };
+    }
+
+    /**
+     * How much of a tune must have been scanned before "use what it has found"
+     * is worth offering. Below this the answer would be a fade-out at a few
+     * seconds, which is worse than no answer.
+     */
+    static get STOP_OFFER_SECONDS() { return 45; }
+
+    static get PER_TUNE_OPTION_IDS() {
+        return new Set(['sidTitle', 'sidAuthor', 'sidCopyright', 'songSelector', 'songLengthManual']);
+    }
+
     static get MEMMAP_CATEGORIES() {
         return {
             sid:         { label: 'SID music',            color: '#4fc3f7' },
@@ -3256,23 +4469,103 @@ class UIController {
 
     // Keep the Song tab's "Song Looping" panel truthful for the current tune:
     // what we know about how the song ends, and whether the toggle can apply.
+    /** The typed song length in whole seconds, or 0 when the field is empty/invalid. */
+    manualSongLengthSeconds() {
+        const el = document.getElementById('songLengthManual');
+        const secs = this._parseMMSS(el && el.value);
+        return Number.isFinite(secs) && secs > 0 ? Math.floor(secs) : 0;
+    }
+
+    /** Is the song length wanted on the C64 screen at all? */
+    showSongLength() {
+        const el = document.getElementById('showSongLengthToggle');
+        return !el || el.checked;
+    }
+
+    // One-time wiring for the Song tab's length controls. The panel is static
+    // markup, so this runs once and the handlers survive every reload.
+    _wireSongLengthControls() {
+        if (this._songLengthWired) return;
+        this._songLengthWired = true;
+        const on = (id, evt, fn) => {
+            const el = document.getElementById(id);
+            if (el) el.addEventListener(evt, fn);
+        };
+        on('songLengthMeasure', 'click', () => {
+            // An explicit "measure" overrides an earlier decision to stop.
+            this._analysisCancelled = false;
+            this.startBackgroundAnalysis();
+            this.updateSongLoopStatus();
+        });
+        on('songLengthStop', 'click', () => {
+            this.cancelAnalysis();
+            this._hideAnalysisChip();
+            this.updateSongLoopStatus();
+        });
+        on('songLengthManual', 'input', () => {
+            this.updateSongLoopStatus();
+            if (window.studioModal) window.studioModal.queueRefresh();
+        });
+        on('showSongLengthToggle', 'change', () => {
+            this.updateSongLoopStatus();
+            if (window.studioModal) window.studioModal.queueRefresh();
+        });
+    }
+
+    /**
+     * Why a scan came back with no loop. Running out of window and being stopped
+     * on purpose are different answers, and the first one used to read as "this
+     * tune has no loop" when it only meant "we did not look far enough".
+     */
+    _scanEndedBecause(a) {
+        const scanned = this._mmss(a.analyzedSeconds);
+        if (a.stoppedEarly) return `You stopped the search after ${scanned}, and nothing repeated in it`;
+        if (a.cappedAtMaxSeconds) return `Nothing repeated in ${scanned}, which is as far as the scan looks`;
+        return `No repeat or fade-out found in ${scanned} of scanning`;
+    }
+
     updateSongLoopStatus() {
         const status = document.getElementById('songLoopStatus');
         const toggle = document.getElementById('forceLoopToggle');
         if (!status || !toggle) return;
+        this._wireSongLengthControls();
         const a = this.tuneAnalysis;
         const multiSong = !!(this.sidHeader && this.sidHeader.songs > 1);
+        const manual = this.manualSongLengthSeconds();
+        const scanning = this.analysisRunning;
+
+        // Length controls: measuring and typing are alternatives, and neither is
+        // offered when a multi-song SID rules a length out entirely.
+        const show = (id, on) => { const el = document.getElementById(id); if (el) el.hidden = !on; };
+        const canMeasure = !!this.sidHeader && !multiSong && !a;
+        show('songLengthMeasure', canMeasure && !scanning);
+        show('songLengthStop', scanning);
+        const manualWrap = document.querySelector('.song-length-manual');
+        if (manualWrap) manualWrap.hidden = !this.sidHeader || multiSong || !!(a && a.looped);
+        const showToggleRow = document.getElementById('showSongLengthToggle')?.closest('.info-row');
+        if (showToggleRow) showToggleRow.hidden = !this.sidHeader || multiSong;
+
         let text;
         let enabled = true;
         if (!this.sidHeader) {
             text = 'Load a SID first.';
             enabled = false;
         } else if (multiSong) {
-            text = 'Multi-song SID — forced looping applies to single-song exports only.';
+            text = 'Multi-song SID — the C64 shows a running clock, with no total length, ' +
+                'and forced looping applies to single-song exports only.';
             enabled = false;
+        } else if (scanning) {
+            text = 'Measuring the song length — playing the tune through to find where it ' +
+                'loops or fades out. Carry on choosing a visualizer; this runs in the background.';
+        } else if (!a && manual) {
+            text = `Song length ${this._mmss(manual)}, as typed. The C64 clock counts up to it ` +
+                'and wraps there.';
+        } else if (!a && this._analysisCancelled) {
+            text = 'Measuring stopped — the export will show a running clock with no total. ' +
+                'Measure again, or type the length in.';
         } else if (!a) {
-            text = 'Song end not analysed yet — SIDquake checks how the song ends during export. ' +
-                'Tick the box now if you already want a loop added should the song fade out.';
+            text = 'Song length not measured yet. It is worked out in the background once the ' +
+                'Studio opens, and at the latest when you export.';
         } else if (a.looped) {
             text = `This song loops naturally (repeats at ${this._mmss(a.storedSeconds)}) — no forced loop needed.`;
             enabled = false;
@@ -3281,9 +4574,20 @@ class UIController {
                 (toggle.checked
                     ? 'A loop will be added: the exported PRG restarts the song there.'
                     : 'No loop will be added: the exported PRG goes silent there.');
-        } else {
-            text = `No repeat or fade-out found within the analysis window (${this._mmss(a.analyzedSeconds)} scanned) — forced looping is unavailable.`;
+        } else if (manual) {
+            text = `${this._scanEndedBecause(a)}, so the typed length ${this._mmss(manual)} ` +
+                'is used instead. Forced looping is unavailable.';
             enabled = false;
+        } else {
+            text = `${this._scanEndedBecause(a)} — forced looping is unavailable. ` +
+                'Type the length in if you know it'
+                + (a.cappedAtMaxSeconds ? ', or raise the scan window under Advanced settings.' : '.');
+            enabled = false;
+        }
+        // The length can be measured or typed and still deliberately left off the
+        // screen; say so rather than showing a figure the export will not use.
+        if (!multiSong && this.sidHeader && !this.showSongLength()) {
+            text += ' The C64 will show a running clock only — "show the song length" is unticked.';
         }
         status.textContent = text;
         toggle.disabled = !enabled;
@@ -3299,6 +4603,9 @@ class UIController {
         const multiSong = !!(this.sidHeader && this.sidHeader.songs > 1);
         const eligible = !!(a && !a.looped && a.fadedOut && !multiSong);
         if (!eligible) return false;
+        // During a queue run there is nobody watching each tune go by, and a
+        // modal per file would stall the batch. Use the toggle as it stands.
+        if (this._queueRunning) return !!(toggle && toggle.checked && !toggle.disabled);
         if (!this._loopChoiceAsked && !this._loopChoiceTouched && window.errorModal) {
             this._loopChoiceAsked = true;
             const at = this._mmss(a.loopStartSeconds);
@@ -3591,6 +4898,148 @@ class UIController {
         this._wireTimelineCopy(el);
     }
 
+    /**
+     * Say where this tune and player will land, before the user commits to an
+     * export. The map that already exists is only drawn on success, so until now
+     * the only way to find out which VIC bank a tune forced, or what the SYS
+     * address would be, was to export and look.
+     *
+     * This is deliberately a plan and says so: the data block, the player stub
+     * and any bitmaps are placed later, so the span here is a floor, not the
+     * final size.
+     */
+    async renderPlacementPlan() {
+        const el = document.getElementById('placementPlan');
+        if (!el) return;
+        const config = this.currentVisualizerConfig;
+        const hide = () => { el.hidden = true; el.innerHTML = ''; };
+        if (!config || !config.relocatable || !this.sidHeader || !this.prgExporter) return hide();
+
+        // Only the newest plan is shown: the user can change player faster than
+        // the placement runs.
+        const token = ++this._planToken;
+        let result;
+        try {
+            const sidInfo = this.prgExporter.extractSIDMusicData();
+            const adv = this.getAdvancedSettings();
+            result = await this.prgExporter.previewPlacement(
+                config, sidInfo.loadAddress, sidInfo.data,
+                adv.preferredGfxBank || null, adv.reservedRanges);
+        } catch (e) {
+            // "It will not fit" is already reported by the card grid; nothing
+            // useful to say here, so say nothing.
+            if (token === this._planToken) hide();
+            return;
+        }
+        if (token !== this._planToken) return;
+
+        const { plan, info } = result;
+        const hex = v => '$' + v.toString(16).toUpperCase().padStart(4, '0');
+        const sz = n => (n >= 1024 ? (n / 1024).toFixed(n % 1024 ? 1 : 0) + ' KB' : n + ' B');
+        const gfxAt = plan.gfxBankBase + plan.gfxOffset;
+        const wanted = this.getAdvancedSettings().preferredGfxBank;
+        const missedBank = !!wanted && result.gfxBankHonoured === false;
+
+        el.hidden = false;
+        el.innerHTML = `
+            <h4>Where it goes</h4>
+            <dl>
+                <dt>Run it with</dt><dd>SYS ${plan.visualizerLoadAddress}</dd>
+                <dt>Music</dt><dd>${hex(info.lowestAddress)} onwards</dd>
+                <dt>Player code</dt><dd>${hex(plan.codePage)} (${sz(plan.codeBlob.length)})</dd>
+                <dt>Graphics</dt><dd>${hex(gfxAt)}, VIC bank ${plan.gfxBankNum}</dd>
+                <dt>Uses so far</dt><dd>${hex(info.lowestAddress)}–${hex(info.highestAddress)}</dd>
+            </dl>
+            <p class="pp-note">${missedBank
+                ? 'This tune leaves no room in the bank you asked for, so a bank that works was chosen. '
+                : ''}A plan, not the finished file: the song data and anything you add still have to go in.</p>`;
+    }
+
+    /**
+     * The three metadata lines as the C64 will show them: the same case
+     * conversion, PETSCII substitution, 32-column centring and font the export
+     * applies, drawn with the selected charset. Typing a title with a character
+     * the machine has no glyph for, or one that will not fit, used to be
+     * invisible until the export.
+     */
+    async renderTextPreview() {
+        const row = document.getElementById('textPreviewRow');
+        const canvas = document.getElementById('textPreview');
+        const note = document.getElementById('textPreviewNote');
+        if (!row || !canvas) return;
+        const config = this.currentVisualizerConfig;
+        if (!this.sidHeader || !config || !this.prgExporter) { row.hidden = true; return; }
+
+        const token = ++this._textPreviewToken;
+        const cb = window.cacheBust || (s => s);
+        let charset = null, caseType;
+        try {
+            if (typeof FONT_DATA === 'undefined') await window.loadScript('font-data.js');
+            if (config.fontType) {
+                const idx = parseInt(this.getOptionValue('font'), 10) || 0;
+                caseType = await FONT_DATA.getFontCaseType(config.fontType, idx);
+                // null means the ROM charset: the player keeps its baked-in
+                // $d018 path, and we draw with the ROM glyphs too.
+                charset = await FONT_DATA.getFontData(config.fontType, idx);
+            }
+            if (!charset) {
+                if (typeof C64Fonts === 'undefined') await window.loadScript('c64fonts.js');
+                charset = C64Fonts && (caseType === 1 ? C64Fonts.lowercase : C64Fonts.uppercase);
+            }
+        } catch (e) {
+            row.hidden = true;
+            return;
+        }
+        if (token !== this._textPreviewToken || !charset) { row.hidden = true; return; }
+
+        const ex = this.prgExporter;
+        const lines = ['name', 'author', 'copyright'].map((f) => {
+            let str = this.sidHeader[f] || '';
+            if (typeof FONT_DATA !== 'undefined' && caseType !== undefined) {
+                str = FONT_DATA.convertTextForFont(str, caseType);
+            }
+            return ex.stringToPETSCII(ex.centerString(str, 32), 32);
+        });
+
+        const COLS = 32, CELL = 8;
+        canvas.width = COLS * CELL;
+        canvas.height = lines.length * CELL;
+        const pal = window.C64_PALETTE_RGB;
+        const bg = pal[parseInt(this.getOptionValue('backgroundColor'), 10) || 0] || pal[0];
+        const fg = pal[(parseInt(this.getOptionValue('textColor'), 10)) || 1] || pal[1];
+        const ctx = canvas.getContext('2d');
+        const img = ctx.createImageData(canvas.width, canvas.height);
+        for (let y = 0; y < canvas.height; y++) {
+            for (let x = 0; x < canvas.width; x++) {
+                const code = lines[Math.floor(y / CELL)][Math.floor(x / CELL)] & 0xff;
+                const byte = charset[code * 8 + (y % CELL)] || 0;
+                const on = byte & (0x80 >> (x % CELL));
+                const c = on ? fg : bg;
+                const o = (y * canvas.width + x) * 4;
+                img.data[o] = c[0]; img.data[o + 1] = c[1]; img.data[o + 2] = c[2]; img.data[o + 3] = 255;
+            }
+        }
+        ctx.putImageData(img, 0, 0);
+        row.hidden = false;
+
+        if (note) {
+            // Say when a line was trimmed to fit, since the preview alone shows
+            // the result without saying why.
+            const tooLong = [['name', 'Title'], ['author', 'Author'], ['copyright', 'Copyright']]
+                .filter(([f]) => (this.sidHeader[f] || '').trim().length > 32)
+                .map(([, label]) => label);
+            note.textContent = tooLong.length
+                ? `${tooLong.join(' and ')} will not fit the 32 columns and ${tooLong.length > 1 ? 'are' : 'is'} cut short.`
+                : '';
+        }
+    }
+
+    /** An option's current value, from the live control. */
+    getOptionValue(id) {
+        const el = document.getElementById(id);
+        return el ? el.value : '';
+    }
+
     renderMemoryMap(info, meta = {}) {
         const el = this.elements.memoryMap;
         if (!el || !info || !info.components || info.components.length === 0) return;
@@ -3686,7 +5135,39 @@ class UIController {
     }
 
     // Helper functions
+    // The name the exported PRG gets, from the template on the Export tab.
+    // Placeholders: {name} the SID's filename, {title} / {author} the metadata,
+    // {index} the tune's position in a queue (2 digits), {song} the sub-tune.
+    // Anything outside a-z 0-9 - ! is dropped, because that is what survives a
+    // C64 directory and a .d64 image intact.
+    exportBaseName() {
+        const clean = (v) => String(v || '').toLowerCase().replace(/[^a-z0-9\-!]/g, '');
+        const sidName = clean((this.currentFileName || '').replace(/\.sid$/i, ''));
+        const songSel = document.getElementById('songSelector');
+        const idx = (this._queue || []).findIndex(i => i.file && i.file.name === this.currentFileName);
+        const fields = {
+            name: sidName,
+            title: clean(this.sidHeader && this.sidHeader.name),
+            author: clean(this.sidHeader && this.sidHeader.author),
+            song: songSel ? clean(songSel.value) : '',
+            index: idx >= 0 ? String(idx + 1).padStart(2, '0') : '',
+        };
+
+        const tplEl = document.getElementById('filenameTemplate');
+        const template = (tplEl && tplEl.value.trim()) || '{name}';
+        let out = template.replace(/\{(\w+)\}/g, (m, key) =>
+            (Object.prototype.hasOwnProperty.call(fields, key) ? fields[key] : ''));
+        out = clean(out).replace(/-+/g, '-').replace(/^-|-$/g, '');
+
+        // A title made entirely of characters the C64 has no room for would
+        // otherwise produce a file called ".prg".
+        return out || sidName || 'output';
+    }
+
     downloadFile(data, filename) {
+        // A queue run diverts every file it produces - into a zip it builds, or
+        // straight into a folder the user picked - rather than 14 downloads.
+        if (this._fileSink) { this._fileSink(data, filename); return; }
         const blob = new Blob([data], { type: 'application/octet-stream' });
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
@@ -3699,8 +5180,15 @@ class UIController {
     }
 
     showExportStatus(message, type) {
+        // Kept for the queue, which reports per-file reasons long after this
+        // status has auto-hidden.
+        this._lastExportMessage = message;
         const status = this.elements.exportStatus;
         if (status) {
+            // An error is announced at once and stays until something replaces
+            // it; anything else is polite and self-clearing (see below).
+            status.setAttribute('role', type === 'error' ? 'alert' : 'status');
+            status.setAttribute('aria-live', type === 'error' ? 'assertive' : 'polite');
             status.textContent = message;
             status.className = `export-status visible ${type}`;
 
@@ -3711,7 +5199,10 @@ class UIController {
                 this._exportStatusTimer = null;
             }
 
-            if (type !== 'info') {
+            // Errors and warnings stay put. A build failure that erases itself
+            // after five seconds is not a report - it was also the only thing
+            // saying why nothing downloaded.
+            if (type !== 'info' && type !== 'error' && type !== 'warning') {
                 this._exportStatusTimer = setTimeout(() => {
                     status.classList.remove('visible');
                 }, 5000);
@@ -3756,11 +5247,38 @@ class UIController {
     // pass no handler get the plain spinner, exactly as before.
     showBusy(message, submessage = '', onCancel = null) {
         if (this.elements.busyOverlay) {
+            this._busyOpener = document.activeElement;
             this.elements.busyMessage.textContent = message;
             this.elements.busySubmessage.textContent = submessage;
             this._wireBusyCancel(onCancel);
             this.elements.busyOverlay.classList.add('visible');
+            // The page behind is covered by an opaque blur, and the Studio stops
+            // trapping Tab while this is up - without inert, focus wanders around
+            // a page the user cannot see.
+            this._setPageInert(true);
+            this._announceBusy(`${message}. ${submessage}`, true);
+            // Cancel is the only thing that can be done here, so put focus on it.
+            const cancel = document.getElementById('busyCancel');
+            if (cancel && !cancel.hidden) cancel.focus();
         }
+    }
+
+    /** Hide the page behind a full-screen overlay from the keyboard and from AT. */
+    _setPageInert(on) {
+        const page = document.querySelector('.container');
+        if (!page) return;
+        try { page.inert = on; } catch (e) { /* older browser; the Tab trap still applies */ }
+    }
+
+    // The progress counter changes several times a second. Feeding every tick to
+    // a live region makes a screen reader unusable, so announce on a slow
+    // throttle and force the milestones (start, outcome) through.
+    _announceBusy(text, force = false) {
+        const now = Date.now();
+        if (!force && now - (this._lastBusyAnnounce || 0) < 10000) return;
+        this._lastBusyAnnounce = now;
+        const el = document.getElementById('busyAnnounce');
+        if (el) el.textContent = text;
     }
 
     // Show/reset the overlay's Cancel button. A fresh click handler is attached
@@ -3828,22 +5346,231 @@ class UIController {
                 this.elements.busyHint.textContent = hint;
                 this.elements.busyHint.hidden = !hint;
             }
+            this._announceBusy(`${message}. ${submessage}`);
         }
     }
 
-    hideBusy() {
+    hideBusy(outcome = '') {
         if (this.elements.busyOverlay) {
             this.elements.busyOverlay.classList.remove('visible');
             // Drop the cancel button + its handler so it never leaks into the next task.
             this._wireBusyCancel(null);
+            this._setPageInert(false);
+            if (outcome) this._announceBusy(outcome, true);
+            // Back to whatever was focused when the overlay took over.
+            if (this._busyOpener && typeof this._busyOpener.focus === 'function'
+                && this._busyOpener.isConnected) {
+                this._busyOpener.focus();
+            }
+            this._busyOpener = null;
         }
     }
 
-    // Render + loop-detect the tune's DEFAULT song once (on load), so the spectrometer
-    // memory readout and the baked song-length are ready with no separate Analyse
-    // button. Uses the default subtune (startSong-1), never a hard-coded song 0.
+    // ---------------------------------------------------------------------
+    // Loop/length analysis: one job, started early, joined later
+    // ---------------------------------------------------------------------
+
+    /** Is a loop/length scan running right now? */
+    get analysisRunning() { return !!this._analysisJob; }
+
+    // The single in-flight scan for the loaded tune. A caller that needs the
+    // result (an export) adopts the running job and receives its progress; the
+    // load path just starts it and ignores the promise. Resolves to the analysis
+    // or null (cancelled / failed / superseded).
+    _ensureAnalysis({ onProgress = null, holdOnLoopFound = false } = {}) {
+        if (this.tuneAnalysis) return Promise.resolve(this.tuneAnalysis);
+        if (this._analysisJob) {
+            const job = this._analysisJob;
+            if (onProgress) {
+                job.listeners.push(onProgress);
+                // Catch the new listener up, so an overlay opened mid-scan shows
+                // the current position instead of "Preparing…" until the next tick.
+                if (job.last) { try { onProgress(...job.last); } catch (e) { /* listener threw */ } }
+            }
+            return job.promise;
+        }
+        const ac = new AbortController();
+        // Two ways out of a long scan, and they mean different things. Cancel
+        // throws the render away and leaves the tune unmeasured; Stop keeps what
+        // has been rendered and measures that.
+        const stopAc = new AbortController();
+        const job = { ac, stopAc, listeners: onProgress ? [onProgress] : [], last: null };
+        const fanout = (label, frac, extra) => {
+            job.last = [label, frac, extra];
+            for (const fn of job.listeners) {
+                try { fn(label, frac, extra); } catch (e) { /* listener threw; keep scanning */ }
+            }
+        };
+        this._analysisCancelled = false;
+        job.promise = this.runTuneAnalysis({
+            signal: ac.signal, stopSignal: stopAc.signal, onProgress: fanout, holdOnLoopFound,
+        })
+            .finally(() => { if (this._analysisJob === job) this._analysisJob = null; });
+        this._analysisJob = job;
+        return job.promise;
+    }
+
+    /** Stop the running scan, if any. The tune still exports, just without a length. */
+    cancelAnalysis() {
+        if (!this._analysisJob) return;
+        this._analysisCancelled = true;
+        this._analysisJob.ac.abort();
+    }
+
+    /**
+     * Stop searching but keep what has been found. Different from Cancel: the
+     * render so far is analysed and used, so a tune whose loop is further out
+     * than anyone wants to wait for still gets a length.
+     */
+    stopSearching() {
+        if (!this._analysisJob) return;
+        this._analysisJob.stopAc.abort();
+    }
+
+    // Start the scan when the SID loads and report it in the corner chip, so the
+    // wait overlaps with choosing a visualizer instead of landing on the Generate
+    // button. Not started on the main-thread fallback path: there the render runs
+    // on the page and would freeze the UI it exists to keep usable.
+    async startBackgroundAnalysis() {
+        if (this.tuneAnalysis || this._analysisJob || !this.sidHeader) return;
+        // Only once the user is actually heading for an export. Someone who loaded
+        // a tune to listen to it should not pay for the engine WASM and a
+        // full-tune render they will never use; the Studio opening is the signal
+        // that they will. studio-modal.js calls this again from open().
+        if (!window.studioModal || !window.studioModal.isOpen) return;
+        const token = this._analysisToken;
+        const cb = window.cacheBust || (s => s);
+        let offMainThread = false;
+        try {
+            const { analysisRunsOffMainThread } = await import(cb('./spectrometer-bake-runner.js'));
+            offMainThread = await analysisRunsOffMainThread();
+        } catch (e) { /* no worker, no background scan */ }
+        // The probe is async - another SID may have loaded, or an export may have
+        // started the scan itself, while it resolved.
+        if (!offMainThread || token !== this._analysisToken) return;
+        if (this.tuneAnalysis || this._analysisJob) return;
+
+        this._showAnalysisChip('Analysing tune…');
+        this._ensureAnalysis({
+            onProgress: (label, frac, extra) => {
+                if (token !== this._analysisToken) return;
+                this._showAnalysisChip(this._analysisChipText(extra));
+            },
+        }).then(() => {
+            if (token !== this._analysisToken) return;
+            this._finishAnalysisChip();
+            this.updateSongLoopStatus();
+            if (window.studioModal) window.studioModal.queueRefresh();
+        });
+    }
+
+    _analysisChipText(extra) {
+        // extra.seconds is the doubled search window; halve it for the offer
+        // threshold the same way the label does.
+        this._analysisScanned = (extra && extra.seconds != null) ? extra.seconds / 2 : 0;
+        if (extra && extra.loopFound) return 'Loop found';
+        // extra.seconds counts the doubled search window, same as the overlay.
+        if (extra && extra.seconds != null) return `Analysing tune… ${this._mmss(extra.seconds / 2)} scanned`;
+        return 'Analysing tune…';
+    }
+
+    _showAnalysisChip(text) {
+        const chip = document.getElementById('analysisChip');
+        if (!chip) return;
+        chip.hidden = false;
+        chip.classList.remove('is-done', 'is-failed');
+        clearTimeout(this._analysisChipTimer);
+        const label = document.getElementById('analysisChipText');
+        if (label) label.textContent = text;
+        this._announceAnalysis(text);
+        if (!this._analysisChipWired) {
+            this._analysisChipWired = true;
+            const cancel = document.getElementById('analysisChipCancel');
+            if (cancel) cancel.addEventListener('click', () => {
+                this.cancelAnalysis();
+                this._hideAnalysisChip();
+            });
+            // Stop searching, but keep the answer: the scan runs to a cap of
+            // several minutes on a tune whose loop is a long way out, and
+            // "measure what you have" is usually what someone watching wants.
+            const stop = document.getElementById('analysisChipStop');
+            if (stop) stop.addEventListener('click', () => {
+                stop.disabled = true;
+                this.stopSearching();
+            });
+        }
+        const stopBtn = document.getElementById('analysisChipStop');
+        // Only worth offering once there is something to keep.
+        if (stopBtn && !stopBtn.disabled) {
+            stopBtn.hidden = !(this._analysisScanned > UIController.STOP_OFFER_SECONDS);
+        }
+    }
+
+    // The counter moves several times a second; feeding every tick to a live
+    // region makes a screen reader unusable, so announce on a slow throttle and
+    // force the final outcome through.
+    _announceAnalysis(text, force = false) {
+        const now = Date.now();
+        if (!force && now - (this._lastAnalysisAnnounce || 0) < 10000) return;
+        this._lastAnalysisAnnounce = now;
+        const el = document.getElementById('analysisChipAnnounce');
+        if (el) el.textContent = text;
+    }
+
+    _finishAnalysisChip() {
+        const chip = document.getElementById('analysisChip');
+        if (!chip || chip.hidden) return;
+        const label = document.getElementById('analysisChipText');
+        const a = this.tuneAnalysis;
+        let msg;
+        if (a) {
+            chip.classList.add('is-done');
+            const len = this._mmss(a.looped ? a.storedSeconds : (a.loopStartSeconds || a.storedSeconds));
+            msg = a.looped ? `Song length ${len} — loops`
+                : a.fadedOut ? `Song length ${len} — fades out`
+                    : `Analysed — ${len}`;
+        } else {
+            chip.classList.add('is-failed');
+            msg = this._analysisCancelled
+                ? 'Stopped — the export just won\'t show a song length'
+                : 'Couldn\'t work out the song length';
+        }
+        if (label) label.textContent = msg;
+        this._announceAnalysis(msg, true);
+        // The outcome also lands on the Song tab, so the chip gets out of the way.
+        clearTimeout(this._analysisChipTimer);
+        this._analysisChipTimer = setTimeout(() => this._hideAnalysisChip(), 8000);
+    }
+
+    _resetAnalysisChipStop() {
+        const stop = document.getElementById('analysisChipStop');
+        if (stop) { stop.disabled = false; stop.hidden = true; }
+        this._analysisScanned = 0;
+    }
+
+    _hideAnalysisChip() {
+        clearTimeout(this._analysisChipTimer);
+        this._resetAnalysisChipStop();
+        const chip = document.getElementById('analysisChip');
+        if (!chip) return;
+        chip.hidden = true;
+        chip.classList.remove('is-done', 'is-failed');
+    }
+
+    // Render + loop-detect the tune's DEFAULT song, so the spectrometer memory
+    // readout and the baked song-length are ready with no separate Analyse button.
+    // Uses the default subtune (startSong-1), never a hard-coded song 0.
     // Fully guarded: any failure leaves tuneAnalysis null and never blocks the load.
+    //
+    // Call _ensureAnalysis rather than this directly - it owns the single in-flight
+    // job and the abort plumbing.
     async runTuneAnalysis(opts = {}) {
+        // The scan can outlive the tune it was started for (it now runs in the
+        // background). Carry the token it began with and only publish a result
+        // that still belongs to the loaded SID.
+        const token = this._analysisToken;
+        const mine = () => token === this._analysisToken;
+
         this.tuneAnalysis = null;
         if (!this.sidHeader) return null;
         let sidBytes = null;
@@ -3868,32 +5595,75 @@ class UIController {
             baseProgress(label, frac, extra);
         };
         const cb = window.cacheBust || (s => s);
+        const scanOptions = {
+            subtune: defaultSong, numBars: 40, maxHeight: 111,
+            maxSeconds: Math.max(30, maxLoopSeconds * 2),
+            minLoopSeconds,
+            engine: adv.bakeEngine,
+            // Same cap the export will bake with, or the length/segment/memory
+            // figures shown here would not be the ones the PRG ends up storing.
+            outputMaxSeconds: adv.storedSeconds,
+        };
         try {
+            // A scan already done for these exact bytes and settings is the same
+            // scan. The bake core's render cache only lives as long as the page,
+            // so without this a reload - or the next run of the same queue -
+            // measures every tune again from scratch.
+            const storeKey = await this._analysisCacheKey(sidBytes, scanOptions);
+            if (storeKey) {
+                const { readAnalysis } = await import(cb('./analysis-store.js'));
+                const hit = await readAnalysis(storeKey);
+                if (hit) {
+                    if (!mine()) return null;
+                    this.tuneAnalysis = hit;
+                    return this.tuneAnalysis;
+                }
+            }
             const { analyzeSpectrometer } = await import(cb('./spectrometer-bake-runner.js'));
-            this.tuneAnalysis = await analyzeSpectrometer(sidBytes, {
-                subtune: defaultSong, numBars: 40, maxHeight: 111,
-                maxSeconds: Math.max(30, maxLoopSeconds * 2),
-                minLoopSeconds,
-                engine: adv.bakeEngine,
-                // Same cap the export will bake with, or the length/segment/memory
-                // figures shown here would not be the ones the PRG ends up storing.
-                outputMaxSeconds: adv.storedSeconds,
+            const result = await analyzeSpectrometer(sidBytes, {
+                ...scanOptions,
                 onProgress,
                 signal: opts.signal,
+                stopSignal: opts.stopSignal,
             });
-            // The scan stopped early on a confirmed loop: without a pause the busy
+            if (storeKey && result) {
+                const { writeAnalysis } = await import(cb('./analysis-store.js'));
+                writeAnalysis(storeKey, result);
+            }
+            // Another SID was loaded while this ran - the result describes a tune
+            // that is no longer open, so drop it rather than publish it.
+            if (!mine()) return null;
+            this.tuneAnalysis = result;
+            // The scan stopped early on a confirmed loop: without a pause a blocking
             // overlay closes the same instant the message appears, and the early
             // exit just looks like the progress broke. Give it a moment to be read.
-            if (loopFoundEarly && this.tuneAnalysis) {
+            // Only worth it when something is actually showing the message.
+            if (loopFoundEarly && this.tuneAnalysis && opts.holdOnLoopFound) {
                 await new Promise(resolve => setTimeout(resolve, 1500));
             }
         } catch (e) {
             // A user cancel (AbortError) is expected, not a failure - stay quiet and
             // just leave tuneAnalysis null; the caller checks signal.aborted to react.
             if (!(e && e.name === 'AbortError')) console.warn('Tune loop/length analysis failed:', e);
-            this.tuneAnalysis = null;
+            if (mine()) this.tuneAnalysis = null;
         }
-        return this.tuneAnalysis;
+        return mine() ? this.tuneAnalysis : null;
+    }
+
+    /**
+     * The key a scan's result is remembered under: the tune's content (title
+     * and author excluded, so renaming does not throw a measurement away) plus
+     * every setting that changes what the scan finds.
+     */
+    async _analysisCacheKey(sidBytes, o) {
+        const cb = window.cacheBust || (s => s);
+        try {
+            const { tuneKey } = await import(cb('./spectrometer-bake-core.js'));
+            const base = tuneKey(sidBytes, o.subtune, 44100, o.maxSeconds, o.minLoopSeconds, o.engine);
+            return `${base}|${o.numBars}x${o.maxHeight}|${o.outputMaxSeconds || 0}`;
+        } catch (e) {
+            return null;   // no key, no cache - the scan still runs
+        }
     }
 
     // Price each frame rate (50/25/16.66) against this tune's stored length and
@@ -3937,6 +5707,12 @@ class UIController {
     // Build a lightweight modal (reuses the modal-overlay CSS) with a title, a body we
     // can rewrite as the flow progresses, and a settable button row. Returns imperative
     // handles - the flows below drive it. Kept apart from ErrorModal (text-only body).
+    // UNUSED. Kept because it is the shape a future in-flow prompt would take -
+    // but if it is ever wired up it MUST be registered in studio-modal.js's
+    // modal-precedence list and given a Tab trap and focus restore, or it
+    // inherits the bug logoFitModal had: Escape closing the Studio underneath it
+    // and Tab being yanked out from behind the dialog. It builds its own element
+    // rather than reusing #modalOverlay, so the id-based check would miss it.
     _flowModal(title) {
         const overlay = document.createElement('div');
         overlay.className = 'modal-overlay flow-modal visible';

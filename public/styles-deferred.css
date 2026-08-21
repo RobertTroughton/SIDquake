@@ -201,7 +201,7 @@
 
 .file-button {
     background: var(--accent);
-    color: white;
+    color: var(--bg-primary);
     border: none;
     padding: 8px 16px;
     border-radius: var(--radius-sm);
@@ -230,7 +230,7 @@
 
 .number-input, .select-input, .date-input {
     padding: 8px 12px;
-    border: 1px solid var(--border);
+    border: 1px solid var(--border-control);
     border-radius: var(--radius-sm);
     font-size: 0.9em;
     transition: all var(--transition-fast);
@@ -250,7 +250,6 @@
 }
 
 .number-input:focus, .select-input:focus, .date-input:focus {
-    outline: none;
     border-color: var(--accent);
     box-shadow: 0 0 0 2px var(--accent-dim);
 }
@@ -311,11 +310,14 @@
 }
 
 .export-button:disabled {
-    opacity: 0.4;
+    /* Disabled controls are exempt from 1.4.3, but Generate PRG is disabled for
+       most of a session, so "unreadable most of the time" is the wrong outcome
+       exemption or not. 0.4 put it at about 1.7:1; this clears 3:1. */
+    opacity: 0.8;
     cursor: not-allowed;
     transform: none;
     background: var(--bg-hover);
-    color: var(--text-muted);
+    color: var(--text-secondary);
 }
 
 .disabled .export-button:not(:disabled) {
@@ -843,7 +845,6 @@
     -webkit-appearance: none;
     appearance: none;
     background: transparent;
-    outline: none;
     position: absolute;
     top: 50%;
     transform: translateY(-50%);
@@ -874,6 +875,11 @@
     pointer-events: auto;
 }
 
+/* Nine of the fifteen neighbouring C64 colour pairs are under 3:1 against each
+   other (Orange/Brown is 1.56:1), and the swatches themselves must not be
+   changed - reproducing the machine's palette is the point, and 1.4.11 exempts
+   them. A light divider is the mitigation; a dark one vanished between the dark
+   pairs, which are exactly the ones that need it. */
 .color-segment:not(:last-child)::after {
     content: '';
     position: absolute;
@@ -881,7 +887,8 @@
     top: 0;
     bottom: 0;
     width: 1px;
-    background: rgba(0, 0, 0, 0.3);
+    background: rgba(255, 255, 255, 0.35);
+    box-shadow: -1px 0 0 rgba(0, 0, 0, 0.35);
 }
 
 .color-segment:hover {
@@ -970,7 +977,7 @@
     width: 100%;
     min-height: 60px;
     padding: 8px 12px;
-    border: 1px solid var(--border);
+    border: 1px solid var(--border-control);
     border-radius: var(--radius-sm);
     background: var(--bg-elevated);
     color: var(--text-primary);
@@ -981,7 +988,6 @@
 }
 
 .textarea-container textarea:focus {
-    outline: none;
     border-color: var(--accent);
     box-shadow: 0 0 0 2px var(--accent-dim);
 }
@@ -995,7 +1001,7 @@
     padding: 6px 12px;
     font-size: 0.85em;
     background: var(--accent);
-    color: white;
+    color: var(--bg-primary);
     border: none;
     border-radius: var(--radius-sm);
     cursor: pointer;
@@ -1406,8 +1412,9 @@
 
 .btn {
     background: var(--bg-hover);
-    color: var(--text-secondary);
-    border: 1px solid var(--border);
+    /* --text-secondary on --bg-hover is 4.33:1; the primary text clears AA. */
+    color: var(--text-primary);
+    border: 1px solid var(--border-control);
     padding: 7px 14px;
     border-radius: var(--radius-sm);
     cursor: pointer;
@@ -1467,7 +1474,6 @@
 }
 
 .search-bar:focus {
-    outline: none;
     border-color: var(--accent);
 }
 
@@ -1476,6 +1482,7 @@
 }
 
 .search-clear {
+    /* 2.5.8 minimum target; was 22x22. */
     position: absolute;
     right: 8px;
     top: 50%;
@@ -1485,8 +1492,8 @@
     border: none;
     cursor: pointer;
     font-size: 13px;
-    width: 22px;
-    height: 22px;
+    width: 24px;
+    height: 24px;
     display: inline-flex;
     align-items: center;
     justify-content: center;
@@ -1607,10 +1614,18 @@
 
 .file-list-loading {
     display: flex;
+    flex-direction: column;
     align-items: center;
     justify-content: center;
+    gap: var(--space-sm);
     height: 100%;
     min-height: 120px;
+}
+
+.file-list-loading-text {
+    margin: 0;
+    color: var(--text-muted);
+    font-size: 0.85em;
 }
 
 .file-list-spinner {
@@ -1746,9 +1761,14 @@
 .hvsc-listheader .hvsc-col.active { color: var(--accent); }
 .hvsc-listheader .hvsc-col i { font-size: 9px; }
 
-/* Column positions mirror the file rows: name fills, year hugs the right. */
+/* Column positions mirror the file rows: name fills, year hugs the right. The
+   relevance column only appears against a search, so it takes no space in a
+   folder listing. */
 .hvsc-listheader .hvsc-col-name { flex: 1; justify-content: flex-start; margin-left: 24px; }
 .hvsc-listheader .hvsc-col-year { justify-content: flex-end; }
+.hvsc-listheader .hvsc-col-match { justify-content: flex-start; margin-left: 24px; }
+.hvsc-listheader .hvsc-col-match[hidden] { display: none; }
+.hvsc-listheader .hvsc-col-match:not([hidden]) + .hvsc-col-name { flex: 1; margin-left: 0; }
 
 /* Modal footer: current folder as plain text bottom-left, actions bottom-right. */
 .hvsc-modal-footer {
@@ -1877,7 +1897,7 @@
 
 .sid-info-download .btn:hover {
     background: var(--accent);
-    color: white;
+    color: var(--bg-primary);
 }
 
 /* Scrollbar styling */
@@ -2155,7 +2175,7 @@
     top: 5px;
     right: 5px;
     background: var(--accent);
-    color: white;
+    color: var(--bg-primary);
     padding: 3px 8px;
     border-radius: 10px;
     font-size: 10px;
@@ -2546,7 +2566,7 @@
     top: 2px;
     right: 2px;
     background: var(--accent);
-    color: white;
+    color: var(--bg-primary);
     width: 16px;
     height: 16px;
     border-radius: 50%;
@@ -2597,7 +2617,7 @@
 }
 
 .bar-style-thumbnail.selected .style-name {
-    color: white;
+    color: var(--bg-primary);
     background: rgba(212, 162, 76, 0.85);
 }
 
@@ -2770,8 +2790,9 @@
 }
 
 .sid-player-subtune .sid-player-btn {
-    width: 22px;
-    height: 22px;
+    /* 2.5.8 wants 24x24 minimum; these were 22. */
+    width: 24px;
+    height: 24px;
     font-size: 0.6em;
 }
 
@@ -2801,7 +2822,6 @@
     border-radius: 4px;
     padding: 2px 4px;
     cursor: pointer;
-    outline: none;
 }
 
 .sid-player-quality-select option {
@@ -2835,7 +2855,6 @@
     border-radius: 4px;
     padding: 2px 5px;
     cursor: pointer;
-    outline: none;
 }
 
 .sid-player-speed-btn:hover {
@@ -2960,8 +2979,10 @@
         height: 24px;
     }
 
+    /* Kept on a phone. It is the only thing to look at while a tune plays, and
+       the listing above it scrolls - the bars are worth the rows they cost. */
     .hvsc-visualizer {
-        display: none;
+        height: 56px;
     }
 
     .hvsc-attribution {
@@ -4487,4 +4508,565 @@
 .logo-fit-actions .file-button:hover {
     background: var(--accent);
     color: var(--bg-primary);
+}
+
+/* ==========================================================================
+   Background analysis chip
+   --------------------------------------------------------------------------
+   The loop/length scan used to sit behind the full-screen busy overlay at the
+   end of the export. It now runs while the user configures, so it needs a
+   status that can be ignored: fixed to a corner, above the page but below any
+   modal, and dismissible.
+   ========================================================================== */
+.analysis-chip {
+    position: fixed;
+    right: 16px;
+    bottom: 16px;
+    z-index: 900;              /* under the modals (1000+), over the page */
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    max-width: min(360px, calc(100vw - 32px));
+    padding: 10px 12px;
+    background: var(--bg-elevated);
+    border: 1px solid var(--border-light);
+    border-left: 3px solid var(--accent);
+    border-radius: var(--radius-md);
+    box-shadow: var(--shadow-lg);
+    font-size: 0.85em;
+    color: var(--text-primary);
+}
+
+.analysis-chip[hidden] {
+    display: none;
+}
+
+.analysis-chip-spinner {
+    flex: 0 0 auto;
+    width: 14px;
+    height: 14px;
+    border: 2px solid var(--border-light);
+    border-top-color: var(--accent);
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+}
+
+.analysis-chip-text {
+    flex: 1 1 auto;
+    min-width: 0;
+}
+
+.analysis-chip-cancel {
+    flex: 0 0 auto;
+    width: 24px;
+    height: 24px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: transparent;
+    border: 1px solid var(--border-light);
+    border-radius: var(--radius-sm);
+    color: var(--text-secondary);
+    cursor: pointer;
+    font-size: 0.9em;
+    line-height: 1;
+    transition: color var(--transition-fast), border-color var(--transition-fast);
+}
+
+.analysis-chip-cancel:hover {
+    color: var(--text-primary);
+    border-color: var(--accent);
+}
+
+/* Done / failed states: the spinner stops and the accent edge changes, so a
+   glance says whether the length is available without reading the text. */
+.analysis-chip.is-done {
+    border-left-color: var(--success);
+}
+
+.analysis-chip.is-failed {
+    border-left-color: var(--text-muted);
+}
+
+.analysis-chip.is-done .analysis-chip-spinner,
+.analysis-chip.is-failed .analysis-chip-spinner {
+    display: none;
+}
+
+@media (max-width: 720px) {
+    .analysis-chip {
+        right: 10px;
+        left: 10px;
+        bottom: 10px;
+        max-width: none;
+    }
+}
+
+/* Song length controls (Song tab): measure / stop / type it in, on one line
+   that wraps rather than crushing the input on a narrow panel. */
+.song-length-row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 10px;
+}
+
+.song-length-manual {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    color: var(--text-secondary);
+    font-size: 0.9em;
+}
+
+.song-length-manual input {
+    width: 5.5em;
+    text-align: center;
+}
+
+.song-length-row .option-hint {
+    flex: 1 1 100%;
+}
+
+/* ==========================================================================
+   "Your file is ready" panel (Export tab, after a successful build)
+   --------------------------------------------------------------------------
+   A .prg means nothing to a newcomer, and the whole previous explanation was
+   "run it with SYS 16640" in a dialog that closed itself after two seconds.
+   ========================================================================== */
+.export-done {
+    margin-bottom: var(--space-md);
+    padding: var(--space-md);
+    background: var(--bg-elevated);
+    border: 1px solid var(--border-light);
+    border-left: 3px solid var(--success);
+    border-radius: var(--radius-md);
+}
+
+.export-done[hidden] {
+    display: none;
+}
+
+.ed-title {
+    margin: 0 0 var(--space-sm);
+    font-family: var(--font-display);
+    font-size: 1em;
+    color: var(--text-accent);
+}
+
+.export-done p {
+    margin: 0 0 var(--space-sm);
+    font-size: 0.9em;
+    line-height: 1.5;
+}
+
+.ed-file {
+    font-family: var(--font-mono);
+    color: var(--text-primary);
+}
+
+.ed-what {
+    color: var(--text-secondary);
+}
+
+.ed-note {
+    color: var(--text-muted);
+    font-size: 0.85em;
+}
+
+.ed-note.ed-warn {
+    color: var(--warning);
+}
+
+.export-done code {
+    font-family: var(--font-mono);
+    padding: 1px 5px;
+    background: var(--bg-primary);
+    border: 1px solid var(--border-light);
+    border-radius: var(--radius-sm);
+    color: var(--text-accent);
+}
+
+/* A text button, so "measure it and build again" reads as the offer it is
+   rather than competing with Generate PRG. */
+.ed-link {
+    background: none;
+    border: none;
+    padding: 0;
+    font: inherit;
+    color: var(--text-accent);
+    text-decoration: underline;
+    cursor: pointer;
+}
+
+.ed-how {
+    margin: var(--space-sm) 0;
+    padding: var(--space-sm) 0 0;
+    border-top: 1px solid var(--border);
+}
+
+.ed-how > summary {
+    cursor: pointer;
+    font-size: 0.9em;
+    font-weight: 600;
+    color: var(--text-primary);
+    list-style: none;
+}
+
+.ed-how > summary::-webkit-details-marker { display: none; }
+
+.ed-how > summary::before {
+    content: '▶';
+    display: inline-block;
+    margin-right: 6px;
+    font-size: 0.75em;
+    color: var(--text-muted);
+    transition: transform var(--transition-fast);
+}
+
+.ed-how[open] > summary::before {
+    transform: rotate(90deg);
+}
+
+.ed-how ol {
+    margin: var(--space-sm) 0;
+    padding-left: 1.4em;
+    font-size: 0.9em;
+    line-height: 1.7;
+    color: var(--text-secondary);
+}
+
+.ed-share {
+    margin-bottom: 0 !important;
+    color: var(--text-muted);
+    font-size: 0.85em;
+}
+
+/* ==========================================================================
+   Batch queue (landing page)
+   --------------------------------------------------------------------------
+   Dropping several SIDs used to load one and discard the rest silently. The
+   queue shows what is waiting and exports the set with one press.
+   ========================================================================== */
+.sid-queue {
+    margin-top: var(--space-md);
+    padding: var(--space-md);
+    background: var(--bg-surface);
+    border: 1px solid var(--border-light);
+    border-radius: var(--radius-md);
+    text-align: left;
+}
+
+.sid-queue[hidden] {
+    display: none;
+}
+
+.sid-queue-head {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--space-sm);
+}
+
+.sid-queue-title {
+    flex: 1 1 auto;
+    min-width: 0;
+    font-family: var(--font-display);
+    font-size: 0.95em;
+    color: var(--text-accent);
+}
+
+.sid-queue .upload-btn {
+    flex: 0 0 auto;
+    padding: 8px 14px;
+    font-size: 0.8em;
+}
+
+.sid-queue-clear {
+    flex: 0 0 auto;
+    width: 28px;
+    height: 28px;
+    background: transparent;
+    border: 1px solid var(--border-light);
+    border-radius: var(--radius-sm);
+    color: var(--text-secondary);
+    cursor: pointer;
+}
+
+.sid-queue-clear:hover {
+    color: var(--text-primary);
+    border-color: var(--accent);
+}
+
+.sid-queue-where {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: var(--space-sm);
+    margin-top: var(--space-sm);
+}
+
+.sid-queue-where select {
+    width: auto;
+}
+
+.sid-queue-note {
+    margin: var(--space-sm) 0 0;
+    color: var(--text-muted);
+    font-size: 0.82em;
+    line-height: 1.5;
+}
+
+.sid-queue-list {
+    margin: var(--space-sm) 0 0;
+    padding: 0;
+    list-style: none;
+    max-height: 240px;
+    overflow-y: auto;
+}
+
+.sq-item {
+    display: flex;
+    align-items: baseline;
+    gap: var(--space-sm);
+    padding: 4px 0;
+    font-size: 0.85em;
+    color: var(--text-secondary);
+    border-bottom: 1px solid var(--border);
+}
+
+.sq-item:last-child {
+    border-bottom: none;
+}
+
+/* State is carried by the glyph and the text, not by colour alone. */
+.sq-mark {
+    flex: 0 0 1.2em;
+    text-align: center;
+    color: var(--text-muted);
+}
+
+.sq-name {
+    flex: 1 1 auto;
+    min-width: 0;
+    overflow-wrap: anywhere;
+    font-family: var(--font-mono);
+}
+
+.sq-note {
+    flex: 0 0 auto;
+    color: var(--text-muted);
+    font-size: 0.9em;
+}
+
+.sq-done .sq-mark { color: var(--success); }
+.sq-done .sq-name { color: var(--text-primary); }
+.sq-failed .sq-mark { color: var(--error); }
+.sq-building .sq-mark,
+.sq-loaded .sq-mark { color: var(--accent); }
+.sq-building .sq-name { color: var(--text-primary); }
+
+/* The collection's own name, kept but demoted: "HVSC" tells a scener exactly
+   what this is and tells everyone else nothing. */
+.browser-title-sub {
+    color: var(--text-muted);
+    font-weight: 400;
+    font-size: 0.8em;
+}
+
+@media (max-width: 560px) {
+    .browser-title-sub {
+        display: none;
+    }
+}
+
+/* Save / load a whole Studio setup as a small file. */
+.recipe-row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--space-sm);
+    margin-bottom: var(--space-md);
+}
+
+.recipe-row .option-hint {
+    flex: 1 1 100%;
+    margin: 0;
+}
+
+/* How the bars are worked out: a fold under the visualizer grid rather than a
+   tab of its own. It only exists for the bar players, and it modifies the card
+   directly above it. */
+.method-fold {
+    margin-top: var(--space-md);
+    padding-top: var(--space-sm);
+    border-top: 1px solid var(--border);
+}
+
+.method-fold[hidden] {
+    display: none;
+}
+
+.method-fold > summary {
+    cursor: pointer;
+    font-size: 0.9em;
+    font-weight: 600;
+    color: var(--text-primary);
+    list-style: none;
+}
+
+.method-fold > summary::-webkit-details-marker { display: none; }
+
+.method-fold > summary::before {
+    content: '▶';
+    display: inline-block;
+    margin-right: 6px;
+    font-size: 0.75em;
+    color: var(--text-muted);
+    transition: transform var(--transition-fast);
+}
+
+.method-fold[open] > summary::before {
+    transform: rotate(90deg);
+}
+
+/* Which one is in use, so the fold does not have to be opened to find out. */
+.method-fold-current {
+    color: var(--text-accent);
+    font-weight: 400;
+}
+
+/* "Where it goes", shown before an export rather than only after one. It is a
+   plan, not the finished image, so it stays visibly plainer than the memory map
+   the export draws. */
+.placement-plan {
+    margin-top: var(--space-md);
+    padding: 12px 14px;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: var(--bg-surface);
+    font-size: 0.85em;
+}
+
+.placement-plan h4 {
+    margin: 0 0 6px;
+    font-size: 0.95em;
+    color: var(--text-secondary);
+    font-weight: 600;
+}
+
+.placement-plan dl {
+    display: grid;
+    grid-template-columns: auto 1fr;
+    gap: 3px 12px;
+    margin: 0;
+}
+
+.placement-plan dt {
+    color: var(--text-muted);
+}
+
+.placement-plan dd {
+    margin: 0;
+    font-family: var(--font-mono);
+    color: var(--text-primary);
+}
+
+.placement-plan .pp-note {
+    margin: 8px 0 0;
+    color: var(--text-muted);
+    line-height: 1.5;
+}
+
+/* A reserved-memory entry that could not be read. */
+.flow-note.is-bad {
+    color: var(--error);
+}
+
+/* "Use what it has found" - the softer way out of a long scan, next to the
+   Cancel that throws it away. Appears only once there is something to keep. */
+.analysis-chip-stop {
+    background: none;
+    border: 1px solid var(--border-control);
+    border-radius: 999px;
+    color: var(--text-secondary);
+    cursor: pointer;
+    font: inherit;
+    font-size: 0.82em;
+    padding: 3px 10px;
+    white-space: nowrap;
+}
+
+.analysis-chip-stop:hover:not(:disabled) {
+    color: var(--text-primary);
+    border-color: var(--accent);
+}
+
+.analysis-chip-stop:disabled {
+    cursor: default;
+    opacity: 0.6;
+}
+
+/* When the note-based bar methods cannot see a tune. */
+.method-vu-note {
+    margin: var(--space-sm) 0 0;
+    padding: 8px 10px;
+    border-left: 3px solid var(--warning);
+    background: rgba(232, 168, 56, 0.08);
+    color: var(--text-secondary);
+    font-size: 0.85em;
+    line-height: 1.5;
+}
+
+/* The converted logo, drawn over the source in the same frame so the two can be
+   compared without the layout moving. */
+.image-preview-frame .image-preview-c64 {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    /* Keep the C64's own pixels crisp rather than smoothing them away. */
+    image-rendering: pixelated;
+}
+
+.preview-c64-toggle {
+    margin-top: var(--space-sm);
+}
+
+/* The three text lines as the machine will draw them: 32 columns of 8x8, shown
+   at twice size so the glyphs are legible without smoothing them. */
+.text-preview-row #textPreview {
+    display: block;
+    width: 512px;
+    max-width: 100%;
+    height: auto;
+    image-rendering: pixelated;
+    border: 1px solid var(--border);
+}
+
+.text-preview-row .option-hint {
+    display: block;
+    margin-top: 4px;
+}
+
+/* The fade editor's own preview: what the colours currently in it produce,
+   drawn the same way the preset thumbnails are. */
+.palette-live {
+    display: flex;
+    align-items: center;
+    gap: var(--space-sm);
+    margin-bottom: var(--space-sm);
+}
+
+.palette-live-canvas {
+    width: 120px;
+    height: 40px;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    image-rendering: pixelated;
+}
+
+.palette-live-label {
+    color: var(--text-muted);
+    font-size: 0.8em;
 }

@@ -70,21 +70,23 @@
     </script>
     <link rel="preconnect" href="https://fonts.googleapis.com" crossorigin>
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link rel="preconnect" href="https://cdnjs.cloudflare.com" crossorigin>
     <link rel="stylesheet" href="genesis-header.css">
     <link rel="stylesheet" href="styles.css">
     <link rel="stylesheet" href="styles-deferred.css" media="print" onload="this.media='all'">
     <link rel="stylesheet" href="studio-modal.css" media="print" onload="this.media='all'">
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" media="print" onload="this.media='all'">
+    <link rel="stylesheet" href="icons.css" media="print" onload="this.media='all'">
+    <link rel="preload" href="fonts/sidquake-icons.woff2" as="font" type="font/woff2" crossorigin>
     <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Space+Mono:wght@400;700&display=swap" media="print" onload="this.media='all'">
     <noscript>
         <link rel="stylesheet" href="styles-deferred.css">
         <link rel="stylesheet" href="studio-modal.css">
         <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Space+Mono:wght@400;700&display=swap">
-        <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+        <link rel="stylesheet" href="icons.css">
     </noscript>
 </head>
 <body>
+    <a class="skip-link" href="#tabTool">Skip to the tool</a>
+
     <!-- Genesis Project Common Header -->
     <header class="genesis-header">
         <div class="genesis-header-inner">
@@ -111,7 +113,7 @@
                         <img class="site-header-logo site-header-logo--tall" src="sidquake-logo-portrait.svg" alt="SIDquake" width="336" height="116">
                     </h1>
                     <div class="site-header-version" title="SIDquake version 2.00">v2.00</div>
-                    <p class="site-header-subtitle">The Easiest Way for Artists to Bundle &amp; Ship Their C64 SID Music</p>
+                    <p class="site-header-subtitle">Turn a C64 tune into a program people can run — and listen to 61,000 more</p>
                 </div>
             </div>
             <!-- Page Tabs -->
@@ -131,13 +133,14 @@
             </nav>
         </div>
 
-        <div class="main-content" id="tabTool" role="tabpanel" aria-labelledby="tab-tool">
+        <main class="main-content" id="tabTool" role="tabpanel" aria-labelledby="tab-tool" tabindex="-1">
+            <h2 class="visually-hidden">Load a SID tune</h2>
             <!-- Simplified Upload Section -->
             <div class="upload-container">
                 <!-- Drag & Drop Area -->
                 <div class="upload-section" id="uploadSection">
                     <div class="upload-icon"><i class="fas fa-file-upload"></i></div>
-                    <div class="upload-text">Drop your SID file here</div>
+                    <div class="upload-text">Drop your SID tune here</div>
                     <div class="upload-subtext">or use the buttons below</div>
                 </div>
 
@@ -149,7 +152,7 @@
                     </button>
                     <button class="upload-btn" id="hvscBtn">
                         <i class="fas fa-music"></i>
-                        <span>Browse HVSC</span>
+                        <span>Browse 61,000 C64 tunes</span>
                     </button>
                     <button class="upload-btn random-btn" id="randomBtn">
                         <i class="fas fa-random"></i>
@@ -157,13 +160,44 @@
                     </button>
                 </div>
 
+                <!-- Batch queue: appears when more than one SID is chosen or
+                     dropped. Populated by ui.js renderQueue. -->
+                <div class="sid-queue" id="sidQueue" hidden>
+                    <div class="sid-queue-head">
+                        <span class="sid-queue-title" id="sidQueueTitle">Queue</span>
+                        <button type="button" class="upload-btn sid-queue-run" id="sidQueueRun">
+                            <i class="fas fa-layer-group"></i> <span>Export all with these settings</span>
+                        </button>
+                        <button type="button" class="upload-btn sid-queue-stop" id="sidQueueStop" hidden>
+                            <i class="fas fa-stop"></i> <span>Stop</span>
+                        </button>
+                        <button type="button" class="sid-queue-clear" id="sidQueueClear" aria-label="Clear the queue">&#10005;</button>
+                    </div>
+                    <div class="sid-queue-where">
+                        <label class="option-label" for="queueDestination">Put the files</label>
+                        <select id="queueDestination" class="number-input">
+                            <option value="downloads">in my downloads folder</option>
+                            <option value="zip">in one zip file</option>
+                            <option value="folder">in a folder I choose…</option>
+                        </select>
+                        <span class="option-hint" id="queueDestinationNote"></span>
+                    </div>
+                    <p class="sid-queue-note" id="sidQueueNote"></p>
+                    <ol class="sid-queue-list" id="sidQueueList"></ol>
+                </div>
+
                 <!-- HVSC Selected File Display (hidden by default) -->
+                <p class="upload-browse-more">
+                    Just here to listen? <a href="/music/">Browse SID music by composer</a>,
+                    or press Random SID above.
+                </p>
+
                 <div class="hvsc-selected" id="hvscSelected" style="display: none;">
                     <span class="selected-label">Selected:</span>
                     <span class="selected-file" id="selectedFile"></span>
                 </div>
 
-                <input type="file" id="fileInput" accept=".sid" style="display: none;">
+                <input type="file" id="fileInput" accept=".sid" multiple style="display: none;">
             </div>
 
             <!-- Now-playing card: title/author + player + entry into the Studio -->
@@ -171,19 +205,31 @@
                 <div class="song-title" id="songTitle">[ No SID Loaded ]</div>
                 <div class="song-author" id="songAuthor">Load a SID file to begin</div>
                 <div class="sid-player-container" id="mainPlayerContainer"></div>
+                <!-- Quick path: pick a look, press the button, get a file. The
+                     Studio is the same job with every knob attached; a first-time
+                     user should not have to walk it to release one tune. -->
+                <div class="quick-export" id="quickExport" hidden>
+                    <p class="quick-export-lead">Pick what people will see:</p>
+                    <div class="quick-export-looks" id="quickExportLooks" role="radiogroup" aria-label="What people see"></div>
+                    <button class="export-button" id="quickExportBtn">
+                        <i class="fas fa-download" aria-hidden="true"></i> Make my C64 program
+                    </button>
+                    <p class="quick-export-note" id="quickExportNote">Takes a minute or so. You can change everything afterwards.</p>
+                </div>
+
                 <button class="export-button open-studio-btn" id="openStudioBtn" style="display: none;">
-                    <i class="fas fa-sliders-h"></i> Open Studio
+                    <i class="fas fa-sliders-h"></i> Change everything (Studio)
                 </button>
             </div>
 
             <!-- Error Message -->
             <div class="error-message" id="errorMessage"></div>
-        </div>
+        </main>
 
     <!-- Studio modal: the whole configure->export pipeline lives here as tabs.
          Panels stay mounted when inactive - prg-builder reads option values
          from the DOM by id. -->
-    <div class="studio-modal" id="studioModal">
+    <div class="studio-modal" id="studioModal" data-overlay>
       <div class="studio-modal-content" role="dialog" aria-modal="true" aria-label="SIDquake Studio">
         <header class="studio-head">
             <i class="fas fa-compact-disc studio-head-icon"></i>
@@ -197,32 +243,46 @@
 
             <!-- SONG tab -->
             <section class="studio-panel" data-studio-tab="song">
-              <h3 class="studio-panel-title">Song</h3>
-              <p class="studio-panel-sub">Metadata written into the exported PRG — edit it here, or save a modified SID.</p>
+              <h2 class="studio-panel-title">Song</h2>
+              <p class="studio-panel-sub">The title, your name and the song length, as they will appear on the C64 screen. You can also save a .sid file with your edits.</p>
               <div class="section-group info-section" id="infoSection">
                 <div class="info-panels" id="infoPanels">
                     <!-- File Information Panel -->
                     <div class="panel">
-                        <h2><i class="fas fa-file-alt"></i> File Information</h2>
+                        <h3><i class="fas fa-file-alt"></i> File Information</h3>
                         <div class="info-row">
-                            <span class="info-label">Title:</span>
-                            <span class="info-value editable" id="sidTitle" data-field="title" title="Click to edit">
-                                <span class="text">-</span>
-                                <i class="fas fa-pen edit-icon"></i>
+                            <label class="info-label" for="sidTitle">Title:</label>
+                            <span class="info-value info-edit">
+                                <input type="text" class="info-input" id="sidTitle"
+                                       data-field="title" maxlength="31"
+                                       aria-describedby="sidTitleCount">
+                                <span class="info-count" id="sidTitleCount"></span>
                             </span>
                         </div>
                         <div class="info-row">
-                            <span class="info-label">Author:</span>
-                            <span class="info-value editable" id="sidAuthor" data-field="author" title="Click to edit">
-                                <span class="text">-</span>
-                                <i class="fas fa-pen edit-icon"></i>
+                            <label class="info-label" for="sidAuthor">Author:</label>
+                            <span class="info-value info-edit">
+                                <input type="text" class="info-input" id="sidAuthor"
+                                       data-field="author" maxlength="31"
+                                       aria-describedby="sidAuthorCount">
+                                <span class="info-count" id="sidAuthorCount"></span>
                             </span>
                         </div>
                         <div class="info-row">
-                            <span class="info-label">Copyright:</span>
-                            <span class="info-value editable" id="sidCopyright" data-field="copyright" title="Click to edit">
-                                <span class="text">-</span>
-                                <i class="fas fa-pen edit-icon"></i>
+                            <label class="info-label" for="sidCopyright">Copyright:</label>
+                            <span class="info-value info-edit">
+                                <input type="text" class="info-input" id="sidCopyright"
+                                       data-field="copyright" maxlength="31"
+                                       aria-describedby="sidCopyrightCount">
+                                <span class="info-count" id="sidCopyrightCount"></span>
+                            </span>
+                        </div>
+                        <div class="info-row text-preview-row" id="textPreviewRow" hidden>
+                            <span class="info-label">On screen:</span>
+                            <span class="info-value">
+                                <canvas id="textPreview" width="256" height="24"
+                                        aria-label="The three text lines as the C64 will show them"></canvas>
+                                <span class="option-hint" id="textPreviewNote"></span>
                             </span>
                         </div>
                         <div class="info-row">
@@ -237,11 +297,20 @@
                             <span class="info-label">Songs:</span>
                             <span class="info-value" id="sidSongs">-</span>
                         </div>
+                        <div class="info-row">
+                            <span class="metadata-warning" id="metadataWarning" role="status" aria-live="polite" hidden></span>
+                        </div>
+                        <!-- Which tune of a multi-tune file to export. Song
+                             metadata, so it lives here; ui.js addSongSelector
+                             fills it in and empties it for single-tune SIDs. -->
+                        <div id="songSelectorMount"></div>
                     </div>
 
-                    <!-- Technical Details Panel -->
-                    <details class="panel" open>
-                        <summary><h2><i class="fas fa-microchip"></i> Technical Details</h2></summary>
+                    <!-- Technical Details Panel. Collapsed: eleven rows of load /
+                         init / play addresses and zero-page usage are reference
+                         material, and this is the first panel on the first tab. -->
+                    <details class="panel">
+                        <summary><h3><i class="fas fa-microchip"></i> Technical Details</h3></summary>
                         <div class="info-row">
                             <span class="info-label">Load Address:</span>
                             <span class="info-value" id="loadAddress">-</span>
@@ -293,9 +362,28 @@
                          current by uiController.updateSongLoopStatus(); the
                          toggle is read at export time (all visualizers). -->
                     <div class="panel" id="songLoopPanel">
-                        <h2><i class="fas fa-repeat"></i> Song Looping</h2>
+                        <h3><i class="fas fa-repeat"></i> Song Length &amp; Looping</h3>
                         <div class="info-row">
                             <span class="info-value" id="songLoopStatus" style="white-space:normal">Song end not analysed yet — SIDquake checks how the song ends during export.</span>
+                        </div>
+                        <!-- Length controls: measure it, stop measuring, or state it
+                             yourself. Shown/hidden by ui.js updateSongLoopStatus. -->
+                        <div class="info-row song-length-row">
+                            <button type="button" class="file-button" id="songLengthMeasure">Measure now</button>
+                            <button type="button" class="file-button" id="songLengthStop" hidden>Stop measuring</button>
+                            <label class="song-length-manual" for="songLengthManual">
+                                <span>or type it in</span>
+                                <input type="text" id="songLengthManual" class="number-input"
+                                       inputmode="numeric" placeholder="m:ss" size="5"
+                                       aria-describedby="songLengthManualHint">
+                            </label>
+                            <span class="option-hint" id="songLengthManualHint">Use this if you already know how long the tune runs before it repeats.</span>
+                        </div>
+                        <div class="info-row">
+                            <label for="showSongLengthToggle" style="display:flex;align-items:center;gap:8px;cursor:pointer">
+                                <input type="checkbox" id="showSongLengthToggle" checked>
+                                <span>Show the song length (MM:SS) on the C64 screen</span>
+                            </label>
                         </div>
                         <div class="info-row">
                             <label for="forceLoopToggle" style="display:flex;align-items:center;gap:8px;cursor:pointer">
@@ -328,22 +416,30 @@
 
             <!-- VISUALIZER tab -->
             <section class="studio-panel active" data-studio-tab="visualizer">
-              <h3 class="studio-panel-title">Visualizer</h3>
-              <p class="studio-panel-sub">Pick a player — the steps that follow adapt to what it needs.</p>
+              <h2 class="studio-panel-title">Visualizer</h2>
+              <p class="studio-panel-sub">Choose what people see while your tune plays. The steps after this one change to match.</p>
 
               <!-- Visualizer Grid (cards populated by visualizer-registry.js) -->
               <div class="visualizer-grid" id="visualizerGrid">
               </div>
 
+              <!-- How the bars are worked out, for the players that offer a
+                   choice. Under the grid rather than on a tab of its own: it
+                   modifies the card just picked, and it is empty for every
+                   player that has no choice to make. -->
+              <details class="method-fold" id="methodFold" hidden>
+                  <summary>How the bars are worked out<span class="method-fold-current" id="methodFoldCurrent"></span></summary>
+                  <p class="option-hint">Optional — the first one is already chosen, and is the one to keep unless your file holds several tunes.</p>
+                  <div id="methodMount"></div>
+              </details>
+
+              <!-- The Spectrometer's multi-tune caveat: it belongs to the
+                   visualizer choice, not to the tune, so it stays here while the
+                   tune selector itself lives on the Song tab. -->
+              <div id="fftMultiSongMount"></div>
+
               <!-- Visualizer-level extras (data source moved to its own tab) -->
               <div id="vizExtras"></div>
-            </section>
-
-            <!-- METHOD tab (only shown for players with a choice of method) -->
-            <section class="studio-panel" data-studio-tab="method">
-              <h3 class="studio-panel-title">Method</h3>
-              <p class="studio-panel-sub">How the bars are generated. <b>Spectrometer</b> looks best and is the default — switch only if you need multi-song playback or lower CPU. Optional.</p>
-              <div id="methodMount"></div>
             </section>
 
             <!-- Derived tabs (Logo / Bitmap / Text / Style / Scroller) are
@@ -351,7 +447,47 @@
 
             <!-- EXPORT tab -->
             <section class="studio-panel section-group export-section" data-studio-tab="export" id="exportSection">
-              <h3 class="studio-panel-title">Export</h3>
+              <h2 class="studio-panel-title">Export</h2>
+
+              <!-- Shown after a successful export: what the file is, how to run
+                   it, and anything worth going back for (populated by ui.js
+                   renderExportDone). -->
+              <div class="export-done" id="exportDone" hidden></div>
+
+              <!-- Pre-flight summary of everything the PRG will be built from,
+                   with per-row jump-to-tab buttons (populated by studio-modal.js
+                   renderManifest). -->
+              <div class="studio-manifest" id="exportManifest"></div>
+
+              <!-- Save the whole setup, or apply a saved one. A music disk wants
+                   every tune built the same way, and a release wants to be
+                   rebuildable next year. -->
+              <div class="recipe-row">
+                  <button type="button" class="file-button" id="recipeSave">Save these settings</button>
+                  <button type="button" class="file-button" id="recipeLoadBtn">Load settings…</button>
+                  <input type="file" id="recipeLoad" accept=".json,.sqrecipe.json" hidden>
+                  <span class="option-hint" id="recipeNote">A small .json you can keep with the tune, share with a group, or check into a repo. Drop one anywhere on the page to apply it.</span>
+              </div>
+
+              <div class="recipe-row">
+                  <label for="recipeAlways" style="display:flex;align-items:center;gap:8px;cursor:pointer">
+                      <input type="checkbox" id="recipeAlways">
+                      <span>Save the settings file with every PRG</span>
+                  </label>
+                  <span class="option-hint">Adds a second small download each time, recording what was built as well as the settings.</span>
+              </div>
+
+              <div class="recipe-row">
+                  <label class="option-label" for="filenameTemplate">File name</label>
+                  <input type="text" id="filenameTemplate" class="number-input" style="width:18em"
+                         value="{name}" spellcheck="false"
+                         aria-describedby="filenameTemplateHint">
+                  <span class="option-hint" id="filenameTemplateHint">
+                      Use <code>{name}</code>, <code>{title}</code>, <code>{author}</code>,
+                      <code>{song}</code> or <code>{index}</code>. Only a-z, 0-9, - and !
+                      survive a C64 directory, so everything else is dropped.
+                  </span>
+              </div>
 
               <!-- Compression / advanced settings / bake readout (populated by ui.js) -->
               <div id="exportConfigMount"></div>
@@ -363,16 +499,18 @@
               <div class="loop-info" id="loopInfo" style="display: none;"></div>
 
               <!-- Memory map of the last exported PRG (populated by ui.js) -->
+              <div class="placement-plan" id="placementPlan" hidden></div>
+
               <div class="memory-map" id="memoryMap" style="display: none;"></div>
             </section>
           </div>
         </div>
         <footer class="studio-foot">
             <div class="studio-foot-sum" id="studioFootSum"></div>
-            <div class="export-status" id="exportStatus"></div>
+            <div class="export-status" id="exportStatus" role="status" aria-live="polite"></div>
             <div class="studio-nav-btns" id="studioNavBtns"></div>
             <button class="export-button" id="exportPRGButton" disabled>
-                <i class="fas fa-download"></i> Generate PRG
+                <i class="fas fa-download"></i> Make my C64 program
             </button>
         </footer>
       </div>
@@ -629,7 +767,7 @@
                     </div>
                 </div>
                 <a class="about-github-cta" href="https://github.com/RobertTroughton/SIDquake" target="_blank" rel="noopener">
-                    <div class="about-github-icon"><i class="fab fa-github" aria-hidden="true"></i></div>
+                    <div class="about-github-icon"><svg class="brand-icon" viewBox="0 0 496 512" aria-hidden="true" focusable="false"><path fill="currentColor" d="M165.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6zm-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3zm44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9zM244.8 8C106.1 8 0 113.3 0 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C428.2 457.8 496 362.9 496 252 496 113.3 383.5 8 244.8 8z"/></svg></div>
                     <div class="about-github-text">
                         <h4>SIDquake is open source</h4>
                         <p>Browse the code, report a bug or send a pull request &mdash; github.com/RobertTroughton/SIDquake</p>
@@ -683,27 +821,27 @@
                         <p>Advanced online SID player &amp; HVSC browser</p>
                     </a>
                     <a href="https://www.youtube.com/@jeLM134" class="about-link-card" target="_blank" rel="noopener">
-                        <div class="about-link-icon"><i class="fab fa-youtube"></i></div>
+                        <div class="about-link-icon"><svg class="brand-icon" viewBox="0 0 576 512" aria-hidden="true" focusable="false"><path fill="currentColor" d="M549.7 124.1c-6.3-23.7-24.8-42.3-48.3-48.6C458.8 64 288 64 288 64S117.2 64 74.6 75.5c-23.5 6.3-42 24.9-48.3 48.6-11.4 42.9-11.4 132.3-11.4 132.3s0 89.4 11.4 132.3c6.3 23.7 24.8 41.5 48.3 47.8C117.2 448 288 448 288 448s170.8 0 213.4-11.5c23.5-6.3 42-24.1 48.3-47.8 11.4-42.9 11.4-132.3 11.4-132.3s0-89.4-11.4-132.3zm-317.5 213.5V175.2l142.7 81.2-142.7 81.2z"/></svg></div>
                         <h4>sLASH</h4>
                         <p>SID music videos &amp; C64 scene content</p>
                     </a>
                     <a href="https://www.youtube.com/c/TheDemoscene" class="about-link-card" target="_blank" rel="noopener">
-                        <div class="about-link-icon"><i class="fab fa-youtube"></i></div>
+                        <div class="about-link-icon"><svg class="brand-icon" viewBox="0 0 576 512" aria-hidden="true" focusable="false"><path fill="currentColor" d="M549.7 124.1c-6.3-23.7-24.8-42.3-48.3-48.6C458.8 64 288 64 288 64S117.2 64 74.6 75.5c-23.5 6.3-42 24.9-48.3 48.6-11.4 42.9-11.4 132.3-11.4 132.3s0 89.4 11.4 132.3c6.3 23.7 24.8 41.5 48.3 47.8C117.2 448 288 448 288 448s170.8 0 213.4-11.5c23.5-6.3 42-24.1 48.3-47.8 11.4-42.9 11.4-132.3 11.4-132.3s0-89.4-11.4-132.3zm-317.5 213.5V175.2l142.7 81.2-142.7 81.2z"/></svg></div>
                         <h4>The Demoscene</h4>
                         <p>Demoscene productions &amp; culture</p>
                     </a>
                     <a href="https://www.youtube.com/@magnarmusician" class="about-link-card" target="_blank" rel="noopener">
-                        <div class="about-link-icon"><i class="fab fa-youtube"></i></div>
+                        <div class="about-link-icon"><svg class="brand-icon" viewBox="0 0 576 512" aria-hidden="true" focusable="false"><path fill="currentColor" d="M549.7 124.1c-6.3-23.7-24.8-42.3-48.3-48.6C458.8 64 288 64 288 64S117.2 64 74.6 75.5c-23.5 6.3-42 24.9-48.3 48.6-11.4 42.9-11.4 132.3-11.4 132.3s0 89.4 11.4 132.3c6.3 23.7 24.8 41.5 48.3 47.8C117.2 448 288 448 288 448s170.8 0 213.4-11.5c23.5-6.3 42-24.1 48.3-47.8 11.4-42.9 11.4-132.3 11.4-132.3s0-89.4-11.4-132.3zm-317.5 213.5V175.2l142.7 81.2-142.7 81.2z"/></svg></div>
                         <h4>Magnar Harestad</h4>
                         <p>SID music covers &amp; performances</p>
                     </a>
                     <a href="https://www.youtube.com/c/acrouzet" class="about-link-card" target="_blank" rel="noopener">
-                        <div class="about-link-icon"><i class="fab fa-youtube"></i></div>
+                        <div class="about-link-icon"><svg class="brand-icon" viewBox="0 0 576 512" aria-hidden="true" focusable="false"><path fill="currentColor" d="M549.7 124.1c-6.3-23.7-24.8-42.3-48.3-48.6C458.8 64 288 64 288 64S117.2 64 74.6 75.5c-23.5 6.3-42 24.9-48.3 48.6-11.4 42.9-11.4 132.3-11.4 132.3s0 89.4 11.4 132.3c6.3 23.7 24.8 41.5 48.3 47.8C117.2 448 288 448 288 448s170.8 0 213.4-11.5c23.5-6.3 42-24.1 48.3-47.8 11.4-42.9 11.4-132.3 11.4-132.3s0-89.4-11.4-132.3zm-317.5 213.5V175.2l142.7 81.2-142.7 81.2z"/></svg></div>
                         <h4>acrouzet</h4>
                         <p>C64 music &amp; retro computing videos</p>
                     </a>
                     <a href="https://www.youtube.com/@UnepicStonedHighSIDCollection" class="about-link-card" target="_blank" rel="noopener">
-                        <div class="about-link-icon"><i class="fab fa-youtube"></i></div>
+                        <div class="about-link-icon"><svg class="brand-icon" viewBox="0 0 576 512" aria-hidden="true" focusable="false"><path fill="currentColor" d="M549.7 124.1c-6.3-23.7-24.8-42.3-48.3-48.6C458.8 64 288 64 288 64S117.2 64 74.6 75.5c-23.5 6.3-42 24.9-48.3 48.6-11.4 42.9-11.4 132.3-11.4 132.3s0 89.4 11.4 132.3c6.3 23.7 24.8 41.5 48.3 47.8C117.2 448 288 448 288 448s170.8 0 213.4-11.5c23.5-6.3 42-24.1 48.3-47.8 11.4-42.9 11.4-132.3 11.4-132.3s0-89.4-11.4-132.3zm-317.5 213.5V175.2l142.7 81.2-142.7 81.2z"/></svg></div>
                         <h4>Unepic SID Channel</h4>
                         <p>Curated SID music collection</p>
                     </a>
@@ -838,7 +976,7 @@
         <div class="releases-content" id="tabReleases" role="tabpanel" aria-labelledby="tab-releases" style="display: none;">
             <section class="releases-hero">
                 <div class="about-hero-scanlines"></div>
-                <h1 class="releases-title">SIDquake Releases</h1>
+                <h2 class="releases-title">SIDquake Releases</h2>
                 <p class="releases-subtitle">SID tunes released using SIDquake, listed on <a href="https://csdb.dk" target="_blank" rel="noopener">CSDb</a></p>
             </section>
 
@@ -913,15 +1051,19 @@
                 <nav class="site-footer-links" aria-label="Footer">
                     <a href="mailto:raistlin@c64demo.com"><i class="fas fa-envelope" aria-hidden="true"></i> raistlin@c64demo.com</a>
                     <span class="site-footer-sep" aria-hidden="true">&middot;</span>
-                    <a href="https://github.com/RobertTroughton/SIDquake" target="_blank" rel="noopener"><i class="fab fa-github" aria-hidden="true"></i> Source on GitHub</a>
+                    <a href="https://github.com/RobertTroughton/SIDquake" target="_blank" rel="noopener"><svg class="brand-icon" viewBox="0 0 496 512" aria-hidden="true" focusable="false"><path fill="currentColor" d="M165.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6zm-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3zm44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9zM244.8 8C106.1 8 0 113.3 0 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C428.2 457.8 496 362.9 496 252 496 113.3 383.5 8 244.8 8z"/></svg> Source on GitHub</a>
                     <span class="site-footer-sep" aria-hidden="true">&middot;</span>
                     <a href="licenses.html">Open-source licenses</a>
+                    <span class="site-footer-sep" aria-hidden="true">&middot;</span>
+                    <label class="site-footer-toggle">
+                        <input type="checkbox" id="notesToggle"> Background notes
+                    </label>
                 </nav>
             </div>
         </footer>
     </div>
     <!-- Unified modal: error / success / warning / confirm -->
-    <div class="modal-overlay" id="modalOverlay">
+    <div class="modal-overlay" id="modalOverlay" data-overlay>
         <div class="modal-content">
             <div class="modal-icon" id="modalIcon"></div>
             <div class="modal-title" id="modalTitle"></div>
@@ -932,12 +1074,28 @@
     </div>
 
     <!-- Busy Overlay -->
-    <div class="busy-overlay" id="busyOverlay">
-        <div class="busy-content">
-            <div class="busy-spinner"></div>
+    <!-- Background tune analysis: the loop/length scan runs in a worker while the
+         user picks a visualizer, so it reports here instead of behind the busy
+         overlay. The visible counter changes too fast to announce, so the live
+         region beside it is updated on a slow throttle instead. -->
+    <div class="analysis-chip" id="analysisChip" hidden>
+        <span class="analysis-chip-spinner" aria-hidden="true"></span>
+        <span class="analysis-chip-text" id="analysisChipText" aria-hidden="true">Analysing tune…</span>
+        <span class="visually-hidden" id="analysisChipAnnounce" role="status" aria-live="polite"></span>
+        <button type="button" class="analysis-chip-stop" id="analysisChipStop">Use what it has found</button>
+        <button type="button" class="analysis-chip-cancel" id="analysisChipCancel"
+                aria-label="Stop analysing this tune and forget what it found">✕</button>
+    </div>
+
+    <div class="busy-overlay" id="busyOverlay" data-overlay>
+        <div class="busy-content" role="dialog" aria-modal="true" aria-labelledby="busyMessage">
+            <div class="busy-spinner" aria-hidden="true"></div>
             <div class="busy-message" id="busyMessage">Processing...</div>
-            <div class="busy-submessage" id="busySubmessage"></div>
+            <!-- The counter moves several times a second, so it is not announced
+                 directly; busyAnnounce carries a throttled summary instead. -->
+            <div class="busy-submessage" id="busySubmessage" aria-hidden="true"></div>
             <div class="busy-hint" id="busyHint" hidden></div>
+            <span class="visually-hidden" id="busyAnnounce" role="status" aria-live="polite"></span>
             <button type="button" class="busy-cancel-btn" id="busyCancel" hidden>Cancel</button>
         </div>
     </div>
@@ -995,13 +1153,13 @@
     </script>
 
     <!-- HVSC Modal -->
-    <div class="hvsc-modal" id="hvscModal">
-        <div class="hvsc-modal-content" role="dialog" aria-modal="true" aria-label="HVSC SID Collection Browser">
-            <button class="hvsc-modal-close" id="hvscModalClose">✕</button>
+    <div class="hvsc-modal" id="hvscModal" data-overlay>
+        <div class="hvsc-modal-content" role="dialog" aria-modal="true" aria-label="Browse C64 tunes">
+            <button class="hvsc-modal-close" id="hvscModalClose" aria-label="Close the tune browser">✕</button>
             <div class="hvsc-modal-body">
                 <div class="browser-container" style="height: 100%; background: transparent;">
                     <div class="browser-header">
-                        <div class="browser-title">HVSC SID Collection Browser<span class="hvsc-version-badge" id="hvscVersionBadge" hidden></span></div>
+                        <div class="browser-title">61,000 C64 tunes<span class="browser-title-sub"> · the High Voltage SID Collection</span><span class="hvsc-version-badge" id="hvscVersionBadge" hidden></span></div>
                         <div class="browser-search">
                             <i class="fas fa-search search-icon"></i>
                             <input type="text" class="search-bar" id="hvscSearchBar" placeholder="Search the whole collection by title, author, or filename..." autocomplete="off" spellcheck="false">
@@ -1024,23 +1182,23 @@
                     </div>
 
                     <div class="status-bar">
-                        <span id="itemCount">0 items</span>
+                        <span id="itemCount" role="status" aria-live="polite">0 items</span>
                     </div>
 
                     <!-- HVSC Playback Preview (disabled until a SID is selected) -->
                     <div class="hvsc-player-container" id="hvscPlayerContainer">
                         <div class="sid-player">
-                            <button class="sid-player-btn sid-player-play" title="Play" disabled><i class="fas fa-play"></i></button>
-                            <button class="sid-player-btn sid-player-stop" title="Stop" disabled><i class="fas fa-stop"></i></button>
-                            <button class="sid-player-btn sid-player-restart" title="Restart" disabled><i class="fas fa-undo"></i></button>
+                            <button class="sid-player-btn sid-player-play" title="Play" aria-label="Play" disabled><i class="fas fa-play"></i></button>
+                            <button class="sid-player-btn sid-player-stop" title="Stop" aria-label="Stop" disabled><i class="fas fa-stop"></i></button>
+                            <button class="sid-player-btn sid-player-restart" title="Restart" aria-label="Restart" disabled><i class="fas fa-undo"></i></button>
                             <div class="sid-player-subtune">
-                                <button class="sid-player-btn sid-player-prev" title="Previous subtune" disabled><i class="fas fa-step-backward"></i></button>
+                                <button class="sid-player-btn sid-player-prev" title="Previous subtune" aria-label="Previous tune" disabled><i class="fas fa-step-backward"></i></button>
                                 <span class="sid-player-subtune-display">1/1</span>
-                                <button class="sid-player-btn sid-player-next" title="Next subtune" disabled><i class="fas fa-step-forward"></i></button>
+                                <button class="sid-player-btn sid-player-next" title="Next subtune" aria-label="Next tune" disabled><i class="fas fa-step-forward"></i></button>
                             </div>
                             <div class="sid-player-time">0:00</div>
                             <div class="sid-player-quality">
-                                <select class="sid-player-quality-select" title="Sampling quality" disabled>
+                                <select class="sid-player-quality-select" title="Sampling quality" aria-label="Sampling quality" disabled>
                                     <option value="0">Fast</option>
                                     <option value="1" selected>Interpolate</option>
                                     <option value="2">Resample</option>
@@ -1060,8 +1218,8 @@
 
                     <div class="hvsc-modal-footer">
                         <span class="hvsc-path-text" id="pathBar" title="Current HVSC folder"></span>
-                        <button class="btn hvsc-choose-btn" onclick="hvscBrowser.chooseSong()" title="Use the selected tune in the SIDquake tool"><i class="fas fa-check"></i> Select</button>
-                        <button class="btn hvsc-cancel-btn" onclick="hvscBrowser.cancel()" title="Close without choosing a tune">Cancel</button>
+                        <button class="btn hvsc-choose-btn" onclick="hvscBrowser.chooseSong()" title="Use the selected tune in the SIDquake tool"><i class="fas fa-check" aria-hidden="true"></i> Use this tune</button>
+                        <button class="btn hvsc-cancel-btn" onclick="hvscBrowser.cancel()" title="Close without choosing a tune">Close</button>
                     </div>
                 </div>
             </div>
@@ -1069,9 +1227,9 @@
     </div>
 
     <!-- Gallery Modal -->
-    <div class="gallery-modal" id="galleryModal">
+    <div class="gallery-modal" id="galleryModal" data-overlay>
         <div class="gallery-modal-content">
-            <button class="gallery-modal-close" id="galleryModalClose">✕</button>
+            <button class="gallery-modal-close" id="galleryModalClose" aria-label="Close the gallery">✕</button>
             <div class="gallery-modal-body">
                 <div class="gallery-container">
                     <div class="gallery-header">
@@ -1095,14 +1253,21 @@
 
     <!-- Lazy script loader + core script bootstrapper -->
     <script>
-        // Deep link (?tune=): the HVSC browser will need the collection index
-        // (~2MB gzipped), so start fetching it now instead of waiting for the
-        // UI scripts to load and open the modal. hvsc-browser.js picks this
-        // promise up in loadSearchIndex().
+        // Deep link (?tune=): the browser needs the collection index (~2MB
+        // gzipped) to show the listing, so start it now rather than waiting for
+        // the UI scripts. hvsc-browser.js picks this promise up in
+        // loadSearchIndex() - and plays the tune from its ~1.5KB share-meta
+        // shard first, so nobody waits on this to hear anything.
         try {
             if (new URLSearchParams(location.search).get('tune')) {
-                window.hvscIndexPrefetch = fetch('hvsc-index.json')
-                    .then(function(r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); });
+                window.hvscIndexPrefetch = fetch('hvsc-index-lite.json')
+                    .then(function(r) { return r.ok ? r.json() : Promise.reject(new Error('no lite index')); })
+                    .catch(function() {
+                        return fetch('hvsc-index.json').then(function(r) {
+                            if (!r.ok) throw new Error('HTTP ' + r.status);
+                            return r.json();
+                        });
+                    });
                 window.hvscIndexPrefetch.catch(function() {});  // no unhandled rejection
             }
         } catch (e) { /* non-fatal */ }
@@ -1136,7 +1301,10 @@
         // instead of blocking the main thread in one giant 2+ second task.
         (function() {
             var scripts = [
-                'error-modal.js', 'visualizer-registry.js', 'studio-modal.js', 'ui.js'
+                // c64-palette.js first: ui.js reads the shared colour table at
+                // module scope, so it has to be there before it parses.
+                'c64-palette.js', 'overlay-stack.js', 'error-modal.js', 'visualizer-registry.js',
+                'zip-writer.js', 'studio-modal.js', 'ui.js'
             ];
             var i = 0;
             function loadNext() {
@@ -1149,6 +1317,60 @@
             }
             // Start after first paint
             requestAnimationFrame(function() { setTimeout(loadNext, 0); });
+        })();
+
+        // The three upload buttons ship in the static HTML but their handlers
+        // attach in ui.js, fourth in the yielded load chain above - so for the
+        // first second or two they look live and do nothing, and a first tap
+        // that does nothing is a bounce. Hold that tap and act on it once the
+        // controller exists.
+        (function () {
+            var pending = null;
+            var wired = [];
+            function hold(id, act) {
+                var btn = document.getElementById(id);
+                if (!btn) return;
+                var onClick = function () {
+                    if (window.uiController) return;   // ui.js owns it now
+                    pending = act;
+                    btn.classList.add('is-waking');
+                };
+                btn.addEventListener('click', onClick);
+                wired.push(function () { btn.removeEventListener('click', onClick); });
+            }
+            // The file picker needs nothing from ui.js, so open it straight
+            // away. The chosen file is still on the input when ui.js attaches
+            // its change handler, so re-fire the event once it is there.
+            var input = document.getElementById('fileInput');
+            var uploadBtn = document.getElementById('uploadBtn');
+            var earlyPick = false;
+            if (input && uploadBtn) {
+                uploadBtn.addEventListener('click', function () {
+                    if (!window.uiController) input.click();
+                });
+                input.addEventListener('change', function () {
+                    if (!window.uiController && input.files && input.files.length) earlyPick = true;
+                });
+            }
+            hold('hvscBtn', function (ui) { ui.openHVSCBrowser(); });
+            hold('randomBtn', function (ui) { ui.selectRandomSID(); });
+
+            var tries = 0;
+            (function wait() {
+                if (window.uiController) {
+                    for (var i = 0; i < wired.length; i++) wired[i]();
+                    var btns = document.querySelectorAll('.upload-btn.is-waking');
+                    for (var j = 0; j < btns.length; j++) btns[j].classList.remove('is-waking');
+                    if (earlyPick && input) {
+                        input.dispatchEvent(new Event('change', { bubbles: true }));
+                    } else if (pending) {
+                        pending(window.uiController);
+                    }
+                    return;
+                }
+                if (tries++ > 300) return;   // 30s: something is badly wrong, stop polling
+                setTimeout(wait, 100);
+            })();
         })();
 
         // Tab switching

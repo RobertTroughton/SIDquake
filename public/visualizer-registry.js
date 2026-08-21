@@ -3,22 +3,33 @@
 const VISUALIZERS = [
     {
         id: 'default',
-        name: 'Default',
-        description: 'Minimal player with textual information',
+        name: 'Just the text',
+        // The scene name, kept as a credit line on the card.
+        sceneName: 'Default',
+        description: 'Your tune title, your name, and the song details. No effects.',
         preview: 'prg/default.png',
         config: 'prg/default.json'
     },
     {
         id: 'DefaultWithLogo',
-        name: 'Default With Logo',
-        description: 'Text information with a 9-row logo (charset, bitmap or PETSCII)',
+        name: 'Text with a picture',
+        // The scene name, kept as a credit line on the card.
+        sceneName: 'Default With Logo',
+        description: 'The same information, with your own logo across the top.',
         preview: 'prg/defaultwithlogo.png',
         config: 'prg/defaultwithlogo.json'
     },
     {
         id: 'RaistlinBars',
-        name: 'Raistlin Bars',
-        description: 'Spectrometer bars',
+        // What a first-time visitor lands on. Picked deliberately: the grid is
+        // sorted by name, so index 0 was whatever happened to sort first - which
+        // for a long time was the text-only player, i.e. a visualizer tool
+        // opening on no visualizer.
+        defaultPick: true,
+        name: 'Bars',
+        // The scene name, kept as a credit line on the card.
+        sceneName: 'Raistlin Bars',
+        description: 'A row of bars that dance to the music.',
         preview: 'prg/raistlinbars.png',
         config: 'prg/raistlinbars.json'
     },
@@ -38,8 +49,10 @@ const VISUALIZERS = [
     },
     {
         id: 'RaistlinBarsWithLogo',
-        name: 'Raistlin Bars With Logo',
-        description: 'Spectrometer bars below an 80px tall logo',
+        name: 'Bars with a picture',
+        // The scene name, kept as a credit line on the card.
+        sceneName: 'Raistlin Bars With Logo',
+        description: 'Dancing bars beneath your own logo.',
         preview: 'prg/raistlinbarswithlogo.png',
         config: 'prg/raistlinbarswithlogo.json'
     },
@@ -59,8 +72,10 @@ const VISUALIZERS = [
     },
     {
         id: 'RaistlinMirrorBars',
-        name: 'Raistlin Mirror Bars',
-        description: 'Spectrometer mirrored bars',
+        name: 'Mirrored bars',
+        // The scene name, kept as a credit line on the card.
+        sceneName: 'Raistlin Mirror Bars',
+        description: 'Bars that grow out from the middle of the screen, both ways.',
         preview: 'prg/raistlinmirrorbars.png',
         config: 'prg/raistlinmirrorbars.json'
     },
@@ -80,8 +95,10 @@ const VISUALIZERS = [
     },
     {
         id: 'RaistlinMirrorBarsWithLogo',
-        name: 'Raistlin Mirror Bars With Logo',
-        description: 'Spectrometer mirrored bars below an 80px tall logo',
+        name: 'Mirrored bars with a picture',
+        // The scene name, kept as a credit line on the card.
+        sceneName: 'Raistlin Mirror Bars With Logo',
+        description: 'Bars growing both ways, beneath your own logo.',
         preview: 'prg/raistlinmirrorbarswithlogo.png',
         config: 'prg/raistlinmirrorbarswithlogo.json'
     },
@@ -101,29 +118,37 @@ const VISUALIZERS = [
     },
     {
         id: 'MusicalBlobs',
-        name: 'Musical Blobs',
-        description: 'Per-channel spectrum painted as 80 vertical colour strips into a bitmap, below a character-set logo',
+        name: 'Colour blobs',
+        // The scene name, kept as a credit line on the card.
+        sceneName: 'Musical Blobs',
+        description: 'Each voice painted as drifting columns of colour, under a logo.',
         preview: 'prg/musicalblobs.png',
         config: 'prg/musicalblobs.json'
     },
     {
         id: 'SimpleBitmapWithScroller',
-        name: 'Simple Bitmap',
-        description: 'Full-screen bitmap, with an optional scroller',
+        name: 'Full-screen picture',
+        // The scene name, kept as a credit line on the card.
+        sceneName: 'Simple Bitmap',
+        description: 'One full-screen image, with an optional message scrolling across it.',
         preview: 'prg/simplebitmap.png',
         config: 'prg/simplebitmapwithscroller.json'
     },
     {
         id: 'SimpleRaster',
-        name: 'Simple Raster',
-        description: 'Minimal rasterbar effect',
+        name: 'Coloured stripes',
+        // The scene name, kept as a credit line on the card.
+        sceneName: 'Simple Raster',
+        description: 'Bands of colour rolling down the screen. The classic C64 look.',
         preview: 'prg/simpleraster.png',
         config: 'prg/simpleraster.json'
     },
     {
         id: 'ScrapColumns',
-        name: 'Scrap Columns',
-        description: '3D column spectrum visualizer by Scrap',
+        name: '3D columns',
+        // The scene name, kept as a credit line on the card.
+        sceneName: 'Scrap Columns',
+        description: 'A spectrum drawn as columns receding into the distance.',
         preview: 'prg/scrapcolumns.png',
         config: 'prg/scrapcolumns.json'
     }
@@ -142,12 +167,24 @@ const VISUALIZERS = [
     };
     const byId = Object.fromEntries(VISUALIZERS.map(v => [v.id, v]));
     for (const [group, methods] of Object.entries(GROUPS)) {
+        const base = byId[methods.realtime];
         for (const [method, id] of Object.entries(methods)) {
             const v = byId[id];
             if (!v) continue;
             v.dataSourceGroup = group;
             v.dataSource = method;
-            if (method !== 'realtime') v.hidden = true;   // only the realtime base shows in the grid
+            if (method !== 'realtime') {
+                v.hidden = true;   // only the realtime base shows in the grid
+                // The variants are the same look by another route, so they carry
+                // the same name. Which route is in use is said separately (the
+                // Method tab, the footer summary, the export manifest) rather
+                // than smuggled into the name as "(Shadow)" / "(Spectrometer)".
+                if (base) {
+                    v.name = base.name;
+                    v.sceneName = base.sceneName;
+                    v.description = base.description;
+                }
+            }
         }
     }
 })();

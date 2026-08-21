@@ -17,24 +17,29 @@
     --accent-light: #e8bb6a;
     --accent-dim: rgba(212, 162, 76, 0.12);
     --accent-glow: rgba(212, 162, 76, 0.2);
-    --accent-secondary: #7b68ee;
+    --accent-secondary: #8f7ff2;   /* 5.72:1 on --bg-secondary as button text */
     --accent-gradient: linear-gradient(90deg, #d4a24c 0%, #e8bb6a 100%);
 
     /* Text colors */
     --text-primary: #dcdde0;
     --text-secondary: #8e909a;
-    --text-muted: #7b7d85;
+    --text-muted: #95979f;   /* AA on every surface it is used on (>= 4.7:1) */
     --text-accent: #e8bb6a;
 
     /* Border colors */
     --border: #252530;
     --border-light: #32323e;
+    /* The visible boundary of a CONTROL, which WCAG 1.4.11 wants at 3:1 - the
+       decorative --border above is ~1.2:1 and stays that way for separators.
+       This clears 3:1 against every surface a control sits on, --bg-elevated
+       (the tightest, 3.17:1) included. */
+    --border-control: #6e6e85;
     --border-accent: rgba(212, 162, 76, 0.25);
 
     /* Status colors */
     --success: #5cb87a;
     --warning: #e8a838;
-    --error: #d45555;
+    --error: #e07070;   /* 5.0:1 on the tinted error background */
     --info: #6b9fc4;
 
     /* Spacing scale */
@@ -69,6 +74,73 @@
 }
 
 /* Font Imports — loaded async via index.html, not via @import (render-blocking) */
+
+/* ==========================================================================
+   Keyboard focus
+   --------------------------------------------------------------------------
+   One visible ring for every focusable thing, so a keyboard user can always
+   see where they are. Component rules are free to change border-colour or add
+   a glow on :focus; none of them may set `outline` themselves, or they take
+   this away again.
+   ========================================================================== */
+button:focus-visible,
+[role="button"]:focus-visible,
+a:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible,
+[tabindex]:focus-visible {
+    outline: 3px solid var(--accent-light);
+    outline-offset: 2px;
+}
+
+/* Off-screen but still announced: live regions and labels for controls whose
+   visible text is an icon or a fast-changing counter. */
+.visually-hidden {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    margin: -1px;
+    padding: 0;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    clip-path: inset(50%);
+    white-space: nowrap;
+    border: 0;
+}
+
+/* ==========================================================================
+   Reduced motion
+   --------------------------------------------------------------------------
+   Everything animated here is decoration - drifting notes, spinners, hover
+   transforms, CRT flicker. None of it carries meaning, so a reduced-motion
+   preference switches all of it off. !important is correct here: it has to
+   beat per-component animation rules wherever they live.
+   ========================================================================== */
+@media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after {
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.01ms !important;
+        scroll-behavior: auto !important;
+    }
+
+    /* Belt and braces: floating-notes.js also declines to spawn any. */
+    .floating-notes-container {
+        display: none !important;
+    }
+
+    /* A spinner is normally an accepted loading indicator, but this one can run
+       for minutes while a tune is scanned. Hold it still and let the text
+       alongside it carry the progress. */
+    .busy-spinner,
+    .analysis-chip-spinner,
+    .file-list-spinner,
+    .preview-spinner {
+        animation: none !important;
+        border-top-color: var(--accent) !important;
+    }
+}
 
 /* ==========================================================================
    Critical: hide pre-rendered modals before the deferred stylesheets load
@@ -356,7 +428,7 @@ body.file-dragging::after {
 
 .upload-btn.random-btn:hover {
     background: var(--accent-secondary);
-    color: white;
+    color: var(--bg-primary);
     border-color: var(--accent-secondary);
 }
 
@@ -466,7 +538,8 @@ body.file-dragging::after {
     background: var(--bg-surface);
 }
 
-.panel h2 {
+.panel h2,
+.panel h3 {
     color: var(--accent);
     margin-bottom: var(--space-md);
     font-size: 0.8em;
@@ -529,58 +602,59 @@ details[open].panel > summary h2::after {
     font-size: 0.9em;
 }
 
-.info-value.editable {
-    cursor: pointer;
-    padding: 2px 6px;
-    border-radius: var(--radius-sm);
-    transition: all var(--transition-fast);
-    border: 1px dashed transparent;
-    position: relative;
+/* Title / Author / Copyright are real inputs - what goes here is printed on the
+   C64 screen, so it is a form, not a display with a pencil next to it. */
+.info-edit {
     display: inline-flex;
-    align-items: center;
+    align-items: baseline;
     gap: var(--space-sm);
 }
 
-.info-value.editable:hover {
-    background: var(--accent-dim);
-    border: 1px dashed var(--accent);
-}
-
-.info-value.editable .text {
-    display: inline-block;
-}
-
-.info-value.editable .edit-icon {
-    color: var(--accent);
-    font-size: 0.7em;
-    opacity: 0.3;
-    transition: opacity var(--transition-fast);
-}
-
-.info-value.editable:hover .edit-icon {
-    opacity: 1;
-}
-
-.info-value.editing {
+.info-input {
+    width: 22ch;
+    max-width: 100%;
+    padding: 3px 8px;
     background: var(--bg-primary);
-    border: 2px solid var(--accent);
-    padding: 4px 8px;
-    outline: none;
+    border: 1px solid var(--border-light);
+    border-radius: var(--radius-sm);
     color: var(--text-primary);
+    font-family: var(--font-mono);
+    font-size: 1em;
+}
+
+.info-input:focus {
+    border-color: var(--accent);
+}
+
+/* Only shown once the 31-character header field is nearly full. */
+.info-count {
+    font-family: var(--font-mono);
+    font-size: 0.8em;
+    color: var(--text-muted);
+    white-space: nowrap;
+}
+
+.info-count.is-low {
+    color: var(--warning);
+}
+
+.metadata-warning {
+    color: var(--warning);
+    font-size: 0.85em;
+    line-height: 1.4;
+}
+
+.metadata-warning[hidden] {
+    display: none;
 }
 
 /* Visible keyboard focus for elements made keyboard-operable for accessibility
-   (visualizer cards, HVSC file rows, editable metadata fields). Scoped to
-   :focus-visible so mouse users don't see the ring. */
+   (visualizer cards, HVSC file rows). Scoped to :focus-visible so mouse users
+   don't see the ring. */
 .visualizer-card:focus-visible,
-.file-item:focus-visible,
-.info-value.editable:focus-visible {
+.file-item:focus-visible {
     outline: 2px solid var(--accent);
     outline-offset: 2px;
-}
-
-.info-value.editing .edit-icon {
-    display: none;
 }
 
 /* ==========================================================================
@@ -634,7 +708,6 @@ details[open].panel > summary h2::after {
 }
 
 .song-selector-container select:focus {
-    outline: none;
     border-color: var(--accent);
     box-shadow: 0 0 0 2px var(--accent-dim);
 }
@@ -671,7 +744,9 @@ details[open].panel > summary h2::after {
 }
 
 .visualizer-card.disabled {
-    opacity: 0.4;
+    /* Dimmed, but not so far that the reason it gives becomes unreadable - it
+       used to sit at 0.4, about 1.7:1 against the card. */
+    opacity: 0.75;
     cursor: not-allowed;
 }
 
@@ -681,15 +756,13 @@ details[open].panel > summary h2::after {
     border-color: var(--border);
 }
 
-.visualizer-card.disabled .visualizer-info::after {
-    content: attr(data-reason);
-    position: absolute;
-    bottom: 5px;
-    left: 15px;
-    right: 15px;
-    font-size: 0.8em;
-    color: var(--error);
-    font-weight: 600;
+/* Why this look can't be built for the loaded tune. Real text in the card, so
+   it is selectable, findable and reaches a screen reader. */
+.visualizer-reason {
+    margin-top: var(--space-sm);
+    font-size: 0.82em;
+    line-height: 1.4;
+    color: var(--warning);
 }
 
 .disabled .visualizer-card {
@@ -738,7 +811,7 @@ details[open].panel > summary h2::after {
     top: 10px;
     right: 10px;
     background: var(--accent);
-    color: white;
+    color: var(--bg-primary);
     padding: 4px 10px;
     border-radius: 12px;
     font-size: 0.75em;
@@ -878,6 +951,25 @@ details[open].panel > summary h2::after {
 }
 
 @media (max-width: 480px) {
+    /* Four uppercase mono labels with 24px of side padding need ~475px; trim
+       the padding and tracking so they fit a phone, and let the row scroll
+       rather than clip if a future tab pushes it over again. */
+    .page-tabs {
+        overflow-x: auto;
+        scrollbar-width: none;
+    }
+
+    .page-tabs::-webkit-scrollbar {
+        display: none;
+    }
+
+    .page-tab {
+        padding: 12px var(--space-sm);
+        gap: var(--space-xs);
+        letter-spacing: 0.5px;
+    }
+
+
     .site-header-logo--wide {
         display: none;
     }
@@ -944,7 +1036,12 @@ details[open].panel > summary h2::after {
 }
 
 .page-tab {
-    flex: 1;
+    /* min-width:0 so a tab can shrink below its longest word. Without it a
+       flex:1 item refuses to go under its intrinsic width, the row grows past
+       the viewport, and .container's overflow:hidden clips the last tab off
+       the screen with no way to scroll to it. */
+    flex: 1 1 0;
+    min-width: 0;
     display: flex;
     align-items: center;
     justify-content: center;
@@ -1386,3 +1483,158 @@ details[open].panel > summary h2::after {
 /* Step counter: only earns its place where the tab rail is gone. */
 .studio-nav-pos { display: none; }
 .studio-nav-btn:hover { filter: brightness(1.12); }
+
+/* Skip link: the first tab stop on the page, visible only once focused. The
+   Genesis cross-site nav is four links deep before the app starts. */
+.skip-link {
+    position: absolute;
+    left: -9999px;
+    top: 0;
+    z-index: 2000;
+    padding: 10px 16px;
+    background: var(--accent);
+    color: var(--bg-primary);
+    font-family: var(--font-mono);
+    font-size: 0.85em;
+    text-decoration: none;
+    border-radius: 0 0 var(--radius-md) 0;
+}
+
+.skip-link:focus {
+    left: 0;
+}
+
+/* The player's scene name under its plain one. "Raistlin Bars" is attribution
+   and sceners look for it; "Bars" is what everyone else can act on. */
+.visualizer-scene-name {
+    margin-top: 2px;
+    font-family: var(--font-mono);
+    font-size: 0.72em;
+    letter-spacing: 0.5px;
+    color: var(--text-muted);
+}
+
+/* GitHub and YouTube marks, inlined rather than pulled from Font Awesome's
+   brands webfont - that file is about 117 KB for these two glyphs, and a
+   browser only fetches a webfont when something uses it. Sized like the icon
+   font it replaces so surrounding layout is unchanged. */
+.brand-icon {
+    width: 1em;
+    height: 1em;
+    vertical-align: -0.125em;
+    display: inline-block;
+}
+
+/* The composer archive at /music/ is the site's whole listener-facing surface,
+   and its only link from here used to be fifteen words at the end of a credits
+   paragraph on the About tab. */
+.upload-browse-more {
+    margin-top: var(--space-md);
+    color: var(--text-muted);
+    font-size: 0.85em;
+}
+
+.upload-browse-more a {
+    color: var(--text-accent);
+}
+
+/* ==========================================================================
+   Quick export
+   --------------------------------------------------------------------------
+   Pick a look, press one button. The Studio is the same job with every knob
+   attached; releasing one tune should not require walking it.
+   ========================================================================== */
+.quick-export {
+    margin-top: var(--space-lg);
+    padding-top: var(--space-lg);
+    border-top: 1px solid var(--border);
+}
+
+.quick-export[hidden] {
+    display: none;
+}
+
+.quick-export-lead {
+    margin-bottom: var(--space-sm);
+    color: var(--text-secondary);
+    font-size: 0.9em;
+}
+
+.quick-export-looks {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: var(--space-sm);
+    margin-bottom: var(--space-md);
+}
+
+.quick-look {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 6px;
+    width: 116px;
+    padding: 8px;
+    background: var(--bg-surface);
+    border: 2px solid var(--border-light);
+    border-radius: var(--radius-md);
+    color: var(--text-secondary);
+    font-family: var(--font-sans);
+    font-size: 0.78em;
+    cursor: pointer;
+    transition: border-color var(--transition-fast), color var(--transition-fast);
+}
+
+.quick-look img {
+    width: 100%;
+    aspect-ratio: 4 / 3;
+    object-fit: cover;
+    border-radius: var(--radius-sm);
+}
+
+.quick-look:hover {
+    border-color: var(--accent);
+    color: var(--text-primary);
+}
+
+/* Selection carries a colour AND a check, not colour alone. */
+.quick-look.selected {
+    border-color: var(--accent);
+    color: var(--text-accent);
+}
+
+.quick-look.selected span::after {
+    content: ' ✓';
+}
+
+.quick-export-note {
+    margin-top: var(--space-sm);
+    color: var(--text-muted);
+    font-size: 0.8em;
+}
+
+.open-studio-btn {
+    background: transparent;
+    border: 1px solid var(--border-light);
+    color: var(--text-secondary);
+}
+
+.open-studio-btn:hover {
+    border-color: var(--accent);
+    color: var(--text-primary);
+}
+
+/* An off switch for the drifting notes, next to the other footer links. */
+.site-footer-toggle {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    cursor: pointer;
+}
+
+/* A button tapped before ui.js has attached its handlers: the tap is held and
+   replayed, so say it is coming rather than looking inert. */
+.upload-btn.is-waking {
+    opacity: 0.7;
+    cursor: progress;
+}

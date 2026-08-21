@@ -40,38 +40,67 @@ window.hvscRandom = (function () {
         return u;
     }
 
+    // Curated prefixes are optional — ignore if missing. Only needed when the pick
+    // is made against the FULL index; the pre-built pool is already filtered.
+    async function loadCuratedPrefixes() {
+        try {
+            const cur = await fetch('hvsc-random.json');
+            if (cur.ok) {
+                const data = await cur.json();
+                curatedPrefixes = (data.paths || []).map((p) =>
+                    p.endsWith('/') ? p : p + '/');
+            }
+        } catch (_) { /* optional */ }
+    }
+
     async function loadPaths() {
         if (indexEntries) return true;
         if (loadPromise) return loadPromise;
         loadPromise = (async () => {
-            // Curated prefixes are optional — ignore if missing.
-            try {
-                const cur = await fetch('hvsc-random.json');
-                if (cur.ok) {
-                    const data = await cur.json();
-                    curatedPrefixes = (data.paths || []).map((p) =>
-                        p.endsWith('/') ? p : p + '/');
-                }
-            } catch (_) { /* optional */ }
-
-            // Reuse the index if the HVSC browser (or the deep-link prefetch)
-            // already loaded it, instead of fetching and parsing a second
-            // multi-MB copy and keeping two of them resident.
+            // 1. Reuse the index if the HVSC browser (or the deep-link prefetch)
+            // already loaded it, instead of fetching anything at all.
             let index = null;
             const shared = window.hvscBrowser?.getIndexPromise?.();
             if (shared) {
-                try { index = await shared; } catch (_) { /* fall through to fetch */ }
+                try { index = await shared; } catch (_) { /* fall through */ }
             }
             if (!index && window.hvscIndexPrefetch) {
                 try { index = await window.hvscIndexPrefetch; } catch (_) { /* fall through */ }
             }
-            if (!index) {
-                const res = await fetch('hvsc-index.json');
-                if (!res.ok) throw new Error(`HTTP ${res.status}`);
-                index = await res.json();
+            if (index) {
+                await loadCuratedPrefixes();
+                indexEntries = index.entries || [];
+                console.log(`HVSC random: ${indexEntries.length} tunes available (shared index)`);
+                return true;
             }
+
+            // 2. Otherwise take the pre-filtered pool. It holds exactly the paths
+            // a random pick can return, at ~1/40th the transfer of the full index
+            // — which is the whole cost of the Random SID button on a cold load.
+            // Built by scripts/build-random-pool.js.
+            try {
+                const res = await fetch('hvsc-random-pool.json');
+                if (res.ok) {
+                    const pool = await res.json();
+                    if (Array.isArray(pool.paths) && pool.paths.length) {
+                        // Same shape the index gives us, minus the fields a random
+                        // pick never reads (title/author/release/STIL).
+                        indexEntries = pool.paths.map((p) => ({ p }));
+                        curatedPrefixes = [];   // filtering already happened at build time
+                        console.log(`HVSC random: ${indexEntries.length} tunes available (pool)`);
+                        return true;
+                    }
+                }
+            } catch (_) { /* fall through to the full index */ }
+
+            // 3. Last resort: the full index, so a deploy without the pool file
+            // still works exactly as it did before.
+            await loadCuratedPrefixes();
+            const res = await fetch('hvsc-index.json');
+            if (!res.ok) throw new Error(`HTTP ${res.status}`);
+            index = await res.json();
             indexEntries = index.entries || [];
-            console.log(`HVSC random: ${indexEntries.length} tunes available`);
+            console.log(`HVSC random: ${indexEntries.length} tunes available (full index)`);
             return true;
         })().catch((err) => {
             loadPromise = null;

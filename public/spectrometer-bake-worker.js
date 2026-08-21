@@ -67,20 +67,32 @@ async function getCore() {
 // Jobs in flight, so an 'abort' message can cancel the matching run. The core takes
 // an AbortSignal, and the render checks it at each yield point.
 const running = new Map();   // id -> AbortController
+// "Stop searching" is a second, softer signal: keep what has been rendered and
+// analyse that, rather than throwing the whole scan away the way abort does.
+const stopping = new Map();  // id -> AbortController
 
-self.onmessage = async (ev) => {
+// Runs are serialised: the core holds one engine and one live rows slot, so two
+// renders at once would fight over both. The page happens to keep one analysis
+// in flight today, but the worker must not depend on its caller behaving.
+// Aborting a queued run is honoured before it ever starts.
+let chain = Promise.resolve();
+function enqueue(fn) {
+    const next = chain.then(fn, fn);
+    // Keep the chain alive: a run that throws must not stop the ones behind it.
+    chain = next.catch(() => {});
+    return next;
+}
+
+self.onmessage = (ev) => {
     const msg = ev.data || {};
 
     if (msg.type === 'init') {
         CB = typeof msg.cacheBust === 'string' ? msg.cacheBust : '';
         // Prove the two dynamic loading mechanisms actually work in this browser
         // before the page commits to the worker path.
-        try {
-            await getCore();
-            self.postMessage({ type: 'ready' });
-        } catch (e) {
-            self.postMessage({ type: 'unsupported', message: String(e && e.message || e) });
-        }
+        getCore().then(
+            () => self.postMessage({ type: 'ready' }),
+            (e) => self.postMessage({ type: 'unsupported', message: String(e && e.message || e) }));
         return;
     }
 
@@ -90,53 +102,67 @@ self.onmessage = async (ev) => {
         return;
     }
 
+    if (msg.type === 'stop') {
+        const ctl = stopping.get(msg.id);
+        if (ctl) ctl.abort();
+        return;
+    }
+
     if (msg.type !== 'run') return;
 
     const { id, op, sidBytes, options } = msg;
     const ctl = new AbortController();
+    const stopCtl = new AbortController();
+    // Registered now, not when the run starts, so an abort that arrives while
+    // this is still queued is not lost.
     running.set(id, ctl);
-    try {
-        const core = await getCore();
-        const opts = {
-            ...options,
-            signal: ctl.signal,
-            onProgress: (label, fraction, extra) =>
-                self.postMessage({ type: 'progress', id, label, fraction, extra }),
-        };
-        const bytes = new Uint8Array(sidBytes);
-        if (op === 'analyze') {
-            self.postMessage({ type: 'done', id, result: await core.analyze(bytes, opts) });
-        } else {
-            const r = await core.renderAndBake(bytes, opts);
-            // The bake result carries a reconstruct() closure (and a large raw
-            // keyframe grid) that structured clone can't take and nothing outside
-            // the baker uses. Ship the packed bytes plus the geometry/timing the
-            // exporter reads, and transfer the two big arrays instead of copying.
-            //
-            // Copy the two arrays before transferring: the render cache still owns
-            // the originals, and a second export at the same geometry re-serves them
-            // from that cache - transferring the originals would detach them.
-            const result = {
-                codebook: r.codebook.slice(), indices: r.indices.slice(),
-                numBars: r.numBars, maxHeight: r.maxHeight, K: r.K,
-                segments: r.segments, segmentWidth: r.segmentWidth,
-                keyframeHz: r.keyframeHz, numKeyframes: r.numKeyframes,
-                loopStart: r.loopStart, framesPerKeyframe: r.framesPerKeyframe,
-                looped: r.looped, fadedOut: r.fadedOut, forcedLoop: r.forcedLoop,
-                analyzedKeyframes: r.analyzedKeyframes, analyzedSeconds: r.analyzedSeconds,
-                cappedAtMaxSeconds: r.cappedAtMaxSeconds, totalBytes: r.totalBytes,
-                engine: r.engine,
+    stopping.set(id, stopCtl);
+    enqueue(async () => {
+        try {
+            const core = await getCore();
+            const opts = {
+                ...options,
+                signal: ctl.signal,
+                stopSignal: stopCtl.signal,
+                onProgress: (label, fraction, extra) =>
+                    self.postMessage({ type: 'progress', id, label, fraction, extra }),
             };
-            self.postMessage({ type: 'done', id, result },
-                [result.codebook.buffer, result.indices.buffer]);
+            const bytes = new Uint8Array(sidBytes);
+            if (op === 'analyze') {
+                self.postMessage({ type: 'done', id, result: await core.analyze(bytes, opts) });
+            } else {
+                const r = await core.renderAndBake(bytes, opts);
+                // The bake result carries a reconstruct() closure (and a large raw
+                // keyframe grid) that structured clone can't take and nothing outside
+                // the baker uses. Ship the packed bytes plus the geometry/timing the
+                // exporter reads, and transfer the two big arrays instead of copying.
+                //
+                // Copy the two arrays before transferring: the render cache still owns
+                // the originals, and a second export at the same geometry re-serves them
+                // from that cache - transferring the originals would detach them.
+                const result = {
+                    codebook: r.codebook.slice(), indices: r.indices.slice(),
+                    numBars: r.numBars, maxHeight: r.maxHeight, K: r.K,
+                    segments: r.segments, segmentWidth: r.segmentWidth,
+                    keyframeHz: r.keyframeHz, numKeyframes: r.numKeyframes,
+                    loopStart: r.loopStart, framesPerKeyframe: r.framesPerKeyframe,
+                    looped: r.looped, fadedOut: r.fadedOut, forcedLoop: r.forcedLoop,
+                    analyzedKeyframes: r.analyzedKeyframes, analyzedSeconds: r.analyzedSeconds,
+                    cappedAtMaxSeconds: r.cappedAtMaxSeconds, totalBytes: r.totalBytes,
+                    engine: r.engine,
+                };
+                self.postMessage({ type: 'done', id, result },
+                    [result.codebook.buffer, result.indices.buffer]);
+            }
+        } catch (e) {
+            self.postMessage({
+                type: 'error', id,
+                name: (e && e.name) || 'Error',
+                message: String((e && e.message) || e),
+            });
+        } finally {
+            running.delete(id);
+            stopping.delete(id);
         }
-    } catch (e) {
-        self.postMessage({
-            type: 'error', id,
-            name: (e && e.name) || 'Error',
-            message: String((e && e.message) || e),
-        });
-    } finally {
-        running.delete(id);
-    }
+    });
 };

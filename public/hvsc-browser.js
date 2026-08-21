@@ -26,19 +26,38 @@ window.hvscBrowser = (function () {
     let searchDebounce = null;
     let lastSearchMatches = null;    // for re-sorting search results in place
     const SEARCH_RESULT_LIMIT = 500;
+    // Search results are painted a chunk at a time. A keystroke that lands
+    // mid-paint abandons the rest, so typing costs one chunk per keystroke
+    // rather than the whole capped list.
+    const RESULT_CHUNK = 60;
+    let pendingRowPaint = null;
 
     // Sort state (applies to files in a folder and to search results;
     // directories always list first, alphabetically). Persisted so the
     // browser reopens the way the user left it.
     let sortKey = 'name';   // 'name' | 'year'
     let sortDir = 'asc';    // 'asc' | 'desc'  (for year: asc = oldest first)
+    // A search is a different question from a folder listing, so it keeps its own
+    // order. Its default is relevance: sorting matches for "hubbard" by name puts
+    // whatever happens to start with "A" above Rob Hubbard's own tunes.
+    let searchSortKey = 'match';   // 'match' | 'name' | 'year'
+    let searchSortDir = 'desc';
+    let searchTerms = [];          // folded query terms, for scoring
     try {
         const saved = JSON.parse(localStorage.getItem('hvsc-sort') || 'null');
         if (saved && (saved.key === 'name' || saved.key === 'year')) {
             sortKey = saved.key;
             sortDir = saved.dir === 'desc' ? 'desc' : 'asc';
         }
+        if (saved && ['match', 'name', 'year'].includes(saved.searchKey)) {
+            searchSortKey = saved.searchKey;
+            searchSortDir = saved.searchDir === 'asc' ? 'asc' : 'desc';
+        }
     } catch (e) { /* no saved sort */ }
+
+    /** The key/direction in force for whichever list is showing. */
+    const activeKey = () => (searchMode ? searchSortKey : sortKey);
+    const activeDir = () => (searchMode ? searchSortDir : sortDir);
 
     /** Numeric release year for sorting; NaN when unknown (sorts last). */
     function yearNum(metaOrEntry) {
@@ -62,18 +81,66 @@ window.hvscBrowser = (function () {
         return compareFiles(a.meta, a.name, b.meta, b.name);
     }
 
-    /** Order two files by the current sortKey/sortDir (unknown years last). */
+    /** Order two files by the current sort key/direction (unknown years last). */
     function compareFiles(metaA, nameA, metaB, nameB) {
-        if (sortKey === 'year') {
+        const key = activeKey(), dir = activeDir();
+        if (key === 'match') {
+            const sa = (metaA && metaA._score) || 0, sb = (metaB && metaB._score) || 0;
+            if (sa !== sb) return dir === 'desc' ? sb - sa : sa - sb;
+            return nameA.localeCompare(nameB);
+        }
+        if (key === 'year') {
             const ya = yearNum(metaA), yb = yearNum(metaB);
             const na = isNaN(ya), nb = isNaN(yb);
             if (na && nb) return nameA.localeCompare(nameB);
             if (na) return 1;
             if (nb) return -1;
-            if (ya !== yb) return sortDir === 'asc' ? ya - yb : yb - ya;
+            if (ya !== yb) return dir === 'asc' ? ya - yb : yb - ya;
             return nameA.localeCompare(nameB);
         }
-        return sortDir === 'asc' ? nameA.localeCompare(nameB) : nameB.localeCompare(nameA);
+        return dir === 'asc' ? nameA.localeCompare(nameB) : nameB.localeCompare(nameA);
+    }
+
+    const escapeRe = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+    /**
+     * How well an entry answers the query. Title beats author beats filename
+     * beats a hit that was only in the commentary, and a whole-query match beats
+     * the same words scattered. Scores are only ever compared with each other,
+     * so the absolute numbers mean nothing.
+     */
+    function relevance(e, terms) {
+        if (!terms.length) return 0;
+        const title = foldDiacritics((e.t || '').toLowerCase());
+        const author = foldDiacritics((e.a || '').toLowerCase());
+        const file = foldDiacritics(e.p.split('/').pop().toLowerCase());
+        const whole = terms.join(' ');
+        let score = 0;
+
+        if (title === whole) score += 1000;
+        else if (title.startsWith(whole)) score += 600;
+        else if (title.includes(whole)) score += 300;
+        if (author === whole) score += 500;
+        else if (author.startsWith(whole)) score += 450;
+        // Someone typing a surname wants that composer's catalogue, so a whole
+        // word in the author name counts for nearly as much as leading with it -
+        // "Rob Hubbard" is what "hubbard" is looking for, not only the three
+        // tunes actually called Hubbard.
+        else if (new RegExp('\\b' + escapeRe(whole) + '\\b').test(author)) score += 420;
+        else if (author.includes(whole)) score += 120;
+
+        for (const t of terms) {
+            if (title.startsWith(t)) score += 120;
+            else if (new RegExp('\\b' + escapeRe(t)).test(title)) score += 80;
+            else if (title.includes(t)) score += 40;
+            if (author.startsWith(t)) score += 60;
+            else if (author.includes(t)) score += 30;
+            if (file.includes(t)) score += 15;
+        }
+        // Among equally good matches the shorter title is usually the one being
+        // looked for - "Commando" over "Commando (Remix Edit Long Version)".
+        if (score > 0 && title) score += Math.max(0, 40 - title.length) / 10;
+        return score;
     }
 
     /** Sorted copy of search matches (index entries) by the current sort. */
@@ -116,6 +183,7 @@ window.hvscBrowser = (function () {
         bar.innerHTML =
             '<button type="button" class="btn hvsc-nav-btn" id="homeBtn" title="Collection root"><i class="fas fa-home"></i></button>'
             + '<button type="button" class="btn hvsc-nav-btn" id="upBtn" title="Up one folder"><i class="fas fa-level-up-alt"></i></button>'
+            + '<button type="button" class="hvsc-col hvsc-col-match" data-key="match" hidden>Best match <i></i></button>'
             + '<button type="button" class="hvsc-col hvsc-col-name" data-key="name">Name <i class="fas fa-arrow-up"></i></button>'
             + '<button type="button" class="hvsc-col hvsc-col-year" data-key="year">Year <i></i></button>';
         fileList.parentNode.insertBefore(bar, fileList);
@@ -128,14 +196,26 @@ window.hvscBrowser = (function () {
     }
 
     function onSortClick(key) {
-        if (key === sortKey) {
+        if (searchMode) {
+            if (key === searchSortKey) {
+                searchSortDir = searchSortDir === 'asc' ? 'desc' : 'asc';
+            } else {
+                searchSortKey = key;
+                // Best match and Year both read best strongest-first.
+                searchSortDir = key === 'name' ? 'asc' : 'desc';
+            }
+        } else if (key === sortKey) {
             sortDir = sortDir === 'asc' ? 'desc' : 'asc';
         } else {
             sortKey = key;
             sortDir = key === 'year' ? 'desc' : 'asc'; // year defaults to newest first
         }
-        try { localStorage.setItem('hvsc-sort', JSON.stringify({ key: sortKey, dir: sortDir })); }
-        catch (e) { /* ok */ }
+        try {
+            localStorage.setItem('hvsc-sort', JSON.stringify({
+                key: sortKey, dir: sortDir,
+                searchKey: searchSortKey, searchDir: searchSortDir,
+            }));
+        } catch (e) { /* ok */ }
         updateListHeader();
         reRenderCurrentView();
     }
@@ -143,13 +223,17 @@ window.hvscBrowser = (function () {
     function updateListHeader() {
         const bar = document.getElementById('hvscListHeader');
         if (!bar) return;
+        // "Best match" only means anything against a query.
+        const matchCol = bar.querySelector('.hvsc-col-match');
+        if (matchCol) matchCol.hidden = !searchMode;
+        const key = activeKey(), dir = activeDir();
         bar.querySelectorAll('.hvsc-col').forEach((btn) => {
-            const active = btn.dataset.key === sortKey;
+            const active = btn.dataset.key === key;
             btn.classList.toggle('active', active);
             const icon = btn.querySelector('i');
             if (icon) {
                 icon.className = active
-                    ? 'fas ' + (sortDir === 'asc' ? 'fa-arrow-up' : 'fa-arrow-down')
+                    ? 'fas ' + (dir === 'asc' ? 'fa-arrow-up' : 'fa-arrow-down')
                     : '';
             }
         });
@@ -292,6 +376,41 @@ window.hvscBrowser = (function () {
         return ok;
     }
 
+    // FNV-1a low 12 bits, the shard a tune's metadata lives in. Must match
+    // scripts/build-share-meta.js and netlify/edge-functions/tune-og.js - see
+    // the note there on Math.imul and on 12 bits.
+    function shareShardOf(p) {
+        let h = 0x811c9dc5;
+        for (let i = 0; i < p.length; i++) {
+            h ^= p.charCodeAt(i);
+            h = Math.imul(h, 0x01000193);
+        }
+        return ((h >>> 0) & 0xfff).toString(16).padStart(3, '0');
+    }
+
+    // A shared link arrives with exactly one tune in mind, and waiting for the
+    // ~2 MB collection index before a note is heard is the whole cost of
+    // arriving that way. The share-meta shard the edge function already reads to
+    // build the link preview is ~1.5 KB and holds everything playback needs, so
+    // start there; the index catches up in its own time for browsing.
+    async function quickPlayFromShard(rawPath) {
+        const path = normalizeTunePath(rawPath);
+        if (!path) return false;
+        const key = path.startsWith(ROOT + '/') ? path.substring(ROOT.length + 1) : path;
+        try {
+            const res = await fetch('share-meta/' + shareShardOf(key) + '.json');
+            if (!res.ok) return false;
+            const table = await res.json();
+            if (!table[key]) return false;
+            deepLinkPlaying = path;
+            autoplayNext = true;
+            await previewSID({ path, name: path.split('/').pop(), isDirectory: false });
+            return true;
+        } catch (_) {
+            return false;   // no shards deployed; the index path still works
+        }
+    }
+
     /**
      * Deep link: navigate to a tune's folder, select it and load its preview.
      * Returns false when the path isn't in the index (caller falls back).
@@ -314,10 +433,18 @@ window.hvscBrowser = (function () {
                 item.classList.toggle('selected', sel);
                 if (sel) item.scrollIntoView({ block: 'center' });
             });
+            updateRowTabStops(fileList);
         }
         // Deep-linked tunes should start playing on arrival. If the browser
         // blocks the AudioContext (no gesture yet), sid-playback.js retries
         // on the first interaction.
+        // Already playing from the share-meta shard: reloading it here would
+        // restart the tune from the beginning just as the index lands.
+        if (deepLinkPlaying === entry.path) {
+            deepLinkPlaying = null;
+            updateInfoPanel(entry);
+            return true;
+        }
         autoplayNext = true;
         previewSID(entry);
         return true;
@@ -346,6 +473,8 @@ window.hvscBrowser = (function () {
         // (window.HVSC_EMBED_START).
         const startPath = (typeof window !== 'undefined' && window.HVSC_EMBED_START) || ROOT;
         const tuneParam = (typeof window !== 'undefined' && window.HVSC_EMBED_TUNE) || getTuneParamFromUrl();
+        // Sound first, listing second: don't make a shared link wait for the index.
+        if (tuneParam) quickPlayFromShard(tuneParam);
         loadSearchIndex()
             .then(async () => {
                 if (tuneParam && await openTuneByPath(tuneParam)) return;
@@ -454,21 +583,106 @@ window.hvscBrowser = (function () {
         }
     }
 
+    // STIL commentary, split out of the index because it is a third of it and is
+    // read one entry at a time. Folded back onto the entries when it lands, and
+    // the per-entry search haystacks are dropped so they rebuild including it.
+    let stilSplit = false;
+    let stilPromise = null;
+    let stilLoaded = false;
+
+    function loadStil(onReady) {
+        if (!stilSplit || stilLoaded) return Promise.resolve(false);
+        if (!stilPromise) {
+            stilPromise = fetch('hvsc-stil.json')
+                .then((res) => (res.ok ? res.json() : {}))
+                .then((table) => {
+                    for (const e of (searchIndex && searchIndex.entries) || []) {
+                        const text = table[e.p];
+                        if (text) e.s = text;
+                        // Built lazily and cached; drop it so commentary counts.
+                        delete e._hay;
+                    }
+                    stilLoaded = true;
+                    return true;
+                })
+                .catch(() => { stilPromise = null; return false; });
+        }
+        return onReady ? stilPromise.then((ok) => { if (ok) onReady(); return ok; }) : stilPromise;
+    }
+
+    /**
+     * Say how the collection index is coming along. It is 7.5 MB, and until it
+     * lands the file list is a spinner with nothing to read - which on a phone
+     * is many seconds of a page that looks stuck rather than busy.
+     * @param {{loaded:number,total:number}|null} at - null while the size is unknown
+     */
+    function indexProgress(at) {
+        const box = document.querySelector('#fileList .file-list-loading');
+        if (!box) return;
+        let line = box.querySelector('.file-list-loading-text');
+        if (!line) {
+            line = document.createElement('p');
+            line.className = 'file-list-loading-text';
+            // Polite: it updates every chunk, and a screen reader must not read
+            // out every percentage.
+            line.setAttribute('aria-live', 'polite');
+            box.appendChild(line);
+        }
+        const mb = (n) => (n / (1024 * 1024)).toFixed(1);
+        line.textContent = at && at.total
+            ? `Loading the collection — ${mb(at.loaded)} of ${mb(at.total)} MB`
+            : 'Loading the collection…';
+    }
+
+    /** Fetch and parse an index file, reporting progress as it arrives. */
+    function readIndex(url) {
+        // Say something before the request has even been answered: on a slow
+        // connection the wait for headers is itself several seconds of a page
+        // that looks stuck.
+        indexProgress(null);
+        return fetch(url).then(async (res) => {
+            if (!res.ok) throw new Error(`HTTP ${res.status}`);
+            const total = Number(res.headers.get('content-length')) || 0;
+            // No body reader (or no length): fall back to a plain parse rather
+            // than losing the index for the sake of a progress line.
+            if (!res.body || !res.body.getReader) { indexProgress(null); return res.json(); }
+            const reader = res.body.getReader();
+            const chunks = [];
+            let loaded = 0;
+            indexProgress({ loaded: 0, total });
+            for (;;) {
+                const { done, value } = await reader.read();
+                if (done) break;
+                chunks.push(value);
+                loaded += value.length;
+                indexProgress({ loaded, total });
+            }
+            const buf = new Uint8Array(loaded);
+            let at = 0;
+            for (const c of chunks) { buf.set(c, at); at += c.length; }
+            return JSON.parse(new TextDecoder().decode(buf));
+        });
+    }
+
     function loadSearchIndex() {
         if (searchIndex) return Promise.resolve(searchIndex);
         if (searchIndexPromise) return searchIndexPromise;
         // Deep-linked pages start this fetch in an early inline script so the
-        // ~2MB index downloads while the UI scripts are still loading.
+        // index downloads while the UI scripts are still loading.
+        //
+        // The lite index is the same thing without the STIL commentary - about a
+        // third of it, read one entry at a time - which loadStil() fetches
+        // separately when something actually needs it. A deploy that has not run
+        // build-index-split.js falls back to the full file.
         const source = window.hvscIndexPrefetch
-            ? window.hvscIndexPrefetch
-            : fetch('hvsc-index.json').then((res) => {
-                if (!res.ok) throw new Error(`HTTP ${res.status}`);
-                return res.json();
-            });
+            ? window.hvscIndexPrefetch.then((data) => { indexProgress(null); return data; })
+            : readIndex('hvsc-index-lite.json')
+                .catch(() => readIndex('hvsc-index.json'));
         window.hvscIndexPrefetch = null;   // adopt once; retries fetch fresh
         searchIndexPromise = source
             .then((data) => {
                 searchIndex = data;
+                stilSplit = !!data.stilSplit;
                 buildTree(data.entries || []);
                 updateVersionBadge(data.hvsc);
                 return data;
@@ -504,6 +718,12 @@ window.hvscBrowser = (function () {
             return node;
         };
 
+        // 61,157 tunes share about 1,950 directories, and the index lists them
+        // clustered by folder, so remembering the last one skips the segment
+        // walk for the great majority of entries.
+        let lastDir = null;
+        let lastNode = null;
+
         for (let i = 0; i < all.length; i++) {
             const e = all[i];
             const p = e.p;
@@ -512,16 +732,25 @@ window.hvscBrowser = (function () {
             const slash = p.lastIndexOf('/');
             const dir = slash === -1 ? '' : p.substring(0, slash);
             const name = slash === -1 ? p : p.substring(slash + 1);
-            getDir(dir).files.push({ name, path: p, meta: e });
 
-            // Register each directory segment under its parent.
-            const segs = dir.split('/');
-            for (let s = 0; s < segs.length; s++) {
-                const full = segs.slice(0, s + 1).join('/');
-                const parent = s === 0 ? '' : segs.slice(0, s).join('/');
-                getDir(parent).dirs.add(segs[s]);
-                getDir(full); // ensure node exists
+            if (dir !== lastDir) {
+                // Walk the prefix once, registering each segment under its
+                // parent as it goes. Slicing and re-joining a segment array
+                // here used to cost more than the rest of the index load
+                // together.
+                let node = getDir('');
+                let at = 0;
+                while (at < dir.length) {
+                    let next = dir.indexOf('/', at);
+                    if (next === -1) next = dir.length;
+                    node.dirs.add(dir.substring(at, next));
+                    node = getDir(dir.substring(0, next));
+                    at = next + 1;
+                }
+                lastDir = dir;
+                lastNode = node;
             }
+            lastNode.files.push({ name, path: p, meta: e });
         }
     }
 
@@ -591,6 +820,7 @@ window.hvscBrowser = (function () {
         });
 
         e.currentTarget.classList.add('selected');
+        updateRowTabStops();
         currentSelection = entry;
         syncChooseButton();
 
@@ -623,9 +853,15 @@ window.hvscBrowser = (function () {
         const hex = (v) => '$' + v.toString(16).toUpperCase().padStart(4, '0');
         const endAddr = loadAddr + dataSize;
 
-        // STIL comment (from the index) if we have one for this path.
+        // STIL comment (from the index) if we have one for this path. When it has
+        // been split out, fetch it and redraw this panel once it arrives.
         const meta = entry.meta || (metaByPath && metaByPath.get(entry.path));
         const stil = meta && meta.s ? meta.s : '';
+        if (!stil && stilSplit && !stilLoaded) {
+            loadStil(() => {
+                if (currentSelection && currentSelection.path === entry.path) updateInfoPanel(entry);
+            });
+        }
 
         let html = '';
         if (isUnsupported(entry.meta)) html += `<div class="sid-info-note">RSID — preview only; not usable in the SIDquake tool.</div>`;
@@ -683,7 +919,10 @@ window.hvscBrowser = (function () {
         document.body.removeChild(a);
     }
 
-    let autoplayNext = false;   // set by deep links: play as soon as loaded
+    let autoplayNext = false;
+    // Path already started from the share-meta shard, so the index-driven
+    // deep-link path knows not to reload it.
+    let deepLinkPlaying = null;
 
     async function previewSID(entry) {
         updateShareUrl(entry.path);
@@ -741,15 +980,82 @@ window.hvscBrowser = (function () {
     // Make a file/directory row keyboard-operable. Enter mirrors the mouse:
     // open a folder, select-and-preview a tune, and — pressed again on the tune
     // already selected — take it, the way a second click does.
+    // The listing is a listbox, not a pile of buttons. Every row used to be its
+    // own tab stop with no arrow keys, so reaching the Select button past 200
+    // search results meant 200 presses of Tab.
     function makeRowKeyboardAccessible(item, entry) {
-        item.tabIndex = 0;
-        item.setAttribute('role', 'button');
+        item.tabIndex = -1;
+        item.setAttribute('role', 'option');
+        item.setAttribute('aria-selected',
+            currentSelection && currentSelection.path === entry.path ? 'true' : 'false');
         item.addEventListener('keydown', (e) => {
             if (e.key !== 'Enter') return;
             e.preventDefault();
             if (entry.isDirectory) handleItemDoubleClick(entry);
             else if (currentSelection && currentSelection.path === entry.path) selectSID();
             else handleItemClick(e, entry);
+        });
+    }
+
+    /** The row that carries the listbox's single tab stop. */
+    function rowTabStop(list) {
+        return list.querySelector('.file-item.selected') || list.querySelector('.file-item');
+    }
+
+    // Roving tabindex: exactly one row is tabbable at a time, and it follows the
+    // selection so returning to the list lands where the user left off.
+    function updateRowTabStops(list) {
+        const el = list || document.getElementById('fileList');
+        if (!el) return;
+        const stop = rowTabStop(el);
+        for (const item of el.querySelectorAll('.file-item')) {
+            item.tabIndex = item === stop ? 0 : -1;
+            item.setAttribute('aria-selected', item.classList.contains('selected') ? 'true' : 'false');
+        }
+    }
+
+    // Arrow keys, Home/End and type-ahead over the listing. Bound once to the
+    // list itself so it survives every re-render of its rows.
+    function wireListKeyboard() {
+        const list = document.getElementById('fileList');
+        if (!list || list.dataset.keysWired === '1') return;
+        list.dataset.keysWired = '1';
+        list.setAttribute('role', 'listbox');
+        list.setAttribute('aria-label', 'Tunes and folders');
+
+        let typed = '', typedAt = 0;
+        list.addEventListener('keydown', (e) => {
+            const rows = [...list.querySelectorAll('.file-item')];
+            if (!rows.length) return;
+            const here = e.target.closest('.file-item');
+            const i = here ? rows.indexOf(here) : 0;
+            let next = null;
+            switch (e.key) {
+                case 'ArrowDown': next = rows[Math.min(i + 1, rows.length - 1)]; break;
+                case 'ArrowUp': next = rows[Math.max(i - 1, 0)]; break;
+                case 'Home': next = rows[0]; break;
+                case 'End': next = rows[rows.length - 1]; break;
+                case 'PageDown': next = rows[Math.min(i + 10, rows.length - 1)]; break;
+                case 'PageUp': next = rows[Math.max(i - 10, 0)]; break;
+                default: {
+                    // Type-ahead: a printable key jumps to the next row starting
+                    // with what has been typed in the last second.
+                    if (e.key.length !== 1 || e.ctrlKey || e.metaKey || e.altKey) return;
+                    const now = Date.now();
+                    typed = (now - typedAt < 1000 ? typed : '') + e.key.toLowerCase();
+                    typedAt = now;
+                    const from = i + (typed.length > 1 ? 0 : 1);
+                    const order = rows.slice(from).concat(rows.slice(0, from));
+                    next = order.find(r => (r.textContent || '').trim().toLowerCase().startsWith(typed));
+                    if (!next) return;
+                    break;
+                }
+            }
+            e.preventDefault();
+            if (!next) return;
+            for (const r of rows) r.tabIndex = r === next ? 0 : -1;
+            next.focus();
+            next.scrollIntoView({ block: 'nearest' });
         });
     }
 
@@ -938,6 +1244,7 @@ window.hvscBrowser = (function () {
     function exitSearchMode() {
         if (!searchMode) return;
         searchMode = false;
+        updateListHeader();
         const header = document.getElementById('filePanelHeader');
         if (header) header.textContent = 'Files & Directories';
         // Repaint the current directory so selection/state is consistent
@@ -948,6 +1255,7 @@ window.hvscBrowser = (function () {
 
     function renderEntries() {
         const fileList = document.getElementById('fileList');
+        cancelPendingRows();
         fileList.innerHTML = '';
         entries.forEach(entry => {
             const item = document.createElement('div');
@@ -979,6 +1287,8 @@ window.hvscBrowser = (function () {
             makeRowKeyboardAccessible(item, entry);
             fileList.appendChild(item);
         });
+        wireListKeyboard();
+        updateRowTabStops(fileList);
     }
 
     function updateItemCount() {
@@ -999,6 +1309,7 @@ window.hvscBrowser = (function () {
         }
 
         searchMode = true;
+        updateListHeader();   // "Best match" belongs to a search, so show it now
         currentSelection = null;
         syncChooseButton();
         clearInfoPanel();
@@ -1023,6 +1334,15 @@ window.hvscBrowser = (function () {
         // Only render the latest query's results (guards against out-of-order fetches)
         const currentInput = document.getElementById('hvscSearchBar').value.trim();
         if (currentInput !== query) return;
+
+        // Searching is what needs the commentary. Fetch it in the background and
+        // re-run once it lands, so the first results appear straight away and
+        // commentary matches fold in a moment later rather than everyone paying
+        // for it up front.
+        loadStil(() => {
+            const live = document.getElementById('hvscSearchBar');
+            if (live && live.value.trim() === query) runSearch(query);
+        });
 
         const terms = query.toLowerCase().split(/\s+/).filter(Boolean).map(foldDiacritics);
         const matches = [];
@@ -1050,6 +1370,8 @@ window.hvscBrowser = (function () {
             if (ok) matches.push(e);
         }
 
+        searchTerms = terms;
+        for (const e of matches) e._score = relevance(e, terms);
         lastSearchMatches = matches;
         renderSearchResults(sortMatches(matches), limit);
         const total = matches.length;
@@ -1059,28 +1381,26 @@ window.hvscBrowser = (function () {
         document.getElementById('itemCount').textContent = countText;
     }
 
-    function renderSearchResults(results, limit) {
-        const fileList = document.getElementById('fileList');
-        fileList.innerHTML = '';
+    /** Stop any part-painted result list before the next render replaces it. */
+    function cancelPendingRows() {
+        if (pendingRowPaint === null) return;
+        cancelAnimationFrame(pendingRowPaint);
+        pendingRowPaint = null;
+    }
 
-        if (results.length === 0) {
-            fileList.innerHTML = '<div class="search-empty">No matching SIDs found.</div>';
-            return;
-        }
+    /** One search-result row. */
+    function buildResultRow(r) {
+        const fileName = r.p.split('/').pop();
+        const folder = r.p.substring(0, r.p.length - fileName.length - 1);
+        const titleLine = r.t || fileName;
+        const authorLine = r.a || '';
+        const year = yearLabel(r);
 
-        const frag = document.createDocumentFragment();
-        results.slice(0, limit).forEach(r => {
-            const fileName = r.p.split('/').pop();
-            const folder = r.p.substring(0, r.p.length - fileName.length - 1);
-            const titleLine = r.t || fileName;
-            const authorLine = r.a || '';
-            const year = yearLabel(r);
-
-            const unsupported = isUnsupported(r);
-            const item = document.createElement('div');
-            item.className = 'file-item search-result' + (unsupported ? ' unsupported' : '');
-            if (unsupported) item.title = 'RSID — plays here for preview, but can’t be used in the SIDquake tool';
-            item.innerHTML = `
+        const unsupported = isUnsupported(r);
+        const item = document.createElement('div');
+        item.className = 'file-item search-result' + (unsupported ? ' unsupported' : '');
+        if (unsupported) item.title = 'RSID — plays here for preview, but can’t be used in the SIDquake tool';
+        item.innerHTML = `
             <span class="file-icon"><i class="fas fa-music"></i></span>
             <span class="search-result-text">
                 <span class="search-result-title">${escapeHtml(titleLine)}${unsupported ? ' <span class="file-tag">RSID</span>' : ''}</span>
@@ -1090,15 +1410,53 @@ window.hvscBrowser = (function () {
             ${year ? `<span class="file-year">${escapeHtml(year)}</span>` : ''}
         `;
 
-            const entry = { name: fileName, path: r.p, isDirectory: false, meta: r };
-            item.dataset.path = r.p;
-            if (currentSelection && r.p === currentSelection.path) item.classList.add('selected');
-            item.onclick = (e) => handleItemClick(e, entry);
-            item.ondblclick = () => handleItemDoubleClick(entry);
-            makeRowKeyboardAccessible(item, entry);
-            frag.appendChild(item);
-        });
-        fileList.appendChild(frag);
+        const entry = { name: fileName, path: r.p, isDirectory: false, meta: r };
+        item.dataset.path = r.p;
+        const isSelected = currentSelection && r.p === currentSelection.path;
+        if (isSelected) item.classList.add('selected');
+        item.onclick = (e) => handleItemClick(e, entry);
+        item.ondblclick = () => handleItemDoubleClick(entry);
+        makeRowKeyboardAccessible(item, entry);
+        return { item, isSelected };
+    }
+
+    function renderSearchResults(results, limit) {
+        const fileList = document.getElementById('fileList');
+        cancelPendingRows();
+        fileList.innerHTML = '';
+
+        if (results.length === 0) {
+            fileList.innerHTML = '<div class="search-empty">No matching SIDs found.</div>';
+            return;
+        }
+
+        const shown = results.slice(0, limit);
+
+        // The arrow keys, type-ahead and tab stop all read the list live, so a
+        // list that is still filling in behaves like a finished one - the rows
+        // simply arrive over the next few frames.
+        function paint(from) {
+            const to = Math.min(from + RESULT_CHUNK, shown.length);
+            const frag = document.createDocumentFragment();
+            let hasSelected = false;
+            for (let i = from; i < to; i++) {
+                const { item, isSelected } = buildResultRow(shown[i]);
+                if (isSelected) hasSelected = true;
+                frag.appendChild(item);
+            }
+            fileList.appendChild(frag);
+            if (from === 0) wireListKeyboard();
+            // Only re-run the roving tabindex when the chunk changed which row
+            // should carry it: the first chunk sets it, and a later chunk only
+            // matters if it brought the selected row in.
+            if (from === 0 || hasSelected) updateRowTabStops(fileList);
+            if (to < shown.length) {
+                pendingRowPaint = requestAnimationFrame(() => paint(to));
+            } else {
+                pendingRowPaint = null;
+            }
+        }
+        paint(0);
     }
 
     return {

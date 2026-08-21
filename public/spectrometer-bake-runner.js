@@ -25,7 +25,7 @@ export { DEFAULT_ENGINE, normalizeEngine };
 // Options are structured-cloned to the worker, so the two function-valued ones have
 // to be stripped; they're re-attached on the worker side from the message channel.
 function cloneableOptions(options) {
-    const { onProgress, signal, ...rest } = options || {};
+    const { onProgress, signal, stopSignal, ...rest } = options || {};
     return rest;
 }
 
@@ -123,6 +123,15 @@ function runInWorker(worker, op, sidBytes, options) {
                 worker.postMessage({ type: 'abort', id });
             }, { once: true });
         }
+        // "Stop searching": keep what has been rendered rather than throwing the
+        // scan away, so the job still resolves with a result.
+        const stopSignal = options.stopSignal;
+        if (stopSignal) {
+            if (stopSignal.aborted) worker.postMessage({ type: 'stop', id });
+            else stopSignal.addEventListener('abort', () => {
+                worker.postMessage({ type: 'stop', id });
+            }, { once: true });
+        }
         // Copy the SID bytes so the caller keeps its own array usable, and transfer
         // the copy rather than structured-cloning it.
         const copy = sidBytes.slice();
@@ -215,6 +224,14 @@ export async function renderAndBakeSpectrometer(sidBytes, options = {}) {
     const worker = await getWorker();
     if (worker) return runInWorker(worker, 'bake', sidBytes, opts);
     return pickBakeResult(await fallbackCore.renderAndBake(sidBytes, opts));
+}
+
+// Does the analysis run off the main thread here? Callers that want to kick a
+// scan off in the BACKGROUND have to know: on the fallback path the render runs
+// on the page, so backgrounding it would freeze the UI it is meant to leave
+// responsive. Resolves the worker probe, so it is safe to await early.
+export async function analysisRunsOffMainThread() {
+    return !!(await getWorker());
 }
 
 // Analysis-only entry point (#2/#3): the tune's loop / length summary, with no

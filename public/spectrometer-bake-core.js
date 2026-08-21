@@ -48,10 +48,24 @@ export function abortError() {
     return e;
 }
 
+// The three 32-byte PSID/RSID header strings: name, author, released. They sit
+// at a fixed offset in every version of the format and cannot change a single
+// sample of the audio.
+const HEADER_TEXT_FROM = 0x16;
+const HEADER_TEXT_TO = 0x76;   // exclusive
+
 // Cheap FNV-1a content hash so a fresh Uint8Array of the same tune still hits.
-function tuneKey(bytes, subtune, sampleRate, maxSeconds, minLoopSeconds, engine) {
+// The title/author/release strings are skipped: the bytes come from
+// createModifiedSID(), so hashing them meant typing in the title threw away a
+// finished render and started the whole thing again. Everything else in the
+// header - load/init/play addresses, song count, speed flags, the v2 chip
+// fields - does change the audio, so it stays in.
+export function tuneKey(bytes, subtune, sampleRate, maxSeconds, minLoopSeconds, engine) {
     let h = 0x811c9dc5;
-    for (let i = 0; i < bytes.length; i++) { h ^= bytes[i]; h = Math.imul(h, 0x01000193); }
+    for (let i = 0; i < bytes.length; i++) {
+        if (i >= HEADER_TEXT_FROM && i < HEADER_TEXT_TO) continue;
+        h ^= bytes[i]; h = Math.imul(h, 0x01000193);
+    }
     // minLoopSeconds (x10 -> integer) is part of the key: it changes the render's
     // loop early-exit point, so a different threshold must re-render, not reuse.
     // The engine is in the key because the two SID cores render different audio.
@@ -73,7 +87,8 @@ const DEAD_RENDER_SECONDS = 15;
 // fraction of the full analysis window. Returns the session's row store + timing
 // (never the whole PCM: only the per-frame rows are kept).
 async function renderAndAnalyze(sidBytes, loadEngine, options = {}) {
-    const { sampleRate, maxSeconds, subtune, numBars, maxHeight, minLoopSeconds, engine, onProgress, signal } = options;
+    const { sampleRate, maxSeconds, subtune, numBars, maxHeight, minLoopSeconds, engine, onProgress,
+        signal, stopSignal } = options;
     if (signal && signal.aborted) throw abortError();
 
     const module = await loadEngine(engine);
@@ -157,6 +172,10 @@ async function renderAndAnalyze(sidBytes, loadEngine, options = {}) {
     const NEVER_SOUNDED_STOP = SILENCE_STOP * 2;
     let rendered = 0, sinceYield = 0, sinceCheck = 0, foundLoop = false;
     let silentRun = 0, sawSignal = false, stoppedOnSilence = false;
+    // "Stop searching" - distinct from Cancel. Cancel throws the render away;
+    // this keeps what has been rendered and analyses that, which is what someone
+    // watching a long tune's scan actually wants.
+    let stoppedEarly = false;
     // The Int16 view onto the engine's output buffer is re-derived only when the WASM
     // heap actually moves (a grow detaches the old ArrayBuffer), not once per chunk.
     let view = null, viewBuffer = null;
@@ -229,6 +248,12 @@ async function renderAndAnalyze(sidBytes, loadEngine, options = {}) {
                 // The user pressed Cancel while we were yielded: stop now (finally
                 // cleans up) and let the caller decide what a cancel means.
                 if (signal && signal.aborted) throw abortError();
+                if (stopSignal && stopSignal.aborted) {
+                    stoppedEarly = true;
+                    onProgress('Stopped — using what has been scanned so far', 1,
+                        { seconds: rendered / sampleRate, totalSeconds: maxSeconds, loopFound: true });
+                    break;
+                }
             }
         }
     } finally {
@@ -240,7 +265,10 @@ async function renderAndAnalyze(sidBytes, loadEngine, options = {}) {
         numBars, frameHz, isNtsc, engine,
         rows: session.rows(),
         renderedSeconds: session.fedSeconds(),
-        hitCap: !foundLoop && rendered >= total,
+        hitCap: !foundLoop && !stoppedEarly && rendered >= total,
+        // The user stopped the scan and asked for what was found so far, so
+        // nothing downstream should treat this as "we searched everything".
+        stoppedEarly,
         // Nothing usable came out of this engine - see renderWithFallback. Either
         // the tune never made a sound at all, or it went quiet almost immediately.
         deadRender: !sawSignal || (stoppedOnSilence && (rendered / sampleRate) < DEAD_RENDER_SECONDS),
@@ -272,8 +300,22 @@ async function renderWithFallback(sidBytes, loadEngine, options) {
 // render of the tune.
 export function createBakeCore(loadEngine) {
     // cache.rows : { key, numBars, engine, rows, frameHz, isNtsc, renderedSeconds, hitCap }
-    // cache.bakes: Map geometryKey -> bake result (valid while cache.rows.key holds)
+    // cache.bakes: Map geometryKey -> bake result, for the rows currently loaded
+    //
+    // `slots` is a small LRU of finished renders, keyed by tune+geometry. A
+    // single slot meant A -> B -> A re-rendered A from scratch, which is the
+    // most common thing anyone does while comparing two tunes. Rows are the
+    // expensive part (~90% of a bake), so a handful of them is worth the memory:
+    // a 12-minute tune at 50 Hz over 40 bars is about 1.4 MB.
+    const MAX_SLOTS = 4;
     const cache = { rows: null, bakes: new Map() };
+    const slots = new Map();   // slotKey -> { rows, bakes }
+
+    function remember(slotKey) {
+        slots.delete(slotKey);
+        slots.set(slotKey, { rows: cache.rows, bakes: cache.bakes });
+        while (slots.size > MAX_SLOTS) slots.delete(slots.keys().next().value);
+    }
 
     // Render this tune to FFT rows once (incrementally, stopping as soon as a loop is
     // confirmed) and cache them. Re-render only for a new tune, a different bar count,
@@ -281,6 +323,10 @@ export function createBakeCore(loadEngine) {
     // this - the render is ~90% of the cost, so pricing the fps options and then
     // exporting reuse one render.
     async function ensureRows(sidBytes, options = {}) {
+        // A job cancelled before it started must not come back with an answer,
+        // and a cache hit would otherwise sail straight past the render's own
+        // abort checks and report success.
+        if (options.signal && options.signal.aborted) throw abortError();
         const sampleRate = options.sampleRate || 44100;
         const maxSeconds = options.maxSeconds || 720;
         const numBars = options.numBars || 40;
@@ -290,14 +336,22 @@ export function createBakeCore(loadEngine) {
         const engine = normalizeEngine(options.engine);
         const onProgress = options.onProgress || (() => {});
         const key = tuneKey(sidBytes, subtune, sampleRate, maxSeconds, minLoopSeconds, engine);
+        const slotKey = `${key}|${numBars}`;
         if (!cache.rows || cache.rows.key !== key || cache.rows.numBars !== numBars) {
-            cache.rows = await renderWithFallback(sidBytes, loadEngine, {
-                sampleRate, maxSeconds, subtune, numBars, maxHeight, minLoopSeconds, engine,
-                onProgress, signal: options.signal,
-            });
-            cache.rows.key = key;
-            cache.bakes.clear();
+            const held = slots.get(slotKey);
+            if (held) {
+                cache.rows = held.rows;
+                cache.bakes = held.bakes;
+            } else {
+                cache.rows = await renderWithFallback(sidBytes, loadEngine, {
+                    sampleRate, maxSeconds, subtune, numBars, maxHeight, minLoopSeconds, engine,
+                    onProgress, signal: options.signal,
+                });
+                cache.rows.key = key;
+                cache.bakes = new Map();
+            }
         }
+        remember(slotKey);
         return { numBars, maxHeight };
     }
 
@@ -330,6 +384,9 @@ export function createBakeCore(loadEngine) {
                 loopSeconds: (r.numKeyframes - r.loopStart) / r.keyframeHz,
                 analyzedSeconds: r.analyzedSeconds,
                 cappedAtMaxSeconds: r.cappedAtMaxSeconds,
+                // The user pressed "use what it has found" rather than the scan
+                // running out of window, which is a different thing to say.
+                stoppedEarly: !!cache.rows.stoppedEarly,
                 // Frame-exact loop / length, for the song-length tool.
                 frameHzExact: cache.rows.frameHz,
                 loopStartFrames: r.loopStartFrames,

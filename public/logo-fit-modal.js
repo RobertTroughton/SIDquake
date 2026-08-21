@@ -23,7 +23,7 @@ class LogoFitModal {
         if (this.modal) return;
 
         const html = `
-            <div class="logo-fit-modal" id="logoFitModal">
+            <div class="logo-fit-modal" id="logoFitModal" data-overlay>
                 <div class="logo-fit-content" role="dialog" aria-modal="true" aria-label="Adjust logo">
                     <button class="logo-fit-close" id="logoFitClose" aria-label="Close"><i class="fas fa-times"></i></button>
                     <h3 class="logo-fit-title">Adjust logo</h3>
@@ -93,12 +93,43 @@ class LogoFitModal {
 
         document.addEventListener('keydown', e => {
             if (!this.modal.classList.contains('visible')) return;
+            // Stand down while something is layered above this (overlay-stack.js).
+            if (window.overlayAbove && window.overlayAbove('logoFitModal')) return;
             if (e.key === 'Escape') { this.close(); return; }
+            if (e.key === 'Tab') { this.trapTab(e); return; }
+            // Nudging is the canvas's behaviour, not the whole dialog's: bound
+            // to the document it swallowed the Size slider's arrow keys.
+            if (e.target !== this.canvas) return;
             const dirs = { ArrowLeft: 'left', ArrowRight: 'right', ArrowUp: 'up', ArrowDown: 'down' };
             if (dirs[e.key]) { e.preventDefault(); this.nudge(dirs[e.key]); }
         });
 
         this.attachDragHandlers();
+    }
+
+    /** Keep Tab cycling inside the dialog while it is open. */
+    trapTab(e) {
+        const content = this.modal.querySelector('.logo-fit-content');
+        if (!content) return;
+        const focusable = [...content.querySelectorAll(
+            'button, a[href], input, select, textarea, [tabindex]:not([tabindex="-1"])')]
+            .filter(el => !el.disabled && el.offsetParent !== null);
+        if (!focusable.length) return;
+        const first = focusable[0];
+        const last = focusable[focusable.length - 1];
+        const active = document.activeElement;
+        if (!content.contains(active)) {
+            e.preventDefault();
+            first.focus();
+            return;
+        }
+        if (e.shiftKey && active === first) {
+            e.preventDefault();
+            last.focus();
+        } else if (!e.shiftKey && active === last) {
+            e.preventDefault();
+            first.focus();
+        }
     }
 
     attachDragHandlers() {
@@ -205,6 +236,11 @@ class LogoFitModal {
         this.syncControls();
         this.redraw();
 
+        // Remember what to hand focus back to when the dialog closes. The caller
+        // knows better than we do: by the time we get here the page behind may
+        // have re-rendered and moved focus. It may pass a function, for a
+        // control that is rebuilt while the dialog is open.
+        this._previouslyFocused = opts.returnFocusTo || document.activeElement;
         this.modal.classList.add('visible');
         document.body.style.overflow = 'hidden';
         this.canvas.focus();
@@ -214,6 +250,18 @@ class LogoFitModal {
         if (!this.modal) return;
         this.modal.classList.remove('visible');
         document.body.style.overflow = '';
+        const ref = this._previouslyFocused;
+        this._previouslyFocused = null;
+        const back = typeof ref === 'function' ? ref() : ref;
+        if (back && back.isConnected && back.offsetParent !== null
+            && typeof back.focus === 'function') {
+            back.focus();
+        } else if (this.modal.contains(document.activeElement)) {
+            // The control that opened this is gone or on a panel that is no
+            // longer showing. Anything is better than leaving focus inside a
+            // dialog the user can no longer see.
+            document.activeElement.blur();
+        }
     }
 
     apply() {

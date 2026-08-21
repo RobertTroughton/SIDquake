@@ -846,7 +846,11 @@ class SIDquakePRGExporter {
         };
 
         for (const inputConfig of vizConfig.inputs) {
-            const inputElement = document.getElementById(inputConfig.id);
+            // The one read that cannot come from a snapshot: this is a file
+            // input, and what is wanted is the File itself. A caller without a
+            // DOM has to supply the bytes another way.
+            const inputElement = typeof document !== 'undefined'
+                ? document.getElementById(inputConfig.id) : null;
             let fileData = null;
 
             if (inputElement && inputElement.files.length > 0) {
@@ -869,8 +873,8 @@ class SIDquakePRGExporter {
                         await petsciiConverter.init();
 
                         // Get background color from bgColor option if available
-                        const bgColorElement = document.getElementById('bgColor');
-                        const bgColor = bgColorElement ? (parseInt(bgColorElement.value) & 0x0F) : 0;
+                        const bgColorValue = this.optionValue('bgColor');
+                        const bgColor = bgColorValue !== null ? (parseInt(bgColorValue) & 0x0F) : 0;
 
                         fileData = await petsciiConverter.convertPNGToPETSCII(file, bgColor);
                     } catch (petsciiError) {
@@ -942,8 +946,8 @@ class SIDquakePRGExporter {
                             const petsciiConverter = new PETSCIIConverter();
                             await petsciiConverter.init();
 
-                            const bgColorElement = document.getElementById('bgColor');
-                            const bgColor = bgColorElement ? (parseInt(bgColorElement.value) & 0x0F) : 0;
+                            const bgColorValue = this.optionValue('bgColor');
+                            const bgColor = bgColorValue !== null ? (parseInt(bgColorValue) & 0x0F) : 0;
 
                             fileData = await petsciiConverter.convertPNGToPETSCII(pngFile, bgColor);
                         } catch (petsciiError) {
@@ -1123,11 +1127,26 @@ class SIDquakePRGExporter {
     }
 
     // Read an editable palette from a hidden input (comma-separated 0..15
+    // Option values for this export. createPRG captures them once and installs
+    // the snapshot here, so a build reads a fixed set rather than whatever the
+    // live DOM happens to hold at the moment each option is processed - and so
+    // a caller without a DOM can supply them directly. Falls through to the
+    // document when a value is not in the snapshot.
+    optionValue(id) {
+        if (this._optionValues && Object.prototype.hasOwnProperty.call(this._optionValues, id)) {
+            return this._optionValues[id];
+        }
+        if (typeof document === 'undefined') return null;
+        const el = document.getElementById(id);
+        return el ? el.value : null;
+    }
+
     // values maintained by the palette-editor UI). Falls back to the supplied
     // default when the control is absent (e.g. headless exports).
     readPaletteInput(inputId, fallback) {
-        const el = document.getElementById(inputId);
-        if (!el || !el.value) return fallback;
+        const value = this.optionValue(inputId);
+        if (!value) return fallback;
+        const el = { value };
         const vals = el.value.split(',')
             .map(s => parseInt(s.trim(), 10))
             .filter(n => !isNaN(n))
@@ -1171,8 +1190,10 @@ class SIDquakePRGExporter {
         const optionComponents = [];
 
         for (const optionConfig of vizConfig.options) {
-            const element = document.getElementById(optionConfig.id);
-            if (!element) continue;
+            // Only ever read for its value, so the snapshot can stand in.
+            const value = this.optionValue(optionConfig.id);
+            if (value === null || value === undefined) continue;
+            const element = { value };
 
             // Special handling for font when charset data should be injected
             if (optionConfig.id === 'font' && layout.charsetAddress && vizConfig.fontType) {
@@ -1378,9 +1399,23 @@ class SIDquakePRGExporter {
                         loadAddress: parseInt(layout.artistNameColorAddress),
                         name: 'artistNameColor'
                     });
+                } else if (optionConfig.id === 'borderColor' && layout.borderColor) {
+                    // A visualizer that offers a separate border control owns
+                    // layout.borderColor; bgColor then only paints the screen.
+                    const borderData = new Uint8Array(1);
+                    borderData[0] = validColor;
+                    optionComponents.push({
+                        data: borderData,
+                        loadAddress: parseInt(layout.borderColor),
+                        name: 'borderColor'
+                    });
                 } else if (optionConfig.id === 'bgColor') {
-                    // Background color affects border and spectrometer/background
-                    if (layout.borderColor) {
+                    // Border follows the background ONLY where the visualizer has
+                    // no border control of its own - a black border around a
+                    // dark-grey screen is the most ordinary C64 framing there is,
+                    // and tying the two together made it unbuildable.
+                    const hasBorderOption = (vizConfig?.options || []).some(o => o.id === 'borderColor');
+                    if (layout.borderColor && !hasBorderOption) {
                         const borderData = new Uint8Array(1);
                         borderData[0] = validColor;
                         optionComponents.push({
@@ -1554,8 +1589,8 @@ class SIDquakePRGExporter {
         // least twice a loop's length to confirm it, so the analysis cap is 2x the
         // chosen "max song length" (the user never sees the doubling).
         const domInt = (id, dflt) => {
-            const el = typeof document !== 'undefined' && document.getElementById(id);
-            return el ? (parseInt(el.value, 10) || dflt) : dflt;
+            const v = this.optionValue(id);
+            return v !== null && v !== undefined ? (parseInt(v, 10) || dflt) : dflt;
         };
         const maxLoopSeconds = (bakeParams && bakeParams.maxLoopSeconds) || domInt('loopSearchSeconds', 600);
         const analysisSeconds = Math.max(30, maxLoopSeconds * 2);
@@ -1972,7 +2007,13 @@ class SIDquakePRGExporter {
     // chosen bank. The graphics blob is raw VIC data (the bar family bakes no address
     // pointers into it), so it needs no patching. The layout config is bank4000-
     // relative in both paths, so its address transform is identical to planRelocation.
-    planRelocationCodeOnly(codeTable, codeBin, gfxBin, baseLayout, actualSidAddress, sidDataLength, chooseCodePage) {
+    // preferredGfxBank: a VIC bank base the caller would rather have ($4000 /
+    // $8000 / $C000). Automatic placement maximises the largest free CPU block,
+    // which is right when nothing else has a claim on memory - but a disk with a
+    // shared loader wants every PRG in the same bank, and only the person
+    // building it knows that. Tried first, and only if it is actually viable;
+    // otherwise the automatic choice stands.
+    planRelocationCodeOnly(codeTable, codeBin, gfxBin, baseLayout, actualSidAddress, sidDataLength, chooseCodePage, preferredGfxBank = null, reservedRanges = []) {
         // The table's byte offsets are only meaningful against the exact blob
         // it was generated with (they're regenerated together by the build).
         // A size mismatch means one of the two is stale - relocating anyway
@@ -2020,22 +2061,39 @@ class SIDquakePRGExporter {
             if (gStart < sidEnd && sidStart < gEnd) return false;
             // VIC char-ROM shadow at $1000-$1FFF / $9000-$9FFF - no VIC graphics there.
             for (const romLo of [0x1000, 0x9000]) if (gStart < romLo + 0x1000 && romLo < gEnd) return false;
+            // A range the user reserved is out, the same as the tune's own bytes.
+            for (const r of reservedRanges) if (gStart < r.end && r.start < gEnd) return false;
             return true;
         };
         let gfxBankBase = null, codePage = null, bestScore = -1;
-        for (const b of [0xC000, 0x8000, 0x4000]) {
-            if (!viable(b)) continue;
-            const gfxRes = { start: b + gfxOffset, end: b + size };
-            const cp = chooseCodePage(codeLen, gfxRes);
-            if (cp === null) continue;                 // no free page for code with this bank
-            const score = this.largestFreeCpuBlock([
-                { start: sidStart, end: sidEnd },
-                { start: cp, end: cp + codeLen },
-                gfxRes,
-            ]);
-            if (score > bestScore) { bestScore = score; gfxBankBase = b; codePage = cp; }
+        // A viable preference wins outright; scoring only decides between the rest.
+        const banks = [0xC000, 0x8000, 0x4000];
+        const order = preferredGfxBank && banks.includes(preferredGfxBank)
+            ? [preferredGfxBank] : banks;
+        for (const pass of (order === banks ? [banks] : [order, banks])) {
+            for (const b of pass) {
+                if (!viable(b)) continue;
+                const gfxRes = { start: b + gfxOffset, end: b + size };
+                const cp = chooseCodePage(codeLen, gfxRes);
+                if (cp === null) continue;             // no free page for code with this bank
+                const score = this.largestFreeCpuBlock([
+                    { start: sidStart, end: sidEnd },
+                    { start: cp, end: cp + codeLen },
+                    gfxRes,
+                    ...reservedRanges,
+                ]);
+                if (score > bestScore) { bestScore = score; gfxBankBase = b; codePage = cp; }
+            }
+            if (gfxBankBase !== null) break;           // the preference was viable
         }
-        if (gfxBankBase === null) throw new Error('Relocation (code-only): no free VIC bank for graphics');
+        this.lastGfxBankPreferenceHonoured = !preferredGfxBank
+            || gfxBankBase === preferredGfxBank;
+        if (gfxBankBase === null) {
+            throw new Error(reservedRanges.length
+                ? 'No VIC bank is free for the graphics with the memory you asked to keep free — '
+                    + 'reserve less, or choose a player with a smaller graphics image.'
+                : 'Relocation (code-only): no free VIC bank for graphics');
+        }
         const gfxBankNum = gfxBankBase / 0x4000;
 
         // Patch the code image: code refs by the page delta (from CODE_BASE), gfx
@@ -2173,14 +2231,60 @@ class SIDquakePRGExporter {
     // Relocatable export: place the SID, the relocated code + graphics blobs, and
     // return the transformed layout. Graphics stay in a VIC bank; code goes on any
     // free page. (Currently wired for the no-input players, e.g. RaistlinBars.)
+    /**
+     * Run the placement without building anything, so the page can say where a
+     * tune's code and graphics will land BEFORE the user commits to an export.
+     * Uses a scratch builder, so the real one is untouched, and restores
+     * lastSysAddress - a preview must not look like an export happened.
+     *
+     * What comes back is a plan, not a finished image: the data block, the
+     * player stub and any user bitmaps are added later by createPRG, so the
+     * component list here is short of the final one. Callers must present it as
+     * a plan.
+     * @param {number|null} preferredGfxBank - the same soft preference an export
+     *   would apply, so the preview answers the question the user actually asked.
+     * @returns {Promise<{plan: object, info: object, gfxBankHonoured: boolean}>}
+     */
+    async previewPlacement(vizConfig, actualSidAddress, sidData,
+        preferredGfxBank = null, reservedRanges = []) {
+        const realBuilder = this.builder;
+        const realSys = this.lastSysAddress;
+        const realBank = this._preferredGfxBank;
+        const realReserved = this._reservedRanges;
+        const realHonoured = this.lastGfxBankPreferenceHonoured;
+        this.builder = new PRGBuilder();
+        this._preferredGfxBank = preferredGfxBank;
+        this._reservedRanges = reservedRanges;
+        try {
+            const plan = await this.placeRelocatedVisualizer(vizConfig, actualSidAddress, sidData);
+            return {
+                plan,
+                info: this.builder.getInfo(),
+                gfxBankHonoured: this.lastGfxBankPreferenceHonoured !== false,
+            };
+        } finally {
+            this.builder = realBuilder;
+            this.lastSysAddress = realSys;
+            this._preferredGfxBank = realBank;
+            this._reservedRanges = realReserved;
+            this.lastGfxBankPreferenceHonoured = realHonoured;
+        }
+    }
+
     async placeRelocatedVisualizer(vizConfig, actualSidAddress, sidData) {
         const baseLayout = vizConfig.layouts[vizConfig.relocBaseLayout || 'bank4000'];
 
         // SID first so the code-page search avoids it.
         this.builder.addComponent(sidData, actualSidAddress, 'SID Music');
 
+        // Ranges the user has told us to leave alone (a loader, a hand-written
+        // intro). Hard, not a preference: placing code over a loader corrupts,
+        // so an export that cannot honour them fails rather than quietly using
+        // them.
+        const reserved = this._reservedRanges || [];
         const chooseCodePage = (needed, gfxReserve) =>
-            this.findSafeMemoryForRoutines(needed, actualSidAddress, sidData.length, gfxReserve ? [gfxReserve] : []);
+            this.findSafeMemoryForRoutines(needed, actualSidAddress, sidData.length,
+                gfxReserve ? [...reserved, gfxReserve] : reserved);
 
         let plan;
         if (vizConfig.relocCodeBase) {
@@ -2211,7 +2315,7 @@ class SIDquakePRGExporter {
                     shadowMirrorAddress: codeTable.shadowMirror,
                     shadowOrderAddress: codeTable.shadowOrder };
             }
-            plan = this.planRelocationCodeOnly(codeTable, codeBin, gfxBin, effBaseLayout, actualSidAddress, sidData.length, chooseCodePage);
+            plan = this.planRelocationCodeOnly(codeTable, codeBin, gfxBin, effBaseLayout, actualSidAddress, sidData.length, chooseCodePage, this._preferredGfxBank || null, reserved);
         } else {
             const table = await (await fetch(vizConfig.relocTable, { cache: 'no-cache' })).json();
             const baseBin = await this.loadBinaryFile(vizConfig.relocBase);
@@ -2259,12 +2363,23 @@ class SIDquakePRGExporter {
     // frames, for a fade-out tune the user chose to loop): the clock gets a real
     // length equal to the restart point and wraps to 0:00:00 - the exact frame
     // the shared player code re-inits the tune (both count the same IRQ frames).
-    patchSongLengthFields(layout, tuneAnalysis, multiSong, forcedLoopFrames = 0) {
+    // opts.show=false: the user asked for no length on screen, so every field is
+    // zeroed exactly as if none had been found.
+    // opts.manualSeconds: a length the user typed rather than one the scan
+    // measured. Treated as the tune's period - the clock counts to it and wraps
+    // to 0:00, the same geometry a forced loop gets, but WITHOUT re-initialising
+    // the music (lastMusicLoopFrames stays whatever the caller set). Never write
+    // a length without a loop end: CheckLoopWrap (INC/timer.asm) compares the
+    // clock against bakedLoopEnd* and would wrap on the very first frame.
+    patchSongLengthFields(layout, tuneAnalysis, multiSong, forcedLoopFrames = 0, opts = {}) {
         if (!layout || !layout.bakedHasLengthAddress) return;
         const byte = (v) => new Uint8Array([v & 0xFF]);
+        const show = opts.show !== false;
+        const manualSeconds = Math.max(0, Math.floor(opts.manualSeconds || 0));
         const looped = !!(tuneAnalysis && tuneAnalysis.looped);
         const forced = forcedLoopFrames > 0 && !multiSong;
-        const hasLength = ((looped || forced) && !multiSong) ? 1 : 0;
+        const manual = manualSeconds > 0 && !multiSong;
+        const hasLength = (show && (looped || forced || manual) && !multiSong) ? 1 : 0;
 
         // No length to show (multi-song, no loop, or analysis skipped): explicitly
         // ZERO every length/loop byte. The injected data block writes the SID
@@ -2282,15 +2397,23 @@ class SIDquakePRGExporter {
         }
 
         // Player timer fps (integer): the elapsed clock counts these per second.
-        const fps = tuneAnalysis.isNtsc ? 60 : 50;
+        // A typed length can be the only thing we have, so nothing below may
+        // assume an analysis exists.
+        const fps = (tuneAnalysis && tuneAnalysis.isNtsc) ? 60 : 50;
         // Loop geometry in RAW raster frames. The analysis loop points are in
         // keyframes at keyframeHz; one keyframe = step raster frames. A forced
-        // loop always restarts from the very beginning: start 0, end = restart.
-        const step = Math.max(1, Math.round((tuneAnalysis.frameHz || fps) / (tuneAnalysis.keyframeHz || (fps / 2))));
+        // loop always restarts from the very beginning: start 0, end = restart,
+        // and so does a typed length (the user is stating the tune's period).
+        const step = tuneAnalysis
+            ? Math.max(1, Math.round((tuneAnalysis.frameHz || fps) / (tuneAnalysis.keyframeHz || (fps / 2))))
+            : 1;
+        // A measured loop wins over a typed one - the user can clear the field if
+        // they disagree with it.
         const loopEndFrames = forced ? forcedLoopFrames
-            : Math.max(0, Math.round((tuneAnalysis.numKeyframes || 0) * step));
-        const loopStartFrames = forced ? 0
-            : Math.max(0, Math.round((tuneAnalysis.loopStart || 0) * step));
+            : looped ? Math.max(0, Math.round((tuneAnalysis.numKeyframes || 0) * step))
+                : manualSeconds * fps;
+        const loopStartFrames = (forced || (manual && !looped)) ? 0
+            : Math.max(0, Math.round(((tuneAnalysis && tuneAnalysis.loopStart) || 0) * step));
 
         // Decompose a raw-frame count into the displayed MM:SS + intra-second frame.
         const triple = (frames) => {
@@ -2339,9 +2462,28 @@ class SIDquakePRGExporter {
             selectedSong = 0,
             tuneAnalysis = null,
             bakeParams = null,
-            forceSongLoop = false
+            forceSongLoop = false,
+            // Song length shown on the C64: the user can suppress it, or state it
+            // themselves instead of waiting for the scan to measure it.
+            showSongLength = true,
+            manualLengthSeconds = 0,
+            // Every option's value, captured once by the caller. Without it the
+            // build reads the live DOM as each option comes up, so anything that
+            // changed mid-build would land half-applied.
+            optionValues = null,
+            // A VIC bank the caller would rather the graphics went in. Soft:
+            // ignored when it cannot be made to work.
+            preferredGfxBank = null,
+            // Memory the export must not use - a loader, an intro - as
+            // [{start, end}) ranges. Hard: an export that cannot place the
+            // player around them fails rather than using them anyway.
+            reservedRanges = []
         } = options;
 
+        this._optionValues = optionValues;
+        this._preferredGfxBank = preferredGfxBank;
+        this._reservedRanges = reservedRanges;
+        this.lastGfxBankPreferenceHonoured = true;
         try {
             this.builder.clear();
             this.lastBakeInfo = null;   // only set when a baked-spectrometer export runs
@@ -2522,7 +2664,8 @@ class SIDquakePRGExporter {
                 // Non-spectrometer players show the song length too, reusing the on-load
                 // analysis (single-song only) instead of rendering. No-op unless the
                 // player's layout exposes the length fields.
-                this.patchSongLengthFields(layout, tuneAnalysis, multiSong, this.lastMusicLoopFrames);
+                this.patchSongLengthFields(layout, tuneAnalysis, multiSong, this.lastMusicLoopFrames,
+                    { show: showSongLength, manualSeconds: manualLengthSeconds });
             }
 
             // Check if this visualizer needs save/restore functionality
@@ -2643,6 +2786,12 @@ class SIDquakePRGExporter {
         } catch (error) {
             console.error('Error creating PRG:', error);
             throw error;
+        } finally {
+            // Never outlive the build: a stale snapshot would quietly shadow the
+            // live controls on the next export.
+            this._optionValues = null;
+            this._preferredGfxBank = null;
+            this._reservedRanges = [];
         }
     }
 }

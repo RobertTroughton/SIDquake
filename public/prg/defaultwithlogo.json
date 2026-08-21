@@ -221,7 +221,13 @@
     },
     {
       "id": "bgColor",
-      "label": "Background Colour",
+      "label": "Screen Colour",
+      "type": "colorPicker",
+      "default": 0
+    },
+    {
+      "id": "borderColor",
+      "label": "Border Colour",
       "type": "colorPicker",
       "default": 0
     }
