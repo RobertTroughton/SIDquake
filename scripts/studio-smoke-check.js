@@ -963,6 +963,80 @@ async function loadSid(page, file) {
                 railReuse.focusKept === true, JSON.stringify(railReuse));
         }
 
+        // --- measurements are remembered across reloads -----------------------
+        const store = await page.evaluate(async () => {
+            const cb = window.cacheBust || (s => s);
+            const { readAnalysis, writeAnalysis, clearAnalyses } =
+                await import(cb('./analysis-store.js'));
+            await clearAnalyses();
+            const miss = await readAnalysis('smoke-key');
+            await writeAnalysis('smoke-key', { looped: true, storedSeconds: 123.5 });
+            const hit = await readAnalysis('smoke-key');
+            await clearAnalyses();
+            const gone = await readAnalysis('smoke-key');
+            return {
+                miss, hit, gone,
+                roundTrip: !!hit && hit.looped === true && hit.storedSeconds === 123.5,
+            };
+        });
+        check('A measurement survives being written and read back',
+            store.miss === null && store.roundTrip === true && store.gone === null,
+            JSON.stringify(store));
+
+        // The end of it: a tune already measured is not measured again.
+        const reuse = await page.evaluate(async () => {
+            const ui = window.uiController;
+            if (!ui.tuneAnalysis) return { skipped: 'the background scan has not finished' };
+            const stored = { ...ui.tuneAnalysis };
+            ui.tuneAnalysis = null;
+            ui._analysisJob = null;
+            let scanned = false;
+            const t0 = performance.now();
+            await ui._ensureAnalysis({ onProgress: () => { scanned = true; } });
+            return {
+                ms: Math.round(performance.now() - t0),
+                scanned,
+                same: !!ui.tuneAnalysis
+                    && ui.tuneAnalysis.storedSeconds === stored.storedSeconds
+                    && ui.tuneAnalysis.looped === stored.looped,
+            };
+        });
+        if (reuse.skipped) {
+            console.log(`SKIP  measurement reuse - ${reuse.skipped}`);
+        } else {
+            check('A tune already measured is not measured again',
+                reuse.scanned === false && reuse.ms < 1500, JSON.stringify(reuse));
+            check('And the remembered answer is the one it found',
+                reuse.same === true, JSON.stringify(reuse));
+        }
+
+        const keyStable = await page.evaluate(async () => {
+            const ui = window.uiController;
+            const o = {
+                subtune: 0, numBars: 40, maxHeight: 111,
+                maxSeconds: 1200, minLoopSeconds: 2, engine: 'fp', outputMaxSeconds: 0,
+            };
+            const bytes = ui.analyzer.createModifiedSID();
+            const before = await ui._analysisCacheKey(bytes, o);
+            // Rename the tune and re-derive: the key must not move.
+            const title = document.getElementById('sidTitle');
+            const was = title.value;
+            title.value = 'Renamed For The Check';
+            title.dispatchEvent(new Event('input', { bubbles: true }));
+            await new Promise(r => setTimeout(r, 300));
+            const after = await ui._analysisCacheKey(ui.analyzer.createModifiedSID(), o);
+            title.value = was;
+            title.dispatchEvent(new Event('input', { bubbles: true }));
+            // A different setting must move it.
+            const other = await ui._analysisCacheKey(bytes, { ...o, minLoopSeconds: 9 });
+            return { before, after, other };
+        });
+        check('Renaming a tune does not throw its measurement away',
+            !!keyStable.before && keyStable.before === keyStable.after,
+            JSON.stringify(keyStable));
+        check('But changing a scan setting does',
+            keyStable.other !== keyStable.before, JSON.stringify(keyStable));
+
         // --- overlay precedence -----------------------------------------------
         const overlays = await page.evaluate(() => {
             const tagged = [...document.querySelectorAll('[data-overlay]')].map(el => el.id);

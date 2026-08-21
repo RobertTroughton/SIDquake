@@ -108,10 +108,12 @@ re-render**.
   addresses, song count, speed flags, the v2 chip fields) does change the audio
   and stays in. `scripts/test-bake-cache.js` drives the core with a stub engine
   and counts renders, so both of these are covered by `npm test`.
-- Persist the *summary* (`looped`, `fadedOut`, `loopStart`, `frameHz`,
-  `lengthFrames`, `storedSeconds` — a couple of hundred bytes) to IndexedDB keyed
-  by `tuneKey`. For every non-spectrometer export that summary is the entire
-  payload, so the second time a tune is ever touched the answer is already there.
+- **Done: the summary is persisted to IndexedDB** (`public/analysis-store.js`),
+  keyed by the same content hash plus the settings that change what a scan finds.
+  A tune measured once is not measured again — across reloads, and across runs of
+  the same queue. Everything in there fails quietly: a private window or blocked
+  storage is just a cache miss. Old entries are dropped past 500, and a schema
+  number retires stored shapes rather than handing back stale fields.
 - Make the cache importable, so `tools/songlengths/`'s journal — the same
   measurement, already computed across HVSC — can prime it.
 - Check whether `DOCUMENTS/Songlengths.md5` ships inside `hvsc-data/C64Music.7z`;
@@ -356,9 +358,10 @@ a human required between every blocking wait.
 - **Still open: choose an output directory.** Every file lands in the browser's
   downloads folder. `showDirectoryPicker()` would fix it where supported, but it
   is Chromium-only, so it needs a fallback (a zip) rather than a hard dependency.
-- **Still open: the queue re-measures every tune.** Each export blocks on that
-  tune's own scan. The persisted analysis cache below is what makes a re-run of
-  the same set fast.
+- **The queue no longer re-measures a tune it has already measured.** Each export
+  still blocks on the first scan of a tune it has never seen, but the persisted
+  analysis cache (above) means a second run of the same set — or the same set
+  after a reload — skips straight past.
 - **Recipes exist** (`.sqrecipe.json`, saved and loaded from the Export tab):
   player + data source, every option value, gallery image picks, sub-tune,
   forced-loop answer, song-length choices, compression and the analysis

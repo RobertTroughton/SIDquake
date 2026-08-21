@@ -5044,19 +5044,40 @@ class UIController {
             baseProgress(label, frac, extra);
         };
         const cb = window.cacheBust || (s => s);
+        const scanOptions = {
+            subtune: defaultSong, numBars: 40, maxHeight: 111,
+            maxSeconds: Math.max(30, maxLoopSeconds * 2),
+            minLoopSeconds,
+            engine: adv.bakeEngine,
+            // Same cap the export will bake with, or the length/segment/memory
+            // figures shown here would not be the ones the PRG ends up storing.
+            outputMaxSeconds: adv.storedSeconds,
+        };
         try {
+            // A scan already done for these exact bytes and settings is the same
+            // scan. The bake core's render cache only lives as long as the page,
+            // so without this a reload - or the next run of the same queue -
+            // measures every tune again from scratch.
+            const storeKey = await this._analysisCacheKey(sidBytes, scanOptions);
+            if (storeKey) {
+                const { readAnalysis } = await import(cb('./analysis-store.js'));
+                const hit = await readAnalysis(storeKey);
+                if (hit) {
+                    if (!mine()) return null;
+                    this.tuneAnalysis = hit;
+                    return this.tuneAnalysis;
+                }
+            }
             const { analyzeSpectrometer } = await import(cb('./spectrometer-bake-runner.js'));
             const result = await analyzeSpectrometer(sidBytes, {
-                subtune: defaultSong, numBars: 40, maxHeight: 111,
-                maxSeconds: Math.max(30, maxLoopSeconds * 2),
-                minLoopSeconds,
-                engine: adv.bakeEngine,
-                // Same cap the export will bake with, or the length/segment/memory
-                // figures shown here would not be the ones the PRG ends up storing.
-                outputMaxSeconds: adv.storedSeconds,
+                ...scanOptions,
                 onProgress,
                 signal: opts.signal,
             });
+            if (storeKey && result) {
+                const { writeAnalysis } = await import(cb('./analysis-store.js'));
+                writeAnalysis(storeKey, result);
+            }
             // Another SID was loaded while this ran - the result describes a tune
             // that is no longer open, so drop it rather than publish it.
             if (!mine()) return null;
@@ -5075,6 +5096,22 @@ class UIController {
             if (mine()) this.tuneAnalysis = null;
         }
         return mine() ? this.tuneAnalysis : null;
+    }
+
+    /**
+     * The key a scan's result is remembered under: the tune's content (title
+     * and author excluded, so renaming does not throw a measurement away) plus
+     * every setting that changes what the scan finds.
+     */
+    async _analysisCacheKey(sidBytes, o) {
+        const cb = window.cacheBust || (s => s);
+        try {
+            const { tuneKey } = await import(cb('./spectrometer-bake-core.js'));
+            const base = tuneKey(sidBytes, o.subtune, 44100, o.maxSeconds, o.minLoopSeconds, o.engine);
+            return `${base}|${o.numBars}x${o.maxHeight}|${o.outputMaxSeconds || 0}`;
+        } catch (e) {
+            return null;   // no key, no cache - the scan still runs
+        }
     }
 
     // Price each frame rate (50/25/16.66) against this tune's stored length and

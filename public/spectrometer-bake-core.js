@@ -60,7 +60,7 @@ const HEADER_TEXT_TO = 0x76;   // exclusive
 // finished render and started the whole thing again. Everything else in the
 // header - load/init/play addresses, song count, speed flags, the v2 chip
 // fields - does change the audio, so it stays in.
-function tuneKey(bytes, subtune, sampleRate, maxSeconds, minLoopSeconds, engine) {
+export function tuneKey(bytes, subtune, sampleRate, maxSeconds, minLoopSeconds, engine) {
     let h = 0x811c9dc5;
     for (let i = 0; i < bytes.length; i++) {
         if (i >= HEADER_TEXT_FROM && i < HEADER_TEXT_TO) continue;
