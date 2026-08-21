@@ -25,20 +25,17 @@ that holds the detail.
    unusable to usable with a keyboard or a screen reader. *(Accessibility)*
 3. Build the curated Random SID pool file. One build script, ~2 MB off the front
    door. *(Mobile and first impression)*
-4. Remember the last-used visualiser and keep option values in a session store.
-   Stops silently resetting the user's look on every new tune. *(Progressive
-   disclosure)*
-5. The song-length row, the manual `m:ss` entry, and the Generate-time prompt with
+4. The song-length row, the manual `m:ss` entry, and the Generate-time prompt with
    a remembered answer. *(Analysis timing)*
-6. Move Generate PRG onto every tab; collapse Technical Details; move the frame
+5. Move Generate PRG onto every tab; collapse Technical Details; move the frame
    rate, stored bars and analysis engine behind an Advanced disclosure; restore
    the scan window, min-loop and bank override into it. *(Progressive disclosure)*
-7. Ship the eleven preview GIFs and set `animated: true`. *(Preview)*
-8. Don't auto-open the Studio below 720px; un-hide the visualiser on phones;
+6. Ship the eleven preview GIFs and set `animated: true`. *(Preview)*
+7. Don't auto-open the Studio below 720px; un-hide the visualiser on phones;
    autoplay after Random SID. *(Mobile and first impression)*
-9. The completion panel that tells a first-timer what a .prg is and how to run
+8. The completion panel that tells a first-timer what a .prg is and how to run
    it. *(Language)*
-10. Multi-file drop and a queue. *(Batch)*
+9. Multi-file drop and a queue. *(Batch)*
 
 Bigger pieces worth planning rather than picking up: the live in-browser preview,
 recipe files plus the `sidquake-build` CLI, the listener-first entry point, and
@@ -205,17 +202,11 @@ a file. Everything else stays exactly where it is behind "Customise".
 
 - **Put Generate PRG on every tab**, not only Export (`studio-modal.js:198-199`).
   Nothing forces a walk through the wizard once the settings are right.
-- **Remember the last-used visualiser and data-source method** across a SID load.
-  `initVisualizerSelection` nulls the selection (`ui.js:814`) and
-  `buildVisualizerGrid` auto-selects the alphabetically first compatible entry
-  (`ui.js:878-889`), which is always "Default" — a text-only screen. So a
-  *visualiser* tool opens on no visualiser, and a returning user's choice is
-  discarded every time.
-- **Keep option values in a session store keyed by option id.** Today they
-  survive a visualiser switch (`ui.js:1216`, `:1252`) but the forced detour
-  through "Default" drops every id the Default panels lack (`ui.js:1264`), so bar
-  style, colour effect and palettes reset on every new tune. On a music disk with
-  a house style this is the single most expensive defect.
+- **Persist the session's visualiser and option memory across a reload.** The
+  choice now survives loading another tune (`_lastVisualizerId`,
+  `_lastDataSource`, `_optionMemory`), but not a refresh or a new tab. Consider
+  putting it in localStorage next to `sidquakeAdvanced` — and note that the same
+  state is most of a recipe file, so the two should be designed together.
 - **Move the sub-tune selector to the Song tab.** It is injected above the
   visualiser grid (`ui.js:786`), while the manifest's "Music → edit ›" row points
   at the Song tab (`studio-modal.js:437`) where it isn't.

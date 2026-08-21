@@ -46,6 +46,18 @@ class UIController {
         // has different element ids across configs (logo-input / bitmap-input).
         this._imageSelectionMemory = {};
         this._pendingImageRestore = null;
+        // Sticky visualizer choice for the session: the grid card the user picked
+        // and the data source they settled on. A new SID re-selects them when the
+        // tune can take them, instead of dropping back to the alphabetically
+        // first compatible player. Only a deliberate pick writes these - an
+        // auto-selected fallback leaves them alone, so the choice comes back on
+        // the next tune that can take it.
+        this._lastVisualizerId = null;
+        this._lastDataSource = null;
+        // Sticky option values for the session, keyed by option element id, so a
+        // new tune keeps the bar style / colours / palettes / font the user set.
+        // Holds only values the user actually changed (see _rememberOptionValues).
+        this._optionMemory = {};
         this.hvscBrowserWindow = null;
         this.mainPlayer = null;
         this.elements = this.cacheElements();
@@ -878,14 +890,19 @@ class UIController {
         compatible.sort((a, b) => a.name.localeCompare(b.name));
         incompatible.sort((a, b) => a.name.localeCompare(b.name));
 
-        for (let i = 0; i < compatible.length; i++) {
-            const viz = compatible[i];
+        // Re-select the session's visualizer if this tune can take it; otherwise
+        // fall back to the first compatible one so the export button is usable
+        // immediately. Neither is a deliberate pick, so neither updates the
+        // sticky choice (remember: false).
+        const remembered = compatible.find(v => v.id === this._lastVisualizerId);
+        const autoSelect = remembered || compatible[0];
+
+        for (const viz of compatible) {
             const card = this.createVisualizerCard(viz);
             grid.appendChild(card);
 
-            // Auto-select the first compatible visualizer so the export button is usable immediately.
-            if (i === 0) {
-                this.selectVisualizer(viz);
+            if (viz === autoSelect) {
+                this.selectVisualizer(viz, { remember: false });
                 card.classList.add('selected');
             }
         }
@@ -1057,7 +1074,7 @@ class UIController {
         return { ok: true };
     }
 
-    async selectVisualizer(visualizer) {
+    async selectVisualizer(visualizer, { remember = true } = {}) {
         const cards = document.querySelectorAll('.visualizer-card');
         cards.forEach(card => {
             card.classList.toggle('selected', card.dataset.id === visualizer.id);
@@ -1066,11 +1083,16 @@ class UIController {
         // Bar styles default to the Spectrometer (precomputed) source - the best
         // looking / lowest CPU option. If the tune is too fast/multi-SID for it,
         // fall back to the first source that can handle it (realtime, then shadow).
+        // A source the user chose earlier in the session is tried first, so a
+        // deliberate "shadow for this release" survives loading the next tune.
         let target = visualizer;
         if (visualizer.dataSourceGroup) {
             const members = VISUALIZERS.filter(v => v.dataSourceGroup === visualizer.dataSourceGroup);
             const byMethod = m => members.find(v => v.dataSource === m);
-            const preferred = ['fft', 'realtime', 'shadow'].map(byMethod).filter(Boolean);
+            const order = this._lastDataSource
+                ? [this._lastDataSource, ...['fft', 'realtime', 'shadow'].filter(m => m !== this._lastDataSource)]
+                : ['fft', 'realtime', 'shadow'];
+            const preferred = order.map(byMethod).filter(Boolean);
             // Prefer a source that can actually be built for this tune (fits memory
             // + within the calls/SID caps); fall back to calls-usable, then FFT.
             target = preferred.find(v => this.visualizerExportable(v).ok)
@@ -1078,6 +1100,8 @@ class UIController {
                 || byMethod('fft') || visualizer;
         }
         this.selectedVisualizer = target;
+
+        if (remember) this._lastVisualizerId = visualizer.id;
 
         this.elements.exportPRGButton.disabled = false;
 
@@ -1107,6 +1131,7 @@ class UIController {
         const variant = VISUALIZERS.find(v => v.dataSourceGroup === group && v.dataSource === method);
         if (variant && variant !== this.selectedVisualizer) {
             this.selectedVisualizer = variant;
+            this._lastDataSource = method;
             this.clearMemoryMap();
             this.updateMultiSongNote();
             this.loadVisualizerOptions(variant);
@@ -1122,15 +1147,16 @@ class UIController {
         const config = visualizer.config ? await this.visualizerConfig.loadConfig(visualizer.id) : null;
         if (req !== this._optionsRequest) return;  // superseded by a newer selection
 
-        // Values persist by option id across visualizer switches: capture the
-        // current panel values before re-render, restore matching ids after.
-        // Also snapshot the OUTGOING config's per-option defaults - a value that
-        // still equals its old default was never touched by the user, so it must
-        // NOT override the new config's own default (e.g. switching from the FFT
-        // player, whose colour effect defaults to Dynamic Pulse, to a Real-time
-        // player that defaults to Waveform).
+        // Values persist by option id across visualizer switches AND across SID
+        // loads: fold the current panel values into the session memory before
+        // re-render, restore matching ids after. The OUTGOING config's per-option
+        // defaults decide what gets remembered - a value that still equals its
+        // old default was never touched by the user, so it must NOT override the
+        // new config's own default (e.g. switching from the FFT player, whose
+        // colour effect defaults to Dynamic Pulse, to a Real-time player that
+        // defaults to Waveform).
         const prevDefaults = this._configDefaults(this.currentVisualizerConfig);
-        const prevValues = this._captureOptionValues();
+        this._rememberOptionValues(this._captureOptionValues(), prevDefaults);
 
         // File inputs (Logo / Bitmap) aren't captured above - the browser won't
         // let us re-assign their value, and they're skipped by the snapshot.
@@ -1200,7 +1226,7 @@ class UIController {
 
         this._wireAdvancedSettings();
         await this.attachOptionEventListeners(config);
-        this._restoreOptionValues(prevValues, prevDefaults);
+        this._restoreOptionValues(this._optionMemory);
         await this._restoreImageSelections(config, req);
         this._pendingImageRestore = null;
         this.updateConditionalVisibility();
@@ -1224,6 +1250,22 @@ class UIController {
         const compression = document.querySelector('input[name="compression-type"]:checked');
         if (compression) values['__compression'] = compression.value;
         return values;
+    }
+
+    // Fold a snapshot into the session's sticky option values. `defaults` is the
+    // OUTGOING config's per-option defaults: a value still equal to its default
+    // was never chosen, so it must not be remembered (and must clear an earlier
+    // memory of the same option, or a value the user has since reverted would
+    // keep coming back). What survives is only what the user actually set, which
+    // is what a new tune should inherit.
+    _rememberOptionValues(values, defaults = {}) {
+        for (const [id, value] of Object.entries(values)) {
+            if (defaults[id] !== undefined && String(defaults[id]) === String(value)) {
+                delete this._optionMemory[id];
+            } else {
+                this._optionMemory[id] = value;
+            }
+        }
     }
 
     // Per-option default values (keyed by id) for a parsed visualizer config,
