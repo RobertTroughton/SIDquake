@@ -312,7 +312,8 @@ class GalleryModal {
 
             card.append(preview, info, badge);
 
-            this._makeGalleryCardRadio(gridContainer, card, false, () => {
+            // The radio wiring lives on the manager, not on this modal.
+            window.imagePreviewManager._makeGalleryCardRadio(gridContainer, card, false, () => {
                 this.selectedItem = item;
                 setTimeout(() => {
                     this.selectImage();

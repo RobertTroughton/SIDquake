@@ -146,7 +146,7 @@ self.onmessage = (ev) => {
                     segments: r.segments, segmentWidth: r.segmentWidth,
                     keyframeHz: r.keyframeHz, numKeyframes: r.numKeyframes,
                     loopStart: r.loopStart, framesPerKeyframe: r.framesPerKeyframe,
-                    looped: r.looped, fadedOut: r.fadedOut, forcedLoop: r.forcedLoop,
+                    looped: r.looped, fadedOut: r.fadedOut, truncated: r.truncated, forcedLoop: r.forcedLoop,
                     analyzedKeyframes: r.analyzedKeyframes, analyzedSeconds: r.analyzedSeconds,
                     cappedAtMaxSeconds: r.cappedAtMaxSeconds, totalBytes: r.totalBytes,
                     engine: r.engine,

@@ -464,6 +464,26 @@ async function loadSid(page, file) {
         check('Picking one moves the real selection',
             quick.picked === quick.selected, `${quick.picked} vs ${quick.selected}`);
 
+        // A look built around a picture has to ask for the picture: exporting the
+        // stock logo silently is the one outcome nobody wants.
+        const quickLogo = await page.evaluate(async () => {
+            const ui = window.uiController;
+            ui._imageSelectionMemory = {};
+            ui._quickImageAsked = new Set();
+            const card = [...document.querySelectorAll('.quick-look')]
+                .find(l => l.dataset.id === 'DefaultWithLogo');
+            if (!card) return { offered: false };
+            card.click();
+            await new Promise(r => setTimeout(r, 1500));
+            const modal = document.getElementById('galleryModal');
+            const open = !!modal && modal.classList.contains('visible');
+            const items = modal ? modal.querySelectorAll('.gallery-item-card').length : 0;
+            if (open) window.imagePreviewManager.initGalleryModal().close();
+            return { offered: true, open, items };
+        });
+        check('Picking a look with a logo asks which logo',
+            !quickLogo.offered || (quickLogo.open && quickLogo.items > 0), JSON.stringify(quickLogo));
+
         await page.evaluate(() => window.studioModal.open());
         await page.waitForTimeout(400);
 
@@ -1298,6 +1318,7 @@ async function loadSid(page, file) {
             for (const [name, extra] of [
                 ['ranOut', { cappedAtMaxSeconds: true }],
                 ['stopped', { stoppedEarly: true }],
+                ['cut', { truncated: true, loopStartSeconds: 360 }],
                 ['plain', {}],
             ]) {
                 ui.tuneAnalysis = {
@@ -1322,6 +1343,9 @@ async function loadSid(page, file) {
             /You stopped the search/i.test(stopScan.stopped), stopScan.stopped);
         check('And a scan that simply found nothing still says that',
             /No repeat or fade-out found/i.test(stopScan.plain), stopScan.plain);
+        check('A tune still playing where the scan stops gets no invented length',
+            /still playing at 6:00/i.test(stopScan.cut)
+            && /running clock with no total/i.test(stopScan.cut), stopScan.cut);
         check('There is a way to stop searching and keep the answer',
             stopScan.hasStopButton && stopScan.hasStopMethod, JSON.stringify({
                 b: stopScan.hasStopButton, m: stopScan.hasStopMethod }));

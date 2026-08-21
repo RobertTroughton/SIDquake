@@ -373,6 +373,9 @@ export function createBakeCore(loadEngine) {
             return {
                 looped: r.looped,
                 fadedOut: r.fadedOut,
+                // The music was still going where the analysis had to stop, so
+                // nothing was resolved - neither a loop nor an ending.
+                truncated: r.truncated,
                 loopStart: r.loopStart,               // keyframes
                 numKeyframes: r.numKeyframes,
                 keyframeHz: r.keyframeHz,

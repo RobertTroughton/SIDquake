@@ -1746,7 +1746,10 @@ class SIDquakePRGExporter {
             loopStart: baked.loopStart,
             looped: baked.looped,
             fadedOut: baked.fadedOut,
-            forcedLoop: forcedLoop,
+            truncated: baked.truncated,
+            // What the bake actually did, not what was asked for: a truncated
+            // stream gets no forced loop however the option was left.
+            forcedLoop: baked.forcedLoop,
             analyzedKeyframes: baked.analyzedKeyframes,
             analyzedSeconds: baked.analyzedSeconds,
             cappedAtMaxSeconds: baked.cappedAtMaxSeconds,
