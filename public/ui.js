@@ -1397,6 +1397,12 @@ class UIController {
         // version. Opt-in via `animated: true` in the registry (with a
         // prg/<id>.gif next to the .png) - that way we don't probe/404 for the
         // ones that only have a still. Probe first so a missing GIF never flickers.
+        //
+        // UNREACHABLE TODAY: no registry entry sets `animated: true` and there
+        // are no .gif files in public/prg/, so every card shows a still of a
+        // motion effect. The code is correct and waits on the assets - one
+        // recording per visualizer, which has to be made in an emulator. Keep it
+        // rather than rewriting it when they arrive.
         const img = card.querySelector('.visualizer-preview img');
         if (img && visualizer.animated && /\.png$/i.test(visualizer.preview)) {
             const still = visualizer.preview;

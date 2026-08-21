@@ -16,21 +16,41 @@ source; where a claim still needs a browser to confirm it, it says so.
 Ranked by value against effort, not by section order. Each line names the section
 that holds the detail.
 
-1. Ship the preview GIFs and set `animated: true` — one per grid card. *(Preview)*
+1. Ship the preview GIFs and set `animated: true` — one per grid card. Needs a
+   recording per visualiser, so it is asset work rather than code. *(Preview)*
 
-Bigger pieces worth planning rather than picking up: the live in-browser preview,
-recipe files plus the `sidquake-build` CLI, the listener-first entry point, and
-the memory work already scoped as V2.01 in Part 2.
+Everything else in Part 1 that could be done in JS has been. What is left needs
+something this list cannot supply on its own:
+
+- **Assets** — the preview GIFs above.
+- **A WASM rebuild** (`[WASM]`) — a real Cancel for the 30,000-frame load
+  analysis, the `playAddress == 0` case, and the `png_converter` hardening and
+  caching. Each needs emsdk, and rebuilding the committed `.wasm` on a different
+  toolchain version is a deliberate decision about the shipped binaries rather
+  than a side effect of a fix.
+- **A player rebuild** (`[asm]`) — the Default player's technical block, a
+  scroller on the bars-with-logo players, multi-song song length, a Group field,
+  NTSC gating in `SetupStableRaster`. These are buildable here, but their effect
+  is on what a C64 draws, and nothing in this repo can confirm that without an
+  emulator and eyes.
+
+Bigger pieces worth planning rather than picking up: the live in-browser player
+preview (it needs each player's own graphics to be faithful, and a preview that
+misrepresents is worse than a still), the `sidquake-build` CLI, the
+listener-first entry point, and the memory work already scoped as V2.01 in
+Part 2.
 
 ## Broken things
 
 Verified defects, not preferences. These come first because each one silently
 produces a wrong result or dead UI.
 
-- **Animated visualiser previews are dead code.** `ui.js:963-990` probes for
-  `prg/<id>.gif` and swaps on hover, gated on `visualizer.animated`. No registry
-  entry sets `animated: true` and there are no `.gif` files in `public/prg/`.
-  Users pick a *motion* effect from a frozen still.
+- **Animated visualiser previews are still dead code, and this one needs assets
+  rather than code.** `ui.js` probes for `prg/<id>.gif` and swaps on hover, gated
+  on `visualizer.animated`. No registry entry sets `animated: true` and there are
+  no `.gif` files in `public/prg/`, so users pick a *motion* effect from a frozen
+  still. The path is marked in place as waiting on the recordings — one per
+  visualiser, made in an emulator — so it is not rewritten when they arrive.
 
 ## Analysis timing — run it in the background, then ask a better question
 
