@@ -157,13 +157,30 @@
                     </button>
                 </div>
 
+                <!-- Batch queue: appears when more than one SID is chosen or
+                     dropped. Populated by ui.js renderQueue. -->
+                <div class="sid-queue" id="sidQueue" hidden>
+                    <div class="sid-queue-head">
+                        <span class="sid-queue-title" id="sidQueueTitle">Queue</span>
+                        <button type="button" class="upload-btn sid-queue-run" id="sidQueueRun">
+                            <i class="fas fa-layer-group"></i> <span>Export all with these settings</span>
+                        </button>
+                        <button type="button" class="upload-btn sid-queue-stop" id="sidQueueStop" hidden>
+                            <i class="fas fa-stop"></i> <span>Stop</span>
+                        </button>
+                        <button type="button" class="sid-queue-clear" id="sidQueueClear" aria-label="Clear the queue">&#10005;</button>
+                    </div>
+                    <p class="sid-queue-note" id="sidQueueNote"></p>
+                    <ol class="sid-queue-list" id="sidQueueList"></ol>
+                </div>
+
                 <!-- HVSC Selected File Display (hidden by default) -->
                 <div class="hvsc-selected" id="hvscSelected" style="display: none;">
                     <span class="selected-label">Selected:</span>
                     <span class="selected-file" id="selectedFile"></span>
                 </div>
 
-                <input type="file" id="fileInput" accept=".sid" style="display: none;">
+                <input type="file" id="fileInput" accept=".sid" multiple style="display: none;">
             </div>
 
             <!-- Now-playing card: title/author + player + entry into the Studio -->

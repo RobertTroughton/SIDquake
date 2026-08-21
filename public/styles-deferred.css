@@ -4716,3 +4716,115 @@
     color: var(--text-muted);
     font-size: 0.85em;
 }
+
+/* ==========================================================================
+   Batch queue (landing page)
+   --------------------------------------------------------------------------
+   Dropping several SIDs used to load one and discard the rest silently. The
+   queue shows what is waiting and exports the set with one press.
+   ========================================================================== */
+.sid-queue {
+    margin-top: var(--space-md);
+    padding: var(--space-md);
+    background: var(--bg-surface);
+    border: 1px solid var(--border-light);
+    border-radius: var(--radius-md);
+    text-align: left;
+}
+
+.sid-queue[hidden] {
+    display: none;
+}
+
+.sid-queue-head {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--space-sm);
+}
+
+.sid-queue-title {
+    flex: 1 1 auto;
+    min-width: 0;
+    font-family: var(--font-display);
+    font-size: 0.95em;
+    color: var(--text-accent);
+}
+
+.sid-queue .upload-btn {
+    flex: 0 0 auto;
+    padding: 8px 14px;
+    font-size: 0.8em;
+}
+
+.sid-queue-clear {
+    flex: 0 0 auto;
+    width: 28px;
+    height: 28px;
+    background: transparent;
+    border: 1px solid var(--border-light);
+    border-radius: var(--radius-sm);
+    color: var(--text-secondary);
+    cursor: pointer;
+}
+
+.sid-queue-clear:hover {
+    color: var(--text-primary);
+    border-color: var(--accent);
+}
+
+.sid-queue-note {
+    margin: var(--space-sm) 0 0;
+    color: var(--text-muted);
+    font-size: 0.82em;
+    line-height: 1.5;
+}
+
+.sid-queue-list {
+    margin: var(--space-sm) 0 0;
+    padding: 0;
+    list-style: none;
+    max-height: 240px;
+    overflow-y: auto;
+}
+
+.sq-item {
+    display: flex;
+    align-items: baseline;
+    gap: var(--space-sm);
+    padding: 4px 0;
+    font-size: 0.85em;
+    color: var(--text-secondary);
+    border-bottom: 1px solid var(--border);
+}
+
+.sq-item:last-child {
+    border-bottom: none;
+}
+
+/* State is carried by the glyph and the text, not by colour alone. */
+.sq-mark {
+    flex: 0 0 1.2em;
+    text-align: center;
+    color: var(--text-muted);
+}
+
+.sq-name {
+    flex: 1 1 auto;
+    min-width: 0;
+    overflow-wrap: anywhere;
+    font-family: var(--font-mono);
+}
+
+.sq-note {
+    flex: 0 0 auto;
+    color: var(--text-muted);
+    font-size: 0.9em;
+}
+
+.sq-done .sq-mark { color: var(--success); }
+.sq-done .sq-name { color: var(--text-primary); }
+.sq-failed .sq-mark { color: var(--error); }
+.sq-building .sq-mark,
+.sq-loaded .sq-mark { color: var(--accent); }
+.sq-building .sq-name { color: var(--text-primary); }

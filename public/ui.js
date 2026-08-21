@@ -513,12 +513,9 @@ class UIController {
             dragDepth = 0;
             document.body.classList.remove('file-dragging');
             uploadSection.classList.remove('dragover');
-            const files = e.dataTransfer.files;
-            if (files.length > 0) {
-                this.processFile(files[0]).catch((err) => {
-                    console.error('Error processing dropped file:', err);
-                });
-            }
+            this.acceptFiles(e.dataTransfer.files).catch((err) => {
+                console.error('Error processing dropped file:', err);
+            });
         });
     }
 
@@ -681,10 +678,114 @@ class UIController {
     }
 
     async handleFileSelect(event) {
-        const file = event.target.files[0];
-        if (file) {
-            this.elements.hvscSelected.style.display = 'none';
-            await this.processFile(file);
+        await this.acceptFiles(event.target.files);
+    }
+
+    // ---------------------------------------------------------------------
+    // Batch queue
+    // ---------------------------------------------------------------------
+
+    // One or many SIDs, from the picker or a drop. The first is loaded as
+    // always; the rest wait in a queue that can be exported with whatever
+    // settings the user then chooses. Dropping a folder of tunes used to load
+    // one and silently discard the others.
+    async acceptFiles(fileList) {
+        const files = [...(fileList || [])].filter(f => /\.sid$/i.test(f.name));
+        if (!files.length) return;
+        this.elements.hvscSelected.style.display = 'none';
+        this._queue = files.map(f => ({ file: f, state: 'pending', note: '' }));
+        this._queue[0].state = 'loaded';
+        this.renderQueue();
+        await this.processFile(files[0]);
+    }
+
+    renderQueue() {
+        const box = document.getElementById('sidQueue');
+        if (!box) return;
+        this._wireQueueControls();
+        const q = this._queue || [];
+        // One file is not a queue - the Studio already tells you what is loaded.
+        if (q.length < 2) { box.hidden = true; return; }
+        box.hidden = false;
+
+        const done = q.filter(i => i.state === 'done').length;
+        const failed = q.filter(i => i.state === 'failed').length;
+        document.getElementById('sidQueueTitle').textContent =
+            `${q.length} tunes queued${done ? ` · ${done} exported` : ''}${failed ? ` · ${failed} failed` : ''}`;
+
+        const note = document.getElementById('sidQueueNote');
+        if (note) {
+            note.textContent = this._queueRunning
+                ? 'Exporting each tune with the settings below. Every file lands in your downloads.'
+                : 'Set up the first tune the way you want the whole set, then export them all. '
+                + 'Each one is measured and built with the same visualizer and options.';
+        }
+
+        const icon = { pending: '·', loaded: '▸', building: '…', done: '✓', failed: '✕' };
+        document.getElementById('sidQueueList').innerHTML = q.map((item, i) => `
+            <li class="sq-item sq-${item.state}">
+                <span class="sq-mark" aria-hidden="true">${icon[item.state] || '·'}</span>
+                <span class="sq-name">${String(item.file.name).replace(/[&<>"]/g, c =>
+                    ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]))}</span>
+                <span class="sq-note">${item.note ? String(item.note).replace(/[&<>]/g, '') : ''}</span>
+            </li>`).join('');
+
+        document.getElementById('sidQueueRun').hidden = this._queueRunning;
+        document.getElementById('sidQueueStop').hidden = !this._queueRunning;
+    }
+
+    _wireQueueControls() {
+        if (this._queueWired) return;
+        this._queueWired = true;
+        const on = (id, fn) => {
+            const el = document.getElementById(id);
+            if (el) el.addEventListener('click', fn);
+        };
+        on('sidQueueRun', () => this.runQueue());
+        on('sidQueueStop', () => { this._queueStop = true; });
+        on('sidQueueClear', () => {
+            this._queue = [];
+            this._queueStop = true;
+            this.renderQueue();
+        });
+    }
+
+    // Export every queued tune with the current settings. The visualizer choice
+    // and the option values are already sticky across a load, so "the same look
+    // for the whole set" needs nothing extra - but a tune the chosen visualizer
+    // cannot fit falls back to another one, and that is worth reporting.
+    async runQueue() {
+        if (this._queueRunning || !(this._queue || []).length) return;
+        this._queueRunning = true;
+        this._queueStop = false;
+        const wanted = this._lastVisualizerId;
+        this.renderQueue();
+        try {
+            for (const item of this._queue) {
+                if (this._queueStop) { item.state = item.state === 'done' ? 'done' : 'pending'; continue; }
+                item.state = 'building';
+                item.note = '';
+                this.renderQueue();
+                try {
+                    await this.processFile(item.file);
+                    const got = this.selectedVisualizer?.dataSourceGroup
+                        || this.selectedVisualizer?.id;
+                    if (wanted && got !== wanted) {
+                        item.note = `used ${this.selectedVisualizer?.name || 'another player'}`;
+                    }
+                    await this.exportPRGWithVisualizer();
+                    item.state = this._lastExportOk ? 'done' : 'failed';
+                    if (!this._lastExportOk) item.note = this._lastExportMessage || 'export failed';
+                } catch (e) {
+                    item.state = 'failed';
+                    item.note = e && e.message ? e.message : 'failed';
+                }
+                this.renderQueue();
+            }
+        } finally {
+            this._queueRunning = false;
+            this._queueStop = false;
+            this.renderQueue();
         }
     }
 
@@ -3153,6 +3254,9 @@ class UIController {
     }
 
     async exportPRGWithVisualizer() {
+        // The queue needs to know how each build went; this method reports
+        // everything through the UI and returns nothing.
+        this._lastExportOk = false;
         if (!this.selectedVisualizer) {
             this.showExportStatus('Please select a visualizer', 'error');
             return;
@@ -3426,6 +3530,7 @@ class UIController {
             // The file is the result, so say what it is and what to do with it on
             // the page rather than in a dialog that dismisses itself after two
             // seconds. (It used to do both, for one event.)
+            this._lastExportOk = true;
             this.renderExportDone({
                 filename,
                 sizeKB,
@@ -3624,6 +3729,9 @@ class UIController {
         const multiSong = !!(this.sidHeader && this.sidHeader.songs > 1);
         const eligible = !!(a && !a.looped && a.fadedOut && !multiSong);
         if (!eligible) return false;
+        // During a queue run there is nobody watching each tune go by, and a
+        // modal per file would stall the batch. Use the toggle as it stands.
+        if (this._queueRunning) return !!(toggle && toggle.checked && !toggle.disabled);
         if (!this._loopChoiceAsked && !this._loopChoiceTouched && window.errorModal) {
             this._loopChoiceAsked = true;
             const at = this._mmss(a.loopStartSeconds);
@@ -4024,6 +4132,9 @@ class UIController {
     }
 
     showExportStatus(message, type) {
+        // Kept for the queue, which reports per-file reasons long after this
+        // status has auto-hidden.
+        this._lastExportMessage = message;
         const status = this.elements.exportStatus;
         if (status) {
             status.textContent = message;

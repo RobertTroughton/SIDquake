@@ -17,7 +17,6 @@ Ranked by value against effort, not by section order. Each line names the sectio
 that holds the detail.
 
 1. Ship the eleven preview GIFs and set `animated: true`. *(Preview)*
-2. Multi-file drop and a queue. *(Batch)*
 
 Bigger pieces worth planning rather than picking up: the live in-browser preview,
 recipe files plus the `sidquake-build` CLI, the listener-first entry point, and
@@ -347,11 +346,16 @@ The exporter assumes one tune, one sitting, one human, and forgets most state
 between tunes. A 14-tune music disk is ~15 interactions each, ~300 in total, with
 a human required between every blocking wait.
 
-- **Accept multiple files on drop.** `ui.js:493` takes `files[0]` and silently
-  discards the rest; the file input has no `multiple` (`index.html:166`).
-- **A queue in the UI**: list the dropped SIDs, configure against the first,
-  "apply to all and export", results to a chosen directory. This needs no
-  refactor and removes most of the pain.
+- **Done: multi-file drop and a queue.** Several SIDs load the first and list
+  the rest; "Export all with these settings" walks the queue, reporting per-tune
+  state and noting any tune that had to fall back to a different player. The
+  fade-out prompt is suppressed during a run so a batch cannot stall on a modal.
+- **Still open: choose an output directory.** Every file lands in the browser's
+  downloads folder. `showDirectoryPicker()` would fix it where supported, but it
+  is Chromium-only, so it needs a fallback (a zip) rather than a hard dependency.
+- **Still open: the queue re-measures every tune.** Each export blocks on that
+  tune's own scan. The persisted analysis cache below is what makes a re-run of
+  the same set fast.
 - **Recipe files** (`.sqrecipe.json`): player + data source, every option value,
   logo reference and its placement, compression, sub-tune, forced-loop answer and
   the analysis settings — plus a `built` block (load address, uncompressed span,

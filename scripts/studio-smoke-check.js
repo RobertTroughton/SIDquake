@@ -58,6 +58,24 @@ function check(name, ok, detail = '') {
     console.log(`${ok ? 'PASS' : 'FAIL'}  ${name}${detail ? ` - ${detail}` : ''}`);
 }
 
+async function loadSids(page, files) {
+    const payload = files.map((name) => ({
+        name, b64: fs.readFileSync(path.join(SIDS, name)).toString('base64'),
+    }));
+    await page.evaluate(async (items) => {
+        const dt = new DataTransfer();
+        for (const { name, b64 } of items) {
+            const bin = atob(b64);
+            const arr = new Uint8Array(bin.length);
+            for (let i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i);
+            dt.items.add(new File([arr], name, { type: 'application/octet-stream' }));
+        }
+        const input = document.getElementById('fileInput');
+        input.files = dt.files;
+        input.dispatchEvent(new Event('change', { bubbles: true }));
+    }, payload);
+}
+
 async function loadSid(page, file) {
     const bytes = fs.readFileSync(path.join(SIDS, file));
     await page.evaluate(async ({ name, b64 }) => {
@@ -298,6 +316,37 @@ async function loadSid(page, file) {
         check('It explains the SYS address rather than just printing it', done.explainsSys);
         check('It links an emulator and how to run the file',
             done.linksEmulator && done.howToRun, JSON.stringify(done));
+
+        // --- multi-file queue -------------------------------------------------
+        await loadSids(page, ['Flex-Lundia.sid', 'JCH-Crystalline.sid', 'Xiny-Laxity.sid']);
+        await page.waitForFunction(
+            () => window.uiController.currentFileName === 'Flex-Lundia.sid', null, { timeout: 60000 });
+        await page.waitForTimeout(500);
+        const queue = await page.evaluate(() => {
+            const box = document.getElementById('sidQueue');
+            return {
+                shown: !box.hidden,
+                queued: window.uiController._queue?.length || 0,
+                rows: document.querySelectorAll('#sidQueueList .sq-item').length,
+                names: [...document.querySelectorAll('#sidQueueList .sq-name')].map(n => n.textContent),
+                loadedFirst: window.uiController.currentFileName,
+                inputAcceptsMany: document.getElementById('fileInput').multiple,
+            };
+        });
+        check('Dropping several SIDs keeps them all', queue.queued === 3,
+            `${queue.queued} queued, input multiple=${queue.inputAcceptsMany}`);
+        check('The queue is shown with a row per tune',
+            queue.shown && queue.rows === 3, JSON.stringify({ shown: queue.shown, rows: queue.rows }));
+        check('The first tune still loads immediately',
+            queue.loadedFirst === 'Flex-Lundia.sid', queue.loadedFirst);
+
+        const cleared = await page.evaluate(() => {
+            document.getElementById('sidQueueClear').click();
+            return { shown: !document.getElementById('sidQueue').hidden,
+                queued: window.uiController._queue.length };
+        });
+        check('The queue can be cleared', cleared.shown === false && cleared.queued === 0,
+            JSON.stringify(cleared));
 
         const fatal = errors.filter(e => !/favicon|net::ERR_|404/i.test(e));
         check('No uncaught page errors', fatal.length === 0, fatal.slice(0, 3).join(' | '));
