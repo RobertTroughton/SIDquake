@@ -371,9 +371,15 @@ a human required between every blocking wait.
   fallback is real now: a title with nothing a C64 directory can hold used to
   produce a file called `.prg`, because the `'output'` fallback only fired when
   there was no filename at all, not when sanitising emptied it.
-- **Layout hints** — preferred VIC bank, preferred code region, reserved ranges —
-  soft, falling back to automatic with a visible note. A disk with a shared
-  loader wants every PRG in the same bank.
+- **Preferred VIC bank is in** (Advanced settings), soft, falling back to
+  automatic with a warning when the tune leaves no room for it. Still open: a
+  preferred code region and reserved ranges, so a loader can keep, say,
+  `$C000-$CFFF` for itself.
+- **`createLayoutSelectorHTML` (`ui.js`) is still unreachable dead code.** It
+  offers the *fixed-bank* layouts, which only the three non-relocatable players
+  use; everything else places through `planRelocationCodeOnly`, which the bank
+  preference now drives. Either wire it up for those three, or drop it together
+  with the fixed-bank path when V2.01 retires them.
 - **Done: blocks, span and wasted space** are reported on the completion panel —
   disk blocks because that is the unit a release is budgeted in, where the
   program runs, and a warning when an uncompressed file is mostly the empty
