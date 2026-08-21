@@ -16,51 +16,34 @@ source; where a claim still needs a browser to confirm it, it says so.
 Ranked by value against effort, not by section order. Each line names the section
 that holds the detail.
 
-1. Fix the metadata-to-PRG bug, and add the `#exportManifest` div. Two small
-   changes; one stops shipping wrong releases, the other restores the Export
-   tab's summary. *(Broken things)*
-2. The nine `for=` attributes, `logoFitModal` in the modal-precedence list, the
+1. The nine `for=` attributes, `logoFitModal` in the modal-precedence list, the
    `prefers-reduced-motion` guard on floating notes, one global `:focus-visible`
    rule, and the two colour-token fixes. An afternoon; moves the app from
    unusable to usable with a keyboard or a screen reader. *(Accessibility)*
-3. Build the curated Random SID pool file. One build script, ~2 MB off the front
+2. Build the curated Random SID pool file. One build script, ~2 MB off the front
    door. *(Mobile and first impression)*
-4. Background the loop/length analysis from load with a corner status chip, and
+3. Background the loop/length analysis from load with a corner status chip, and
    turn the Song tab's row into "show the song length on screen?" *(Analysis
    timing)*
-5. Move Generate PRG onto every tab; collapse Technical Details; move the frame
+4. Move Generate PRG onto every tab; collapse Technical Details; move the frame
    rate, stored bars and analysis engine behind an Advanced disclosure; restore
    the scan window, min-loop and bank override into it. *(Progressive disclosure)*
-6. Ship the eleven preview GIFs and set `animated: true`. *(Preview)*
-7. Don't auto-open the Studio below 720px; un-hide the visualiser on phones;
+5. Ship the eleven preview GIFs and set `animated: true`. *(Preview)*
+6. Don't auto-open the Studio below 720px; un-hide the visualiser on phones;
    autoplay after Random SID. *(Mobile and first impression)*
-8. The completion panel that tells a first-timer what a .prg is and how to run
+7. The completion panel that tells a first-timer what a .prg is and how to run
    it. *(Language)*
-9. Multi-file drop and a queue. *(Batch)*
+8. Multi-file drop and a queue. *(Batch)*
 
 Bigger pieces worth planning rather than picking up: the live in-browser preview,
 recipe files plus the `sidquake-build` CLI, the listener-first entry point, and
 the memory work already scoped as V2.01 in Part 2.
 
-## The five things that are actually broken
+## Broken things
 
 Verified defects, not preferences. These come first because each one silently
 produces a wrong result or dead UI.
 
-- **Edited metadata never reaches the exported PRG.** Editing Title / Author /
-  Copyright writes into WASM only (`ui.js:619` → `sidquake-core.js:302`).
-  `analyzer.sidHeader` is set once at load (`ui.js:687`) and never refreshed, and
-  `createPRG` reads that stale object (`prg-builder.js:2354`) to paint the three
-  text rows (`prg-builder.js:543-570`). "Save SID" gets the edit; the PRG does
-  not. The whole point of the tool is shipping a release with your name on it.
-- **The export manifest has never rendered.** `studio-modal.js:20` looks up
-  `#exportManifest`; that element does not exist in `index.html`, so
-  `renderManifest()` returns at `studio-modal.js:412` every time. ~110 lines
-  build a full "what's going into your PRG" table — player, music, song loop,
-  logo source, font, scrolltext, style, bake status, compression — each row with
-  an "edit ›" jump-to-tab button, including the multi-song FFT consent warning as
-  an action-needed row. Add the `<div>` and the Export tab gains its pre-flight
-  summary. Every persona asked for exactly this, independently.
 - **Animated visualiser previews are dead code.** `ui.js:963-990` probes for
   `prg/<id>.gif` and swaps on hover, gated on `visualizer.animated`. No registry
   entry sets `animated: true` and there are no `.gif` files in `public/prg/`.

@@ -353,6 +353,11 @@
             <section class="studio-panel section-group export-section" data-studio-tab="export" id="exportSection">
               <h3 class="studio-panel-title">Export</h3>
 
+              <!-- Pre-flight summary of everything the PRG will be built from,
+                   with per-row jump-to-tab buttons (populated by studio-modal.js
+                   renderManifest). -->
+              <div class="studio-manifest" id="exportManifest"></div>
+
               <!-- Compression / advanced settings / bake readout (populated by ui.js) -->
               <div id="exportConfigMount"></div>
 

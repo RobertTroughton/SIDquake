@@ -630,6 +630,17 @@ class UIController {
 
         this.analyzer.updateMetadata(analyzerFieldName, text);
 
+        // updateMetadata only writes the WASM copy, which is what a saved .sid is
+        // built from. The PRG's on-screen title/author/copyright come from the
+        // cached header object instead (prg-builder createPRG -> generateDataBlock),
+        // so it has to move in step or an edit reaches the .sid and not the export.
+        // sidHeader and analyzer.sidHeader are the same object today; update both
+        // in case they ever stop being.
+        for (const h of [this.sidHeader, this.analyzer.sidHeader]) {
+            if (h) h[analyzerFieldName] = text;
+        }
+        if (window.studioModal) window.studioModal.refreshHeader();
+
         this.checkForModifications();
     }
 

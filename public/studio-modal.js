@@ -409,6 +409,9 @@ class StudioModal {
     }
 
     renderManifest() {
+        // Resolved lazily as well as in the constructor: a missing element here
+        // silently disables the whole summary, which is how it went unnoticed.
+        if (!this.manifestEl) this.manifestEl = document.getElementById('exportManifest');
         if (!this.manifestEl) return;
         const ui = this.ui;
         const viz = ui?.selectedVisualizer;
@@ -514,8 +517,11 @@ class StudioModal {
 
         const comp = document.querySelector('input[name="compression-type"]:checked');
         const compNames = { none: 'none (raw PRG)', tscrunch: 'TSCrunch', exomizer: 'Exomizer' };
+        // Fallback matches what the exporter uses when no radio is checked
+        // (ui.js exportPRGWithVisualizer), so the summary can't promise one
+        // compressor and ship another.
         rows.push(this.manifestRow('Compression',
-            compNames[comp && comp.value] || 'TSCrunch', 'ok', 'inc', 'export'));
+            compNames[comp && comp.value] || compNames.exomizer, 'ok', 'inc', 'export'));
 
         this.manifestEl.innerHTML = `<table><tbody>${rows.join('')}</tbody></table>`;
         for (const btn of this.manifestEl.querySelectorAll('.mf-go')) {
