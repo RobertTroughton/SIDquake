@@ -84,12 +84,12 @@ back per job id, and the job table is on a global so `ui.js` and `prg-builder.js
 share one worker and one render cache. Backgrounding needs no architectural
 change. The gaps:
 
-- **Still open: the worker does not serialise jobs.** `self.onmessage` is `async`
-  and starts each `run` immediately (`spectrometer-bake-worker.js:71`), while
-  `createBakeCore` holds a single engine and a single `cache.rows` slot. `ui.js`
-  now keeps one in-flight analysis per page (`_ensureAnalysis`), so nothing
-  overlaps today, but the worker would still happily run two if asked. Queue them
-  worker-side rather than relying on the caller.
+- **Done: the worker serialises jobs.** Runs go through a promise chain, so the
+  worker no longer depends on its caller keeping one analysis in flight. A run's
+  AbortController is registered when its message lands rather than when the run
+  starts, so aborting a queued job is honoured before it begins — and `ensureRows`
+  now refuses an already-aborted signal, which a cache hit used to sail past and
+  report success for.
 - **Still open: rendering while the tune plays** is two cores' worth of work.
   Check it on a phone before backgrounding there — the Studio does not auto-open
   on phones once that change lands, which already limits the exposure.

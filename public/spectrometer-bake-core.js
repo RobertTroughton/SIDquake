@@ -309,6 +309,10 @@ export function createBakeCore(loadEngine) {
     // this - the render is ~90% of the cost, so pricing the fps options and then
     // exporting reuse one render.
     async function ensureRows(sidBytes, options = {}) {
+        // A job cancelled before it started must not come back with an answer,
+        // and a cache hit would otherwise sail straight past the render's own
+        // abort checks and report success.
+        if (options.signal && options.signal.aborted) throw abortError();
         const sampleRate = options.sampleRate || 44100;
         const maxSeconds = options.maxSeconds || 720;
         const numBars = options.numBars || 40;

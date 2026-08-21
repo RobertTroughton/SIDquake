@@ -963,6 +963,64 @@ async function loadSid(page, file) {
                 railReuse.focusKept === true, JSON.stringify(railReuse));
         }
 
+        // --- the bake worker runs one job at a time ---------------------------
+        const workerJobs = await page.evaluate(async () => {
+            const cb = window.cacheBust || (s => s);
+            // Classic worker, same as spectrometer-bake-runner.js creates: the
+            // worker importScripts() the engine glue, which a module worker cannot.
+            const w = new Worker(cb('./spectrometer-bake-worker.js'));
+            const bytes = window.uiController.analyzer.createModifiedSID();
+            const opts = {
+                subtune: 0, numBars: 40, maxHeight: 111, maxSeconds: 12,
+                minLoopSeconds: 2, engine: 'resid',
+            };
+            const events = [];
+            const done = {};
+            const ready = new Promise((resolve, reject) => {
+                const t = setTimeout(() => reject(new Error('worker never became ready')), 30000);
+                w.onmessage = (e) => {
+                    const m = e.data;
+                    if (m.type === 'ready') { clearTimeout(t); resolve(); return; }
+                    if (m.type === 'unsupported') { clearTimeout(t); reject(new Error(m.message)); return; }
+                    if (m.type === 'progress') events.push(`p${m.id}`);
+                    if (m.type === 'done') { events.push(`d${m.id}`); done[m.id] = 'done'; }
+                    if (m.type === 'error') {
+                        events.push(`e${m.id}:${m.name}:${m.message}`);
+                        done[m.id] = m.name;
+                    }
+                };
+            });
+            w.postMessage({ type: 'init', cacheBust: '' });
+            await ready;
+
+            const copy = () => new Uint8Array(bytes).buffer;
+            w.postMessage({ type: 'run', id: 1, op: 'analyze', sidBytes: copy(), options: opts });
+            w.postMessage({ type: 'run', id: 2, op: 'analyze', sidBytes: copy(), options: opts });
+            // Job 2 is queued behind job 1, so this abort must reach it before it
+            // ever starts - the controller is registered when the message lands,
+            // not when the run begins.
+            w.postMessage({ type: 'abort', id: 2 });
+
+            const t0 = performance.now();
+            while (!(done[1] && done[2]) && performance.now() - t0 < 90000) {
+                await new Promise(r => setTimeout(r, 100));
+            }
+            w.terminate();
+            // Nothing from job 2 may appear before job 1 has finished.
+            const firstTwo = events.findIndex(e => e.endsWith('2'));
+            const oneDone = events.indexOf('d1');
+            return { one: done[1], two: done[2], interleaved: firstTwo !== -1 && firstTwo < oneDone,
+                     events: events.slice(0, 6).concat(events.length > 6 ? ['…'] : []) };
+        }).catch(e => ({ failed: String(e && e.message || e) }));
+        if (workerJobs.failed) {
+            console.log(`SKIP  bake worker job order - ${workerJobs.failed}`);
+        } else {
+            check('The bake worker finishes one job before starting the next',
+                workerJobs.interleaved === false, JSON.stringify(workerJobs));
+            check('A job aborted while it is still queued never runs',
+                workerJobs.two === 'AbortError', JSON.stringify(workerJobs));
+        }
+
         // --- measurements are remembered across reloads -----------------------
         const store = await page.evaluate(async () => {
             const cb = window.cacheBust || (s => s);
