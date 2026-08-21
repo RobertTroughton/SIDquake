@@ -1465,3 +1465,23 @@ details[open].panel > summary h2::after {
 /* Step counter: only earns its place where the tab rail is gone. */
 .studio-nav-pos { display: none; }
 .studio-nav-btn:hover { filter: brightness(1.12); }
+
+/* Skip link: the first tab stop on the page, visible only once focused. The
+   Genesis cross-site nav is four links deep before the app starts. */
+.skip-link {
+    position: absolute;
+    left: -9999px;
+    top: 0;
+    z-index: 2000;
+    padding: 10px 16px;
+    background: var(--accent);
+    color: var(--bg-primary);
+    font-family: var(--font-mono);
+    font-size: 0.85em;
+    text-decoration: none;
+    border-radius: 0 0 var(--radius-md) 0;
+}
+
+.skip-link:focus {
+    left: 0;
+}

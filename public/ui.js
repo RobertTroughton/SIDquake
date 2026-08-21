@@ -1523,9 +1523,7 @@ class UIController {
             if (grid) {
                 const thumb = grid.querySelector(`.bar-style-thumbnail[data-value="${value}"]`);
                 if (!thumb) continue;
-                el.value = value;
-                grid.querySelectorAll('.bar-style-thumbnail').forEach(t => t.classList.remove('selected'));
-                thumb.classList.add('selected');
+                this.selectGridThumb(grid, thumb);
                 continue;
             }
             // Palette editors carry their state in a hidden input; move the
@@ -2431,13 +2429,17 @@ class UIController {
     _fontThumbHTML(v, isSelected) {
         if (v.isROM) {
             return `<div class="bar-style-thumbnail placeholder ${isSelected ? 'selected' : ''}"
-                     data-value="${v.value}" data-font-id="${v.id}" title="${v.label}">
+                     role="radio" aria-checked="${isSelected}" tabindex="${isSelected ? 0 : -1}"
+                     data-value="${v.value}" data-font-id="${v.id}"
+                     aria-label="${v.label}" title="${v.label}">
                     <span>ROM</span>${this._fontCaseBadge(v.caseType)}
                     <span class="selected-check"><i class="fas fa-check"></i></span>
                     <span class="style-name">${v.label}</span></div>`;
         }
         return `<div class="bar-style-thumbnail ${isSelected ? 'selected' : ''}"
-                 data-value="${v.value}" data-font-id="${v.id}" data-font-path="${v.imagePath}" title="${v.label}">
+                 role="radio" aria-checked="${isSelected}" tabindex="${isSelected ? 0 : -1}"
+                 data-value="${v.value}" data-font-id="${v.id}" data-font-path="${v.imagePath}"
+                 aria-label="${v.label}" title="${v.label}">
                 <img class="font-thumbnail-img" alt="${v.label}">
                 ${this._fontCaseBadge(v.caseType)}
                 <span class="selected-check"><i class="fas fa-check"></i></span>
@@ -2473,11 +2475,15 @@ class UIController {
 
         return `
             <div class="bar-style-container font-selector" data-config-id="${config.id}" data-font-type="${fontType}">
-                <span class="bar-style-label">${config.label}</span>
-                <div class="font-selector-current" id="${config.id}-current-grid">
+                <span class="bar-style-label" id="${config.id}-grid-label">${config.label}</span>
+                <!-- The current-font preview mirrors the grid below; it is not a
+                     second control, so it stays out of the tab order and the
+                     accessibility tree. -->
+                <div class="font-selector-current" id="${config.id}-current-grid" aria-hidden="true">
                     ${this._fontThumbHTML(selected, true)}
                 </div>
-                <div class="bar-style-grid font-selector-grid" id="${config.id}-grid" data-config-id="${config.id}">
+                <div class="bar-style-grid font-selector-grid" id="${config.id}-grid" data-config-id="${config.id}"
+                     role="radiogroup" aria-labelledby="${config.id}-grid-label">
                     ${thumbs}
                 </div>
                 <input type="hidden" id="${config.id}" value="${defaultValue}">
@@ -2521,6 +2527,27 @@ class UIController {
         }
     }
 
+    // Move a grid's selection: the hidden input the exporter reads, the visual
+    // state, the radio state, and the roving tabindex that keeps the group to a
+    // single tab stop. Used by clicks, by the arrow keys, and by the session
+    // option memory when it restores a value.
+    selectGridThumb(grid, thumbnail) {
+        if (!grid || !thumbnail) return;
+        const configId = grid.dataset.configId;
+        const hiddenInput = configId && document.getElementById(configId);
+        if (hiddenInput) hiddenInput.value = parseInt(thumbnail.dataset.value);
+
+        for (const t of grid.querySelectorAll('.bar-style-thumbnail')) {
+            const on = t === thumbnail;
+            t.classList.toggle('selected', on);
+            t.setAttribute('aria-checked', on ? 'true' : 'false');
+            t.tabIndex = on ? 0 : -1;
+        }
+
+        // The colour-effect grid gates which palette editor is shown.
+        if (configId === 'colorEffect') this.updateConditionalVisibility();
+    }
+
     createBarStyleGridHTML(config) {
         const defaultValue = config.default || 0;
 
@@ -2534,7 +2561,9 @@ class UIController {
 
             return `
                 <div class="bar-style-thumbnail ${isSelected ? 'selected' : ''}"
+                     role="radio" aria-checked="${isSelected}" tabindex="${isSelected ? 0 : -1}"
                      data-value="${v.value}"
+                     aria-label="${v.label}"
                      title="${v.label}">
                     <img src="${imagePath}"
                          alt="Style ${v.value}"
@@ -2547,8 +2576,9 @@ class UIController {
 
         return `
             <div class="bar-style-container">
-                <span class="bar-style-label">${config.label}</span>
-                <div class="bar-style-grid" id="${config.id}-grid" data-config-id="${config.id}">
+                <span class="bar-style-label" id="${config.id}-grid-label">${config.label}</span>
+                <div class="bar-style-grid" id="${config.id}-grid" data-config-id="${config.id}"
+                     role="radiogroup" aria-labelledby="${config.id}-grid-label">
                     ${thumbnailsHTML}
                 </div>
                 <input type="hidden" id="${config.id}" value="${defaultValue}">
@@ -2773,30 +2803,33 @@ class UIController {
             });
         });
 
-        // Bar style grid thumbnail handlers
+        // Bar style / colour effect / font grids. They are radio groups: one tab
+        // stop for the whole grid, arrows to move (so a 30-font grid costs one
+        // Tab, not thirty), and the value lives in the hidden input as before.
         panel.querySelectorAll('.bar-style-grid').forEach(grid => {
             grid.addEventListener('click', (e) => {
                 const thumbnail = e.target.closest('.bar-style-thumbnail');
-                if (!thumbnail) return;
+                if (thumbnail) this.selectGridThumb(grid, thumbnail);
+            });
 
-                const value = parseInt(thumbnail.dataset.value);
-                const configId = grid.dataset.configId;
-                const hiddenInput = document.getElementById(configId);
-
-                // Update hidden input value
-                if (hiddenInput) {
-                    hiddenInput.value = value;
+            grid.addEventListener('keydown', (e) => {
+                const thumbs = [...grid.querySelectorAll('.bar-style-thumbnail')];
+                if (!thumbs.length) return;
+                const here = e.target.closest('.bar-style-thumbnail');
+                const i = here ? thumbs.indexOf(here) : 0;
+                let next = null;
+                switch (e.key) {
+                    case 'ArrowRight': case 'ArrowDown': next = thumbs[(i + 1) % thumbs.length]; break;
+                    case 'ArrowLeft': case 'ArrowUp': next = thumbs[(i - 1 + thumbs.length) % thumbs.length]; break;
+                    case 'Home': next = thumbs[0]; break;
+                    case 'End': next = thumbs[thumbs.length - 1]; break;
+                    case ' ': case 'Enter': next = here; break;
+                    default: return;
                 }
-
-                // Update visual selection
-                grid.querySelectorAll('.bar-style-thumbnail').forEach(thumb => {
-                    thumb.classList.remove('selected');
-                });
-                thumbnail.classList.add('selected');
-
-                // If this is the colorEffect grid, update conditional visibility
-                if (configId === 'colorEffect') {
-                    this.updateConditionalVisibility();
+                e.preventDefault();
+                if (next) {
+                    this.selectGridThumb(grid, next);
+                    next.focus();
                 }
             });
         });
@@ -4137,6 +4170,10 @@ class UIController {
         this._lastExportMessage = message;
         const status = this.elements.exportStatus;
         if (status) {
+            // An error is announced at once and stays until something replaces
+            // it; anything else is polite and self-clearing (see below).
+            status.setAttribute('role', type === 'error' ? 'alert' : 'status');
+            status.setAttribute('aria-live', type === 'error' ? 'assertive' : 'polite');
             status.textContent = message;
             status.className = `export-status visible ${type}`;
 
@@ -4147,7 +4184,10 @@ class UIController {
                 this._exportStatusTimer = null;
             }
 
-            if (type !== 'info') {
+            // Errors and warnings stay put. A build failure that erases itself
+            // after five seconds is not a report - it was also the only thing
+            // saying why nothing downloaded.
+            if (type !== 'info' && type !== 'error' && type !== 'warning') {
                 this._exportStatusTimer = setTimeout(() => {
                     status.classList.remove('visible');
                 }, 5000);

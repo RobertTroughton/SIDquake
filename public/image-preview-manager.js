@@ -279,6 +279,9 @@ class GalleryModal {
             return;
         }
 
+        gridContainer.setAttribute('role', 'radiogroup');
+        gridContainer.setAttribute('aria-label', 'Image gallery');
+
         gallery.forEach((item, index) => {
             const card = document.createElement('div');
             card.className = 'gallery-item-card';
@@ -309,13 +312,8 @@ class GalleryModal {
 
             card.append(preview, info, badge);
 
-            card.addEventListener('click', () => {
-                document.querySelectorAll('.gallery-item-card').forEach(c => {
-                    c.classList.remove('selected');
-                });
-                card.classList.add('selected');
+            this._makeGalleryCardRadio(gridContainer, card, false, () => {
                 this.selectedItem = item;
-
                 setTimeout(() => {
                     this.selectImage();
                 }, 200);
@@ -788,6 +786,8 @@ class ImagePreviewManager {
         if (!gridEl) return;
         const gallery = config.gallery || [];
         gridEl.innerHTML = '';
+        gridEl.setAttribute('role', 'radiogroup');
+        if (config.label) gridEl.setAttribute('aria-label', config.label);
 
         gallery.forEach((item) => {
             const card = document.createElement('div');
@@ -817,15 +817,51 @@ class ImagePreviewManager {
             badge.innerHTML = '<i class="fas fa-check"></i> Selected';
 
             card.append(preview, info, badge);
-            card.addEventListener('click', () => {
-                gridEl.querySelectorAll('.gallery-item-card').forEach(c => c.classList.remove('selected'));
-                card.classList.add('selected');
-                this.loadGalleryImage(container, config, item.file, item.name);
-            });
+            this._makeGalleryCardRadio(gridEl, card, card.classList.contains('selected'),
+                () => this.loadGalleryImage(container, config, item.file, item.name));
             gridEl.appendChild(card);
         });
 
         this.annotateInlineLogoTypes(gridEl, gallery, config);
+    }
+
+    // Gallery grids are radio groups: one tab stop for the grid, arrows to move
+    // between images, Enter/Space to choose. They were <div>s with a click
+    // handler, so picking a supplied logo was impossible without a mouse.
+    _makeGalleryCardRadio(gridEl, card, isSelected, choose) {
+        card.setAttribute('role', 'radio');
+        card.setAttribute('aria-checked', isSelected ? 'true' : 'false');
+        card.setAttribute('aria-label', card.dataset.name || 'image');
+        // Nothing selected yet: the first card carries the group's tab stop, or
+        // the whole grid would be unreachable.
+        const isFirst = !gridEl.querySelector('.gallery-item-card');
+        const hasSelection = !!gridEl.querySelector('.gallery-item-card.selected');
+        card.tabIndex = (isSelected || (isFirst && !hasSelection)) ? 0 : -1;
+        const select = () => {
+            for (const c of gridEl.querySelectorAll('.gallery-item-card')) {
+                const on = c === card;
+                c.classList.toggle('selected', on);
+                c.setAttribute('aria-checked', on ? 'true' : 'false');
+                c.tabIndex = on ? 0 : -1;
+            }
+            choose();
+        };
+        card.addEventListener('click', select);
+        card.addEventListener('keydown', (e) => {
+            const cards = [...gridEl.querySelectorAll('.gallery-item-card')];
+            const i = cards.indexOf(card);
+            let next = null;
+            switch (e.key) {
+                case 'ArrowRight': case 'ArrowDown': next = cards[(i + 1) % cards.length]; break;
+                case 'ArrowLeft': case 'ArrowUp': next = cards[(i - 1 + cards.length) % cards.length]; break;
+                case 'Home': next = cards[0]; break;
+                case 'End': next = cards[cards.length - 1]; break;
+                case ' ': case 'Enter': e.preventDefault(); select(); return;
+                default: return;
+            }
+            e.preventDefault();
+            if (next) { next.tabIndex = 0; next.focus(); }
+        });
     }
 
     // Badge each inline gallery card with its detected logo type (scoped to

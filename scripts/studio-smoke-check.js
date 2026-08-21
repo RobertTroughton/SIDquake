@@ -293,6 +293,62 @@ async function loadSid(page, file) {
         } catch (e) { /* reported below */ }
         check('A completed scan yields an analysis', finished);
 
+        // --- option grids are radio groups, not mouse-only divs ---------------
+        const grids = await page.evaluate(async () => {
+            const ui = window.uiController;
+            // A bar visualizer brings the Bar Style / Colour Effect / Font grids.
+            await ui.selectVisualizer(VISUALIZERS.find(v => v.id === 'RaistlinBars'));
+            await new Promise(r => setTimeout(r, 800));
+            const grid = document.querySelector('.bar-style-grid');
+            if (!grid) return { found: false };
+            const thumbs = [...grid.querySelectorAll('.bar-style-thumbnail')];
+            const tabStops = thumbs.filter(t => t.tabIndex === 0).length;
+            const roles = grid.getAttribute('role') === 'radiogroup'
+                && thumbs.every(t => t.getAttribute('role') === 'radio');
+
+            // Arrow-key move must change both the selection and the value the
+            // exporter reads.
+            const start = grid.querySelector('.bar-style-thumbnail.selected') || thumbs[0];
+            start.focus();
+            const before = document.getElementById(grid.dataset.configId).value;
+            start.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true }));
+            const after = document.getElementById(grid.dataset.configId).value;
+            const checked = grid.querySelectorAll('[aria-checked="true"]').length;
+            return { found: true, tabStops, roles, before, after, checked,
+                     tabStopsAfter: thumbs.filter(t => t.tabIndex === 0).length };
+        });
+        check('Option grids expose radio semantics', grids.found && grids.roles,
+            JSON.stringify(grids));
+        check('A grid is one tab stop, not one per item',
+            grids.tabStops === 1 && grids.tabStopsAfter === 1,
+            `${grids.tabStops} -> ${grids.tabStopsAfter}`);
+        check('Arrow keys change the selected value',
+            grids.before !== grids.after && grids.checked === 1,
+            `${grids.before} -> ${grids.after}, checked=${grids.checked}`);
+
+        // --- landmarks and status semantics -----------------------------------
+        const semantics = await page.evaluate(() => {
+            const ui = window.uiController;
+            ui.showExportStatus('Smoke test failure', 'error');
+            const st = document.getElementById('exportStatus');
+            return {
+                main: !!document.querySelector('main#tabTool'),
+                skip: !!document.querySelector('a.skip-link[href="#tabTool"]'),
+                statusRole: st.getAttribute('role'),
+                statusLive: st.getAttribute('aria-live'),
+            };
+        });
+        check('The tool has a main landmark and a skip link',
+            semantics.main && semantics.skip, JSON.stringify(semantics));
+        check('An export failure is announced as an alert',
+            semantics.statusRole === 'alert' && semantics.statusLive === 'assertive',
+            `${semantics.statusRole}/${semantics.statusLive}`);
+        const stays = await page.evaluate(async () => {
+            await new Promise(r => setTimeout(r, 5600));
+            return document.getElementById('exportStatus').classList.contains('visible');
+        });
+        check('An export failure does not erase itself after 5s', stays === true);
+
         // --- the completion panel ---------------------------------------------
         // Rendered directly rather than by running a full export, which needs a
         // bake and a compressor and is not what this check is about.

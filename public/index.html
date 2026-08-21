@@ -85,6 +85,8 @@
     </noscript>
 </head>
 <body>
+    <a class="skip-link" href="#tabTool">Skip to the tool</a>
+
     <!-- Genesis Project Common Header -->
     <header class="genesis-header">
         <div class="genesis-header-inner">
@@ -131,7 +133,8 @@
             </nav>
         </div>
 
-        <div class="main-content" id="tabTool" role="tabpanel" aria-labelledby="tab-tool">
+        <main class="main-content" id="tabTool" role="tabpanel" aria-labelledby="tab-tool" tabindex="-1">
+            <h2 class="visually-hidden">Load a SID tune</h2>
             <!-- Simplified Upload Section -->
             <div class="upload-container">
                 <!-- Drag & Drop Area -->
@@ -195,7 +198,7 @@
 
             <!-- Error Message -->
             <div class="error-message" id="errorMessage"></div>
-        </div>
+        </main>
 
     <!-- Studio modal: the whole configure->export pipeline lives here as tabs.
          Panels stay mounted when inactive - prg-builder reads option values
@@ -417,7 +420,7 @@
         </div>
         <footer class="studio-foot">
             <div class="studio-foot-sum" id="studioFootSum"></div>
-            <div class="export-status" id="exportStatus"></div>
+            <div class="export-status" id="exportStatus" role="status" aria-live="polite"></div>
             <div class="studio-nav-btns" id="studioNavBtns"></div>
             <button class="export-button" id="exportPRGButton" disabled>
                 <i class="fas fa-download"></i> Generate PRG

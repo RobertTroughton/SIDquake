@@ -225,22 +225,18 @@ other twenty places that needed them.
   tool also still needs its own Tab trap and focus restore (copy `ui.js:274-296`),
   and its document-level arrow handler swallows the Size slider's arrow keys —
   scope it to the canvas.
-- **Nothing is announced, including the multi-minute wait.** `showBusy`
-  (`ui.js:3757`) sets `textContent` and adds a class; it does not move focus, and
-  `studio-modal.js:54` deliberately stops trapping Tab while the overlay is up,
-  so focus roams the page behind an opaque blur. The two longest operations —
-  Random SID (`ui.js:300`) and file load (`ui.js:668`) — pass no `onCancel`, so
-  the Cancel button is hidden entirely. `showExportStatus` writes into a div and
-  auto-clears after 5 s (`ui.js:3711`), so errors appear and vanish silently.
-- **Galleries are mouse-only.** `gallery-item-card` (`image-preview-manager.js:284`,
-  `:794`), the font grid (`ui.js:2098`) and the bar-style grid (`ui.js:2196`) are
-  `<div>`s with click handlers, no `tabIndex`, no `role`, no key handler, and the
-  value lives in a hidden input. The visualiser cards at `ui.js:963-973` already
-  show the correct pattern. Better still: `role="radiogroup"` with roving
-  tabindex, so a 30-font grid is one tab stop rather than thirty.
-- **The HVSC list puts every row in the tab order** (`hvsc-browser.js:743`) with
-  no arrow keys and no virtualisation, and `#itemCount` changes silently. Make it
-  a `role="listbox"` with roving tabindex and type-ahead.
+- **Still open: the busy overlay is silent and traps nothing.** `showBusy` sets
+  `textContent` and adds a class; it does not move focus, and `studio-modal.js`
+  deliberately stops trapping Tab while it is up, so focus roams the page behind
+  an opaque blur. The two longest operations — Random SID and the file load —
+  pass no `onCancel`, so the Cancel button is hidden entirely. (The multi-minute
+  scan no longer runs behind it, which was the worst case; the analysis chip has
+  a throttled live region and its own cancel.) It still needs `role="status"`, a
+  throttled announcement, focus on Cancel, and `inert` on the page behind.
+- **Still open: the HVSC list puts every row in the tab order**
+  (`hvsc-browser.js:743`) with no arrow keys and no virtualisation, and
+  `#itemCount` changes silently. Make it a `role="listbox"` with roving tabindex
+  and type-ahead — the same treatment the option grids and galleries now have.
 
 **Contrast** (computed from the tokens in `styles.css:7-68`; AA needs 4.5:1):
 
@@ -267,10 +263,11 @@ guard are in. Still wanted: a persisted user toggle for the drifting notes, sinc
 "I find this distracting" is not the same preference as the OS setting, and a
 static substitute for `.busy-spinner` when a scan runs for minutes.
 
-**Structure.** No `<main>` landmark, no skip link, and zero headings on the Tool
-tab between the `<h1>` logo and the footer. Inside the Studio the order runs
-backwards: `<h3 class="studio-panel-title">` at `index.html:200` followed by
-`<h2>` at `:206`, `:244`, `:296`.
+**Structure.** The Tool tab is a `<main>` with a heading and a skip link now.
+Still wrong inside the Studio: the heading order runs backwards, `<h3
+class="studio-panel-title">` followed by `<h2>` panel headings. The Studio rail
+buttons are also still plain buttons rather than `role="tab"` with
+`aria-selected`, so nothing says which section is current.
 
 **Zoom.** The Studio rail is `display: none` below 720px
 (`studio-modal.css:404`), which on a 1440px monitor fires at exactly 200% browser
