@@ -102,12 +102,16 @@ whole SID *including the header*, and the bytes come from `createModifiedSID()` 
 so **editing the title after an analysis invalidates it and forces a full
 re-render**.
 
-- Make `cache.rows` a 3-5 entry LRU.
+- **Done: `cache.rows` is a 4-entry LRU.** A -> B -> A no longer re-renders A.
+- **Done: the header text is out of the key.** The three 32-byte name/author/
+  released fields are skipped; everything else in the header (load/init/play
+  addresses, song count, speed flags, the v2 chip fields) does change the audio
+  and stays in. `scripts/test-bake-cache.js` drives the core with a stub engine
+  and counts renders, so both of these are covered by `npm test`.
 - Persist the *summary* (`looped`, `fadedOut`, `loopStart`, `frameHz`,
   `lengthFrames`, `storedSeconds` — a couple of hundred bytes) to IndexedDB keyed
   by `tuneKey`. For every non-spectrometer export that summary is the entire
   payload, so the second time a tune is ever touched the answer is already there.
-- Exclude the header bytes from the key, or key on the music payload only.
 - Make the cache importable, so `tools/songlengths/`'s journal — the same
   measurement, already computed across HVSC — can prime it.
 - Check whether `DOCUMENTS/Songlengths.md5` ships inside `hvsc-data/C64Music.7z`;

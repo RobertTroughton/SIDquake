@@ -48,10 +48,24 @@ export function abortError() {
     return e;
 }
 
+// The three 32-byte PSID/RSID header strings: name, author, released. They sit
+// at a fixed offset in every version of the format and cannot change a single
+// sample of the audio.
+const HEADER_TEXT_FROM = 0x16;
+const HEADER_TEXT_TO = 0x76;   // exclusive
+
 // Cheap FNV-1a content hash so a fresh Uint8Array of the same tune still hits.
+// The title/author/release strings are skipped: the bytes come from
+// createModifiedSID(), so hashing them meant typing in the title threw away a
+// finished render and started the whole thing again. Everything else in the
+// header - load/init/play addresses, song count, speed flags, the v2 chip
+// fields - does change the audio, so it stays in.
 function tuneKey(bytes, subtune, sampleRate, maxSeconds, minLoopSeconds, engine) {
     let h = 0x811c9dc5;
-    for (let i = 0; i < bytes.length; i++) { h ^= bytes[i]; h = Math.imul(h, 0x01000193); }
+    for (let i = 0; i < bytes.length; i++) {
+        if (i >= HEADER_TEXT_FROM && i < HEADER_TEXT_TO) continue;
+        h ^= bytes[i]; h = Math.imul(h, 0x01000193);
+    }
     // minLoopSeconds (x10 -> integer) is part of the key: it changes the render's
     // loop early-exit point, so a different threshold must re-render, not reuse.
     // The engine is in the key because the two SID cores render different audio.
@@ -272,8 +286,22 @@ async function renderWithFallback(sidBytes, loadEngine, options) {
 // render of the tune.
 export function createBakeCore(loadEngine) {
     // cache.rows : { key, numBars, engine, rows, frameHz, isNtsc, renderedSeconds, hitCap }
-    // cache.bakes: Map geometryKey -> bake result (valid while cache.rows.key holds)
+    // cache.bakes: Map geometryKey -> bake result, for the rows currently loaded
+    //
+    // `slots` is a small LRU of finished renders, keyed by tune+geometry. A
+    // single slot meant A -> B -> A re-rendered A from scratch, which is the
+    // most common thing anyone does while comparing two tunes. Rows are the
+    // expensive part (~90% of a bake), so a handful of them is worth the memory:
+    // a 12-minute tune at 50 Hz over 40 bars is about 1.4 MB.
+    const MAX_SLOTS = 4;
     const cache = { rows: null, bakes: new Map() };
+    const slots = new Map();   // slotKey -> { rows, bakes }
+
+    function remember(slotKey) {
+        slots.delete(slotKey);
+        slots.set(slotKey, { rows: cache.rows, bakes: cache.bakes });
+        while (slots.size > MAX_SLOTS) slots.delete(slots.keys().next().value);
+    }
 
     // Render this tune to FFT rows once (incrementally, stopping as soon as a loop is
     // confirmed) and cache them. Re-render only for a new tune, a different bar count,
@@ -290,14 +318,22 @@ export function createBakeCore(loadEngine) {
         const engine = normalizeEngine(options.engine);
         const onProgress = options.onProgress || (() => {});
         const key = tuneKey(sidBytes, subtune, sampleRate, maxSeconds, minLoopSeconds, engine);
+        const slotKey = `${key}|${numBars}`;
         if (!cache.rows || cache.rows.key !== key || cache.rows.numBars !== numBars) {
-            cache.rows = await renderWithFallback(sidBytes, loadEngine, {
-                sampleRate, maxSeconds, subtune, numBars, maxHeight, minLoopSeconds, engine,
-                onProgress, signal: options.signal,
-            });
-            cache.rows.key = key;
-            cache.bakes.clear();
+            const held = slots.get(slotKey);
+            if (held) {
+                cache.rows = held.rows;
+                cache.bakes = held.bakes;
+            } else {
+                cache.rows = await renderWithFallback(sidBytes, loadEngine, {
+                    sampleRate, maxSeconds, subtune, numBars, maxHeight, minLoopSeconds, engine,
+                    onProgress, signal: options.signal,
+                });
+                cache.rows.key = key;
+                cache.bakes = new Map();
+            }
         }
+        remember(slotKey);
         return { numBars, maxHeight };
     }
 
