@@ -4840,3 +4840,17 @@
 .sq-building .sq-mark,
 .sq-loaded .sq-mark { color: var(--accent); }
 .sq-building .sq-name { color: var(--text-primary); }
+
+/* The collection's own name, kept but demoted: "HVSC" tells a scener exactly
+   what this is and tells everyone else nothing. */
+.browser-title-sub {
+    color: var(--text-muted);
+    font-weight: 400;
+    font-size: 0.8em;
+}
+
+@media (max-width: 560px) {
+    .browser-title-sub {
+        display: none;
+    }
+}

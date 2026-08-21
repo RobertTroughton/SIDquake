@@ -288,8 +288,10 @@ a PRG.
   they ship in static HTML (`index.html:146-158`) and handlers attach in `ui.js`,
   fourth in a deliberately yielded load chain (`index.html:1133-1150`). A first
   tap that does nothing is a bounce.
-- **`public/songlengths-report.html` is 1.4 MB** of internal QA output, deployed,
-  publicly reachable and not disallowed in `robots.txt`.
+- **`public/songlengths-report.html` is 1.4 MB** of internal QA output, deployed
+  and publicly reachable. It is disallowed in `robots.txt` now, but it is still
+  8% of `public/` for a dev artifact — it belongs outside the deployed directory,
+  which is the owner's call since it is deliberately committed.
 - **Still open: self-host a subset of the solid icon font.** The brands file is
   no longer requested (the two marks that used it are inline SVG), but the solid
   set is still ~157 KB from cdnjs for 58 glyphs, and cdnjs is a third-party
@@ -314,9 +316,13 @@ playable, despite every one of those tunes existing in the mirror.
   the modal.
 - Rewrite the subtitle so it doesn't tell 95% of arrivals they're in the wrong
   place. Keep both audiences in one sentence.
-- Rename the verbs: "Select" / "Cancel" are file-picker words in what is
-  functionally a music player.
-- Make the Releases tab playable and link `/music/` from the header.
+- **Done:** the browser is titled "61,000 C64 tunes" with HVSC as a subtitle,
+  its buttons say "Use this tune" / "Close" rather than "Select" / "Cancel", and
+  the landing page links `/music/` for people who only came to listen.
+- **The Releases tab still isn't playable, and probably can't be as it stands:**
+  the cards are CSDb releases, and SIDquake does not hold those tunes — HVSC
+  lags new releases by months. Playing them would mean hosting the .sid
+  alongside each entry, which is a decision about what the site distributes.
 - Add a seek bar and a total duration to the player (`sid-player.js:334` shows
   elapsed only) — `tools/songlengths/` already produces exactly this data.
 - Auto-advance within a folder, and `localStorage` favourites.

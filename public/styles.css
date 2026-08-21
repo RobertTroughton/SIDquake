@@ -1513,3 +1513,16 @@ details[open].panel > summary h2::after {
     vertical-align: -0.125em;
     display: inline-block;
 }
+
+/* The composer archive at /music/ is the site's whole listener-facing surface,
+   and its only link from here used to be fifteen words at the end of a credits
+   paragraph on the About tab. */
+.upload-browse-more {
+    margin-top: var(--space-md);
+    color: var(--text-muted);
+    font-size: 0.85em;
+}
+
+.upload-browse-more a {
+    color: var(--text-accent);
+}

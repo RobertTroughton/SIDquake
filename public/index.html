@@ -178,6 +178,11 @@
                 </div>
 
                 <!-- HVSC Selected File Display (hidden by default) -->
+                <p class="upload-browse-more">
+                    Just here to listen? <a href="/music/">Browse SID music by composer</a>,
+                    or press Random SID above.
+                </p>
+
                 <div class="hvsc-selected" id="hvscSelected" style="display: none;">
                     <span class="selected-label">Selected:</span>
                     <span class="selected-file" id="selectedFile"></span>
@@ -1080,12 +1085,12 @@
 
     <!-- HVSC Modal -->
     <div class="hvsc-modal" id="hvscModal">
-        <div class="hvsc-modal-content" role="dialog" aria-modal="true" aria-label="HVSC SID Collection Browser">
+        <div class="hvsc-modal-content" role="dialog" aria-modal="true" aria-label="Browse C64 tunes">
             <button class="hvsc-modal-close" id="hvscModalClose" aria-label="Close the tune browser">✕</button>
             <div class="hvsc-modal-body">
                 <div class="browser-container" style="height: 100%; background: transparent;">
                     <div class="browser-header">
-                        <div class="browser-title">HVSC SID Collection Browser<span class="hvsc-version-badge" id="hvscVersionBadge" hidden></span></div>
+                        <div class="browser-title">61,000 C64 tunes<span class="browser-title-sub"> · the High Voltage SID Collection</span><span class="hvsc-version-badge" id="hvscVersionBadge" hidden></span></div>
                         <div class="browser-search">
                             <i class="fas fa-search search-icon"></i>
                             <input type="text" class="search-bar" id="hvscSearchBar" placeholder="Search the whole collection by title, author, or filename..." autocomplete="off" spellcheck="false">
@@ -1144,8 +1149,8 @@
 
                     <div class="hvsc-modal-footer">
                         <span class="hvsc-path-text" id="pathBar" title="Current HVSC folder"></span>
-                        <button class="btn hvsc-choose-btn" onclick="hvscBrowser.chooseSong()" title="Use the selected tune in the SIDquake tool"><i class="fas fa-check"></i> Select</button>
-                        <button class="btn hvsc-cancel-btn" onclick="hvscBrowser.cancel()" title="Close without choosing a tune">Cancel</button>
+                        <button class="btn hvsc-choose-btn" onclick="hvscBrowser.chooseSong()" title="Use the selected tune in the SIDquake tool"><i class="fas fa-check" aria-hidden="true"></i> Use this tune</button>
+                        <button class="btn hvsc-cancel-btn" onclick="hvscBrowser.cancel()" title="Close without choosing a tune">Close</button>
                     </div>
                 </div>
             </div>
