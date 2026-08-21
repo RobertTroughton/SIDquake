@@ -225,24 +225,30 @@
                     <div class="panel">
                         <h3><i class="fas fa-file-alt"></i> File Information</h3>
                         <div class="info-row">
-                            <span class="info-label">Title:</span>
-                            <span class="info-value editable" id="sidTitle" data-field="title" title="Click to edit">
-                                <span class="text">-</span>
-                                <i class="fas fa-pen edit-icon"></i>
+                            <label class="info-label" for="sidTitle">Title:</label>
+                            <span class="info-value info-edit">
+                                <input type="text" class="info-input" id="sidTitle"
+                                       data-field="title" maxlength="31"
+                                       aria-describedby="sidTitleCount">
+                                <span class="info-count" id="sidTitleCount"></span>
                             </span>
                         </div>
                         <div class="info-row">
-                            <span class="info-label">Author:</span>
-                            <span class="info-value editable" id="sidAuthor" data-field="author" title="Click to edit">
-                                <span class="text">-</span>
-                                <i class="fas fa-pen edit-icon"></i>
+                            <label class="info-label" for="sidAuthor">Author:</label>
+                            <span class="info-value info-edit">
+                                <input type="text" class="info-input" id="sidAuthor"
+                                       data-field="author" maxlength="31"
+                                       aria-describedby="sidAuthorCount">
+                                <span class="info-count" id="sidAuthorCount"></span>
                             </span>
                         </div>
                         <div class="info-row">
-                            <span class="info-label">Copyright:</span>
-                            <span class="info-value editable" id="sidCopyright" data-field="copyright" title="Click to edit">
-                                <span class="text">-</span>
-                                <i class="fas fa-pen edit-icon"></i>
+                            <label class="info-label" for="sidCopyright">Copyright:</label>
+                            <span class="info-value info-edit">
+                                <input type="text" class="info-input" id="sidCopyright"
+                                       data-field="copyright" maxlength="31"
+                                       aria-describedby="sidCopyrightCount">
+                                <span class="info-count" id="sidCopyrightCount"></span>
                             </span>
                         </div>
                         <div class="info-row">
@@ -256,6 +262,9 @@
                         <div class="info-row">
                             <span class="info-label">Songs:</span>
                             <span class="info-value" id="sidSongs">-</span>
+                        </div>
+                        <div class="info-row">
+                            <span class="metadata-warning" id="metadataWarning" role="status" aria-live="polite" hidden></span>
                         </div>
                         <!-- Which tune of a multi-tune file to export. Song
                              metadata, so it lives here; ui.js addSongSelector

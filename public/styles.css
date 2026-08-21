@@ -586,58 +586,59 @@ details[open].panel > summary h2::after {
     font-size: 0.9em;
 }
 
-.info-value.editable {
-    cursor: pointer;
-    padding: 2px 6px;
-    border-radius: var(--radius-sm);
-    transition: all var(--transition-fast);
-    border: 1px dashed transparent;
-    position: relative;
+/* Title / Author / Copyright are real inputs - what goes here is printed on the
+   C64 screen, so it is a form, not a display with a pencil next to it. */
+.info-edit {
     display: inline-flex;
-    align-items: center;
+    align-items: baseline;
     gap: var(--space-sm);
 }
 
-.info-value.editable:hover {
-    background: var(--accent-dim);
-    border: 1px dashed var(--accent);
-}
-
-.info-value.editable .text {
-    display: inline-block;
-}
-
-.info-value.editable .edit-icon {
-    color: var(--accent);
-    font-size: 0.7em;
-    opacity: 0.3;
-    transition: opacity var(--transition-fast);
-}
-
-.info-value.editable:hover .edit-icon {
-    opacity: 1;
-}
-
-.info-value.editing {
+.info-input {
+    width: 22ch;
+    max-width: 100%;
+    padding: 3px 8px;
     background: var(--bg-primary);
-    border: 2px solid var(--accent);
-    padding: 4px 8px;
-    outline: none;
+    border: 1px solid var(--border-light);
+    border-radius: var(--radius-sm);
     color: var(--text-primary);
+    font-family: var(--font-mono);
+    font-size: 1em;
+}
+
+.info-input:focus {
+    border-color: var(--accent);
+}
+
+/* Only shown once the 31-character header field is nearly full. */
+.info-count {
+    font-family: var(--font-mono);
+    font-size: 0.8em;
+    color: var(--text-muted);
+    white-space: nowrap;
+}
+
+.info-count.is-low {
+    color: var(--warning);
+}
+
+.metadata-warning {
+    color: var(--warning);
+    font-size: 0.85em;
+    line-height: 1.4;
+}
+
+.metadata-warning[hidden] {
+    display: none;
 }
 
 /* Visible keyboard focus for elements made keyboard-operable for accessibility
-   (visualizer cards, HVSC file rows, editable metadata fields). Scoped to
-   :focus-visible so mouse users don't see the ring. */
+   (visualizer cards, HVSC file rows). Scoped to :focus-visible so mouse users
+   don't see the ring. */
 .visualizer-card:focus-visible,
-.file-item:focus-visible,
-.info-value.editable:focus-visible {
+.file-item:focus-visible {
     outline: 2px solid var(--accent);
     outline-offset: 2px;
-}
-
-.info-value.editing .edit-icon {
-    display: none;
 }
 
 /* ==========================================================================

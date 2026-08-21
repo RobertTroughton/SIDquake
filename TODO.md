@@ -190,10 +190,6 @@ tune, and carry the SID's address range for the expert). Still to do:
   what the file is, an emulator link and three steps to run it, the SYS address
   explained rather than printed, where releases get shared, and an offer to
   measure the song length and rebuild when it was skipped.
-- **Surface PETSCII substitution in the UI.** `prg-builder.js:1516` passes
-  `reportUnknown: false` for metadata, so accented characters in a title or group
-  name are silently replaced with spaces and discovered in VICE. Metadata is also
-  truncated at 31 chars with no counter (`ui.js:604`).
 
 ## Accessibility
 

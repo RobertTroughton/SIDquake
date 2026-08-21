@@ -377,9 +377,9 @@ class UIController {
     }
 
     initializeAttractMode() {
-        this.elements.sidTitle.querySelector('.text').textContent = 'Song Title';
-        this.elements.sidAuthor.querySelector('.text').textContent = 'Artist Name';
-        this.elements.sidCopyright.querySelector('.text').textContent = 'Copyright Info';
+        this.elements.sidTitle.value = 'Song Title';
+        this.elements.sidAuthor.value = 'Artist Name';
+        this.elements.sidCopyright.value = 'Copyright Info';
 
         this.elements.sidFormat.textContent = 'PSID';
         this.elements.sidVersion.textContent = 'v2';
@@ -514,149 +514,91 @@ class UIController {
         });
     }
 
+    // Title / Author / Copyright. Real inputs: they were contenteditable spans
+    // with role="button" and an aria-label that overrode their contents, so a
+    // screen reader announced "Edit title, button" and never the title. This is
+    // a form, and the text goes on the C64 screen, so it says how much room is
+    // left and warns when a character cannot survive the trip.
     setupEditableFields() {
-        const editableFields = [this.elements.sidTitle, this.elements.sidAuthor, this.elements.sidCopyright];
-
-        editableFields.forEach(field => {
-            const textSpan = field.querySelector('.text');
-
-            // Keyboard users need to reach and trigger the field the same way a
-            // mouse click does.
-            field.tabIndex = 0;
-            field.setAttribute('role', 'button');
-            field.setAttribute('aria-label', `Edit ${field.dataset.field || 'field'}`);
-
-            field.addEventListener('click', (e) => {
-                if (!field.classList.contains('editing') && !field.classList.contains('disabled')) {
-                    this.startEditing(field);
+        for (const field of [this.elements.sidTitle, this.elements.sidAuthor, this.elements.sidCopyright]) {
+            if (!field) continue;
+            field.addEventListener('input', () => this.onMetadataInput(field));
+            field.addEventListener('blur', () => {
+                // Collapse the whitespace only once the user has stopped typing;
+                // doing it per keystroke fights them mid-word.
+                const tidy = field.value.replace(/[\r\n\t]/g, ' ').replace(/\s+/g, ' ').trim();
+                if (tidy !== field.value) {
+                    field.value = tidy;
+                    this.onMetadataInput(field);
                 }
             });
-
-            field.addEventListener('keydown', (e) => {
-                if (!field.classList.contains('editing')) {
-                    // Enter/Space begins editing (mirrors a click).
-                    if ((e.key === 'Enter' || e.key === ' ') && !field.classList.contains('disabled')) {
-                        e.preventDefault();
-                        this.startEditing(field);
-                    }
-                    return;
-                }
-                if (e.key === 'Enter') {
-                    e.preventDefault();
-                    this.stopEditing(field);
-                } else if (e.key === 'Escape') {
-                    e.preventDefault();
-                    this.cancelEditing(field);
-                }
-            });
-
-            // Blur on the inner text span fires when the user tabs/clicks away.
-            // The 200ms delay lets a click on another control fire first so we
-            // don't tear down editing state mid-interaction.
-            textSpan.addEventListener('blur', () => {
-                if (field.classList.contains('editing')) {
-                    setTimeout(() => {
-                        if (field.classList.contains('editing')) {
-                            this.stopEditing(field);
-                        }
-                    }, 200);
-                }
-            });
-
-            // Strip formatting from pasted content; SID metadata is plain text only.
-            textSpan.addEventListener('paste', (e) => {
-                e.preventDefault();
-
-                let text = '';
-                const clipboard = e.clipboardData || window.clipboardData;
-                if (clipboard) {
-                    text = clipboard.getData('text/plain') || clipboard.getData('Text') || '';
-                }
-
-                text = text.replace(/[\r\n\t]/g, ' ');
-                text = text.replace(/\s+/g, ' ');
-                text = text.trim();
-
-                if (window.getSelection) {
-                    const selection = window.getSelection();
-                    if (!selection.rangeCount) return;
-                    selection.deleteFromDocument();
-                    selection.getRangeAt(0).insertNode(document.createTextNode(text));
-                    selection.collapseToEnd();
-                }
-            });
-        });
-    }
-
-    startEditing(field) {
-        field.classList.add('editing');
-
-        const textSpan = field.querySelector('.text');
-        textSpan.contentEditable = 'true';
-        textSpan.focus();
-
-        field.dataset.originalValue = textSpan.textContent;
-
-        const range = document.createRange();
-        range.selectNodeContents(textSpan);
-        const sel = window.getSelection();
-        sel.removeAllRanges();
-        sel.addRange(range);
-    }
-
-    stopEditing(field) {
-        field.classList.remove('editing');
-
-        const textSpan = field.querySelector('.text');
-        textSpan.contentEditable = 'false';
-
-        let text = textSpan.textContent || '';
-
-        text = text.replace(/<[^>]*>/g, '');
-
-        text = text.replace(/[\r\n\t]/g, ' ');
-        text = text.replace(/\s+/g, ' ');
-        text = text.trim();
-
-        // SID header fields are limited to 31 chars (32 bytes including null terminator).
-        if (text.length > 31) {
-            text = text.substring(0, 31);
         }
+        this.updateMetadataCounts();
+    }
 
-        textSpan.textContent = text;
-
+    // One edit: push it to the WASM header (what a saved .sid is built from), to
+    // the cached header (what the PRG's text rows are painted from), and to the
+    // counters and the warning line.
+    onMetadataInput(field) {
+        const text = field.value;
         // The DOM field uses 'title' but the WASM analyzer expects 'name'.
         const fieldName = field.dataset.field;
-        let analyzerFieldName = fieldName;
-        if (fieldName === 'title') analyzerFieldName = 'name';
+        const analyzerFieldName = fieldName === 'title' ? 'name' : fieldName;
 
         this.analyzer.updateMetadata(analyzerFieldName, text);
-
-        // updateMetadata only writes the WASM copy, which is what a saved .sid is
-        // built from. The PRG's on-screen title/author/copyright come from the
-        // cached header object instead (prg-builder createPRG -> generateDataBlock),
-        // so it has to move in step or an edit reaches the .sid and not the export.
-        // sidHeader and analyzer.sidHeader are the same object today; update both
-        // in case they ever stop being.
         for (const h of [this.sidHeader, this.analyzer.sidHeader]) {
             if (h) h[analyzerFieldName] = text;
         }
         if (window.studioModal) window.studioModal.refreshHeader();
-
+        this.updateMetadataCounts();
         this.checkForModifications();
+        if (window.studioModal) window.studioModal.queueRefresh();
     }
 
-    cancelEditing(field) {
-        const textSpan = field.querySelector('.text');
-        textSpan.textContent = field.dataset.originalValue || '';
-        field.classList.remove('editing');
-        textSpan.contentEditable = 'false';
+    /** Characters left in each 31-char header field, and what the C64 can't show. */
+    updateMetadataCounts() {
+        const fields = [this.elements.sidTitle, this.elements.sidAuthor, this.elements.sidCopyright];
+        const lost = new Set();
+        for (const field of fields) {
+            if (!field) continue;
+            const count = document.getElementById(field.id + 'Count');
+            const left = 31 - field.value.length;
+            if (count) {
+                count.textContent = left <= 8 ? `${left} left` : '';
+                count.classList.toggle('is-low', left <= 3);
+            }
+            for (const ch of this.unrepresentableChars(field.value)) lost.add(ch);
+        }
+
+        const warn = document.getElementById('metadataWarning');
+        if (!warn) return;
+        if (!lost.size) { warn.hidden = true; warn.textContent = ''; return; }
+        const list = [...lost].map(c => `"${c}"`).join(' ');
+        warn.hidden = false;
+        warn.textContent = `The C64 has no ${list} — ${lost.size === 1 ? 'it' : 'they'} `
+            + `will show as ${lost.size === 1 ? 'a space' : 'spaces'}.`;
+    }
+
+    // Which characters of `text` the PETSCII conversion would silently replace.
+    // prg-builder sanitises metadata with reportUnknown off, so this was only
+    // ever discovered by looking at the exported PRG in an emulator.
+    unrepresentableChars(text) {
+        if (!text || typeof PETSCIISanitizer === 'undefined') return [];
+        try {
+            const result = new PETSCIISanitizer().sanitize(text, { reportUnknown: true });
+            const warning = (result.warnings || []).find(w => w.type === 'unknown_characters');
+            // The sanitizer reports them quoted or as U+XXXX; show the character
+            // where it is printable, since that is what the user typed.
+            return warning ? warning.characters.map(c => c.replace(/^"|"$/g, '')) : [];
+        } catch (e) {
+            return [];
+        }
     }
 
     checkForModifications() {
-        const currentTitle = this.elements.sidTitle.querySelector('.text').textContent.trim();
-        const currentAuthor = this.elements.sidAuthor.querySelector('.text').textContent.trim();
-        const currentCopyright = this.elements.sidCopyright.querySelector('.text').textContent.trim();
+        const currentTitle = this.elements.sidTitle.value.trim();
+        const currentAuthor = this.elements.sidAuthor.value.trim();
+        const currentCopyright = this.elements.sidCopyright.value.trim();
 
         const hasChanges =
             currentTitle !== this.originalMetadata.title ||
@@ -3136,9 +3078,10 @@ class UIController {
     }
 
     updateFileInfo(header) {
-        this.elements.sidTitle.querySelector('.text').textContent = header.name || 'Unknown';
-        this.elements.sidAuthor.querySelector('.text').textContent = header.author || 'Unknown';
-        this.elements.sidCopyright.querySelector('.text').textContent = header.copyright || 'Unknown';
+        this.elements.sidTitle.value = header.name || '';
+        this.elements.sidAuthor.value = header.author || '';
+        this.elements.sidCopyright.value = header.copyright || '';
+        this.updateMetadataCounts();
 
         this.elements.sidFormat.textContent = header.format;
         this.elements.sidVersion.textContent = `v${header.version}`;
@@ -3308,9 +3251,9 @@ class UIController {
 
         // Update the original metadata to reflect the saved state
         this.originalMetadata = {
-            title: this.elements.sidTitle.querySelector('.text').textContent.trim(),
-            author: this.elements.sidAuthor.querySelector('.text').textContent.trim(),
-            copyright: this.elements.sidCopyright.querySelector('.text').textContent.trim()
+            title: this.elements.sidTitle.value.trim(),
+            author: this.elements.sidAuthor.value.trim(),
+            copyright: this.elements.sidCopyright.value.trim()
         };
 
         // Reset modification state

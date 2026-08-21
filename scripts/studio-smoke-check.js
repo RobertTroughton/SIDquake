@@ -214,15 +214,44 @@ async function loadSid(page, file) {
         check('The loop-search window is settable again', scanWindow.parsed === 240,
             JSON.stringify(scanWindow));
 
-        // --- metadata edits reach the header the exporter reads ---------------
+        // --- metadata is a form, and edits reach the header createPRG reads ---
+        await page.evaluate(() => window.studioModal.activate('song'));
+        await page.waitForTimeout(200);
         const meta = await page.evaluate(() => {
+            const el = document.getElementById('sidAuthor');
+            const isInput = el.tagName === 'INPUT';
+            el.value = 'SMOKE TEST AUTHOR';
+            el.dispatchEvent(new Event('input', { bubbles: true }));
             const ui = window.uiController;
-            ui.analyzer.updateMetadata('author', 'SMOKE TEST AUTHOR');
-            for (const h of [ui.sidHeader, ui.analyzer.sidHeader]) if (h) h.author = 'SMOKE TEST AUTHOR';
-            return { ui: ui.sidHeader.author, analyzer: ui.analyzer.sidHeader.author };
+            return {
+                isInput,
+                labelled: !!document.querySelector('label[for="sidAuthor"]'),
+                ui: ui.sidHeader.author,
+                analyzer: ui.analyzer.sidHeader.author,
+            };
         });
-        check('Edited author is on the header createPRG reads',
-            meta.analyzer === 'SMOKE TEST AUTHOR', JSON.stringify(meta));
+        check('Metadata fields are real labelled inputs', meta.isInput && meta.labelled,
+            JSON.stringify({ isInput: meta.isInput, labelled: meta.labelled }));
+        check('Typing reaches the header createPRG reads',
+            meta.analyzer === 'SMOKE TEST AUTHOR' && meta.ui === 'SMOKE TEST AUTHOR',
+            JSON.stringify(meta));
+
+        const limits = await page.evaluate(() => {
+            const el = document.getElementById('sidTitle');
+            el.value = 'x'.repeat(30);
+            el.dispatchEvent(new Event('input', { bubbles: true }));
+            const count = document.getElementById('sidTitleCount').textContent;
+            // An accented character has no PETSCII equivalent and used to become
+            // a space with no word said about it.
+            el.value = 'Cafe\u0301 na\u00efve';
+            el.dispatchEvent(new Event('input', { bubbles: true }));
+            const warn = document.getElementById('metadataWarning');
+            return { count, maxlength: el.maxLength, warned: !warn.hidden, text: warn.textContent };
+        });
+        check('It says how much room is left', /1 left/.test(limits.count) && limits.maxlength === 31,
+            JSON.stringify(limits));
+        check('It warns about characters the C64 cannot show',
+            limits.warned && /space/.test(limits.text), limits.text || 'no warning');
 
         // --- sticky visualizer + options across a second tune -----------------
         await page.evaluate(async () => {
