@@ -2016,6 +2016,10 @@ class UIController {
                 // A VIC bank base the user would rather the graphics went in, or
                 // 0 for automatic. Soft - see createBankOptionHTML.
                 preferredGfxBank: [0x4000, 0x8000, 0xC000].includes(s.preferredGfxBank) ? s.preferredGfxBank : 0,
+                // Memory the export must not touch, as the user typed it. Kept
+                // as text so a half-finished entry survives a re-render;
+                // parseReservedRanges turns it into ranges.
+                reservedText: typeof s.reservedText === 'string' ? s.reservedText : '',
                 // SID engine the spectrometer analysis renders with. 'fp'
                 // (libsidplayfp) is the default because it plays every tune; 'resid'
                 // (the lightweight core in sidquake.wasm) is ~2.1x faster but gets a
@@ -2027,7 +2031,11 @@ class UIController {
         }
         // maxLoopSeconds is derived from the typed "m:ss" (blank => undefined,
         // so callers fall back to their own default scan window).
-        return { ...this._advanced, maxLoopSeconds: this._parseMMSS(this._advanced.scanLenText) || undefined };
+        return {
+            ...this._advanced,
+            maxLoopSeconds: this._parseMMSS(this._advanced.scanLenText) || undefined,
+            reservedRanges: UIController.parseReservedRanges(this._advanced.reservedText).ranges,
+        };
     }
 
     // Two export knobs spectrometer players expose: the output frame rate, and how
@@ -2162,6 +2170,27 @@ class UIController {
             save();
             // Placement is decided at build time, so nothing to re-analyse.
         });
+        const reserved = document.getElementById('advReserved');
+        if (reserved) reserved.addEventListener('change', () => {
+            const cur = this._advanced || {};
+            const parsed = UIController.parseReservedRanges(reserved.value);
+            cur.reservedText = reserved.value.trim();
+            this._advanced = cur;
+            save();
+            const note = document.getElementById('advReservedNote');
+            if (note) {
+                // Keep the explanation to put back: a typo should not cost the
+                // user the only description of what the field is for.
+                if (!note.dataset.help) note.dataset.help = note.textContent;
+                note.classList.toggle('is-bad', parsed.bad.length > 0);
+                note.textContent = parsed.bad.length
+                    ? `Not an address range: ${parsed.bad.join(', ')} — the rest of what you typed is being used.`
+                    : note.dataset.help;
+            }
+            // Placement is decided at build time, so nothing to re-analyse -
+            // but what the page says about placement is now out of date.
+            this.renderPlacementPlan();
+        });
         const eng = document.getElementById('advBakeEngine');
         if (eng) eng.addEventListener('change', () => {
             const cur = this._advanced || {};
@@ -2227,6 +2256,16 @@ class UIController {
                 </div>
             </div>
             <p class="flow-note">Only matters if something else has a claim on C64 memory — a shared loader across a disk, say. If the tune leaves no room in the bank you choose, the export uses one that works and tells you.</p>
+            <div class="option-row">
+                <label class="option-label" for="advReserved">Keep this memory free</label>
+                <div class="option-control">
+                    <input type="text" id="advReserved" class="number-input" style="width:16em"
+                           spellcheck="false" placeholder="e.g. $C000-$CFFF"
+                           value="${String(this.getAdvancedSettings().reservedText || '').replace(/"/g, '&quot;')}"
+                           aria-describedby="advReservedNote">
+                </div>
+            </div>
+            <p class="flow-note" id="advReservedNote">Addresses the export must not use, so a loader or an intro can keep them. Separate several with commas; a bare address means its page. Unlike the bank above this is not a preference — if what is left cannot hold the player, the export says so rather than using the memory anyway.</p>
         </div>`;
     }
 
@@ -4104,6 +4143,7 @@ class UIController {
                 // Soft VIC-bank preference (Advanced settings). Ignored when the
                 // tune leaves no room for it.
                 preferredGfxBank: this.getAdvancedSettings().preferredGfxBank || null,
+                reservedRanges: this.getAdvancedSettings().reservedRanges,
                 // Song length on the C64 (Song tab): whether to show one at all, and
                 // a length the user typed rather than one the scan measured.
                 showSongLength: this.showSongLength(),
@@ -4269,6 +4309,29 @@ class UIController {
      * come out of _captureOptionValues because it sweeps the whole panel, but
      * they must never be carried into a new session.
      */
+    /**
+     * Parse "keep this memory free" as the user types it: a comma or
+     * space-separated list of `$C000-$CFFF` style ranges. Hex with or without
+     * the `$`, and a bare address means that single page.
+     * @returns {{ranges: Array<{start:number,end:number}>, bad: string[]}}
+     *   ranges are [start, end) so they drop straight into the placement code.
+     */
+    static parseReservedRanges(text) {
+        const ranges = [];
+        const bad = [];
+        for (const piece of String(text || '').split(/[,\s]+/).filter(Boolean)) {
+            const m = /^\$?([0-9a-f]{1,4})(?:\s*-\s*\$?([0-9a-f]{1,4}))?$/i.exec(piece);
+            if (!m) { bad.push(piece); continue; }
+            const start = parseInt(m[1], 16);
+            // A bare address reserves its page: "$C000" plainly means the page,
+            // not the single byte, and a one-byte reservation is never useful.
+            const end = m[2] !== undefined ? parseInt(m[2], 16) + 1 : (start & 0xff00) + 0x100;
+            if (!(end > start) || end > 0x10000) { bad.push(piece); continue; }
+            ranges.push({ start, end });
+        }
+        return { ranges, bad };
+    }
+
     static get PER_TUNE_OPTION_IDS() {
         return new Set(['sidTitle', 'sidAuthor', 'sidCopyright', 'songSelector', 'songLengthManual']);
     }
@@ -4747,9 +4810,10 @@ class UIController {
         let result;
         try {
             const sidInfo = this.prgExporter.extractSIDMusicData();
+            const adv = this.getAdvancedSettings();
             result = await this.prgExporter.previewPlacement(
                 config, sidInfo.loadAddress, sidInfo.data,
-                this.getAdvancedSettings().preferredGfxBank || null);
+                adv.preferredGfxBank || null, adv.reservedRanges);
         } catch (e) {
             // "It will not fit" is already reported by the card grid; nothing
             // useful to say here, so say nothing.

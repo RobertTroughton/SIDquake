@@ -1069,6 +1069,51 @@ async function loadSid(page, file) {
             && afterReload.options[remembered.configId] === remembered.chosen,
             JSON.stringify(afterReload));
 
+        // --- memory the export must leave alone -------------------------------
+        const parses = await page.evaluate(() => {
+            const p = (t) => UIController.parseReservedRanges(t);
+            const hex = (r) => r.map(x => `${x.start.toString(16)}-${x.end.toString(16)}`).join(' ');
+            return {
+                range: hex(p('$C000-$CFFF').ranges),
+                bare: hex(p('$C000').ranges),
+                several: hex(p('c000-cfff, 0900').ranges),
+                backwards: p('$C000-$BFFF').bad,
+                nonsense: p('nope').bad,
+                empty: p('').ranges.length,
+            };
+        });
+        check('Reserved memory is read the way it is written',
+            parses.range === 'c000-d000' && parses.several === 'c000-d000 900-a00',
+            JSON.stringify(parses));
+        check('A bare address means its page, not one byte',
+            parses.bare === 'c000-c100', JSON.stringify(parses));
+        check('And what cannot be read is reported, not silently dropped',
+            parses.backwards.length === 1 && parses.nonsense.length === 1 && parses.empty === 0,
+            JSON.stringify(parses));
+
+        const respected = await page.evaluate(async () => {
+            const ui = window.uiController;
+            const ex = ui.prgExporter;
+            const config = ui.currentVisualizerConfig;
+            const sidInfo = ex.extractSIDMusicData();
+            const free = await ex.previewPlacement(config, sidInfo.loadAddress, sidInfo.data, null, []);
+            // Reserve the whole page the code landed on, and it has to move.
+            const page1 = free.plan.codePage;
+            const held = await ex.previewPlacement(config, sidInfo.loadAddress, sidInfo.data, null,
+                [{ start: page1, end: page1 + free.plan.codeBlob.length }]);
+            let refused = false;
+            try {
+                // Reserve everything the CPU can see: nothing can be placed.
+                await ex.previewPlacement(config, sidInfo.loadAddress, sidInfo.data, null,
+                    [{ start: 0x0900, end: 0xD000 }, { start: 0xE000, end: 0xFFFA }]);
+            } catch (e) { refused = true; }
+            return { page1, moved: held.plan.codePage, refused };
+        });
+        check('Reserved memory is left alone by the placement',
+            respected.moved !== respected.page1, JSON.stringify(respected));
+        check('And reserving everything is refused rather than ignored',
+            respected.refused === true, JSON.stringify(respected));
+
         // --- where it goes, before the export ---------------------------------
         const plan = await page.evaluate(async () => {
             const ui = window.uiController;

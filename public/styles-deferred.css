@@ -4964,3 +4964,8 @@
     color: var(--text-muted);
     line-height: 1.5;
 }
+
+/* A reserved-memory entry that could not be read. */
+.flow-note.is-bad {
+    color: var(--error);
+}

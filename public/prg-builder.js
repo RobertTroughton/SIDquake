@@ -2013,7 +2013,7 @@ class SIDquakePRGExporter {
     // shared loader wants every PRG in the same bank, and only the person
     // building it knows that. Tried first, and only if it is actually viable;
     // otherwise the automatic choice stands.
-    planRelocationCodeOnly(codeTable, codeBin, gfxBin, baseLayout, actualSidAddress, sidDataLength, chooseCodePage, preferredGfxBank = null) {
+    planRelocationCodeOnly(codeTable, codeBin, gfxBin, baseLayout, actualSidAddress, sidDataLength, chooseCodePage, preferredGfxBank = null, reservedRanges = []) {
         // The table's byte offsets are only meaningful against the exact blob
         // it was generated with (they're regenerated together by the build).
         // A size mismatch means one of the two is stale - relocating anyway
@@ -2061,6 +2061,8 @@ class SIDquakePRGExporter {
             if (gStart < sidEnd && sidStart < gEnd) return false;
             // VIC char-ROM shadow at $1000-$1FFF / $9000-$9FFF - no VIC graphics there.
             for (const romLo of [0x1000, 0x9000]) if (gStart < romLo + 0x1000 && romLo < gEnd) return false;
+            // A range the user reserved is out, the same as the tune's own bytes.
+            for (const r of reservedRanges) if (gStart < r.end && r.start < gEnd) return false;
             return true;
         };
         let gfxBankBase = null, codePage = null, bestScore = -1;
@@ -2078,6 +2080,7 @@ class SIDquakePRGExporter {
                     { start: sidStart, end: sidEnd },
                     { start: cp, end: cp + codeLen },
                     gfxRes,
+                    ...reservedRanges,
                 ]);
                 if (score > bestScore) { bestScore = score; gfxBankBase = b; codePage = cp; }
             }
@@ -2085,7 +2088,12 @@ class SIDquakePRGExporter {
         }
         this.lastGfxBankPreferenceHonoured = !preferredGfxBank
             || gfxBankBase === preferredGfxBank;
-        if (gfxBankBase === null) throw new Error('Relocation (code-only): no free VIC bank for graphics');
+        if (gfxBankBase === null) {
+            throw new Error(reservedRanges.length
+                ? 'No VIC bank is free for the graphics with the memory you asked to keep free — '
+                    + 'reserve less, or choose a player with a smaller graphics image.'
+                : 'Relocation (code-only): no free VIC bank for graphics');
+        }
         const gfxBankNum = gfxBankBase / 0x4000;
 
         // Patch the code image: code refs by the page delta (from CODE_BASE), gfx
@@ -2237,13 +2245,16 @@ class SIDquakePRGExporter {
      *   would apply, so the preview answers the question the user actually asked.
      * @returns {Promise<{plan: object, info: object, gfxBankHonoured: boolean}>}
      */
-    async previewPlacement(vizConfig, actualSidAddress, sidData, preferredGfxBank = null) {
+    async previewPlacement(vizConfig, actualSidAddress, sidData,
+        preferredGfxBank = null, reservedRanges = []) {
         const realBuilder = this.builder;
         const realSys = this.lastSysAddress;
         const realBank = this._preferredGfxBank;
+        const realReserved = this._reservedRanges;
         const realHonoured = this.lastGfxBankPreferenceHonoured;
         this.builder = new PRGBuilder();
         this._preferredGfxBank = preferredGfxBank;
+        this._reservedRanges = reservedRanges;
         try {
             const plan = await this.placeRelocatedVisualizer(vizConfig, actualSidAddress, sidData);
             return {
@@ -2255,6 +2266,7 @@ class SIDquakePRGExporter {
             this.builder = realBuilder;
             this.lastSysAddress = realSys;
             this._preferredGfxBank = realBank;
+            this._reservedRanges = realReserved;
             this.lastGfxBankPreferenceHonoured = realHonoured;
         }
     }
@@ -2265,8 +2277,14 @@ class SIDquakePRGExporter {
         // SID first so the code-page search avoids it.
         this.builder.addComponent(sidData, actualSidAddress, 'SID Music');
 
+        // Ranges the user has told us to leave alone (a loader, a hand-written
+        // intro). Hard, not a preference: placing code over a loader corrupts,
+        // so an export that cannot honour them fails rather than quietly using
+        // them.
+        const reserved = this._reservedRanges || [];
         const chooseCodePage = (needed, gfxReserve) =>
-            this.findSafeMemoryForRoutines(needed, actualSidAddress, sidData.length, gfxReserve ? [gfxReserve] : []);
+            this.findSafeMemoryForRoutines(needed, actualSidAddress, sidData.length,
+                gfxReserve ? [...reserved, gfxReserve] : reserved);
 
         let plan;
         if (vizConfig.relocCodeBase) {
@@ -2297,7 +2315,7 @@ class SIDquakePRGExporter {
                     shadowMirrorAddress: codeTable.shadowMirror,
                     shadowOrderAddress: codeTable.shadowOrder };
             }
-            plan = this.planRelocationCodeOnly(codeTable, codeBin, gfxBin, effBaseLayout, actualSidAddress, sidData.length, chooseCodePage, this._preferredGfxBank || null);
+            plan = this.planRelocationCodeOnly(codeTable, codeBin, gfxBin, effBaseLayout, actualSidAddress, sidData.length, chooseCodePage, this._preferredGfxBank || null, reserved);
         } else {
             const table = await (await fetch(vizConfig.relocTable, { cache: 'no-cache' })).json();
             const baseBin = await this.loadBinaryFile(vizConfig.relocBase);
@@ -2455,11 +2473,16 @@ class SIDquakePRGExporter {
             optionValues = null,
             // A VIC bank the caller would rather the graphics went in. Soft:
             // ignored when it cannot be made to work.
-            preferredGfxBank = null
+            preferredGfxBank = null,
+            // Memory the export must not use - a loader, an intro - as
+            // [{start, end}) ranges. Hard: an export that cannot place the
+            // player around them fails rather than using them anyway.
+            reservedRanges = []
         } = options;
 
         this._optionValues = optionValues;
         this._preferredGfxBank = preferredGfxBank;
+        this._reservedRanges = reservedRanges;
         this.lastGfxBankPreferenceHonoured = true;
         try {
             this.builder.clear();
@@ -2768,6 +2791,7 @@ class SIDquakePRGExporter {
             // live controls on the next export.
             this._optionValues = null;
             this._preferredGfxBank = null;
+            this._reservedRanges = [];
         }
     }
 }

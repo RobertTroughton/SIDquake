@@ -423,9 +423,15 @@ a human required between every blocking wait.
   produce a file called `.prg`, because the `'output'` fallback only fired when
   there was no filename at all, not when sanitising emptied it.
 - **Preferred VIC bank is in** (Advanced settings), soft, falling back to
-  automatic with a warning when the tune leaves no room for it. Still open: a
-  preferred code region and reserved ranges, so a loader can keep, say,
-  `$C000-$CFFF` for itself.
+  automatic with a warning when the tune leaves no room for it. **Reserved
+  ranges are in too**, next to it: `$C000-$CFFF, $0900` style, a bare address
+  meaning its page, with anything unparseable named rather than silently
+  dropped. Unlike the bank they are hard — the code page search, the VIC bank
+  choice and the free-block scoring all avoid them, and an export that cannot
+  place the player around them fails with a message that says so instead of
+  using the memory anyway. The placement plan on the Export tab re-runs as they
+  change, so the effect is visible before building. Still open: a *preferred*
+  code region, as opposed to ranges to avoid.
 - **`createLayoutSelectorHTML` (`ui.js`) is still unreachable dead code.** It
   offers the *fixed-bank* layouts, which only the three non-relocatable players
   use; everything else places through `planRelocationCodeOnly`, which the bank
