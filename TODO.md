@@ -224,20 +224,15 @@ other twenty places that needed them.
 
 **Contrast** (computed from the tokens in `styles.css:7-68`; AA needs 4.5:1):
 
-- **Still failing:** `--border` `#252530` is 1.22:1 against `--bg-secondary` and
-  is the only visible boundary of every text field; `--border-light` is 1.37:1.
-  1.4.11 wants 3:1 for a control's boundary — `#4a4a5c` gives 3.05:1.
-- **Still failing:** `--accent-dim` as the `box-shadow` focus glow on
-  `.number-input` / `.select-input` / `.date-input` / textareas composites to
-  ~1.23:1. Harmless now that a real outline sits on top, but it is not the
-  indicator it looks like — either drop it or use `--accent`.
-- **Still failing:** `.export-status.error` is 3.74:1 on its own tinted
-  background (`styles-deferred.css`), and `--error` is 4.31:1 on `--bg-surface`;
-  `#e07070` would give 5.02:1. Same colour drives `.mf-tag.warn` and the
-  disabled-card reason (1.70:1 under `opacity: .4`).
-- **Still failing:** `.btn` (HVSC Cancel) is 4.33:1, and `.export-button:disabled`
-  composites to 1.71:1 — technically exempt, but Generate PRG is disabled for
-  most of the session, so it should still clear 3:1.
+**Contrast — done.** `--text-muted` and the white-on-amber buttons cleared AA
+earlier; this pass added `--border-control` (#6e6e85, 3.17:1 against the tightest
+surface) for every text field's boundary, lifted `--error` to #e07070 (4.84:1 on
+its own tinted background), gave `.btn` primary text, and raised the disabled
+Generate button to 3.1:1 — technically exempt, but it is disabled for most of a
+session, so "unreadable most of the time" was the wrong outcome. The C64 swatch
+strip keeps its colours and gains a light divider, since nine of the fifteen
+neighbouring pairs are under 3:1 against each other.
+
 - Leave the C64 palette swatches alone — reproducing the machine's colours is the
   point, and 1.4.11 exempts them. Give the chips a visible boundary and put a
   lighter divider between `.color-slider-track` segments instead.
@@ -253,12 +248,13 @@ tabs carry `aria-selected` / `aria-controls`, answer to the arrow keys and cost
 one tab stop. Still open: two `<h1>`s in the document at once (the wide and tall
 logos are both in the DOM, hidden by media queries rather than `<picture>`).
 
-**Zoom.** The Studio rail is `display: none` below 720px
-(`studio-modal.css:404`), which on a 1440px monitor fires at exactly 200% browser
-zoom — so the per-tab status ticks, the only progress overview in the app,
-disappear with nothing substituting. `.studio-foot` is a no-wrap flex row
-(`studio-modal.css:344`) holding a growing summary, the status text, Prev/Next
-and Generate.
+**Zoom.** Done: the footer wraps rather than crushing the status text out of
+sight, drops the summary below 900px, and carries the current tab's status where
+the rail is hidden — which on a 1440px monitor is exactly 200% zoom. Still open:
+`.studio-manifest` has no `overflow-x` wrapper, so a long value plus its edit
+button can push the table wider than the panel at 320px; and 49 `font-size: *px`
+declarations (down to 9px) ignore a raised browser default font, though zoom
+scales them.
 
 ## Mobile and first impression
 

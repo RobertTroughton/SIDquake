@@ -230,7 +230,7 @@
 
 .number-input, .select-input, .date-input {
     padding: 8px 12px;
-    border: 1px solid var(--border);
+    border: 1px solid var(--border-control);
     border-radius: var(--radius-sm);
     font-size: 0.9em;
     transition: all var(--transition-fast);
@@ -310,11 +310,14 @@
 }
 
 .export-button:disabled {
-    opacity: 0.4;
+    /* Disabled controls are exempt from 1.4.3, but Generate PRG is disabled for
+       most of a session, so "unreadable most of the time" is the wrong outcome
+       exemption or not. 0.4 put it at about 1.7:1; this clears 3:1. */
+    opacity: 0.8;
     cursor: not-allowed;
     transform: none;
     background: var(--bg-hover);
-    color: var(--text-muted);
+    color: var(--text-secondary);
 }
 
 .disabled .export-button:not(:disabled) {
@@ -872,6 +875,11 @@
     pointer-events: auto;
 }
 
+/* Nine of the fifteen neighbouring C64 colour pairs are under 3:1 against each
+   other (Orange/Brown is 1.56:1), and the swatches themselves must not be
+   changed - reproducing the machine's palette is the point, and 1.4.11 exempts
+   them. A light divider is the mitigation; a dark one vanished between the dark
+   pairs, which are exactly the ones that need it. */
 .color-segment:not(:last-child)::after {
     content: '';
     position: absolute;
@@ -879,7 +887,8 @@
     top: 0;
     bottom: 0;
     width: 1px;
-    background: rgba(0, 0, 0, 0.3);
+    background: rgba(255, 255, 255, 0.35);
+    box-shadow: -1px 0 0 rgba(0, 0, 0, 0.35);
 }
 
 .color-segment:hover {
@@ -968,7 +977,7 @@
     width: 100%;
     min-height: 60px;
     padding: 8px 12px;
-    border: 1px solid var(--border);
+    border: 1px solid var(--border-control);
     border-radius: var(--radius-sm);
     background: var(--bg-elevated);
     color: var(--text-primary);
@@ -1403,8 +1412,9 @@
 
 .btn {
     background: var(--bg-hover);
-    color: var(--text-secondary);
-    border: 1px solid var(--border);
+    /* --text-secondary on --bg-hover is 4.33:1; the primary text clears AA. */
+    color: var(--text-primary);
+    border: 1px solid var(--border-control);
     padding: 7px 14px;
     border-radius: var(--radius-sm);
     cursor: pointer;

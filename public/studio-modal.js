@@ -201,7 +201,12 @@ class StudioModal {
             + `<i class="fas fa-chevron-left"></i> Previous</button>`);
         // Narrow screens drop the tab rail and navigate with these buttons
         // alone, so the position the rail used to show comes with them.
-        parts.push(`<span class="studio-nav-pos">${i + 1} / ${tabs.length}</span>`);
+        // The rail - and with it every tab's status tick - is hidden below 720px,
+        // which on a 1440px monitor is exactly 200% browser zoom. Carry the
+        // current tab's status here so that information does not simply vanish.
+        const st = this.tabStatus(this.activeTab);
+        parts.push(`<span class="studio-nav-pos">${i + 1} / ${tabs.length}`
+            + `<span class="studio-nav-status"> · ${st.title}</span></span>`);
         if (next && !onExport) parts.push(
             `<button type="button" class="studio-nav-btn next" data-go="${next.id}">`
             + `Next <i class="fas fa-chevron-right"></i></button>`);

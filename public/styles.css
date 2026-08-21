@@ -29,12 +29,17 @@
     /* Border colors */
     --border: #252530;
     --border-light: #32323e;
+    /* The visible boundary of a CONTROL, which WCAG 1.4.11 wants at 3:1 - the
+       decorative --border above is ~1.2:1 and stays that way for separators.
+       This clears 3:1 against every surface a control sits on, --bg-elevated
+       (the tightest, 3.17:1) included. */
+    --border-control: #6e6e85;
     --border-accent: rgba(212, 162, 76, 0.25);
 
     /* Status colors */
     --success: #5cb87a;
     --warning: #e8a838;
-    --error: #d45555;
+    --error: #e07070;   /* 5.0:1 on the tinted error background */
     --info: #6b9fc4;
 
     /* Spacing scale */
