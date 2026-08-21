@@ -577,6 +577,72 @@ async function loadSid(page, file) {
         });
         check('A file that is not a recipe is refused', /does not look like/i.test(rejects), rejects);
 
+        // A recipe dropped on the page applies itself, without disturbing the tune.
+        const dropped = await page.evaluate(async () => {
+            const ui = window.uiController;
+            const grid = document.querySelector('.bar-style-grid');
+            const thumbs = [...grid.querySelectorAll('.bar-style-thumbnail')];
+            const configId = grid.dataset.configId;
+            ui.selectGridThumb(grid, thumbs[thumbs.length - 1]);
+            const chosen = document.getElementById(configId).value;
+            const saved = ui.buildRecipe();
+            ui.selectGridThumb(grid, thumbs[0]);
+            const reset = document.getElementById(configId).value;
+
+            const tuneBefore = ui.currentFileName;
+            const file = new File([JSON.stringify(saved)], 'set.sqrecipe.json',
+                { type: 'application/json' });
+            await ui.acceptFiles([file]);
+            await new Promise(r => setTimeout(r, 900));
+            return {
+                chosen, reset,
+                restored: document.getElementById(configId).value,
+                tuneKept: ui.currentFileName === tuneBefore,
+            };
+        });
+        check('A settings file dropped on the page applies itself',
+            dropped.chosen !== dropped.reset && dropped.restored === dropped.chosen,
+            JSON.stringify(dropped));
+        check('And it leaves the loaded tune alone', dropped.tuneKept === true,
+            JSON.stringify(dropped));
+
+        // What a build produced is recorded, and only while it still describes
+        // the settings in front of the user.
+        const builtBlock = await page.evaluate(async () => {
+            const ui = window.uiController;
+            const fake = new Uint8Array([0x01, 0x08, 0x0b, 0x08, 0x0a, 0x00]);
+            ui._lastBuilt = {
+                filename: 'x.prg', bytes: fake.length, blocks: 1,
+                loadAddress: fake[0] | (fake[1] << 8), prgHash: ui.constructor.prgHash(fake),
+            };
+            ui._lastBuiltFrom = JSON.stringify(ui.buildRecipe());
+            const withBuild = ui.buildRecipe(ui._builtIfStillCurrent());
+
+            // Change a setting: the build no longer describes these settings.
+            // Pick whichever thumbnail is not the current one - the checks above
+            // leave the selection somewhere in particular.
+            const grid = document.querySelector('.bar-style-grid');
+            const thumbs = [...grid.querySelectorAll('.bar-style-thumbnail')];
+            const configId2 = grid.dataset.configId;
+            const now = document.getElementById(configId2).value;
+            ui.selectGridThumb(grid, thumbs.find(t => t.dataset.value !== now) || thumbs[0]);
+            const moved = document.getElementById(configId2).value !== now;
+            const afterChange = ui.buildRecipe(ui._builtIfStillCurrent());
+            return {
+                hash: withBuild.built && withBuild.built.prgHash,
+                load: withBuild.built && withBuild.built.loadAddress,
+                moved,
+                stillThere: !!afterChange.built,
+                always: typeof ui.recipeAlways() === 'boolean',
+            };
+        });
+        check('A recipe records what the build produced',
+            builtBlock.hash && builtBlock.load === 0x0801, JSON.stringify(builtBlock));
+        check('And drops it once the settings no longer match',
+            builtBlock.stillThere === false, JSON.stringify(builtBlock));
+        check('There is a switch for saving one with every PRG',
+            builtBlock.always === true, JSON.stringify(builtBlock));
+
         // --- the brands webfont is never requested ----------------------------
         const brands = await page.evaluate(() => ({
             fabUsages: document.querySelectorAll('.fab, [class*="fa-github"], [class*="fa-youtube"]').length,

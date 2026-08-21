@@ -764,7 +764,18 @@ class UIController {
     // settings the user then chooses. Dropping a folder of tunes used to load
     // one and silently discard the others.
     async acceptFiles(fileList) {
-        const files = [...(fileList || [])].filter(f => /\.sid$/i.test(f.name));
+        const all = [...(fileList || [])];
+        // A settings file dropped on the page applies itself. It carries no
+        // tune, so it never disturbs what is loaded.
+        const recipes = all.filter(f => /\.json$/i.test(f.name));
+        for (const f of recipes) {
+            try {
+                await this.applyRecipe(JSON.parse(await f.text()));
+            } catch (e) {
+                this.setRecipeNote(`Could not read ${f.name}.`, true);
+            }
+        }
+        const files = all.filter(f => /\.sid$/i.test(f.name));
         if (!files.length) return;
         this.elements.hvscSelected.style.display = 'none';
         this._queue = files.map(f => ({ file: f, state: 'pending', note: '' }));
@@ -2049,7 +2060,12 @@ class UIController {
     // A custom uploaded image can only be referenced by name: the file itself is
     // not ours to keep, and a JSON cannot carry a file handle the browser will
     // accept back. Gallery picks restore in full.
-    buildRecipe() {
+    /**
+     * @param {object|null} built - what an export produced, recorded so two
+     *   builds of the same recipe can be diffed. The pipeline is deterministic
+     *   (no timestamp reaches the PRG), so the same inputs give the same bytes.
+     */
+    buildRecipe(built = null) {
         const viz = this.selectedVisualizer;
         const images = {};
         for (const [slot, sel] of Object.entries(this._imageSelectionMemory || {})) {
@@ -2075,14 +2091,39 @@ class UIController {
             },
             analysis: this.getAdvancedSettings(),
             naming: { template: (document.getElementById('filenameTemplate') || {}).value || '{name}' },
+            ...(built ? { built } : {}),
         };
     }
 
-    saveRecipe() {
-        const recipe = this.buildRecipe();
-        const base = (this.currentFileName || 'sidquake').replace(/\.sid$/i, '');
+    /** FNV-1a over the PRG bytes: enough to tell two builds apart. */
+    static prgHash(bytes) {
+        let h = 0x811c9dc5;
+        for (let i = 0; i < bytes.length; i++) { h ^= bytes[i]; h = Math.imul(h, 0x01000193); }
+        return (h >>> 0).toString(16).padStart(8, '0');
+    }
+
+    /**
+     * The last export's `built` block, but only while the settings still match
+     * the ones that produced it - otherwise the recipe would claim a build its
+     * own settings would not reproduce.
+     */
+    _builtIfStillCurrent() {
+        if (!this._lastBuilt) return null;
+        return JSON.stringify(this.buildRecipe()) === this._lastBuiltFrom ? this._lastBuilt : null;
+    }
+
+    /** Whether to drop a settings file next to every PRG. */
+    recipeAlways() {
+        const el = document.getElementById('recipeAlways');
+        return !!(el && el.checked);
+    }
+
+    saveRecipe(built = null, baseName = null) {
+        const recipe = this.buildRecipe(built);
+        const base = baseName || (this.currentFileName || 'sidquake').replace(/\.sid$/i, '');
         this.downloadFile(JSON.stringify(recipe, null, 2), `${base}.sqrecipe.json`);
         this.setRecipeNote(`Saved ${base}.sqrecipe.json.`);
+        return `${base}.sqrecipe.json`;
     }
 
     async applyRecipe(recipe) {
@@ -2176,7 +2217,16 @@ class UIController {
         if (this._recipeWired) return;
         this._recipeWired = true;
         const save = document.getElementById('recipeSave');
-        if (save) save.addEventListener('click', () => this.saveRecipe());
+        if (save) save.addEventListener('click', () => this.saveRecipe(this._builtIfStillCurrent()));
+        const always = document.getElementById('recipeAlways');
+        if (always) {
+            try { always.checked = localStorage.getItem('sidquakeRecipeAlways') === '1'; }
+            catch (e) { /* storage blocked: leave it off */ }
+            always.addEventListener('change', () => {
+                try { localStorage.setItem('sidquakeRecipeAlways', always.checked ? '1' : '0'); }
+                catch (e) { /* blocked */ }
+            });
+        }
         const btn = document.getElementById('recipeLoadBtn');
         const input = document.getElementById('recipeLoad');
         if (btn && input) {
@@ -3947,6 +3997,26 @@ class UIController {
                 usedBytes: memInfo
                     ? memInfo.components.reduce((n, c) => n + c.size, 0) : null,
             });
+
+            // Record what this build actually produced, so a recipe kept next to
+            // the PRG says which bytes it made as well as which settings.
+            const built = {
+                filename,
+                bytes: prgData.length,
+                blocks: Math.ceil(prgData.length / 254),
+                loadAddress: prgData.length >= 2 ? prgData[0] | (prgData[1] << 8) : null,
+                sysAddress: realSysAddress,
+                compression: isCompressed ? compressionType : 'none',
+                span: memInfo ? { lo: memInfo.lowestAddress, hi: memInfo.highestAddress } : null,
+                spanBytes: memInfo ? memInfo.totalSize : null,
+                loopFrames: this.tuneAnalysis ? (this.tuneAnalysis.loopFrames ?? null) : null,
+                prgHash: UIController.prgHash(prgData),
+            };
+            // Remember the settings that produced it too: a later "Save these
+            // settings" must not attach this build to a changed recipe.
+            this._lastBuilt = built;
+            this._lastBuiltFrom = JSON.stringify(this.buildRecipe());
+            if (this.recipeAlways()) this.saveRecipe(built, baseName);
 
             this.renderBakeTimeline(bakeInfo);
             this.renderLoopInfo();

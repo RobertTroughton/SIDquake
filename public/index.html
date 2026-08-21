@@ -449,7 +449,15 @@
                   <button type="button" class="file-button" id="recipeSave">Save these settings</button>
                   <button type="button" class="file-button" id="recipeLoadBtn">Load settings…</button>
                   <input type="file" id="recipeLoad" accept=".json,.sqrecipe.json" hidden>
-                  <span class="option-hint" id="recipeNote">A small .json you can keep with the tune, share with a group, or check into a repo.</span>
+                  <span class="option-hint" id="recipeNote">A small .json you can keep with the tune, share with a group, or check into a repo. Drop one anywhere on the page to apply it.</span>
+              </div>
+
+              <div class="recipe-row">
+                  <label for="recipeAlways" style="display:flex;align-items:center;gap:8px;cursor:pointer">
+                      <input type="checkbox" id="recipeAlways">
+                      <span>Save the settings file with every PRG</span>
+                  </label>
+                  <span class="option-hint">Adds a second small download each time, recording what was built as well as the settings.</span>
               </div>
 
               <div class="recipe-row">

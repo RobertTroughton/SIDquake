@@ -358,14 +358,21 @@ a human required between every blocking wait.
 - **Recipes exist** (`.sqrecipe.json`, saved and loaded from the Export tab):
   player + data source, every option value, gallery image picks, sub-tune,
   forced-loop answer, song-length choices, compression and the analysis
-  settings. Still open:
-  - **A `built` block** — load address, uncompressed span, file size, block
-    count, loop frames, PRG hash — written back after an export so two builds
-    can be diffed. The pipeline is already deterministic (no timestamp reaches
-    the PRG), so same inputs give same bytes.
-  - **Write one alongside every PRG**, rather than only on request.
-  - **Drop a recipe onto the page** to apply it, and apply one across a whole
-    queue rather than per tune.
+  settings. Done since:
+  - **A `built` block** — filename, load address, SYS address, span, file size,
+    block count, compression, loop frames and an FNV-1a of the PRG bytes,
+    recorded after an export so two builds can be diffed. The pipeline is
+    deterministic (no timestamp reaches the PRG), so same inputs give same
+    bytes. It is dropped again the moment the settings stop matching the ones
+    that produced it, so a recipe never claims a build it would not reproduce.
+  - **One alongside every PRG**, behind a switch on the Export tab (off by
+    default — a second download per export is not something to start doing
+    unasked). The choice is remembered.
+  - **Drop a recipe onto the page** to apply it. It carries no tune, so the
+    loaded one is left alone.
+
+  Still open:
+  - **Apply one across a whole queue** rather than per tune.
   - **Custom uploaded images can only be named, not carried.** A recipe records
     the slot and the filename and asks for the image again; a gallery pick
     restores in full.
