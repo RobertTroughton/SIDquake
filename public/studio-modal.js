@@ -176,14 +176,12 @@ class StudioModal {
     // ---------------------------------------------------------------------
 
     tabList() {
-        // The Method tab (Spectrometer vs Real-time) only appears when the
-        // chosen visualizer actually offers a choice of generation method.
-        const method = this.ui?.hasMethodChoice?.()
-            ? [{ id: 'method', label: 'Method', icon: 'fa-microchip' }] : [];
+        // How the bars are worked out is no longer a tab: it lives under the
+        // visualizer grid, next to the card it modifies, for the players that
+        // offer a choice at all.
         return [
             { id: 'song', label: 'Song', icon: 'fa-file-audio' },
             { id: 'visualizer', label: 'Visualizer', icon: 'fa-tv' },
-            ...method,
             ...this.derivedGroups.map(g => ({ id: g.id, label: g.label, icon: g.icon })),
             { id: 'export', label: 'Export', icon: 'fa-download' },
         ];
@@ -272,8 +270,8 @@ class StudioModal {
         }
 
         if (text.length) groups.push({ id: 'text', kind: 'options', label: 'Text', icon: 'fa-font', options: text });
-        if (barStyle.length) groups.push({ id: 'barstyle', kind: 'options', label: 'Bar Style', icon: 'fa-chart-bar', options: barStyle });
-        if (color.length) groups.push({ id: 'color', kind: 'options', label: 'Colour Effect', icon: 'fa-palette', options: color });
+        const look = barStyle.concat(color);
+        if (look.length) groups.push({ id: 'look', kind: 'options', label: 'Look', icon: 'fa-palette', options: look });
         if (scroller.length) groups.push({ id: 'scroller', kind: 'options', label: 'Scroller', icon: 'fa-scroll', options: scroller });
 
         return groups;
@@ -618,7 +616,7 @@ class StudioModal {
                 : this.manifestRow('Scrolltext', '—', 'skipped: empty', 'skip', owner));
         }
 
-        const styleGroups = this.derivedGroups.filter(g => g.id === 'barstyle' || g.id === 'color');
+        const styleGroups = this.derivedGroups.filter(g => g.id === 'look');
         for (const styleGroup of styleGroups) {
             const bits = [];
             for (const o of styleGroup.options) {

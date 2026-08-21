@@ -1413,13 +1413,23 @@ class UIController {
         // to thread it through every call site.
         this.currentVisualizerConfig = config;
 
-        // Method tab: how the bars are generated (its own tab now, not tucked
-        // under the visualizer grid). vizExtras is left empty.
+        // How the bars are worked out: folded under the visualizer grid, and
+        // present only for the players that offer a choice.
         const methodMount = document.getElementById('methodMount');
+        const methodFold = document.getElementById('methodFold');
         if (methodMount) {
             const methodHTML = this.createMethodPanelHTML(visualizer);
             methodMount.innerHTML = methodHTML
                 ? this._wrapOptionsPanel(`<div class="option-group">${methodHTML}</div>`) : '';
+            if (methodFold) {
+                methodFold.hidden = !methodHTML;
+                const cur = document.getElementById('methodFoldCurrent');
+                if (cur) {
+                    const label = window.studioModal
+                        ? window.studioModal.dataSourceLabel(visualizer) : '';
+                    cur.textContent = label ? ` · ${label}` : '';
+                }
+            }
         }
         const vizExtras = document.getElementById('vizExtras');
         if (vizExtras) vizExtras.innerHTML = '';
@@ -3515,6 +3525,8 @@ class UIController {
                 // on it - a highlight on a tab they cannot see says nothing, and
                 // an outline alone is colour-only.
                 if (window.studioModal) window.studioModal.activate('visualizer');
+                const fold = document.getElementById('methodFold');
+                if (fold && !fold.hidden) fold.open = true;
                 if (consent) {
                     consent.setAttribute('aria-invalid', 'true');
                     consent.focus();

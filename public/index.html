@@ -394,6 +394,16 @@
               <div class="visualizer-grid" id="visualizerGrid">
               </div>
 
+              <!-- How the bars are worked out, for the players that offer a
+                   choice. Under the grid rather than on a tab of its own: it
+                   modifies the card just picked, and it is empty for every
+                   player that has no choice to make. -->
+              <details class="method-fold" id="methodFold" hidden>
+                  <summary>How the bars are worked out<span class="method-fold-current" id="methodFoldCurrent"></span></summary>
+                  <p class="option-hint">Optional — the first one is already chosen, and is the one to keep unless your file holds several tunes.</p>
+                  <div id="methodMount"></div>
+              </details>
+
               <!-- The Spectrometer's multi-tune caveat: it belongs to the
                    visualizer choice, not to the tune, so it stays here while the
                    tune selector itself lives on the Song tab. -->
@@ -401,13 +411,6 @@
 
               <!-- Visualizer-level extras (data source moved to its own tab) -->
               <div id="vizExtras"></div>
-            </section>
-
-            <!-- METHOD tab (only shown for players with a choice of method) -->
-            <section class="studio-panel" data-studio-tab="method">
-              <h2 class="studio-panel-title">Method</h2>
-              <p class="studio-panel-sub">Optional — the first one is already chosen and is the one to keep unless your file holds several tunes.</p>
-              <div id="methodMount"></div>
             </section>
 
             <!-- Derived tabs (Logo / Bitmap / Text / Style / Scroller) are

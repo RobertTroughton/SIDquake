@@ -157,10 +157,6 @@ a file. Everything else stays exactly where it is behind "Customise".
   `_lastDataSource`, `_optionMemory`), but not a refresh or a new tab. Consider
   putting it in localStorage next to `sidquakeAdvanced` — and note that the same
   state is most of a recipe file, so the two should be designed together.
-- **Collapse eight tabs to six** — fold Method inline under the visualiser card
-  that owns it, and merge Bar Style + Colour Effect + palette + colours into one
-  "Look" tab. Eight tabs for what is one aesthetic decision reads as eight
-  required steps.
 - **Drop the "2 / 8" wizard framing on desktop.** The rail is the navigation; the
   counter implies mandatory steps that are all already correct. Keep it at narrow
   widths where the rail is hidden — that rationale is already in

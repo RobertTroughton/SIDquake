@@ -4868,3 +4868,45 @@
     flex: 1 1 100%;
     margin: 0;
 }
+
+/* How the bars are worked out: a fold under the visualizer grid rather than a
+   tab of its own. It only exists for the bar players, and it modifies the card
+   directly above it. */
+.method-fold {
+    margin-top: var(--space-md);
+    padding-top: var(--space-sm);
+    border-top: 1px solid var(--border);
+}
+
+.method-fold[hidden] {
+    display: none;
+}
+
+.method-fold > summary {
+    cursor: pointer;
+    font-size: 0.9em;
+    font-weight: 600;
+    color: var(--text-primary);
+    list-style: none;
+}
+
+.method-fold > summary::-webkit-details-marker { display: none; }
+
+.method-fold > summary::before {
+    content: '▶';
+    display: inline-block;
+    margin-right: 6px;
+    font-size: 0.75em;
+    color: var(--text-muted);
+    transition: transform var(--transition-fast);
+}
+
+.method-fold[open] > summary::before {
+    transform: rotate(90deg);
+}
+
+/* Which one is in use, so the fold does not have to be opened to find out. */
+.method-fold-current {
+    color: var(--text-accent);
+    font-weight: 400;
+}

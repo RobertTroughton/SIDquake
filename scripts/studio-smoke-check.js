@@ -430,6 +430,31 @@ async function loadSid(page, file) {
                 snapshot.fromDom === snapshot.live, JSON.stringify(snapshot));
         }
 
+        // --- fewer tabs -------------------------------------------------------
+        const tabs = await page.evaluate(async () => {
+            const ui = window.uiController;
+            // The busiest player: a logo, a font, bar styles, colour effects.
+            await ui.selectVisualizer(VISUALIZERS.find(v => v.id === 'RaistlinBarsWithLogo'));
+            await new Promise(r => setTimeout(r, 900));
+            const ids = window.studioModal.tabList().map(t => t.id);
+            const fold = document.getElementById('methodFold');
+            return {
+                ids,
+                hasMethodTab: ids.includes('method'),
+                splitStyleTabs: ids.includes('barstyle') || ids.includes('color'),
+                foldShown: fold && !fold.hidden,
+                foldSaysWhich: (document.getElementById('methodFoldCurrent') || {}).textContent || '',
+                methodCards: document.querySelectorAll('#methodMount .method-card').length,
+            };
+        });
+        check('The busiest player is six tabs, not eight',
+            tabs.ids.length <= 6 && !tabs.hasMethodTab && !tabs.splitStyleTabs,
+            tabs.ids.join(','));
+        check('How the bars are worked out folds under the grid instead',
+            tabs.foldShown && tabs.methodCards >= 2, JSON.stringify(tabs));
+        check('And the fold says which one is in use',
+            tabs.foldSaysWhich.trim().length > 0, tabs.foldSaysWhich);
+
         // --- file naming ------------------------------------------------------
         const naming = await page.evaluate(() => {
             const ui = window.uiController;
