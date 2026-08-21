@@ -404,10 +404,8 @@ wish of both experienced musicians and the beginner alike.
 
 ## Creative control gaps
 
-- **Border and background are one control.** `bgColor` writes both
-  `layout.borderColor` and the spectrometer background (`prg-builder.js:1381`), so
-  a black border with a dark-grey screen is impossible on the bars players. The
-  logo's own background is fixed by the converter with no override.
+- **Still open: the logo's own background** is fixed by the PNG converter with
+  no override (`$d021`-`$d024`). Border and screen are separate controls now.
 - **The UI palette is not the C64 palette.** `C64_COLORS` (`ui.js:4-21`) is a
   muted set; `petscii-converter.js:25-42` has the real VICE PAL values. Users
   choose in one palette and ship in another. (Also listed under "Palette drift"

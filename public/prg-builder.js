@@ -1378,9 +1378,23 @@ class SIDquakePRGExporter {
                         loadAddress: parseInt(layout.artistNameColorAddress),
                         name: 'artistNameColor'
                     });
+                } else if (optionConfig.id === 'borderColor' && layout.borderColor) {
+                    // A visualizer that offers a separate border control owns
+                    // layout.borderColor; bgColor then only paints the screen.
+                    const borderData = new Uint8Array(1);
+                    borderData[0] = validColor;
+                    optionComponents.push({
+                        data: borderData,
+                        loadAddress: parseInt(layout.borderColor),
+                        name: 'borderColor'
+                    });
                 } else if (optionConfig.id === 'bgColor') {
-                    // Background color affects border and spectrometer/background
-                    if (layout.borderColor) {
+                    // Border follows the background ONLY where the visualizer has
+                    // no border control of its own - a black border around a
+                    // dark-grey screen is the most ordinary C64 framing there is,
+                    // and tying the two together made it unbuildable.
+                    const hasBorderOption = (vizConfig?.options || []).some(o => o.id === 'borderColor');
+                    if (layout.borderColor && !hasBorderOption) {
                         const borderData = new Uint8Array(1);
                         borderData[0] = validColor;
                         optionComponents.push({
