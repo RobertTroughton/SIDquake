@@ -447,7 +447,16 @@ wish of both experienced musicians and the beginner alike.
 ## Performance
 - **`png_converter` conversion cost** — `getPixelColor` scans ~119 palettes × 16 per pixel and re-runs full-image passes up to ~65× on VICE screenshots. Cache a `colorIndex[320*200]` in `setImageData`. [WASM]
 - **Synchronous analysis** — `sid_analyze` runs 30,000 frames in one call, so the busy overlay can't update. Chunk it or move it to a Web Worker.
-- **Main-thread index cost** — the 11.9 MB index parse + 61k-tree build (and PETSCII matching, image conversion) run on the main thread; move to a Worker / lazy STIL shard.
+- **Main-thread index cost — mostly closed.** The STIL commentary is a separate
+  file now, fetched only when something reads it, which takes the index from
+  11.9 MB to 7.7 MB. The tree build over 61,157 entries went from ~190 ms to
+  ~25 ms by walking each path prefix once and remembering the last folder
+  (they arrive clustered, ~31 files to a folder), so the remaining main-thread
+  block is the ~50 ms `JSON.parse`. A Worker would not help that: parsing there
+  and posting 61k objects back costs the main thread a structured-clone
+  deserialise of the same order. Worth revisiting only with a packed binary
+  index that transfers as an ArrayBuffer. PETSCII matching and image conversion
+  still run on the main thread and are the better Worker candidates.
 
 ## Assembly / players
 - **`SetupStableRaster` is PAL-only** (`SIDPlayers/INC/stablerastersetup.asm`) — writes the PAL `$DC06` latch unconditionally; NTSC exports jitter. Gate the latch on the clock-type byte. [asm — rebuild + NTSC test]

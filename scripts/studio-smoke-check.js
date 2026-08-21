@@ -850,6 +850,28 @@ async function loadSid(page, file) {
                 () => document.querySelectorAll('#fileList .file-item').length > 0,
                 null, { timeout: 120000 });
 
+            // The directory tree is built from the flat index in one pass.
+            const tree = await page.evaluate(async () => {
+                const rows = () => [...document.querySelectorAll('#fileList .file-item')];
+                const root = rows().map(r => r.textContent.trim());
+                const dir = rows().find(r => r.classList.contains('directory'));
+                const name = dir ? dir.textContent.trim() : null;
+                if (dir) dir.dispatchEvent(new MouseEvent('dblclick', { bubbles: true }));
+                await new Promise(r => setTimeout(r, 400));
+                return {
+                    rootDirs: root.length,
+                    into: name,
+                    inside: rows().length,
+                    path: document.getElementById('currentPath')?.textContent || '',
+                };
+            });
+            check('The folder tree lists the archive root', tree.rootDirs > 0,
+                JSON.stringify(tree));
+            check('And a folder can be opened to show what is in it',
+                tree.inside > 0 && !!tree.into, JSON.stringify(tree));
+            await page.evaluate(() => window.hvscBrowser.navigateHome());
+            await page.waitForTimeout(200);
+
             // A broad query caps at 500 results. The first chunk must land in
             // the same turn the search runs; the rest arrive over later frames.
             const first = await page.evaluate(async () => {

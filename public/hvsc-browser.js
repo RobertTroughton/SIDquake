@@ -588,6 +588,12 @@ window.hvscBrowser = (function () {
             return node;
         };
 
+        // 61,157 tunes share about 1,950 directories, and the index lists them
+        // clustered by folder, so remembering the last one skips the segment
+        // walk for the great majority of entries.
+        let lastDir = null;
+        let lastNode = null;
+
         for (let i = 0; i < all.length; i++) {
             const e = all[i];
             const p = e.p;
@@ -596,16 +602,25 @@ window.hvscBrowser = (function () {
             const slash = p.lastIndexOf('/');
             const dir = slash === -1 ? '' : p.substring(0, slash);
             const name = slash === -1 ? p : p.substring(slash + 1);
-            getDir(dir).files.push({ name, path: p, meta: e });
 
-            // Register each directory segment under its parent.
-            const segs = dir.split('/');
-            for (let s = 0; s < segs.length; s++) {
-                const full = segs.slice(0, s + 1).join('/');
-                const parent = s === 0 ? '' : segs.slice(0, s).join('/');
-                getDir(parent).dirs.add(segs[s]);
-                getDir(full); // ensure node exists
+            if (dir !== lastDir) {
+                // Walk the prefix once, registering each segment under its
+                // parent as it goes. Slicing and re-joining a segment array
+                // here used to cost more than the rest of the index load
+                // together.
+                let node = getDir('');
+                let at = 0;
+                while (at < dir.length) {
+                    let next = dir.indexOf('/', at);
+                    if (next === -1) next = dir.length;
+                    node.dirs.add(dir.substring(at, next));
+                    node = getDir(dir.substring(0, next));
+                    at = next + 1;
+                }
+                lastDir = dir;
+                lastNode = node;
             }
+            lastNode.files.push({ name, path: p, meta: e });
         }
     }
 
