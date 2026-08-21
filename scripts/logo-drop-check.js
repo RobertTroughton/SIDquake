@@ -25,7 +25,9 @@ const path = require('path');
 
 const ROOT = path.join(__dirname, '..', 'public');
 const SID = path.join(__dirname, '..', 'SID', 'SteelStinsen-DangerDawg.sid');
-const VISUALIZER = 'Raistlin Bars With Logo';   // logo input, top 11 character rows
+// By id, not by the name on the card: the display names are user-facing copy
+// and change. This one has a logo input over the top 11 character rows.
+const VISUALIZER = 'RaistlinBarsWithLogo';
 const BAND = 88;
 
 const TYPES = {
@@ -157,9 +159,8 @@ async function openStudioWithLogo(page) {
         await page.evaluate(() => window.studioModal.open());
         await page.waitForSelector('.visualizer-card', { state: 'attached', timeout: 30000 });
         await page.waitForTimeout(600 * (attempt + 1));
-        await page.evaluate((name) => {
-            const card = [...document.querySelectorAll('.visualizer-card')]
-                .find(e => e.textContent.trim().startsWith(name));
+        await page.evaluate((id) => {
+            const card = document.querySelector(`.visualizer-card[data-id="${id}"]`);
             if (card) card.click();
         }, VISUALIZER);
         try {
@@ -342,24 +343,20 @@ async function openStudioWithLogo(page) {
     check(r.note === '', 'and a logo that already fits is left alone', r.note);
 
     // An image that is no C64 size at all (the user's 360x194): 40 columns too
-    // many and a height off the character grid, so there's no offset that makes
-    // it work. It has to be refused outright, leaving the logo already chosen
-    // exactly as it was - that's what will be exported.
-    const kept = await readInput(page, inputId);
+    // many and a height off the character grid, so there is no offset that
+    // makes it work by itself. It is still accepted - the placement tool has a
+    // size slider and a position control and is exactly what this needs - and
+    // the note says the size is unusual so the user checks where it landed.
     await dropImage(page, {
         w: 360, h: 194, bg: '#000000', fg: '#ffffff',
         box: [20, 40, 339, 150], name: 'wrong-size.png'
     });
     r = await readInput(page, inputId);
-    check(r.name === kept.name && r.w === kept.w && r.h === kept.h
-        && JSON.stringify(r.box) === JSON.stringify(kept.box),
-        'a 360x194 image leaves the chosen logo alone', `still ${r.name} ${r.w}x${r.h}`);
-    const refusal = await page.evaluate(() => {
-        const warn = document.querySelector('.preview-note.warn');
-        return warn && !warn.hidden ? warn.textContent : '';
-    });
-    check(/360×194/.test(refusal) && /320×200/.test(refusal) && /384×272/.test(refusal),
-        'and says what sizes a logo can be', refusal || 'no message');
+    check(r.name === 'wrong-size.png' && r.w === 320,
+        'a 360x194 image is accepted and placed', `${r.name} ${r.w}x${r.h}`);
+    check(/360×194/.test(r.note) && /320×200/.test(r.note) && /Adjust logo/i.test(r.note),
+        'and the note names its size and points at the placement tool',
+        r.note || 'no message');
 
     await ctx.close();
     await browser.close();

@@ -409,11 +409,6 @@ wish of both experienced musicians and the beginner alike.
 - **No scroller on the bars-with-logo players.** Bars + logo + greetings is the
   standard release layout and it is not buildable; `scrollText` exists only in
   `scrapcolumns.json` and `simplebitmapwithscroller.json`.
-- **Wrong-sized logos are rejected instead of fitted.** `logo-fit.js:44` accepts
-  only 320×200, 384×272, or 320-wide multiples of 8, and
-  `image-preview-manager.js:546` throws before any state is stored — so the
-  Adjust tool, which has a Size slider and would solve it in seconds, is
-  unreachable for exactly the images that need it.
 - **No Group field.** Scene releases are handle / group, and the Default player
   already has three 32-byte text slots.
 - **The Default player prints the full hardware block** (`Default.asm:104-141`)

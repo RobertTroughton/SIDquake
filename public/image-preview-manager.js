@@ -544,12 +544,12 @@ class ImagePreviewManager {
         const src = await this.decodeImage(file);
         // Sizes the C64 side isn't defined for are refused rather than cropped
         // or resampled into something the artist didn't draw.
-        const wrongSize = LogoFit.sizeError(src.width, src.height);
-        if (wrongSize) {
-            const err = new Error(wrongSize);
-            err.wrongSize = true;
-            throw err;
-        }
+        // An odd size is not a refusal any more. Throwing here happened BEFORE any
+        // state was stored, so the Adjust tool - which has a size slider and a
+        // position control and would have solved it in seconds - was unreachable
+        // for exactly the images that needed it. plan() marks these needsFit, so
+        // the user places them instead.
+        const oddSize = LogoFit.sizeError(src.width, src.height);
         const band = LogoFit.bandHeight(config.charsetRows);
         const place = LogoFit.plan(src.rgba, src.width, src.height, { band });
         this.logoFit.set(config.id, {
@@ -559,6 +559,7 @@ class ImagePreviewManager {
             auto: Object.assign({}, place, place.auto)
         });
         if (!place.needsFit) return { file, fitted: false, place };
+        if (oddSize) place.sizeNote = oddSize;
         return { file: await this.renderLogoFile(config), fitted: true, place };
     }
 
@@ -597,8 +598,11 @@ class ImagePreviewManager {
             this.setPreviewNote(config, 'fit', '');
             return;
         }
+        // An unusual size is worth naming: the placement is a guess the user
+        // should look at, not a result they can take on trust.
+        const odd = fit.place && fit.place.sizeNote ? `${fit.place.sizeNote} ` : '';
         this.setPreviewNote(config, 'fit',
-            `Auto-placed: ${LogoFit.describe(fit.place)}. Use "Adjust logo" to move or recolour it.`);
+            `${odd}Auto-placed: ${LogoFit.describe(fit.place)}. Use "Adjust logo" to move or recolour it.`);
     }
 
     // The placement state for an input, loading the current selection (or the
@@ -965,14 +969,6 @@ class ImagePreviewManager {
                         fit = await this.prepareLogoImage(config, file);
                         file = fit.file;
                     } catch (fitError) {
-                        if (fitError.wrongSize) {
-                            // A gallery entry the converter can't take at all -
-                            // keep whatever was chosen before rather than
-                            // swapping in something that won't export.
-                            this.setPreviewNote(config, 'warn', fitError.message);
-                            this.showError(container, fitError.message);
-                            return;
-                        }
                         console.warn('Logo fit skipped:', fitError);
                     }
                     this.updateLogoNotice(config, fit);
@@ -1037,14 +1033,6 @@ class ImagePreviewManager {
                     fit = await this.prepareLogoImage(config, file);
                     useFile = fit.file;
                 } catch (fitError) {
-                    if (fitError.wrongSize) {
-                        // Leave the input, the preview and the notes as they
-                        // were: the logo already chosen is still the one that
-                        // will be exported.
-                        this.setPreviewNote(config, 'warn', fitError.message);
-                        this.showError(wrapper, fitError.message);
-                        return;
-                    }
                     // Undecodable image - carry on with the original and let the
                     // classifier report what's wrong with it.
                     console.warn('Logo fit skipped:', fitError);

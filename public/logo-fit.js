@@ -40,18 +40,21 @@
         return (w === VICE_W && h === VICE_H) || (w === W && h >= 8 && h <= H && h % 8 === 0);
     }
 
-    // Why this image can't be a logo, or null when it can.
+    // Why this image needs placing by hand, or null when it drops straight in.
     //
-    // Only these sizes are accepted. Anything else needs a decision nothing can
-    // make for the user: a 360px-wide image has 40 columns too many and no
-    // offset drops them in the right place, and a height that isn't a multiple
-    // of 8 can't line up with the character grid at all. Cropping or resampling
-    // to cover that up wrecks the pixel art either way, so say so instead.
+    // These sizes need no decision from anyone: they already line up with the
+    // character grid. Anything else does need a decision - a 360px-wide image
+    // has 40 columns too many and no offset drops them in the right place, and
+    // a height off the multiple of 8 can't line up at all - and scaling or
+    // cropping to cover that up wrecks pixel art. So the image is accepted and
+    // plan() marks it needsFit: the Adjust tool opens with an automatic
+    // placement, and where it lands is the user's call, not ours.
     function sizeError(w, h) {
         if (isNativeSize(w, h)) return null;
-        return 'A logo has to be ' + W + '×' + H + ' (a C64 screen), ' + VICE_W + '×' + VICE_H +
+        return 'This image is ' + w + '×' + h + '. A logo that drops straight in is ' +
+            W + '×' + H + ' (a C64 screen), ' + VICE_W + '×' + VICE_H +
             ' (a VICE screenshot with its borders), or ' + W + ' wide by any multiple of 8 high' +
-            ' (e.g. ' + W + '×88). This one is ' + w + '×' + h + '.';
+            ' (e.g. ' + W + '×88). Check where this one sits with Adjust logo.';
     }
 
     // The part of the image the C64 screen actually is: all of it, or the inner

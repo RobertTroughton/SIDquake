@@ -130,9 +130,9 @@ function onGrid(place) {
     check(LogoFit.sizeError(384, 272) === null, '384x272 (a VICE grab) is a logo');
     check(LogoFit.sizeError(320, 88) === null, 'so is a 320-wide strip of whole character rows');
     check(LogoFit.sizeError(320, 96) === null, 'at any multiple of 8 high');
-    check(!!LogoFit.sizeError(360, 194), 'a 360x194 image is refused',
+    check(!!LogoFit.sizeError(360, 194), 'a 360x194 image is flagged as needing placement',
         LogoFit.sizeError(360, 194));
-    check(!!LogoFit.sizeError(320, 194), 'a height off the character grid is refused',
+    check(!!LogoFit.sizeError(320, 194), 'a height off the character grid is flagged too',
         LogoFit.sizeError(320, 194));
     check(!!LogoFit.sizeError(320, 208), 'and so is one taller than the screen');
     const msg = LogoFit.sizeError(360, 194) || '';
