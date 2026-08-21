@@ -835,6 +835,65 @@ async function loadSid(page, file) {
         const h1Count = await page.evaluate(() => document.querySelectorAll('h1').length);
         check('The document has a single h1', h1Count === 1, `${h1Count} found`);
 
+        // --- HVSC search paints in chunks -------------------------------------
+        // The index is gitignored (npm run extract-hvsc builds it), so skip
+        // rather than fail when it isn't there.
+        const hasIndex = await page.evaluate(async () => {
+            const r = await fetch('/hvsc-index-lite.json', { method: 'HEAD' });
+            return r.ok;
+        }).catch(() => false);
+        if (!hasIndex) {
+            console.log('SKIP  HVSC search checks - no local index');
+        } else {
+            await page.evaluate(() => window.uiController.openHVSCBrowser());
+            await page.waitForFunction(
+                () => document.querySelectorAll('#fileList .file-item').length > 0,
+                null, { timeout: 120000 });
+
+            // A broad query caps at 500 results. The first chunk must land in
+            // the same turn the search runs; the rest arrive over later frames.
+            const first = await page.evaluate(async () => {
+                const input = document.getElementById('hvscSearchBar');
+                input.value = 'a';
+                input.dispatchEvent(new Event('input', { bubbles: true }));
+                await new Promise(r => setTimeout(r, 400));
+                return document.querySelectorAll('#fileList .file-item').length;
+            });
+            check('A broad search does not build every row up front',
+                first > 0 && first < 200, `${first} rows in the first paint`);
+
+            const settled = await page.evaluate(async () => {
+                await new Promise(r => setTimeout(r, 1500));
+                return {
+                    rows: document.querySelectorAll('#fileList .file-item').length,
+                    tabStops: document.querySelectorAll('#fileList .file-item[tabindex="0"]').length,
+                    role: document.getElementById('fileList').getAttribute('role'),
+                };
+            });
+            check('The rest of the capped list arrives', settled.rows === 500,
+                `${settled.rows} rows`);
+            check('The finished list is still a listbox with one tab stop',
+                settled.role === 'listbox' && settled.tabStops === 1,
+                JSON.stringify(settled));
+
+            // Typing again mid-paint must abandon the unfinished list, not
+            // leave its rows stacked under the new results.
+            const retyped = await page.evaluate(async () => {
+                const input = document.getElementById('hvscSearchBar');
+                input.value = 'commando';
+                input.dispatchEvent(new Event('input', { bubbles: true }));
+                await new Promise(r => setTimeout(r, 400));
+                const mid = document.querySelectorAll('#fileList .file-item').length;
+                await new Promise(r => setTimeout(r, 1200));
+                return { mid, after: document.querySelectorAll('#fileList .file-item').length };
+            });
+            check('A new query replaces the part-painted list rather than adding to it',
+                retyped.after < 500 && retyped.after >= retyped.mid,
+                JSON.stringify(retyped));
+
+            await page.evaluate(() => document.getElementById('hvscModalClose').click());
+        }
+
         const fatal = errors.filter(e => !/favicon|net::ERR_|404/i.test(e));
         check('No uncaught page errors', fatal.length === 0, fatal.slice(0, 3).join(' | '));
 

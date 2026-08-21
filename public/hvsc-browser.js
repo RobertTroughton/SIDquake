@@ -26,6 +26,11 @@ window.hvscBrowser = (function () {
     let searchDebounce = null;
     let lastSearchMatches = null;    // for re-sorting search results in place
     const SEARCH_RESULT_LIMIT = 500;
+    // Search results are painted a chunk at a time. A keystroke that lands
+    // mid-paint abandons the rest, so typing costs one chunk per keystroke
+    // rather than the whole capped list.
+    const RESULT_CHUNK = 60;
+    let pendingRowPaint = null;
 
     // Sort state (applies to files in a folder and to search results;
     // directories always list first, alphabetically). Persisted so the
@@ -1104,6 +1109,7 @@ window.hvscBrowser = (function () {
 
     function renderEntries() {
         const fileList = document.getElementById('fileList');
+        cancelPendingRows();
         fileList.innerHTML = '';
         entries.forEach(entry => {
             const item = document.createElement('div');
@@ -1226,28 +1232,26 @@ window.hvscBrowser = (function () {
         document.getElementById('itemCount').textContent = countText;
     }
 
-    function renderSearchResults(results, limit) {
-        const fileList = document.getElementById('fileList');
-        fileList.innerHTML = '';
+    /** Stop any part-painted result list before the next render replaces it. */
+    function cancelPendingRows() {
+        if (pendingRowPaint === null) return;
+        cancelAnimationFrame(pendingRowPaint);
+        pendingRowPaint = null;
+    }
 
-        if (results.length === 0) {
-            fileList.innerHTML = '<div class="search-empty">No matching SIDs found.</div>';
-            return;
-        }
+    /** One search-result row. */
+    function buildResultRow(r) {
+        const fileName = r.p.split('/').pop();
+        const folder = r.p.substring(0, r.p.length - fileName.length - 1);
+        const titleLine = r.t || fileName;
+        const authorLine = r.a || '';
+        const year = yearLabel(r);
 
-        const frag = document.createDocumentFragment();
-        results.slice(0, limit).forEach(r => {
-            const fileName = r.p.split('/').pop();
-            const folder = r.p.substring(0, r.p.length - fileName.length - 1);
-            const titleLine = r.t || fileName;
-            const authorLine = r.a || '';
-            const year = yearLabel(r);
-
-            const unsupported = isUnsupported(r);
-            const item = document.createElement('div');
-            item.className = 'file-item search-result' + (unsupported ? ' unsupported' : '');
-            if (unsupported) item.title = 'RSID — plays here for preview, but can’t be used in the SIDquake tool';
-            item.innerHTML = `
+        const unsupported = isUnsupported(r);
+        const item = document.createElement('div');
+        item.className = 'file-item search-result' + (unsupported ? ' unsupported' : '');
+        if (unsupported) item.title = 'RSID — plays here for preview, but can’t be used in the SIDquake tool';
+        item.innerHTML = `
             <span class="file-icon"><i class="fas fa-music"></i></span>
             <span class="search-result-text">
                 <span class="search-result-title">${escapeHtml(titleLine)}${unsupported ? ' <span class="file-tag">RSID</span>' : ''}</span>
@@ -1257,17 +1261,53 @@ window.hvscBrowser = (function () {
             ${year ? `<span class="file-year">${escapeHtml(year)}</span>` : ''}
         `;
 
-            const entry = { name: fileName, path: r.p, isDirectory: false, meta: r };
-            item.dataset.path = r.p;
-            if (currentSelection && r.p === currentSelection.path) item.classList.add('selected');
-            item.onclick = (e) => handleItemClick(e, entry);
-            item.ondblclick = () => handleItemDoubleClick(entry);
-            makeRowKeyboardAccessible(item, entry);
-            frag.appendChild(item);
-        });
-        fileList.appendChild(frag);
-        wireListKeyboard();
-        updateRowTabStops(fileList);
+        const entry = { name: fileName, path: r.p, isDirectory: false, meta: r };
+        item.dataset.path = r.p;
+        const isSelected = currentSelection && r.p === currentSelection.path;
+        if (isSelected) item.classList.add('selected');
+        item.onclick = (e) => handleItemClick(e, entry);
+        item.ondblclick = () => handleItemDoubleClick(entry);
+        makeRowKeyboardAccessible(item, entry);
+        return { item, isSelected };
+    }
+
+    function renderSearchResults(results, limit) {
+        const fileList = document.getElementById('fileList');
+        cancelPendingRows();
+        fileList.innerHTML = '';
+
+        if (results.length === 0) {
+            fileList.innerHTML = '<div class="search-empty">No matching SIDs found.</div>';
+            return;
+        }
+
+        const shown = results.slice(0, limit);
+
+        // The arrow keys, type-ahead and tab stop all read the list live, so a
+        // list that is still filling in behaves like a finished one - the rows
+        // simply arrive over the next few frames.
+        function paint(from) {
+            const to = Math.min(from + RESULT_CHUNK, shown.length);
+            const frag = document.createDocumentFragment();
+            let hasSelected = false;
+            for (let i = from; i < to; i++) {
+                const { item, isSelected } = buildResultRow(shown[i]);
+                if (isSelected) hasSelected = true;
+                frag.appendChild(item);
+            }
+            fileList.appendChild(frag);
+            if (from === 0) wireListKeyboard();
+            // Only re-run the roving tabindex when the chunk changed which row
+            // should carry it: the first chunk sets it, and a later chunk only
+            // matters if it brought the selected row in.
+            if (from === 0 || hasSelected) updateRowTabStops(fileList);
+            if (to < shown.length) {
+                pendingRowPaint = requestAnimationFrame(() => paint(to));
+            } else {
+                pendingRowPaint = null;
+            }
+        }
+        paint(0);
     }
 
     return {

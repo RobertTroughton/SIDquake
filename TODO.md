@@ -209,10 +209,12 @@ other twenty places that needed them.
   `onCancel`, so the 30,000-frame analysis can't be stopped. Random SID is
   cancellable now, and the overlay itself is a labelled dialog that announces on
   a throttle, focuses Cancel and makes the page behind `inert`.
-- **Still open: the HVSC listing is not virtualised.** It is a proper listbox
-  now — roving tabindex, arrows, Home/End, PageUp/Down, type-ahead, announced
-  counts — but a search still renders up to 500 rows with `innerHTML=''` plus a
-  per-row `appendChild` on every keystroke.
+- **HVSC results now paint in chunks.** It is a proper listbox — roving
+  tabindex, arrows, Home/End, PageUp/Down, type-ahead, announced counts — and a
+  search paints 60 rows at a time across frames, abandoning the tail when the
+  next keystroke arrives, so typing costs one chunk rather than 500 rows. Still
+  not windowed: once typing stops, all 500 rows end up in the DOM. That only
+  matters if the cap is raised.
 
 **Contrast** (computed from the tokens in `styles.css:7-68`; AA needs 4.5:1):
 
@@ -236,16 +238,16 @@ neighbouring pairs are under 3:1 against each other.
   point, and 1.4.11 exempts them. Give the chips a visible boundary and put a
   lighter divider between `.color-slider-track` segments instead.
 
-**Motion.** The global `prefers-reduced-motion` block and the floating-notes
-guard are in. Still wanted: a persisted user toggle for the drifting notes, since
-"I find this distracting" is not the same preference as the OS setting, and a
-static substitute for `.busy-spinner` when a scan runs for minutes.
+**Motion — done.** The global `prefers-reduced-motion` block, the floating-notes
+guard, a persisted footer toggle for the drifting notes (since "I find this
+distracting" is not the same preference as the OS setting), and stilled spinners
+under reduced motion, which matters because a scan can run for minutes.
 
 **Structure.** Done: the Tool tab is a `<main>` with a heading and a skip link,
-the Studio's heading order runs h2 → h3, and the rail is a real `tablist` whose
+the Studio's heading order runs h2 → h3, the rail is a real `tablist` whose
 tabs carry `aria-selected` / `aria-controls`, answer to the arrow keys and cost
-one tab stop. Still open: two `<h1>`s in the document at once (the wide and tall
-logos are both in the DOM, hidden by media queries rather than `<picture>`).
+one tab stop, and the document has a single `<h1>` (the Releases heading was a
+second one).
 
 **Zoom.** Done: the footer wraps rather than crushing the status text out of
 sight, drops the summary below 900px, and carries the current tab's status where
