@@ -158,6 +158,35 @@ async function loadSid(page, file) {
             focusKept.before && focusKept.stillInRail && !focusKept.landedOnBody,
             JSON.stringify(focusKept));
 
+        // --- advanced settings are folded away, and still work ----------------
+        await page.evaluate(() => window.studioModal.activate('export'));
+        await page.waitForTimeout(200);
+        const adv = await page.evaluate(() => {
+            const d = document.getElementById('advancedSettings');
+            const before = { exists: !!d, open: !!(d && d.open) };
+            // Every knob that used to sit loose on the Export tab must be inside it.
+            const inside = ['advBakeEngine', 'advScanLen', 'advMinLoop']
+                .filter(id => d && d.contains(document.getElementById(id)));
+            // Compression stays out in the open - it is a real choice.
+            const compressionOutside = !!document.querySelector('input[name="compression-type"]')
+                && !d?.contains(document.querySelector('input[name="compression-type"]'));
+            return { ...before, inside, compressionOutside };
+        });
+        check('Advanced settings are collapsed by default', adv.exists && adv.open === false,
+            JSON.stringify({ exists: adv.exists, open: adv.open }));
+        check('The expert knobs live inside it', adv.inside.length === 3, adv.inside.join(','));
+        check('Compression stays outside it', adv.compressionOutside);
+
+        const scanWindow = await page.evaluate(() => {
+            const el = document.getElementById('advScanLen');
+            el.value = '4:00';
+            el.dispatchEvent(new Event('change', { bubbles: true }));
+            const saved = JSON.parse(localStorage.getItem('sidquakeAdvanced') || '{}');
+            return { text: saved.scanLenText, parsed: window.uiController.getAdvancedSettings().maxLoopSeconds };
+        });
+        check('The loop-search window is settable again', scanWindow.parsed === 240,
+            JSON.stringify(scanWindow));
+
         // --- metadata edits reach the header the exporter reads ---------------
         const meta = await page.evaluate(() => {
             const ui = window.uiController;

@@ -16,15 +16,12 @@ source; where a claim still needs a browser to confirm it, it says so.
 Ranked by value against effort, not by section order. Each line names the section
 that holds the detail.
 
-1. Collapse Technical Details; move the frame rate, stored bars and analysis
-   engine behind an Advanced disclosure; restore the scan window, min-loop and
-   bank override into it. *(Progressive disclosure)*
-2. Ship the eleven preview GIFs and set `animated: true`. *(Preview)*
-3. Don't auto-open the Studio below 720px; un-hide the visualiser on phones;
+1. Ship the eleven preview GIFs and set `animated: true`. *(Preview)*
+2. Don't auto-open the Studio below 720px; un-hide the visualiser on phones;
    autoplay after Random SID. *(Mobile and first impression)*
-4. The completion panel that tells a first-timer what a .prg is and how to run
+3. The completion panel that tells a first-timer what a .prg is and how to run
    it. *(Language)*
-5. Multi-file drop and a queue. *(Batch)*
+4. Multi-file drop and a queue. *(Batch)*
 
 Bigger pieces worth planning rather than picking up: the live in-browser preview,
 recipe files plus the `sidquake-build` CLI, the listener-first entry point, and
@@ -39,12 +36,6 @@ produces a wrong result or dead UI.
   `prg/<id>.gif` and swaps on hover, gated on `visualizer.animated`. No registry
   entry sets `animated: true` and there are no `.gif` files in `public/prg/`.
   Users pick a *motion* effect from a frozen still.
-- **Two Advanced settings are read but unreachable.** `getAdvancedSettings`
-  (`ui.js:1402-1403`) reads `scanLenText` (the loop-scan window) and
-  `minLoopSeconds` from localStorage; `_wireAdvancedSettings` (`ui.js:1493`)
-  wires only `advFps`, `advStoredLen`, `advBakeEngine`. The "Loop detection"
-  section below still says the fix for a capped scan is "open Advanced and raise
-  the value" — there is no such control. Devtools is the only route.
 - **The memory-bank override is dead code.** `createLayoutSelectorHTML`
   (`ui.js:1623-1692`) builds a complete layout radio group with per-bank ranges
   and overlap reasons. Nothing calls it; `selectedLayoutKey` is hardcoded `null`
@@ -155,14 +146,11 @@ logo / bitmap; font; bar style; colour effect and palette; scroller; compression
 (as one select line, not three large radio cards); the export manifest; the
 post-export timeline and memory map.
 
-**Advanced-hidden.** Technical Details — currently `<details open>`
-(`index.html:243`), so eleven rows of load/init/play addresses and zero-page
-usage are the first thing on the first tab. Spectrometer frame rate ("Best (fits
-memory)" is right nearly always, and an export silently drops to what fits
-anyway). Max stored bars. Analysis SID engine plus its ninety-word note
-(`ui.js:1462-1481`) — it is rendered unconditionally for every player today
-(`ui.js:1194`), and it is a bug-hunting knob. Plus the two settings restored from
-the dead-code list, and the bank override.
+**Advanced-hidden.** Done for Technical Details (now collapsed) and for the
+Export tab: frame rate, max stored bars, analysis engine and the restored
+loop-search window + shortest-loop threshold all sit inside a remembered
+`<details>`. Still to fold in: the memory-bank override, once
+`createLayoutSelectorHTML` is wired to a real `selectedLayoutKey`.
 
 **Neither — needs a second path.** The beginner does not want a smaller expert
 UI, they want a different one. Add a **Quick export** route from the landing
@@ -531,13 +519,12 @@ VIC asset at any *valid slot within a bank* — not just shift whole banks in
 - **Export option snapshot** — the exporter reads option state from the live DOM rather than a captured snapshot (`_captureOptionValues` exists but isn't used for export). No observed desync today (the modal is static during export).
 
 ## Loop detection — give the user control of the scan
-The analysis cap (`maxLoopSeconds`, default 600 s → a 1200 s render cap) has no UI
-at all — `getAdvancedSettings` reads `scanLenText` from localStorage and nothing
-writes it (see "Two Advanced settings are read but unreachable" above). Hitting
-the cap is silent and unrecoverable in-flow: the tune gets stored as a fade-out
-and the only way to search further is to edit localStorage by hand. Most tunes
-loop or fade inside ~6 min, so the cap should be lower *and* the rare long tune
-should be handled in the moment.
+The analysis cap (`maxLoopSeconds`, default 600 s → a 1200 s render cap) is now
+settable under Advanced settings on the Export tab, and changing it rescans. But
+hitting the cap is still silent: the tune is stored as a fade-out with nothing
+said, so the user has to know to go and raise it. Most tunes loop or fade inside
+~6 min, so the cap should be lower *and* the rare long tune handled in the
+moment.
 
 - **"Stop searching" button** during the scan — take what's been rendered so far and
   bake it (currently only a full Cancel exists, which throws the analysis away).

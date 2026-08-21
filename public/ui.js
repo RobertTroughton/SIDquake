@@ -1246,15 +1246,15 @@ class UIController {
         }
         if (window.studioModal) window.studioModal.setDerivedTabs(groups);
 
-        // Export tab: compression options, the spectrometer frame rate for FFT
-        // players, and the analysis engine - which is NOT spectrometer-specific
-        // (every visualizer runs the tune analysis), so it is always shown.
+        // Export tab: compression, then everything else folded away. Compression
+        // is a real choice with a visible consequence (file size vs depack time);
+        // the frame rate, stored length, analysis engine and loop-search window
+        // are knobs most users should never have to judge.
         const exportMount = document.getElementById('exportConfigMount');
         if (exportMount) {
             exportMount.innerHTML = this._wrapOptionsPanel(
                 this.createCompressionOptionsHTML() +
-                (config?.spectrometerBake ? this.createFrameRateOptionHTML() : '') +
-                this.createAnalysisEngineOptionHTML());
+                this.createAdvancedSettingsHTML(config));
         }
 
         this._wireAdvancedSettings();
@@ -1582,6 +1582,44 @@ class UIController {
             this._advanced = cur;
             save();
         });
+        const details = document.getElementById('advancedSettings');
+        if (details) details.addEventListener('toggle', () => {
+            const cur = this._advanced || {};
+            cur.open = details.open;
+            this._advanced = cur;
+            save();
+        });
+        // The scan window and the shortest-loop threshold are both part of the
+        // analysis cache key, so changing either makes anything already measured
+        // describe a different search. Same treatment as the engine below.
+        const rescan = () => {
+            this._analysisToken++;
+            this.cancelAnalysis();
+            this._hideAnalysisChip();
+            this.tuneAnalysis = null;
+            this._analysisCancelled = false;
+            save();
+            this.updateSongLoopStatus();
+            this.startBackgroundAnalysis();
+        };
+        const scanLen = document.getElementById('advScanLen');
+        if (scanLen) scanLen.addEventListener('change', () => {
+            const cur = this._advanced || {};
+            // Kept as typed: getAdvancedSettings parses it, and blank means
+            // "use the caller's own default" rather than zero.
+            cur.scanLenText = this._parseMMSS(scanLen.value) ? scanLen.value.trim() : '';
+            scanLen.value = cur.scanLenText;
+            this._advanced = cur;
+            rescan();
+        });
+        const minLoop = document.getElementById('advMinLoop');
+        if (minLoop) minLoop.addEventListener('change', () => {
+            const cur = this._advanced || {};
+            cur.minLoopSeconds = Math.min(60, Math.max(1, parseInt(minLoop.value, 10) || 2));
+            minLoop.value = cur.minLoopSeconds;
+            this._advanced = cur;
+            rescan();
+        });
         const eng = document.getElementById('advBakeEngine');
         if (eng) eng.addEventListener('change', () => {
             const cur = this._advanced || {};
@@ -1589,16 +1627,53 @@ class UIController {
             this._advanced = cur;
             // The rendered rows are engine-specific, so a previous analysis of this
             // tune no longer describes what an export would bake - and a scan still
-            // running is rendering with the old engine. Drop both, then rescan in
-            // the background on the newly chosen one.
-            this._analysisToken++;
-            this.cancelAnalysis();
-            this._hideAnalysisChip();
-            this.tuneAnalysis = null;
-            this._analysisCancelled = false;
-            save();
-            this.startBackgroundAnalysis();
+            // running is rendering with the old engine.
+            rescan();
         });
+    }
+
+    // The loop-search knobs. Both are part of the analysis cache key, so changing
+    // either invalidates whatever has been measured (see _wireAdvancedSettings).
+    createScanWindowOptionHTML() {
+        const a = this.getAdvancedSettings();
+        return `
+        <div class="option-group">
+            <div class="option-group-title">Loop search</div>
+            <div class="option-row">
+                <label class="option-label" for="advScanLen">Give up searching after</label>
+                <div class="option-control advanced-num">
+                    <input type="text" id="advScanLen" class="number-input" inputmode="numeric"
+                           size="5" placeholder="10:00" value="${a.scanLenText || ''}">
+                    <span class="advanced-unit">m:ss</span>
+                </div>
+            </div>
+            <p class="flow-note">How much of the tune to play through looking for its loop. Blank uses the default, 10:00. A tune whose loop is longer than this is stored as a fade-out instead.</p>
+            <div class="option-row">
+                <label class="option-label" for="advMinLoop">Shortest loop to believe</label>
+                <div class="option-control advanced-num">
+                    <input type="number" id="advMinLoop" class="number-input" min="1" max="60" step="1"
+                           value="${a.minLoopSeconds}">
+                    <span class="advanced-unit">seconds</span>
+                </div>
+            </div>
+            <p class="flow-note">A repeat shorter than this is treated as a repeated phrase rather than the tune looping.</p>
+        </div>`;
+    }
+
+    // Everything on the Export tab that a normal export never needs. Collapsed by
+    // default; the open/closed state is remembered like the settings themselves.
+    createAdvancedSettingsHTML(config) {
+        const a = this.getAdvancedSettings();
+        return `
+        <details class="advanced-settings" id="advancedSettings"${a.open ? ' open' : ''}>
+            <summary class="advanced-summary">Advanced settings</summary>
+            <div class="advanced-body">
+                <p class="flow-note">These are already set to what a normal export wants. Nothing here needs changing to build a working PRG.</p>
+                ${config?.spectrometerBake ? this.createFrameRateOptionHTML() : ''}
+                ${this.createAnalysisEngineOptionHTML()}
+                ${this.createScanWindowOptionHTML()}
+            </div>
+        </details>`;
     }
 
     createCompressionOptionsHTML() {
