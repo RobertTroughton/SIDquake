@@ -374,6 +374,11 @@
             <section class="studio-panel section-group export-section" data-studio-tab="export" id="exportSection">
               <h3 class="studio-panel-title">Export</h3>
 
+              <!-- Shown after a successful export: what the file is, how to run
+                   it, and anything worth going back for (populated by ui.js
+                   renderExportDone). -->
+              <div class="export-done" id="exportDone" hidden></div>
+
               <!-- Pre-flight summary of everything the PRG will be built from,
                    with per-row jump-to-tab buttons (populated by studio-modal.js
                    renderManifest). -->

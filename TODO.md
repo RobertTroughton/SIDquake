@@ -17,9 +17,7 @@ Ranked by value against effort, not by section order. Each line names the sectio
 that holds the detail.
 
 1. Ship the eleven preview GIFs and set `animated: true`. *(Preview)*
-2. The completion panel that tells a first-timer what a .prg is and how to run
-   it. *(Language)*
-3. Multi-file drop and a queue. *(Batch)*
+2. Multi-file drop and a queue. *(Batch)*
 
 Bigger pieces worth planning rather than picking up: the live in-browser preview,
 recipe files plus the `sidquake-build` CLI, the listener-first entry point, and
@@ -78,10 +76,8 @@ Export, and no prompt is needed at all.
   measured, with Measure, Stop, a manual `m:ss` entry and a "show the song length
   on the C64 screen" toggle. A typed length or an unticked toggle both skip the
   scan entirely at export.
-- **Still open: offer it back after the export.** Cancelling or skipping always
-  produces a file, but nothing invites the user to add the length afterwards —
-  the completion panel (below) should say "Add the song length? [Measure and
-  rebuild]".
+- **Done: skipping is offered back.** Cancelling or skipping always produces a
+  file, and the completion panel invites the user to measure it and build again.
 - **Move the too-long check before the render.** `resolveAdvancedRate` returning
   null (`ui.js:2988-2995`) tells the user "this tune is too long for the
   spectrometer" *after* minutes of rendering.
@@ -199,13 +195,10 @@ almost entirely vocabulary. Highest-value replacements, all in visible UI text:
   look doesn't fit alongside your tune — here's what does", with the working
   alternatives right there. Also make them specific for the expert: "SID at
   $1000-$27FF blocks VIC bank 0".
-- **Nothing tells anyone what to do with the downloaded file.** The success
-  message is "Saved mytune.prg (12.40KB)" (`ui.js:3183`), and on a compression
-  fallback it becomes "run it with SYS 16640" (`ui.js:3185`) — the most cryptic
-  line in the app arriving at the moment of least confidence. Replace the toast
-  with a completion panel: what the file is, how to run it (emulator link, three
-  steps), how to run it on real hardware (collapsed), and where people share
-  these (CSDb, the Releases tab).
+- **Done: the completion panel** replaces the self-dismissing "Saved …" toast —
+  what the file is, an emulator link and three steps to run it, the SYS address
+  explained rather than printed, where releases get shared, and an offer to
+  measure the song length and rebuild when it was skipped.
 - **Surface PETSCII substitution in the UI.** `prg-builder.js:1516` passes
   `reportUnknown: false` for metadata, so accented characters in a title or group
   name are silently replaced with spaces and discovered in VICE. Metadata is also

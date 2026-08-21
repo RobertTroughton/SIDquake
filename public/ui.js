@@ -1150,6 +1150,76 @@ class UIController {
         this.loadVisualizerOptions(target);
     }
 
+    // What the user gets after Generate: the file, what it is, and how to run it.
+    // A .prg means nothing to someone six weeks into the C64, and "run it with
+    // SYS 16640" was the entire previous explanation, arriving in a dialog that
+    // dismissed itself.
+    renderExportDone(info) {
+        const el = document.getElementById('exportDone');
+        if (!el) return;
+        const esc = (s) => String(s).replace(/[&<>"]/g, c =>
+            ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+
+        const notes = [];
+        if (info.compressionFailed) {
+            notes.push(`<p class="ed-note ed-warn">${esc(info.compressionType.toUpperCase())} compression `
+                + `wasn't available, so this one is uncompressed. It still runs — after loading it, `
+                + `type <code>SYS ${info.sysAddress}</code> and press Return.</p>`);
+        } else if (!info.isCompressed) {
+            notes.push(`<p class="ed-note">This one is uncompressed, so it doesn't start on its own: `
+                + `after loading it, type <code>SYS ${info.sysAddress}</code> and press Return.</p>`);
+        }
+
+        // The length is a nice-to-have that is easy to skip by accident; offer it
+        // back here rather than leaving the user to work out what they lost.
+        const multiSong = !!(this.sidHeader && this.sidHeader.songs > 1);
+        const noLength = !multiSong && this.showSongLength()
+            && !this.manualSongLengthSeconds()
+            && !(this.tuneAnalysis && (this.tuneAnalysis.looped || this.tuneAnalysis.fadedOut));
+        if (noLength) {
+            notes.push('<p class="ed-note">The C64 shows a running clock but no total length, '
+                + 'because the tune was never measured. '
+                + '<button type="button" class="ed-link" id="exportDoneMeasure">Measure it and build again</button></p>');
+        }
+
+        // Remembered once dismissed: an experienced user does not need to be told
+        // what an emulator is on every export.
+        let howOpen = true;
+        try { howOpen = localStorage.getItem('sidquakeHowToRunClosed') !== '1'; } catch (e) { /* blocked */ }
+
+        el.innerHTML = `
+            <h4 class="ed-title">Your file is ready</h4>
+            <p class="ed-file"><strong>${esc(info.filename)}</strong> · ${esc(info.sizeKB)} KB · saved to your downloads</p>
+            <p class="ed-what">It's a Commodore 64 program. It runs on a real C64, or on a C64 emulator on your computer.</p>
+            ${notes.join('')}
+            <details class="ed-how" id="exportDoneHow"${howOpen ? ' open' : ''}>
+                <summary>How to run it</summary>
+                <ol>
+                    <li>Get <a href="https://vice-emu.sourceforge.io/" target="_blank" rel="noopener">VICE</a>, a free Commodore 64 emulator, and install it.</li>
+                    <li>Open the C64 emulator (<code>x64sc</code>).</li>
+                    <li>Drag <strong>${esc(info.filename)}</strong> onto its window. That's it — your tune plays.</li>
+                </ol>
+                <p class="ed-note">On real hardware, copy it to a disk or an SD2IEC / Ultimate cartridge and load it as usual.</p>
+            </details>
+            <p class="ed-share">Releasing it? C64 music and demos get shared on
+                <a href="https://csdb.dk/" target="_blank" rel="noopener">CSDb</a>.
+                Tunes made with SIDquake are listed on the Releases tab.</p>
+        `;
+        el.hidden = false;
+
+        const how = document.getElementById('exportDoneHow');
+        if (how) how.addEventListener('toggle', () => {
+            try { localStorage.setItem('sidquakeHowToRunClosed', how.open ? '0' : '1'); } catch (e) { /* blocked */ }
+        });
+        const measure = document.getElementById('exportDoneMeasure');
+        if (measure) measure.addEventListener('click', () => {
+            this._analysisCancelled = false;
+            this.startBackgroundAnalysis();
+            if (window.studioModal) window.studioModal.activate('song');
+            this.updateSongLoopStatus();
+        });
+    }
+
     /** Hide + empty the memory-map + bake-timeline panels (they describe the last export). */
     clearMemoryMap() {
         for (const el of [this.elements.memoryMap, this.elements.bakeTimeline, this.elements.loopInfo]) {
@@ -1157,6 +1227,9 @@ class UIController {
             el.style.display = 'none';
             el.innerHTML = '';
         }
+        // The "your file is ready" panel describes the same last export.
+        const done = document.getElementById('exportDone');
+        if (done) { done.hidden = true; done.innerHTML = ''; }
     }
 
     // Switch the active visualizer to another data-source variant in the same
@@ -3350,18 +3423,17 @@ class UIController {
             // plain success so it's clear why the file is larger and -sys named.
             this.showExportStatus(statusMsg, compressionFailed ? 'warning' : 'success');
 
-            // Also surface a confirmation modal (matching the analyze/error modals)
-            // so it's clear the file was saved and under what name.
-            let savedMsg = `Saved ${filename} (${sizeKB}KB`;
-            if (isCompressed) {
-                savedMsg += `, ${compressionType.toUpperCase()} compressed).`;
-            } else if (compressionFailed) {
-                savedMsg += `). ${compressionType.toUpperCase()} compression was unavailable, ` +
-                    `so this is an uncompressed PRG - run it with SYS ${realSysAddress}.`;
-            } else {
-                savedMsg += ').';
-            }
-            this.showModal(savedMsg, true);
+            // The file is the result, so say what it is and what to do with it on
+            // the page rather than in a dialog that dismisses itself after two
+            // seconds. (It used to do both, for one event.)
+            this.renderExportDone({
+                filename,
+                sizeKB,
+                isCompressed,
+                compressionFailed,
+                compressionType,
+                sysAddress: realSysAddress,
+            });
 
             this.renderBakeTimeline(bakeInfo);
             this.renderLoopInfo();

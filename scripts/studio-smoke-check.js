@@ -275,6 +275,30 @@ async function loadSid(page, file) {
         } catch (e) { /* reported below */ }
         check('A completed scan yields an analysis', finished);
 
+        // --- the completion panel ---------------------------------------------
+        // Rendered directly rather than by running a full export, which needs a
+        // bake and a compressor and is not what this check is about.
+        const done = await page.evaluate(() => {
+            window.uiController.renderExportDone({
+                filename: 'smoke-test.prg', sizeKB: '12.40',
+                isCompressed: false, compressionFailed: false,
+                compressionType: 'none', sysAddress: 16640,
+            });
+            const el = document.getElementById('exportDone');
+            return {
+                shown: !el.hidden,
+                saysWhatItIs: /Commodore 64 program/i.test(el.textContent),
+                explainsSys: /SYS 16640/.test(el.textContent),
+                linksEmulator: !!el.querySelector('a[href*="vice-emu"]'),
+                howToRun: !!el.querySelector('#exportDoneHow'),
+            };
+        });
+        check('The completion panel appears', done.shown);
+        check('It says what a .prg actually is', done.saysWhatItIs);
+        check('It explains the SYS address rather than just printing it', done.explainsSys);
+        check('It links an emulator and how to run the file',
+            done.linksEmulator && done.howToRun, JSON.stringify(done));
+
         const fatal = errors.filter(e => !/favicon|net::ERR_|404/i.test(e));
         check('No uncaught page errors', fatal.length === 0, fatal.slice(0, 3).join(' | '));
 

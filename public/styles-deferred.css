@@ -4602,3 +4602,117 @@
 .song-length-row .option-hint {
     flex: 1 1 100%;
 }
+
+/* ==========================================================================
+   "Your file is ready" panel (Export tab, after a successful build)
+   --------------------------------------------------------------------------
+   A .prg means nothing to a newcomer, and the whole previous explanation was
+   "run it with SYS 16640" in a dialog that closed itself after two seconds.
+   ========================================================================== */
+.export-done {
+    margin-bottom: var(--space-md);
+    padding: var(--space-md);
+    background: var(--bg-elevated);
+    border: 1px solid var(--border-light);
+    border-left: 3px solid var(--success);
+    border-radius: var(--radius-md);
+}
+
+.export-done[hidden] {
+    display: none;
+}
+
+.ed-title {
+    margin: 0 0 var(--space-sm);
+    font-family: var(--font-display);
+    font-size: 1em;
+    color: var(--text-accent);
+}
+
+.export-done p {
+    margin: 0 0 var(--space-sm);
+    font-size: 0.9em;
+    line-height: 1.5;
+}
+
+.ed-file {
+    font-family: var(--font-mono);
+    color: var(--text-primary);
+}
+
+.ed-what {
+    color: var(--text-secondary);
+}
+
+.ed-note {
+    color: var(--text-muted);
+    font-size: 0.85em;
+}
+
+.ed-note.ed-warn {
+    color: var(--warning);
+}
+
+.export-done code {
+    font-family: var(--font-mono);
+    padding: 1px 5px;
+    background: var(--bg-primary);
+    border: 1px solid var(--border-light);
+    border-radius: var(--radius-sm);
+    color: var(--text-accent);
+}
+
+/* A text button, so "measure it and build again" reads as the offer it is
+   rather than competing with Generate PRG. */
+.ed-link {
+    background: none;
+    border: none;
+    padding: 0;
+    font: inherit;
+    color: var(--text-accent);
+    text-decoration: underline;
+    cursor: pointer;
+}
+
+.ed-how {
+    margin: var(--space-sm) 0;
+    padding: var(--space-sm) 0 0;
+    border-top: 1px solid var(--border);
+}
+
+.ed-how > summary {
+    cursor: pointer;
+    font-size: 0.9em;
+    font-weight: 600;
+    color: var(--text-primary);
+    list-style: none;
+}
+
+.ed-how > summary::-webkit-details-marker { display: none; }
+
+.ed-how > summary::before {
+    content: '▶';
+    display: inline-block;
+    margin-right: 6px;
+    font-size: 0.75em;
+    color: var(--text-muted);
+    transition: transform var(--transition-fast);
+}
+
+.ed-how[open] > summary::before {
+    transform: rotate(90deg);
+}
+
+.ed-how ol {
+    margin: var(--space-sm) 0;
+    padding-left: 1.4em;
+    font-size: 0.9em;
+    line-height: 1.7;
+    color: var(--text-secondary);
+}
+
+.ed-share {
+    margin-bottom: 0 !important;
+    color: var(--text-muted);
+    font-size: 0.85em;
+}
