@@ -815,6 +815,15 @@ window.hvscBrowser = (function () {
     }
 
     function handleItemClick(e, entry) {
+        // A folder has nothing to do but open, and double-tapping to open one
+        // is a file-manager habit a touchscreen never taught anybody - iOS may
+        // even take the second tap as a zoom. One tap opens it; tunes keep
+        // select-then-confirm, because selecting one previews it.
+        if (entry.isDirectory && isCoarsePointer()) {
+            handleItemDoubleClick(entry);
+            return;
+        }
+
         document.querySelectorAll('.file-item').forEach(item => {
             item.classList.remove('selected');
         });
@@ -827,6 +836,10 @@ window.hvscBrowser = (function () {
         if (!entry.isDirectory) {
             previewSID(entry);
         }
+    }
+
+    function isCoarsePointer() {
+        return window.matchMedia && window.matchMedia('(pointer: coarse)').matches;
     }
 
     function updateInfoPanel(entry) {

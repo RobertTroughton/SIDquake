@@ -1085,6 +1085,17 @@
     opacity: 1;
 }
 
+/* Without a mouse there is no hover to reveal it with, so the instruction sits
+   there faintly instead of never appearing at all. */
+@media (hover: none) {
+    .image-preview-overlay {
+        opacity: 1;
+        background: linear-gradient(to top, rgba(0, 0, 0, 0.75), rgba(0, 0, 0, 0.15) 60%);
+        align-items: flex-end;
+        padding-bottom: 8px;
+    }
+}
+
 .image-preview-frame.drag-active {
     border-color: var(--accent);
     box-shadow: 0 0 0 2px var(--accent) inset;
@@ -2277,7 +2288,7 @@
 
 .gallery-item-name {
     color: var(--text-secondary);
-    font-size: 11px;
+    font-size: 12px;
     font-weight: 500;
     text-align: center;
     white-space: nowrap;
@@ -2324,13 +2335,23 @@
 }
 
 /* Logos the current visualizer can't convert (wrong mode / over its charset
-   budget) stay visible but dimmed; the tooltip carries the reason. */
+   budget) stay visible but dimmed, with the reason printed on the card. It
+   used to be in the title tooltip alone, which a touchscreen cannot ask for -
+   so on a phone a card was simply greyed out and unexplained. */
 .gallery-item-card.gallery-item-unusable {
-    opacity: 0.45;
+    opacity: 0.55;
 }
 
 .gallery-item-card.gallery-item-unusable:hover {
-    opacity: 0.8;
+    opacity: 0.85;
+}
+
+.gallery-item-reason {
+    margin-top: 4px;
+    color: #ff9b9b;
+    font-size: 12px;
+    line-height: 1.3;
+    text-align: center;
 }
 
 /* Same badge on the main input preview frame. */

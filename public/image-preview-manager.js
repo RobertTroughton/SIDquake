@@ -943,7 +943,18 @@ class ImagePreviewManager {
             badge.textContent = info.label;
             badge.title = info.title;
             preview.appendChild(badge);
-            if (!info.ok) { card.classList.add('gallery-item-unusable'); card.title = info.title; }
+            if (!info.ok) {
+                card.classList.add('gallery-item-unusable');
+                card.title = info.title;
+                // A tooltip is the whole explanation for a dimmed card, and a
+                // touchscreen has no way to ask for one. Say it on the card.
+                if (!card.querySelector('.gallery-item-reason')) {
+                    const why = document.createElement('div');
+                    why.className = 'gallery-item-reason';
+                    why.textContent = info.title;
+                    card.appendChild(why);
+                }
+            }
         }
     }
 
