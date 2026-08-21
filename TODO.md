@@ -145,10 +145,12 @@ loop-search window + shortest-loop threshold all sit inside a remembered
 `<details>`. Still to fold in: the memory-bank override, once
 `createLayoutSelectorHTML` is wired to a real `selectedLayoutKey`.
 
-**Neither — needs a second path.** The beginner does not want a smaller expert
-UI, they want a different one. Add a **Quick export** route from the landing
-card: pick a look from a handful of big animated previews, press one button, get
-a file. Everything else stays exactly where it is behind "Customise".
+**Neither — needs a second path. Done.** The landing card offers a quick route:
+four looks with previews, one button, a file. It sets the same selection the
+Studio does and calls the same export, so nothing is a special case; the Studio
+is now "Change everything" rather than the only way through. Still wanted: the
+previews here are stills like the grid's, so this is the other place the
+animated previews below would pay off.
 
 **Structural fixes that serve both populations:**
 

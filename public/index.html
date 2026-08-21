@@ -196,8 +196,20 @@
                 <div class="song-title" id="songTitle">[ No SID Loaded ]</div>
                 <div class="song-author" id="songAuthor">Load a SID file to begin</div>
                 <div class="sid-player-container" id="mainPlayerContainer"></div>
+                <!-- Quick path: pick a look, press the button, get a file. The
+                     Studio is the same job with every knob attached; a first-time
+                     user should not have to walk it to release one tune. -->
+                <div class="quick-export" id="quickExport" hidden>
+                    <p class="quick-export-lead">Pick what people will see:</p>
+                    <div class="quick-export-looks" id="quickExportLooks" role="radiogroup" aria-label="What people see"></div>
+                    <button class="export-button" id="quickExportBtn">
+                        <i class="fas fa-download" aria-hidden="true"></i> Make my C64 program
+                    </button>
+                    <p class="quick-export-note" id="quickExportNote">Takes a minute or so. You can change everything afterwards.</p>
+                </div>
+
                 <button class="export-button open-studio-btn" id="openStudioBtn" style="display: none;">
-                    <i class="fas fa-sliders-h"></i> Make a C64 program from this
+                    <i class="fas fa-sliders-h"></i> Change everything (Studio)
                 </button>
             </div>
 

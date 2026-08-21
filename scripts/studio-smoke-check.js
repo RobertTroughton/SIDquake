@@ -430,6 +430,38 @@ async function loadSid(page, file) {
                 snapshot.fromDom === snapshot.live, JSON.stringify(snapshot));
         }
 
+        // --- the quick path ---------------------------------------------------
+        const quick = await page.evaluate(async () => {
+            window.studioModal.close();
+            await new Promise(r => setTimeout(r, 300));
+            const box = document.getElementById('quickExport');
+            const looks = [...document.querySelectorAll('.quick-look')];
+            const before = looks.filter(l => l.classList.contains('selected')).map(l => l.dataset.id);
+            // Choosing here has to move the real selection, not a parallel one.
+            const other = looks.find(l => !l.classList.contains('selected'));
+            if (other) other.click();
+            await new Promise(r => setTimeout(r, 800));
+            return {
+                shown: !box.hidden,
+                looks: looks.length,
+                tabStops: looks.filter(l => l.tabIndex === 0).length,
+                before,
+                picked: other ? other.dataset.id : null,
+                selected: window.uiController.selectedVisualizer?.dataSourceGroup
+                    || window.uiController.selectedVisualizer?.id,
+                hasButton: !!document.getElementById('quickExportBtn'),
+            };
+        });
+        check('A loaded tune offers a quick path', quick.shown && quick.looks >= 2 && quick.hasButton,
+            JSON.stringify({ shown: quick.shown, looks: quick.looks }));
+        check('Its looks are one tab stop with radio behaviour', quick.tabStops === 1,
+            `${quick.tabStops} tab stops`);
+        check('Picking one moves the real selection',
+            quick.picked === quick.selected, `${quick.picked} vs ${quick.selected}`);
+
+        await page.evaluate(() => window.studioModal.open());
+        await page.waitForTimeout(400);
+
         // --- fewer tabs -------------------------------------------------------
         const tabs = await page.evaluate(async () => {
             const ui = window.uiController;

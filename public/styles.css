@@ -1526,3 +1526,89 @@ details[open].panel > summary h2::after {
 .upload-browse-more a {
     color: var(--text-accent);
 }
+
+/* ==========================================================================
+   Quick export
+   --------------------------------------------------------------------------
+   Pick a look, press one button. The Studio is the same job with every knob
+   attached; releasing one tune should not require walking it.
+   ========================================================================== */
+.quick-export {
+    margin-top: var(--space-lg);
+    padding-top: var(--space-lg);
+    border-top: 1px solid var(--border);
+}
+
+.quick-export[hidden] {
+    display: none;
+}
+
+.quick-export-lead {
+    margin-bottom: var(--space-sm);
+    color: var(--text-secondary);
+    font-size: 0.9em;
+}
+
+.quick-export-looks {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: var(--space-sm);
+    margin-bottom: var(--space-md);
+}
+
+.quick-look {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 6px;
+    width: 116px;
+    padding: 8px;
+    background: var(--bg-surface);
+    border: 2px solid var(--border-light);
+    border-radius: var(--radius-md);
+    color: var(--text-secondary);
+    font-family: var(--font-sans);
+    font-size: 0.78em;
+    cursor: pointer;
+    transition: border-color var(--transition-fast), color var(--transition-fast);
+}
+
+.quick-look img {
+    width: 100%;
+    aspect-ratio: 4 / 3;
+    object-fit: cover;
+    border-radius: var(--radius-sm);
+}
+
+.quick-look:hover {
+    border-color: var(--accent);
+    color: var(--text-primary);
+}
+
+/* Selection carries a colour AND a check, not colour alone. */
+.quick-look.selected {
+    border-color: var(--accent);
+    color: var(--text-accent);
+}
+
+.quick-look.selected span::after {
+    content: ' ✓';
+}
+
+.quick-export-note {
+    margin-top: var(--space-sm);
+    color: var(--text-muted);
+    font-size: 0.8em;
+}
+
+.open-studio-btn {
+    background: transparent;
+    border: 1px solid var(--border-light);
+    color: var(--text-secondary);
+}
+
+.open-studio-btn:hover {
+    border-color: var(--accent);
+    color: var(--text-primary);
+}

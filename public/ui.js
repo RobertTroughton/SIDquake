@@ -658,6 +658,87 @@ class UIController {
     }
 
     // ---------------------------------------------------------------------
+    // Quick export
+    // ---------------------------------------------------------------------
+
+    // Two decisions and a button: which look, then press it. Everything the
+    // Studio offers still applies - this just sets the look and reuses the same
+    // export - but a first release should not require walking six tabs to find
+    // out that every default was already correct.
+    renderQuickExport() {
+        const box = document.getElementById('quickExport');
+        const looks = document.getElementById('quickExportLooks');
+        if (!box || !looks) return;
+        if (!this.sidHeader) { box.hidden = true; return; }
+
+        const compatible = (typeof VISUALIZERS !== 'undefined' ? VISUALIZERS : [])
+            .filter(v => !v.hidden && this.visualizerExportable(v).ok);
+        if (!compatible.length) { box.hidden = true; return; }
+
+        // A handful of clearly different looks, in the order someone would
+        // scan them - not the whole grid again.
+        const order = ['RaistlinBars', 'RaistlinBarsWithLogo', 'RaistlinMirrorBars',
+            'ScrapColumns', 'SimpleRaster', 'default'];
+        const picks = order.map(id => compatible.find(v => v.id === id)).filter(Boolean).slice(0, 4);
+        if (!picks.length) picks.push(compatible[0]);
+
+        const current = this.selectedVisualizer?.dataSourceGroup || this.selectedVisualizer?.id;
+        // The selected player may not be one of the few offered here. Something
+        // still has to carry the group's tab stop, or it cannot be reached by
+        // keyboard at all.
+        const marked = picks.some(v => v.id === current) ? current : null;
+        const esc = (t) => String(t).replace(/[&<>"]/g, c =>
+            ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+        looks.innerHTML = picks.map((v, i) => {
+            const on = v.id === marked;
+            const tabbable = marked ? on : i === 0;
+            return `<button type="button" class="quick-look${on ? ' selected' : ''}"
+                     role="radio" aria-checked="${on}" tabindex="${tabbable ? 0 : -1}"
+                     data-id="${esc(v.id)}">
+                <img src="${esc(v.preview)}" alt="" aria-hidden="true">
+                <span>${esc(v.name)}</span>
+            </button>`;
+        }).join('');
+        box.hidden = false;
+        this._wireQuickExport();
+    }
+
+    _wireQuickExport() {
+        const looks = document.getElementById('quickExportLooks');
+        if (looks && !looks.dataset.wired) {
+            looks.dataset.wired = '1';
+            looks.addEventListener('click', (e) => {
+                const btn = e.target.closest('.quick-look');
+                if (btn) this.quickPickLook(btn.dataset.id);
+            });
+            looks.addEventListener('keydown', (e) => {
+                const btns = [...looks.querySelectorAll('.quick-look')];
+                const here = e.target.closest('.quick-look');
+                const i = here ? btns.indexOf(here) : 0;
+                let next = null;
+                if (e.key === 'ArrowRight' || e.key === 'ArrowDown') next = btns[(i + 1) % btns.length];
+                else if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') next = btns[(i - 1 + btns.length) % btns.length];
+                else if (e.key === ' ' || e.key === 'Enter') next = here;
+                else return;
+                e.preventDefault();
+                if (next) { this.quickPickLook(next.dataset.id); next.focus(); }
+            });
+        }
+        const go = document.getElementById('quickExportBtn');
+        if (go && !go.dataset.wired) {
+            go.dataset.wired = '1';
+            go.addEventListener('click', () => this.exportPRGWithVisualizer());
+        }
+    }
+
+    async quickPickLook(id) {
+        const viz = (typeof VISUALIZERS !== 'undefined') && VISUALIZERS.find(v => v.id === id);
+        if (!viz) return;
+        await this.selectVisualizer(viz);
+        this.renderQuickExport();
+    }
+
+    // ---------------------------------------------------------------------
     // Batch queue
     // ---------------------------------------------------------------------
 
@@ -847,6 +928,7 @@ class UIController {
             if (openStudioBtn) openStudioBtn.style.display = '';
 
             this.showExportSection();
+            this.renderQuickExport();
 
             // Cleared for the new tune; startBackgroundAnalysis below refills it
             // while the user is choosing a visualizer.
@@ -1252,6 +1334,9 @@ class UIController {
         this.selectedVisualizer = target;
 
         if (remember) this._lastVisualizerId = visualizer.id;
+
+        // The quick path shows the same choice; keep the two from disagreeing.
+        this.renderQuickExport();
 
         this.elements.exportPRGButton.disabled = false;
 
