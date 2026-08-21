@@ -257,6 +257,10 @@
                             <span class="info-label">Songs:</span>
                             <span class="info-value" id="sidSongs">-</span>
                         </div>
+                        <!-- Which tune of a multi-tune file to export. Song
+                             metadata, so it lives here; ui.js addSongSelector
+                             fills it in and empties it for single-tune SIDs. -->
+                        <div id="songSelectorMount"></div>
                     </div>
 
                     <!-- Technical Details Panel. Collapsed: eleven rows of load /
@@ -375,6 +379,11 @@
               <!-- Visualizer Grid (cards populated by visualizer-registry.js) -->
               <div class="visualizer-grid" id="visualizerGrid">
               </div>
+
+              <!-- The Spectrometer's multi-tune caveat: it belongs to the
+                   visualizer choice, not to the tune, so it stays here while the
+                   tune selector itself lives on the Song tab. -->
+              <div id="fftMultiSongMount"></div>
 
               <!-- Visualizer-level extras (data source moved to its own tab) -->
               <div id="vizExtras"></div>

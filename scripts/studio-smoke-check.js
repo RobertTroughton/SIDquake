@@ -349,6 +349,26 @@ async function loadSid(page, file) {
         });
         check('An export failure does not erase itself after 5s', stays === true);
 
+        // --- the tune selector belongs to the Song tab ------------------------
+        const subtune = await page.evaluate(() => {
+            const sel = document.getElementById('songSelector');
+            const songPanel = document.querySelector('.studio-panel[data-studio-tab="song"]');
+            const vizPanel = document.querySelector('.studio-panel[data-studio-tab="visualizer"]');
+            const note = document.getElementById('fftMultiSongNote');
+            return {
+                // Loaded tunes here are single-song, so the selector is absent -
+                // what matters is that the mount points are on the right panels.
+                songMount: !!songPanel.querySelector('#songSelectorMount'),
+                noteMount: !!vizPanel.querySelector('#fftMultiSongMount'),
+                selectorOnSongTab: !sel || !!songPanel.contains(sel),
+                noteOnVizTab: !note || !!vizPanel.contains(note),
+            };
+        });
+        check('The tune selector mounts on the Song tab',
+            subtune.songMount && subtune.selectorOnSongTab, JSON.stringify(subtune));
+        check('The multi-tune caveat stays with the visualizer choice',
+            subtune.noteMount && subtune.noteOnVizTab, JSON.stringify(subtune));
+
         // --- one C64 palette --------------------------------------------------
         const palette = await page.evaluate(async () => {
             await window.loadScript('petscii-converter.js');

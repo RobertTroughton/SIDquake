@@ -157,9 +157,6 @@ a file. Everything else stays exactly where it is behind "Customise".
   `_lastDataSource`, `_optionMemory`), but not a refresh or a new tab. Consider
   putting it in localStorage next to `sidquakeAdvanced` — and note that the same
   state is most of a recipe file, so the two should be designed together.
-- **Move the sub-tune selector to the Song tab.** It is injected above the
-  visualiser grid (`ui.js:786`), while the manifest's "Music → edit ›" row points
-  at the Song tab (`studio-modal.js:437`) where it isn't.
 - **Collapse eight tabs to six** — fold Method inline under the visualiser card
   that owns it, and merge Bar Style + Colour Effect + palette + colours into one
   "Look" tab. Eight tabs for what is one aesthetic decision reads as eight

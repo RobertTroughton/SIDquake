@@ -909,37 +909,40 @@ class UIController {
         });
     }
 
+    // The tune selector is song metadata, so it sits on the Song tab - the
+    // export manifest's "Music -> edit" has always pointed there, at a panel
+    // that did not have it. The Spectrometer's multi-tune caveat is about the
+    // visualizer choice instead, so it stays on the Visualizer tab.
     addSongSelector() {
-        const existingSelector = document.getElementById('songSelectorContainer');
-        if (existingSelector) {
-            existingSelector.remove();
+        const mount = document.getElementById('songSelectorMount');
+        const noteMount = document.getElementById('fftMultiSongMount');
+        if (mount) mount.innerHTML = '';
+        if (noteMount) noteMount.innerHTML = '';
+
+        if (mount && this.sidHeader && this.sidHeader.songs > 1) {
+            mount.innerHTML = `
+            <div id="songSelectorContainer" class="export-option song-selector-container">
+                <label for="songSelector">Which tune to use:</label>
+                <select id="songSelector">
+                    ${Array.from({ length: Math.min(this.sidHeader.songs, 256) }, (_, i) => i + 1)
+                    .map(num => `<option value="${num}" ${num === this.sidHeader.startSong ? 'selected' : ''}>
+                        Tune ${num} of ${this.sidHeader.songs}${num === this.sidHeader.startSong ? ' (the usual one)' : ''}
+                    </option>`).join('')}
+                </select>
+            </div>`;
         }
 
-        if (this.sidHeader && this.sidHeader.songs > 1) {
-            const visualizerGrid = document.getElementById('visualizerGrid');
-            const selectorContainer = document.createElement('div');
-            selectorContainer.id = 'songSelectorContainer';
-            selectorContainer.className = 'export-option song-selector-container';
-            selectorContainer.innerHTML = `
-            <label for="songSelector">Select Song:</label>
-            <select id="songSelector">
-                ${Array.from({ length: Math.min(this.sidHeader.songs, 256) }, (_, i) => i + 1)
-                    .map(num => `<option value="${num}" ${num === this.sidHeader.startSong ? 'selected' : ''}>
-                        Song ${num} of ${this.sidHeader.songs}${num === this.sidHeader.startSong ? ' (default)' : ''}
-                    </option>`).join('')}
-            </select>
+        if (noteMount && this.sidHeader && this.sidHeader.songs > 1) {
+            noteMount.innerHTML = `
             <div id="fftMultiSongNote" style="display:none;margin-top:8px;padding:8px 10px;border:1px solid rgba(255,183,77,.4);border-radius:6px;background:rgba(255,183,77,.08);font-size:12px;line-height:1.4">
-                <b style="color:#ffb74d">This file holds several tunes.</b> The Spectrometer works out its
-                bars in advance, and it can only do that for one of them. If you carry on: the exported
-                program plays and shows <b>only the tune selected above</b>, the buttons that switch between
-                tunes stop working, and no song length is shown.
-                To keep all the tunes, pick a <b>VU meter</b> method on the Method tab instead.
+                <b style="color:#ffb74d">This file holds several tunes.</b> The best-looking bars are worked
+                out in advance, and that can only be done for one tune. If you carry on: the exported
+                program plays and shows <b>only the tune chosen on the Song tab</b>, the buttons that switch
+                between tunes stop working, and no song length is shown.
+                To keep every tune, pick one of the live methods on the Method tab instead.
                 <label style="display:flex;gap:6px;margin-top:8px;align-items:center;cursor:pointer">
                     <input type="checkbox" id="fftMultiSongConsent"> Yes — just the one tune</label>
-            </div>
-        `;
-
-            visualizerGrid.parentNode.insertBefore(selectorContainer, visualizerGrid);
+            </div>`;
         }
         this.updateMultiSongNote();
     }
@@ -3345,11 +3348,20 @@ class UIController {
         if (multiSong && isFFT) {
             const consent = document.getElementById('fftMultiSongConsent');
             if (!consent || !consent.checked) {
-                this.showExportStatus('This is a multi-song SID. Tick “visualise the default song only” to export the spectrometer, or pick a VU meter method.', 'error');
+                this.showExportStatus('This file holds several tunes. Confirm on the Visualizer tab '
+                    + 'that only one of them should be used, or pick a live method on the Method tab.', 'error');
                 const note = document.getElementById('fftMultiSongNote');
                 if (note) note.style.outline = '2px solid #ffb74d';
-                // The consent checkbox lives on the Visualizer tab - show it.
+                // Take the user to the thing they have to answer, and put focus
+                // on it - a highlight on a tab they cannot see says nothing, and
+                // an outline alone is colour-only.
                 if (window.studioModal) window.studioModal.activate('visualizer');
+                if (consent) {
+                    consent.setAttribute('aria-invalid', 'true');
+                    consent.focus();
+                } else if (note) {
+                    note.scrollIntoView({ block: 'nearest' });
+                }
                 return;
             }
         }
