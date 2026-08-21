@@ -85,14 +85,20 @@ class StudioModal {
         const close = document.getElementById('studioClose');
         if (close) close.focus();
         this.queueRefresh();
+        // Back is the close gesture on a phone; without a history entry it
+        // navigates off the site instead.
+        this.ui?.pushModalHistory?.('studio');
         // Opening the Studio is the point the user is heading for an export, so
         // start finding the tune's loop / end point now rather than at Generate.
         // No-ops if it is already running, done, or the user stopped it.
         this.ui?.startBackgroundAnalysis?.();
     }
 
-    close() {
+    // fromHistory: the user pressed Back, so the entry is already gone.
+    close(fromHistory = false) {
+        if (!this.isOpen) return;
         this.modal.classList.remove('visible');
+        if (!fromHistory) this.ui?.popModalHistory?.();
         const player = document.getElementById('mainPlayerContainer');
         const card = document.getElementById('songTitleSection');
         const openBtn = document.getElementById('openStudioBtn');

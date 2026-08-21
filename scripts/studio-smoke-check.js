@@ -609,6 +609,20 @@ async function loadSid(page, file) {
                 JSON.stringify(studioState));
             check('Open Studio is offered instead', studioState.openBtnVisible === true);
 
+            // Back is the only close gesture on a phone; without a history entry
+            // it leaves the site.
+            const backCloses = await phone.evaluate(async () => {
+                document.getElementById('openStudioBtn').click();
+                await new Promise(r => setTimeout(r, 400));
+                const opened = window.studioModal.isOpen;
+                history.back();
+                await new Promise(r => setTimeout(r, 500));
+                return { opened, stillOpen: window.studioModal.isOpen, href: location.pathname };
+            });
+            check('Back closes the Studio instead of leaving the site',
+                backCloses.opened && backCloses.stillOpen === false,
+                JSON.stringify(backCloses));
+
             const vizShown = await phone.evaluate(() => {
                 const el = document.querySelector('.hvsc-visualizer');
                 if (!el) return 'absent';

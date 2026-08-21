@@ -203,10 +203,11 @@ class UIController {
         });
 
         const closeBtn = document.getElementById('hvscModalClose');
-        const closeHVSCModal = () => {
+        const closeHVSCModal = (fromHistory = false) => {
             const modal = document.getElementById('hvscModal');
             if (!modal.classList.contains('visible')) return;
             modal.classList.remove('visible');
+            if (!fromHistory) this.popModalHistory();
             if (window.hvscBrowser) {
                 hvscBrowser.stopPreview();
                 // Browser closed: drop the shareable ?tune= param from the URL.
@@ -220,7 +221,7 @@ class UIController {
         };
 
         if (closeBtn) {
-            closeBtn.addEventListener('click', closeHVSCModal);
+            closeBtn.addEventListener('click', () => closeHVSCModal());
         }
 
         // Click on backdrop (not modal content) closes the modal.
@@ -230,6 +231,8 @@ class UIController {
                 if (e.target === hvscModal) closeHVSCModal();
             });
         }
+        this._closeHVSCModal = closeHVSCModal;
+        this.wireModalHistory();
 
         // While the browser is open it owns the keyboard: Escape closes it and
         // Tab is trapped inside so focus can't fall through to the covered page.
@@ -242,6 +245,7 @@ class UIController {
             if (above) return;
             if (e.key === 'Escape') closeHVSCModal();
             else if (e.key === 'Tab') this._trapHvscTab(e);
+            return;
         });
 
         // Show placeholder content until a SID is loaded.
@@ -260,11 +264,46 @@ class UIController {
         return this.mainPlayer;
     }
 
+    // Android has no Escape key, and Back is what people press to leave a
+    // full-screen thing. Without this it navigates off the site instead, which
+    // on a phone is the only way out of a modal.
+    pushModalHistory(id) {
+        try {
+            history.pushState(Object.assign({}, history.state || {}, { sqModal: id }), '', location.href);
+            this._modalHistoryDepth = (this._modalHistoryDepth || 0) + 1;
+        } catch (e) { /* history unavailable - Escape and the close button still work */ }
+    }
+
+    /** Consume the entry pushed for a modal the user just closed some other way. */
+    popModalHistory() {
+        if (!this._modalHistoryDepth) return;
+        this._modalHistoryDepth--;
+        try { history.back(); } catch (e) { /* nothing to go back to */ }
+    }
+
+    wireModalHistory() {
+        if (this._modalHistoryWired) return;
+        this._modalHistoryWired = true;
+        window.addEventListener('popstate', () => {
+            // Topmost first, so Back peels one layer at a time.
+            if (this._modalHistoryDepth) this._modalHistoryDepth--;
+            const hvsc = document.getElementById('hvscModal');
+            if (hvsc && hvsc.classList.contains('visible')) {
+                if (this._closeHVSCModal) this._closeHVSCModal(true);
+                return;
+            }
+            if (window.studioModal && window.studioModal.isOpen) {
+                window.studioModal.close(true);
+            }
+        });
+    }
+
     async openHVSCBrowser() {
         const modal = document.getElementById('hvscModal');
         // Remember what to restore focus to, then move focus into the browser.
         this._hvscPreviouslyFocused = document.activeElement;
         modal.classList.add('visible');
+        this.pushModalHistory('hvsc');
         const searchBar = document.getElementById('hvscSearchBar');
         if (searchBar) searchBar.focus();
 

@@ -279,11 +279,6 @@ a PRG.
 - **Split STIL out of the index.** It is ~34% of the 11.98 MB and is read one
   entry at a time for the selected tune (`hvsc-browser.js:627`). Shard it the way
   `build-share-meta.js` already shards.
-- **Still open: no Android Back handling.** There is no `popstate`/`pushState`
-  anywhere; `Escape` is the only close key, and phones don't have one, so Back
-  navigates off the site instead of closing a modal. The Studio no longer opens
-  uninvited on a phone, which removes the worst case, but the HVSC browser is
-  still a modal with no hardware way out.
 - **The upload buttons are live-looking but dead for the first second or two** —
   they ship in static HTML (`index.html:146-158`) and handlers attach in `ui.js`,
   fourth in a deliberately yielded load chain (`index.html:1133-1150`). A first
