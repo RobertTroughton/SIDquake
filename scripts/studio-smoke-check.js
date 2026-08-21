@@ -378,6 +378,42 @@ async function loadSid(page, file) {
         });
         check('An export failure does not erase itself after 5s', stays === true);
 
+        // --- the HVSC listing is a listbox ------------------------------------
+        const hvsc = await page.evaluate(async () => {
+            document.getElementById('hvscBtn').click();
+            // The listing needs the index; give it a while on a cold cache.
+            const start = Date.now();
+            while (Date.now() - start < 60000) {
+                if (document.querySelectorAll('#fileList .file-item').length > 1) break;
+                await new Promise(r => setTimeout(r, 250));
+            }
+            const list = document.getElementById('fileList');
+            const rows = [...list.querySelectorAll('.file-item')];
+            const before = rows.filter(r => r.tabIndex === 0).length;
+            rows[0].focus();
+            rows[0].dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true }));
+            const moved = document.activeElement !== rows[0]
+                && rows.includes(document.activeElement);
+            const state = {
+                role: list.getAttribute('role'),
+                rows: rows.length,
+                tabStops: before,
+                optionRole: rows.every(r => r.getAttribute('role') === 'option'),
+                hasSelectedState: rows.every(r => r.hasAttribute('aria-selected')),
+                moved,
+                countLive: document.getElementById('itemCount').getAttribute('aria-live'),
+            };
+            document.getElementById('hvscModal').classList.remove('visible');
+            return state;
+        });
+        check('The HVSC listing is a listbox of options',
+            hvsc.role === 'listbox' && hvsc.optionRole && hvsc.hasSelectedState,
+            JSON.stringify(hvsc));
+        check('It is one tab stop, not one per row',
+            hvsc.rows > 1 && hvsc.tabStops === 1, `${hvsc.rows} rows, ${hvsc.tabStops} tab stops`);
+        check('Arrow keys move through it', hvsc.moved === true);
+        check('The result count is announced', hvsc.countLive === 'polite', hvsc.countLive);
+
         // --- the tune selector belongs to the Song tab ------------------------
         const subtune = await page.evaluate(() => {
             const sel = document.getElementById('songSelector');

@@ -314,6 +314,7 @@ window.hvscBrowser = (function () {
                 item.classList.toggle('selected', sel);
                 if (sel) item.scrollIntoView({ block: 'center' });
             });
+            updateRowTabStops(fileList);
         }
         // Deep-linked tunes should start playing on arrival. If the browser
         // blocks the AudioContext (no gesture yet), sid-playback.js retries
@@ -591,6 +592,7 @@ window.hvscBrowser = (function () {
         });
 
         e.currentTarget.classList.add('selected');
+        updateRowTabStops();
         currentSelection = entry;
         syncChooseButton();
 
@@ -741,15 +743,82 @@ window.hvscBrowser = (function () {
     // Make a file/directory row keyboard-operable. Enter mirrors the mouse:
     // open a folder, select-and-preview a tune, and — pressed again on the tune
     // already selected — take it, the way a second click does.
+    // The listing is a listbox, not a pile of buttons. Every row used to be its
+    // own tab stop with no arrow keys, so reaching the Select button past 200
+    // search results meant 200 presses of Tab.
     function makeRowKeyboardAccessible(item, entry) {
-        item.tabIndex = 0;
-        item.setAttribute('role', 'button');
+        item.tabIndex = -1;
+        item.setAttribute('role', 'option');
+        item.setAttribute('aria-selected',
+            currentSelection && currentSelection.path === entry.path ? 'true' : 'false');
         item.addEventListener('keydown', (e) => {
             if (e.key !== 'Enter') return;
             e.preventDefault();
             if (entry.isDirectory) handleItemDoubleClick(entry);
             else if (currentSelection && currentSelection.path === entry.path) selectSID();
             else handleItemClick(e, entry);
+        });
+    }
+
+    /** The row that carries the listbox's single tab stop. */
+    function rowTabStop(list) {
+        return list.querySelector('.file-item.selected') || list.querySelector('.file-item');
+    }
+
+    // Roving tabindex: exactly one row is tabbable at a time, and it follows the
+    // selection so returning to the list lands where the user left off.
+    function updateRowTabStops(list) {
+        const el = list || document.getElementById('fileList');
+        if (!el) return;
+        const stop = rowTabStop(el);
+        for (const item of el.querySelectorAll('.file-item')) {
+            item.tabIndex = item === stop ? 0 : -1;
+            item.setAttribute('aria-selected', item.classList.contains('selected') ? 'true' : 'false');
+        }
+    }
+
+    // Arrow keys, Home/End and type-ahead over the listing. Bound once to the
+    // list itself so it survives every re-render of its rows.
+    function wireListKeyboard() {
+        const list = document.getElementById('fileList');
+        if (!list || list.dataset.keysWired === '1') return;
+        list.dataset.keysWired = '1';
+        list.setAttribute('role', 'listbox');
+        list.setAttribute('aria-label', 'Tunes and folders');
+
+        let typed = '', typedAt = 0;
+        list.addEventListener('keydown', (e) => {
+            const rows = [...list.querySelectorAll('.file-item')];
+            if (!rows.length) return;
+            const here = e.target.closest('.file-item');
+            const i = here ? rows.indexOf(here) : 0;
+            let next = null;
+            switch (e.key) {
+                case 'ArrowDown': next = rows[Math.min(i + 1, rows.length - 1)]; break;
+                case 'ArrowUp': next = rows[Math.max(i - 1, 0)]; break;
+                case 'Home': next = rows[0]; break;
+                case 'End': next = rows[rows.length - 1]; break;
+                case 'PageDown': next = rows[Math.min(i + 10, rows.length - 1)]; break;
+                case 'PageUp': next = rows[Math.max(i - 10, 0)]; break;
+                default: {
+                    // Type-ahead: a printable key jumps to the next row starting
+                    // with what has been typed in the last second.
+                    if (e.key.length !== 1 || e.ctrlKey || e.metaKey || e.altKey) return;
+                    const now = Date.now();
+                    typed = (now - typedAt < 1000 ? typed : '') + e.key.toLowerCase();
+                    typedAt = now;
+                    const from = i + (typed.length > 1 ? 0 : 1);
+                    const order = rows.slice(from).concat(rows.slice(0, from));
+                    next = order.find(r => (r.textContent || '').trim().toLowerCase().startsWith(typed));
+                    if (!next) return;
+                    break;
+                }
+            }
+            e.preventDefault();
+            if (!next) return;
+            for (const r of rows) r.tabIndex = r === next ? 0 : -1;
+            next.focus();
+            next.scrollIntoView({ block: 'nearest' });
         });
     }
 
@@ -979,6 +1048,8 @@ window.hvscBrowser = (function () {
             makeRowKeyboardAccessible(item, entry);
             fileList.appendChild(item);
         });
+        wireListKeyboard();
+        updateRowTabStops(fileList);
     }
 
     function updateItemCount() {
@@ -1099,6 +1170,8 @@ window.hvscBrowser = (function () {
             frag.appendChild(item);
         });
         fileList.appendChild(frag);
+        wireListKeyboard();
+        updateRowTabStops(fileList);
     }
 
     return {

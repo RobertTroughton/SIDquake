@@ -217,10 +217,10 @@ other twenty places that needed them.
   `onCancel`, so the 30,000-frame analysis can't be stopped. Random SID is
   cancellable now, and the overlay itself is a labelled dialog that announces on
   a throttle, focuses Cancel and makes the page behind `inert`.
-- **Still open: the HVSC list puts every row in the tab order**
-  (`hvsc-browser.js:743`) with no arrow keys and no virtualisation, and
-  `#itemCount` changes silently. Make it a `role="listbox"` with roving tabindex
-  and type-ahead — the same treatment the option grids and galleries now have.
+- **Still open: the HVSC listing is not virtualised.** It is a proper listbox
+  now — roving tabindex, arrows, Home/End, PageUp/Down, type-ahead, announced
+  counts — but a search still renders up to 500 rows with `innerHTML=''` plus a
+  per-row `appendChild` on every keystroke.
 
 **Contrast** (computed from the tokens in `styles.css:7-68`; AA needs 4.5:1):
 
