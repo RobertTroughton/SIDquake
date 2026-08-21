@@ -4332,6 +4332,13 @@ class UIController {
         return { ranges, bad };
     }
 
+    /**
+     * How much of a tune must have been scanned before "use what it has found"
+     * is worth offering. Below this the answer would be a fade-out at a few
+     * seconds, which is worse than no answer.
+     */
+    static get STOP_OFFER_SECONDS() { return 45; }
+
     static get PER_TUNE_OPTION_IDS() {
         return new Set(['sidTitle', 'sidAuthor', 'sidCopyright', 'songSelector', 'songLengthManual']);
     }
@@ -4414,6 +4421,18 @@ class UIController {
         });
     }
 
+    /**
+     * Why a scan came back with no loop. Running out of window and being stopped
+     * on purpose are different answers, and the first one used to read as "this
+     * tune has no loop" when it only meant "we did not look far enough".
+     */
+    _scanEndedBecause(a) {
+        const scanned = this._mmss(a.analyzedSeconds);
+        if (a.stoppedEarly) return `You stopped the search after ${scanned}, and nothing repeated in it`;
+        if (a.cappedAtMaxSeconds) return `Nothing repeated in ${scanned}, which is as far as the scan looks`;
+        return `No repeat or fade-out found in ${scanned} of scanning`;
+    }
+
     updateSongLoopStatus() {
         const status = document.getElementById('songLoopStatus');
         const toggle = document.getElementById('forceLoopToggle');
@@ -4465,12 +4484,13 @@ class UIController {
                     ? 'A loop will be added: the exported PRG restarts the song there.'
                     : 'No loop will be added: the exported PRG goes silent there.');
         } else if (manual) {
-            text = `No repeat or fade-out found in ${this._mmss(a.analyzedSeconds)} of scanning, ` +
-                `so the typed length ${this._mmss(manual)} is used instead. Forced looping is unavailable.`;
+            text = `${this._scanEndedBecause(a)}, so the typed length ${this._mmss(manual)} ` +
+                'is used instead. Forced looping is unavailable.';
             enabled = false;
         } else {
-            text = `No repeat or fade-out found within the analysis window (${this._mmss(a.analyzedSeconds)} scanned) ` +
-                '— forced looping is unavailable. Type the length in if you know it.';
+            text = `${this._scanEndedBecause(a)} — forced looping is unavailable. ` +
+                'Type the length in if you know it'
+                + (a.cappedAtMaxSeconds ? ', or raise the scan window under Advanced settings.' : '.');
             enabled = false;
         }
         // The length can be measured or typed and still deliberately left off the
@@ -5194,7 +5214,11 @@ class UIController {
             return job.promise;
         }
         const ac = new AbortController();
-        const job = { ac, listeners: onProgress ? [onProgress] : [], last: null };
+        // Two ways out of a long scan, and they mean different things. Cancel
+        // throws the render away and leaves the tune unmeasured; Stop keeps what
+        // has been rendered and measures that.
+        const stopAc = new AbortController();
+        const job = { ac, stopAc, listeners: onProgress ? [onProgress] : [], last: null };
         const fanout = (label, frac, extra) => {
             job.last = [label, frac, extra];
             for (const fn of job.listeners) {
@@ -5202,7 +5226,9 @@ class UIController {
             }
         };
         this._analysisCancelled = false;
-        job.promise = this.runTuneAnalysis({ signal: ac.signal, onProgress: fanout, holdOnLoopFound })
+        job.promise = this.runTuneAnalysis({
+            signal: ac.signal, stopSignal: stopAc.signal, onProgress: fanout, holdOnLoopFound,
+        })
             .finally(() => { if (this._analysisJob === job) this._analysisJob = null; });
         this._analysisJob = job;
         return job.promise;
@@ -5213,6 +5239,16 @@ class UIController {
         if (!this._analysisJob) return;
         this._analysisCancelled = true;
         this._analysisJob.ac.abort();
+    }
+
+    /**
+     * Stop searching but keep what has been found. Different from Cancel: the
+     * render so far is analysed and used, so a tune whose loop is further out
+     * than anyone wants to wait for still gets a length.
+     */
+    stopSearching() {
+        if (!this._analysisJob) return;
+        this._analysisJob.stopAc.abort();
     }
 
     // Start the scan when the SID loads and report it in the corner chip, so the
@@ -5253,6 +5289,9 @@ class UIController {
     }
 
     _analysisChipText(extra) {
+        // extra.seconds is the doubled search window; halve it for the offer
+        // threshold the same way the label does.
+        this._analysisScanned = (extra && extra.seconds != null) ? extra.seconds / 2 : 0;
         if (extra && extra.loopFound) return 'Loop found';
         // extra.seconds counts the doubled search window, same as the overlay.
         if (extra && extra.seconds != null) return `Analysing tune… ${this._mmss(extra.seconds / 2)} scanned`;
@@ -5275,6 +5314,19 @@ class UIController {
                 this.cancelAnalysis();
                 this._hideAnalysisChip();
             });
+            // Stop searching, but keep the answer: the scan runs to a cap of
+            // several minutes on a tune whose loop is a long way out, and
+            // "measure what you have" is usually what someone watching wants.
+            const stop = document.getElementById('analysisChipStop');
+            if (stop) stop.addEventListener('click', () => {
+                stop.disabled = true;
+                this.stopSearching();
+            });
+        }
+        const stopBtn = document.getElementById('analysisChipStop');
+        // Only worth offering once there is something to keep.
+        if (stopBtn && !stopBtn.disabled) {
+            stopBtn.hidden = !(this._analysisScanned > UIController.STOP_OFFER_SECONDS);
         }
     }
 
@@ -5314,8 +5366,15 @@ class UIController {
         this._analysisChipTimer = setTimeout(() => this._hideAnalysisChip(), 8000);
     }
 
+    _resetAnalysisChipStop() {
+        const stop = document.getElementById('analysisChipStop');
+        if (stop) { stop.disabled = false; stop.hidden = true; }
+        this._analysisScanned = 0;
+    }
+
     _hideAnalysisChip() {
         clearTimeout(this._analysisChipTimer);
+        this._resetAnalysisChipStop();
         const chip = document.getElementById('analysisChip');
         if (!chip) return;
         chip.hidden = true;
@@ -5389,6 +5448,7 @@ class UIController {
                 ...scanOptions,
                 onProgress,
                 signal: opts.signal,
+                stopSignal: opts.stopSignal,
             });
             if (storeKey && result) {
                 const { writeAnalysis } = await import(cb('./analysis-store.js'));

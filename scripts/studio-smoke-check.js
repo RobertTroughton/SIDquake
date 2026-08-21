@@ -1190,6 +1190,75 @@ async function loadSid(page, file) {
             clean.sys === 0x1234 && clean.honoured === true
             && clean.components === clean.before, JSON.stringify(clean));
 
+        // --- stopping a long scan keeps what it found -------------------------
+        const stopScan = await page.evaluate(() => {
+            const ui = window.uiController;
+            const status = document.getElementById('songLoopStatus');
+            const said = {};
+            // The three ways a scan can come back with no loop read differently.
+            for (const [name, extra] of [
+                ['ranOut', { cappedAtMaxSeconds: true }],
+                ['stopped', { stoppedEarly: true }],
+                ['plain', {}],
+            ]) {
+                ui.tuneAnalysis = {
+                    looped: false, fadedOut: false, analyzedSeconds: 360,
+                    storedSeconds: 360, loopStartSeconds: 0, ...extra,
+                };
+                ui.updateSongLoopStatus();
+                said[name] = status.textContent;
+            }
+            ui.tuneAnalysis = null;
+            ui.updateSongLoopStatus();
+            return {
+                ...said,
+                hasStopButton: !!document.getElementById('analysisChipStop'),
+                hasStopMethod: typeof ui.stopSearching === 'function',
+            };
+        });
+        check('A scan that ran out of window says so, rather than "no loop"',
+            /as far as the scan looks/i.test(stopScan.ranOut)
+            && /Advanced settings/i.test(stopScan.ranOut), stopScan.ranOut);
+        check('A scan the user stopped says that instead',
+            /You stopped the search/i.test(stopScan.stopped), stopScan.stopped);
+        check('And a scan that simply found nothing still says that',
+            /No repeat or fade-out found/i.test(stopScan.plain), stopScan.plain);
+        check('There is a way to stop searching and keep the answer',
+            stopScan.hasStopButton && stopScan.hasStopMethod, JSON.stringify({
+                b: stopScan.hasStopButton, m: stopScan.hasStopMethod }));
+
+        // The soft stop reaches the render: start a scan, stop it, and the job
+        // must resolve with a measurement rather than throwing it away.
+        const softStop = await page.evaluate(async () => {
+            const ui = window.uiController;
+            const cb = window.cacheBust || (s => s);
+            // A tune measured earlier in this run comes straight back from the
+            // store, and there is nothing to stop - so start from a clean slate.
+            const { clearAnalyses } = await import(cb('./analysis-store.js'));
+            await clearAnalyses();
+            ui.tuneAnalysis = null;
+            ui._analysisJob = null;
+
+            const p = ui._ensureAnalysis({});
+            // Stop as soon as there is a scan to stop; a short tune can finish
+            // before a fixed wait is up.
+            let running = false;
+            for (let i = 0; i < 100 && !running; i++) {
+                running = ui.analysisRunning;
+                if (!running) await new Promise(r => setTimeout(r, 50));
+            }
+            if (!running) return { skipped: 'the scan finished before it could be stopped' };
+            ui.stopSearching();
+            const result = await p;
+            return { got: !!result, cancelled: ui._analysisCancelled };
+        });
+        if (softStop.skipped) {
+            console.log(`SKIP  soft stop - ${softStop.skipped}`);
+        } else {
+            check('Stopping keeps the measurement instead of discarding it',
+                softStop.got === true && softStop.cancelled === false, JSON.stringify(softStop));
+        }
+
         // --- the collection index says how far along it is ---------------------
         // 7.5 MB behind a bare spinner is a page that looks stuck rather than
         // busy, so hold the response back and read what the list says.

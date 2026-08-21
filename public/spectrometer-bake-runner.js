@@ -25,7 +25,7 @@ export { DEFAULT_ENGINE, normalizeEngine };
 // Options are structured-cloned to the worker, so the two function-valued ones have
 // to be stripped; they're re-attached on the worker side from the message channel.
 function cloneableOptions(options) {
-    const { onProgress, signal, ...rest } = options || {};
+    const { onProgress, signal, stopSignal, ...rest } = options || {};
     return rest;
 }
 
@@ -121,6 +121,15 @@ function runInWorker(worker, op, sidBytes, options) {
         if (signal) {
             signal.addEventListener('abort', () => {
                 worker.postMessage({ type: 'abort', id });
+            }, { once: true });
+        }
+        // "Stop searching": keep what has been rendered rather than throwing the
+        // scan away, so the job still resolves with a result.
+        const stopSignal = options.stopSignal;
+        if (stopSignal) {
+            if (stopSignal.aborted) worker.postMessage({ type: 'stop', id });
+            else stopSignal.addEventListener('abort', () => {
+                worker.postMessage({ type: 'stop', id });
             }, { once: true });
         }
         // Copy the SID bytes so the caller keeps its own array usable, and transfer

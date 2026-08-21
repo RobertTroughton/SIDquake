@@ -67,6 +67,9 @@ async function getCore() {
 // Jobs in flight, so an 'abort' message can cancel the matching run. The core takes
 // an AbortSignal, and the render checks it at each yield point.
 const running = new Map();   // id -> AbortController
+// "Stop searching" is a second, softer signal: keep what has been rendered and
+// analyse that, rather than throwing the whole scan away the way abort does.
+const stopping = new Map();  // id -> AbortController
 
 // Runs are serialised: the core holds one engine and one live rows slot, so two
 // renders at once would fight over both. The page happens to keep one analysis
@@ -99,19 +102,28 @@ self.onmessage = (ev) => {
         return;
     }
 
+    if (msg.type === 'stop') {
+        const ctl = stopping.get(msg.id);
+        if (ctl) ctl.abort();
+        return;
+    }
+
     if (msg.type !== 'run') return;
 
     const { id, op, sidBytes, options } = msg;
     const ctl = new AbortController();
+    const stopCtl = new AbortController();
     // Registered now, not when the run starts, so an abort that arrives while
     // this is still queued is not lost.
     running.set(id, ctl);
+    stopping.set(id, stopCtl);
     enqueue(async () => {
         try {
             const core = await getCore();
             const opts = {
                 ...options,
                 signal: ctl.signal,
+                stopSignal: stopCtl.signal,
                 onProgress: (label, fraction, extra) =>
                     self.postMessage({ type: 'progress', id, label, fraction, extra }),
             };
@@ -150,6 +162,7 @@ self.onmessage = (ev) => {
             });
         } finally {
             running.delete(id);
+            stopping.delete(id);
         }
     });
 };

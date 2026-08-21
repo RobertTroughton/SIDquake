@@ -4977,3 +4977,27 @@
 .flow-note.is-bad {
     color: var(--error);
 }
+
+/* "Use what it has found" - the softer way out of a long scan, next to the
+   Cancel that throws it away. Appears only once there is something to keep. */
+.analysis-chip-stop {
+    background: none;
+    border: 1px solid var(--border-control);
+    border-radius: 999px;
+    color: var(--text-secondary);
+    cursor: pointer;
+    font: inherit;
+    font-size: 0.82em;
+    padding: 3px 10px;
+    white-space: nowrap;
+}
+
+.analysis-chip-stop:hover:not(:disabled) {
+    color: var(--text-primary);
+    border-color: var(--accent);
+}
+
+.analysis-chip-stop:disabled {
+    cursor: default;
+    opacity: 0.6;
+}

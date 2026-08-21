@@ -578,13 +578,19 @@ said, so the user has to know to go and raise it. Most tunes loop or fade inside
 ~6 min, so the cap should be lower *and* the rare long tune handled in the
 moment.
 
-- **"Stop searching" button** during the scan — take what's been rendered so far and
-  bake it (currently only a full Cancel exists, which throws the analysis away).
-- **Prompt at the cap** instead of silently giving up: "No loop found in 6:00 —
-  [Keep searching] [Use what we have]". Keep-searching should extend from where it
-  is, not restart the render.
-- **Drop the default cap 10 min → 6 min** once the above exists, so the common case
-  gets faster and the edge case stays reachable.
+- **Done: "use what it has found"** sits in the corner chip next to Cancel, and
+  appears once 45 seconds have been scanned — below that the answer would be a
+  fade-out at a few seconds, which is worse than none. It is a second, softer
+  signal all the way down (`stopSignal`, distinct from the abort that throws the
+  render away): the render breaks out, the rows so far are analysed, and the job
+  resolves with a measurement.
+- **Done: hitting the cap is no longer silent.** The status now distinguishes
+  three endings — the scan ran out of window ("as far as the scan looks", naming
+  the setting that raises it), the user stopped it, or nothing genuinely
+  repeated. Still open: a prompt *in the moment* offering [Keep searching], which
+  wants the render to extend from where it stopped rather than restart.
+- **Drop the default cap 10 min → 6 min** once keep-searching exists, so the
+  common case gets faster and the edge case stays reachable.
 - Edge cases worth covering: a tune that never loops (long ambient), one whose loop
   is longer than the cap, a user who wants to stop early on purpose, and a
   background tab (the scan must not stall or silently abandon).
