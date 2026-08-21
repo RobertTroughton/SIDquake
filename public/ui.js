@@ -1753,9 +1753,9 @@ class UIController {
         if (isImageInput) {
             return `
         <div class="option-row option-row-full">
-            <label class="option-label">${config.label}</label>
+            <label class="option-label" id="${config.id}-label">${config.label}</label>
             <div class="option-control">
-                <div id="${config.id}-preview-container" class="image-input-container">
+                <div id="${config.id}-preview-container" class="image-input-container" role="group" aria-labelledby="${config.id}-label">
                 </div>
             </div>
         </div>
@@ -1763,14 +1763,15 @@ class UIController {
         } else {
             return `
         <div class="option-row">
-            <label class="option-label">${config.label}</label>
+            <label class="option-label" for="${config.id}">${config.label}</label>
             <div class="option-control">
                 <input type="file" 
                        id="${config.id}" 
                        accept="${config.accept}" 
                        style="display: none;">
-                <button type="button" 
-                        class="file-button" 
+                <button type="button"
+                        class="file-button"
+                        aria-label="${config.label}: choose file"
                         data-file-input="${config.id}">
                     Choose File
                 </button>
@@ -1799,7 +1800,7 @@ class UIController {
                 html += this.createColorSliderHTML(config);
             } else {
                 html += `
-                <label class="option-label">${config.label}</label>
+                <label class="option-label" for="${config.id}">${config.label}</label>
                 <div class="option-control">
                     <input type="number"
                            id="${config.id}"
@@ -1816,7 +1817,7 @@ class UIController {
             const def = config.default != null ? config.default : (config.min || 0);
             const unit = config.unit || '';
             html += `
-            <label class="option-label">${config.label}</label>
+            <label class="option-label" for="${config.id}">${config.label}</label>
             <div class="option-control">
                 <div class="range-control">
                     <input type="range"
@@ -1842,7 +1843,7 @@ class UIController {
             // Regular select dropdown
             const selectClass = 'select-input';
             html += `
-            <label class="option-label">${config.label}</label>
+            <label class="option-label" for="${config.id}">${config.label}</label>
             <div class="option-control">
                 <select id="${config.id}" class="${selectClass}">
                     ${config.values.map(v =>
@@ -1855,7 +1856,7 @@ class UIController {
         `;
         } else if (config.type === 'date') {
             html += `
-            <label class="option-label">${config.label}</label>
+            <label class="option-label" for="${config.id}">${config.label}</label>
             <div class="option-control">
                 <input type="date" id="${config.id}" class="date-input">
                 <span class="date-preview" id="${config.id}-preview">Not set</span>
@@ -1863,7 +1864,7 @@ class UIController {
         `;
         } else if (config.type === 'textarea') {
             html += `
-            <label class="option-label">${config.label}</label>
+            <label class="option-label" for="${config.id}">${config.label}</label>
             <div class="option-control">
                 <div class="textarea-container">
                     <textarea
@@ -1949,8 +1950,8 @@ class UIController {
                 : 'Click a colour to change it.';
 
         return `
-        <label class="option-label">${config.label}</label>
-        <div class="option-control palette-editor" data-editor-id="${config.id}" data-kind="${kind}">
+        <label class="option-label" id="${config.id}-label">${config.label}</label>
+        <div class="option-control palette-editor" role="group" aria-labelledby="${config.id}-label" data-editor-id="${config.id}" data-kind="${kind}">
             <div class="palette-frame">
                 <div class="palette-frame-head">
                     <span class="palette-frame-title">${frameTitle}</span>
@@ -2081,7 +2082,7 @@ class UIController {
         const defaultColor = C64_COLORS[defaultValue];
 
         return `
-        <label class="option-label">${config.label}</label>
+        <label class="option-label" for="${config.id}">${config.label}</label>
         <div class="option-control color-slider-control">
             <div class="slider-wrapper">
                 <input type="range"

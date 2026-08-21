@@ -16,24 +16,20 @@ source; where a claim still needs a browser to confirm it, it says so.
 Ranked by value against effort, not by section order. Each line names the section
 that holds the detail.
 
-1. The nine `for=` attributes, `logoFitModal` in the modal-precedence list, the
-   `prefers-reduced-motion` guard on floating notes, one global `:focus-visible`
-   rule, and the two colour-token fixes. An afternoon; moves the app from
-   unusable to usable with a keyboard or a screen reader. *(Accessibility)*
-2. Build the curated Random SID pool file. One build script, ~2 MB off the front
+1. Build the curated Random SID pool file. One build script, ~2 MB off the front
    door. *(Mobile and first impression)*
-3. Background the loop/length analysis from load with a corner status chip, and
+2. Background the loop/length analysis from load with a corner status chip, and
    turn the Song tab's row into "show the song length on screen?" *(Analysis
    timing)*
-4. Move Generate PRG onto every tab; collapse Technical Details; move the frame
+3. Move Generate PRG onto every tab; collapse Technical Details; move the frame
    rate, stored bars and analysis engine behind an Advanced disclosure; restore
    the scan window, min-loop and bank override into it. *(Progressive disclosure)*
-5. Ship the eleven preview GIFs and set `animated: true`. *(Preview)*
-6. Don't auto-open the Studio below 720px; un-hide the visualiser on phones;
+4. Ship the eleven preview GIFs and set `animated: true`. *(Preview)*
+5. Don't auto-open the Studio below 720px; un-hide the visualiser on phones;
    autoplay after Random SID. *(Mobile and first impression)*
-7. The completion panel that tells a first-timer what a .prg is and how to run
+6. The completion panel that tells a first-timer what a .prg is and how to run
    it. *(Language)*
-8. Multi-file drop and a queue. *(Batch)*
+7. Multi-file drop and a queue. *(Batch)*
 
 Bigger pieces worth planning rather than picking up: the live in-browser preview,
 recipe files plus the `sidquake-build` CLI, the listener-first entry point, and
@@ -261,13 +257,6 @@ other twenty places that needed them.
 
 **Blockers.**
 
-- **Every dynamically built Studio control is unlabelled.** The `<label
-  class="option-label">` at `ui.js:1703, 1713, 1749, 1766, 1792, 1805, 1813,
-  1899, 2031` is a sibling of the control with no `for=` and no wrapping. Only
-  the three Advanced labels (`ui.js:1437, 1447, 1467`) got it right. A screen
-  reader reads the whole configuration as "edit blank, combo box, slider 7".
-  Adding `for="${config.id}"` to nine templates is the highest value-per-keystroke
-  fix in this file.
 - **Activating a Studio tab destroys the button that was pressed.** `activate()`
   calls `renderRail()`/`renderNav()`, both of which do `innerHTML = ''`
   (`studio-modal.js:315`, `:193`), so focus falls to `<body>` and the next Tab is
@@ -276,11 +265,13 @@ other twenty places that needed them.
   `input`/`change`/`click` in the panels (`studio-modal.js:64`), so typing one
   character into the scroller rebuilds the whole rail and calls `scrollIntoView`.
   Diff the tab list instead of rebuilding, and restore focus across any rebuild.
-- **`logoFitModal` is missing from the modal-precedence list** at
-  `studio-modal.js:53`. So while the logo crop tool is open, Escape closes the
-  Studio underneath it, and every Tab is yanked to `#studioClose` behind the
-  dialog — a real keyboard trap, with Cancel and Use-this unreachable. Adding one
-  string fixes it; a proper modal stack fixes the class.
+- **Replace the hardcoded modal-precedence list with a real stack.**
+  `studio-modal.js:53` now names every overlay including `logoFitModal`, so the
+  keyboard trap is gone, but the next overlay added will reintroduce it. Push/pop
+  an id on open/close and have each handler act only when it is on top. The logo
+  tool also still needs its own Tab trap and focus restore (copy `ui.js:274-296`),
+  and its document-level arrow handler swallows the Size slider's arrow keys —
+  scope it to the canvas.
 - **Nothing is announced, including the multi-minute wait.** `showBusy`
   (`ui.js:3757`) sets `textContent` and adds a class; it does not move focus, and
   `studio-modal.js:54` deliberately stops trapping Tab while the overlay is up,
@@ -300,34 +291,28 @@ other twenty places that needed them.
 
 **Contrast** (computed from the tokens in `styles.css:7-68`; AA needs 4.5:1):
 
-- `--text-muted` `#7b7d85` is **4.21:1** on `--bg-surface` and **3.84:1** on
-  `--bg-elevated`. It is the colour of every hint and explanation in the app —
-  `.export-hint`, `.option-hint`, `.flow-note`, `.busy-submessage`, `.busy-hint`,
-  `.status-bar` — i.e. the sentences that tell you what a control does. Lift to
-  `#95979f` (5.40:1 on `--bg-elevated`) or just use `--text-secondary` `#8e909a`
-  (4.96:1), which already passes everywhere.
-- `.file-button { color: white }` on `--accent` is **2.31:1**
-  (`styles-deferred.css:203`) — that is Browse Files, Adjust logo, the nudge
-  arrows, Cancel, Use this, and Load/Save text. `.export-button` uses
-  `var(--bg-primary)` on the same amber for **8.44:1**. One-word fix, same for
-  `.visualizer-selected-badge` and `.gallery-item-selected-badge`.
-- `--border` `#252530` is 1.22:1 against `--bg-secondary` and is the only visible
-  boundary of every text field. `--accent-dim` used as a focus ring composites to
-  ~1.23:1 — not an indicator.
-- `outline: none` with no `:focus-visible` replacement on `.color-slider`
-  (`styles-deferred.css:846`), `.sid-player-speed-btn` (`:2838`),
-  `.sid-player-quality-select` (`:2804`), `.search-bar` (`:1470`). One global
-  `:focus-visible` rule with a 3px `--accent-light` outline replaces all of them.
+- **Still failing:** `--border` `#252530` is 1.22:1 against `--bg-secondary` and
+  is the only visible boundary of every text field; `--border-light` is 1.37:1.
+  1.4.11 wants 3:1 for a control's boundary — `#4a4a5c` gives 3.05:1.
+- **Still failing:** `--accent-dim` as the `box-shadow` focus glow on
+  `.number-input` / `.select-input` / `.date-input` / textareas composites to
+  ~1.23:1. Harmless now that a real outline sits on top, but it is not the
+  indicator it looks like — either drop it or use `--accent`.
+- **Still failing:** `.export-status.error` is 3.74:1 on its own tinted
+  background (`styles-deferred.css`), and `--error` is 4.31:1 on `--bg-surface`;
+  `#e07070` would give 5.02:1. Same colour drives `.mf-tag.warn` and the
+  disabled-card reason (1.70:1 under `opacity: .4`).
+- **Still failing:** `.btn` (HVSC Cancel) is 4.33:1, and `.export-button:disabled`
+  composites to 1.71:1 — technically exempt, but Generate PRG is disabled for
+  most of the session, so it should still clear 3:1.
 - Leave the C64 palette swatches alone — reproducing the machine's colours is the
   point, and 1.4.11 exempts them. Give the chips a visible boundary and put a
   lighter divider between `.color-slider-track` segments instead.
 
-**Motion.** `floating-notes.js:95` adds a 6rem rotating glyph every 167 ms
-indefinitely, ~42 live at once, with no `prefers-reduced-motion` guard and no off
-switch — `studio-modal.css` is the only file in `public/` that mentions the media
-query. Add the guard, skip the interval entirely under reduced motion, and put
-`aria-hidden="true"` on the container. The scanline overlays are static
-gradients at 1.5% alpha and are fine as they are.
+**Motion.** The global `prefers-reduced-motion` block and the floating-notes
+guard are in. Still wanted: a persisted user toggle for the drifting notes, since
+"I find this distracting" is not the same preference as the OS setting, and a
+static substitute for `.busy-spinner` when a scan runs for minutes.
 
 **Structure.** No `<main>` landmark, no skip link, and zero headings on the Tool
 tab between the `<h1>` logo and the footer. Inside the Studio the order runs

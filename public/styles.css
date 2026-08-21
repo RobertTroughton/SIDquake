@@ -17,13 +17,13 @@
     --accent-light: #e8bb6a;
     --accent-dim: rgba(212, 162, 76, 0.12);
     --accent-glow: rgba(212, 162, 76, 0.2);
-    --accent-secondary: #7b68ee;
+    --accent-secondary: #8f7ff2;   /* 5.72:1 on --bg-secondary as button text */
     --accent-gradient: linear-gradient(90deg, #d4a24c 0%, #e8bb6a 100%);
 
     /* Text colors */
     --text-primary: #dcdde0;
     --text-secondary: #8e909a;
-    --text-muted: #7b7d85;
+    --text-muted: #95979f;   /* AA on every surface it is used on (>= 4.7:1) */
     --text-accent: #e8bb6a;
 
     /* Border colors */
@@ -69,6 +69,47 @@
 }
 
 /* Font Imports — loaded async via index.html, not via @import (render-blocking) */
+
+/* ==========================================================================
+   Keyboard focus
+   --------------------------------------------------------------------------
+   One visible ring for every focusable thing, so a keyboard user can always
+   see where they are. Component rules are free to change border-colour or add
+   a glow on :focus; none of them may set `outline` themselves, or they take
+   this away again.
+   ========================================================================== */
+button:focus-visible,
+[role="button"]:focus-visible,
+a:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible,
+[tabindex]:focus-visible {
+    outline: 3px solid var(--accent-light);
+    outline-offset: 2px;
+}
+
+/* ==========================================================================
+   Reduced motion
+   --------------------------------------------------------------------------
+   Everything animated here is decoration - drifting notes, spinners, hover
+   transforms, CRT flicker. None of it carries meaning, so a reduced-motion
+   preference switches all of it off. !important is correct here: it has to
+   beat per-component animation rules wherever they live.
+   ========================================================================== */
+@media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after {
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.01ms !important;
+        scroll-behavior: auto !important;
+    }
+
+    /* Belt and braces: floating-notes.js also declines to spawn any. */
+    .floating-notes-container {
+        display: none !important;
+    }
+}
 
 /* ==========================================================================
    Critical: hide pre-rendered modals before the deferred stylesheets load
@@ -356,7 +397,7 @@ body.file-dragging::after {
 
 .upload-btn.random-btn:hover {
     background: var(--accent-secondary);
-    color: white;
+    color: var(--bg-primary);
     border-color: var(--accent-secondary);
 }
 
@@ -634,7 +675,6 @@ details[open].panel > summary h2::after {
 }
 
 .song-selector-container select:focus {
-    outline: none;
     border-color: var(--accent);
     box-shadow: 0 0 0 2px var(--accent-dim);
 }
@@ -738,7 +778,7 @@ details[open].panel > summary h2::after {
     top: 10px;
     right: 10px;
     background: var(--accent);
-    color: white;
+    color: var(--bg-primary);
     padding: 4px 10px;
     border-radius: 12px;
     font-size: 0.75em;

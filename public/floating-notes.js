@@ -10,6 +10,12 @@ class FreshFloatingNotes {
     }
 
     init() {
+        // Purely decorative, and it never stops: ~42 large rotating glyphs drift
+        // in parallel with the content indefinitely. Under a reduced-motion
+        // preference, don't spawn any - the container isn't created either, so
+        // there is nothing to hide.
+        if (window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+
         this.createContainer();
         this.startFloating();
 
@@ -24,6 +30,9 @@ class FreshFloatingNotes {
         if (!this.container) {
             this.container = document.createElement('div');
             this.container.className = 'floating-notes-container';
+            // Decoration: keep the constant stream of glyphs out of the
+            // accessibility tree, where it otherwise churns the virtual buffer.
+            this.container.setAttribute('aria-hidden', 'true');
             document.body.appendChild(this.container);
         }
     }

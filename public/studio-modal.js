@@ -52,7 +52,7 @@ class StudioModal {
         document.addEventListener('keydown', (e) => {
             if (!this.isOpen) return;
             const above = ['hvscModal', 'galleryModal', 'busyOverlay', 'modalOverlay',
-                'imageSelectorModal', 'colorPickerModal']
+                'imageSelectorModal', 'colorPickerModal', 'logoFitModal']
                 .some(id => document.getElementById(id)?.classList.contains('visible'));
             if (above) return;
             if (e.key === 'Escape') this.close();

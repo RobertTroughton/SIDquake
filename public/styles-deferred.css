@@ -201,7 +201,7 @@
 
 .file-button {
     background: var(--accent);
-    color: white;
+    color: var(--bg-primary);
     border: none;
     padding: 8px 16px;
     border-radius: var(--radius-sm);
@@ -250,7 +250,6 @@
 }
 
 .number-input:focus, .select-input:focus, .date-input:focus {
-    outline: none;
     border-color: var(--accent);
     box-shadow: 0 0 0 2px var(--accent-dim);
 }
@@ -843,7 +842,6 @@
     -webkit-appearance: none;
     appearance: none;
     background: transparent;
-    outline: none;
     position: absolute;
     top: 50%;
     transform: translateY(-50%);
@@ -981,7 +979,6 @@
 }
 
 .textarea-container textarea:focus {
-    outline: none;
     border-color: var(--accent);
     box-shadow: 0 0 0 2px var(--accent-dim);
 }
@@ -995,7 +992,7 @@
     padding: 6px 12px;
     font-size: 0.85em;
     background: var(--accent);
-    color: white;
+    color: var(--bg-primary);
     border: none;
     border-radius: var(--radius-sm);
     cursor: pointer;
@@ -1467,7 +1464,6 @@
 }
 
 .search-bar:focus {
-    outline: none;
     border-color: var(--accent);
 }
 
@@ -1877,7 +1873,7 @@
 
 .sid-info-download .btn:hover {
     background: var(--accent);
-    color: white;
+    color: var(--bg-primary);
 }
 
 /* Scrollbar styling */
@@ -2155,7 +2151,7 @@
     top: 5px;
     right: 5px;
     background: var(--accent);
-    color: white;
+    color: var(--bg-primary);
     padding: 3px 8px;
     border-radius: 10px;
     font-size: 10px;
@@ -2546,7 +2542,7 @@
     top: 2px;
     right: 2px;
     background: var(--accent);
-    color: white;
+    color: var(--bg-primary);
     width: 16px;
     height: 16px;
     border-radius: 50%;
@@ -2597,7 +2593,7 @@
 }
 
 .bar-style-thumbnail.selected .style-name {
-    color: white;
+    color: var(--bg-primary);
     background: rgba(212, 162, 76, 0.85);
 }
 
@@ -2801,7 +2797,6 @@
     border-radius: 4px;
     padding: 2px 4px;
     cursor: pointer;
-    outline: none;
 }
 
 .sid-player-quality-select option {
@@ -2835,7 +2830,6 @@
     border-radius: 4px;
     padding: 2px 5px;
     cursor: pointer;
-    outline: none;
 }
 
 .sid-player-speed-btn:hover {
