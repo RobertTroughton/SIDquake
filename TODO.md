@@ -644,15 +644,26 @@ moment.
   render away): the render breaks out, the rows so far are analysed, and the job
   resolves with a measurement.
 - **Done: hitting the cap is no longer silent.** The status now distinguishes
-  three endings — the scan ran out of window ("as far as the scan looks", naming
-  the setting that raises it), the user stopped it, or nothing genuinely
-  repeated. Still open: a prompt *in the moment* offering [Keep searching], which
-  wants the render to extend from where it stopped rather than restart.
+  three endings — the scan ran out of window ("as far as the scan looks"), the
+  user stopped it, or nothing genuinely repeated.
+- **Done: "Keep looking" is offered in the moment.** A scan that resolved nothing
+  puts the button on the Song tab, saying how much of the tune the next search
+  listens to and that it starts over. It doubles the window for that tune only
+  (`_scanWindowOverride`, capped at `MAX_SCAN_WINDOW`), so one long tune never
+  slows the next one down. Still open: **extending** the render from where it
+  stopped instead of restarting it — the engine is torn down with the render, so
+  resuming means keeping it and its sample position alive across jobs.
 - **Done: a tune still playing where the analysis stops is no longer called a
   fade-out.** `resolveKeyframes` reports `truncated` for it, so the Song tab, the
   timeline and the manifest say the music was cut there, no song length reaches
   the C64 (the clock just counts up), and no forced loop is offered back to a
   point the tune never reaches. Covered by `scripts/test-song-end.js`.
+- **Done: a measurement is no longer capped by what the spectrometer can store.**
+  `measureOnly` (`resolveKeyframes`) drops both the stored-length choice and the
+  C64 RAM budget for the length scan and for `tools/songlengths`, so a tune that
+  plays past them is measured, not reported as ending there. The cap now applies
+  where it belongs: `computeBakeRates` prices the stream against it, and the bake
+  cuts to it.
 - **Drop the default cap 10 min → 6 min** once keep-searching exists, so the
   common case gets faster and the edge case stays reachable.
 - Edge cases worth covering: a tune that never loops (long ambient), one whose loop
@@ -690,8 +701,9 @@ Zero ⇒ the sound comes from somewhere else entirely and the search reopens.
 Whatever the cause, the user-visible outcome (music playing, bars empty) is wrong.
 The failure is at least legible now. `analyzeVuVisibility` in
 `spectrometer-shadow-detect.js` steps the tune on the 6510, applies the player's
-own GATE/TEST/waveform test per frame, and the method picker warns when a long
-*leading* stretch has nothing to draw. Two things it deliberately does not key on:
+own GATE/TEST/waveform test per frame, and both the method picker and the quick
+path warn when a long *leading* stretch has nothing to draw (`renderVuNotes`;
+worked out once per tune, since the answer is the tune's). Two things it deliberately does not key on:
 
 - **The raw count of closed-gate frames.** Gates close between notes, so it is
   ordinary — across the 67 tunes in `SID/` it runs from 26% to 95% on tunes whose

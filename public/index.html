@@ -211,6 +211,10 @@
                 <div class="quick-export" id="quickExport" hidden>
                     <p class="quick-export-lead">Pick what people will see:</p>
                     <div class="quick-export-looks" id="quickExportLooks" role="radiogroup" aria-label="What people see"></div>
+                    <!-- Filled by ui.js renderVuNotes when this tune is one the
+                         live bar methods cannot see (the Studio's Method panel
+                         carries the same warning for whoever opens it). -->
+                    <p class="quick-export-warn" id="quickExportWarn" hidden></p>
                     <button class="export-button" id="quickExportBtn">
                         <i class="fas fa-download" aria-hidden="true"></i> Make my C64 program
                     </button>
@@ -371,6 +375,7 @@
                         <div class="info-row song-length-row">
                             <button type="button" class="file-button" id="songLengthMeasure">Measure now</button>
                             <button type="button" class="file-button" id="songLengthStop" hidden>Stop measuring</button>
+                            <button type="button" class="file-button" id="songLengthKeepLooking" hidden>Keep looking</button>
                             <label class="song-length-manual" for="songLengthManual">
                                 <span>or type it in</span>
                                 <input type="text" id="songLengthManual" class="number-input"

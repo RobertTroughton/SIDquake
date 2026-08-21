@@ -669,8 +669,14 @@ class StudioModal {
             } else {
                 const a = ui.tuneAnalysis;
                 const mmss = s => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`;
+                // The measurement covers the whole tune; a non-looping one is
+                // stored only as far as the Advanced stored-length choice, so the
+                // figure here is what the PRG will actually hold.
+                const cap = ui.getAdvancedSettings().storedSeconds;
+                const stored = a && (a.looped ? a.storedSeconds : Math.min(a.storedSeconds, cap));
                 rows.push(this.manifestRow('FFT bake',
-                    a ? `tune analysed · ${mmss(a.storedSeconds)} stored` : 'analysis pass runs at generate time',
+                    a ? `tune analysed · ${mmss(stored)} stored${!a.looped && a.storedSeconds > cap ? ' (cut to fit)' : ''}`
+                      : 'analysis pass runs at generate time',
                     a ? 'ready' : 'pending', a ? 'inc' : 'pend', 'export'));
             }
         }

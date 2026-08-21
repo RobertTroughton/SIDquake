@@ -484,6 +484,38 @@ async function loadSid(page, file) {
         check('Picking a look with a logo asks which logo',
             !quickLogo.offered || (quickLogo.open && quickLogo.items > 0), JSON.stringify(quickLogo));
 
+        // A tune the live bar methods cannot see has to say so where the choice is
+        // being made. The 6510 side of the check is covered by test-vu-visibility;
+        // this is about the warning reaching the quick path at all.
+        const vuNote = await page.evaluate(async () => {
+            const ui = window.uiController;
+            ui._vuBlind = { leadingSeconds: 14, leadingAudible: true, frames: 1200 };
+            ui._vuBlindFor = ui._analysisToken;
+            const warn = document.getElementById('quickExportWarn');
+            const pick = async (id) => {
+                await ui.selectVisualizer(VISUALIZERS.find(v => v.id === id));
+                await new Promise(r => setTimeout(r, 400));
+                return { hidden: warn.hidden, text: warn.textContent };
+            };
+            const bars = await pick('RaistlinBars');
+            const live = ui.selectedVisualizer?.dataSource;
+            ui.selectDataSource('fft');
+            ui.renderQuickExport();
+            const fft = { hidden: warn.hidden };
+            const text = await pick('default');
+            ui._vuBlind = null;
+            ui._vuBlindFor = -1;
+            ui.renderQuickExport();
+            return { bars, live, fft, text, cleared: warn.hidden };
+        });
+        check('A tune the live bars cannot see says so on the quick path',
+            !vuNote.bars.hidden && /first 0:14/.test(vuNote.bars.text), JSON.stringify(vuNote.bars));
+        check('...and points at the method that is unaffected',
+            /best looking/i.test(vuNote.bars.text), vuNote.bars.text);
+        check('...only while a live method is what would be exported',
+            vuNote.live === 'realtime' && vuNote.fft.hidden && vuNote.text.hidden,
+            JSON.stringify({ live: vuNote.live, fft: vuNote.fft.hidden, text: vuNote.text.hidden }));
+
         await page.evaluate(() => window.studioModal.open());
         await page.waitForTimeout(400);
 
@@ -1338,7 +1370,7 @@ async function loadSid(page, file) {
         });
         check('A scan that ran out of window says so, rather than "no loop"',
             /as far as the scan looks/i.test(stopScan.ranOut)
-            && /Advanced settings/i.test(stopScan.ranOut), stopScan.ranOut);
+            && /keep looking/i.test(stopScan.ranOut), stopScan.ranOut);
         check('A scan the user stopped says that instead',
             /You stopped the search/i.test(stopScan.stopped), stopScan.stopped);
         check('And a scan that simply found nothing still says that',
@@ -1346,6 +1378,76 @@ async function loadSid(page, file) {
         check('A tune still playing where the scan stops gets no invented length',
             /still playing at 6:00/i.test(stopScan.cut)
             && /running clock with no total/i.test(stopScan.cut), stopScan.cut);
+
+        // --- searching further, when nothing was resolved ---------------------
+        const keepLooking = await page.evaluate(() => {
+            const ui = window.uiController;
+            const status = document.getElementById('songLoopStatus');
+            const btn = document.getElementById('songLengthKeepLooking');
+            const seen = {};
+            ui._scanWindowOverride = 0;
+            ui.tuneAnalysis = {
+                looped: false, fadedOut: false, truncated: true, cappedAtMaxSeconds: true,
+                analyzedSeconds: 1200, storedSeconds: 1200, loopStartSeconds: 1200,
+            };
+            ui.updateSongLoopStatus();
+            seen.offered = !btn.hidden;
+            seen.label = btn.textContent;
+            seen.said = status.textContent;
+            // The window in force here depends on what earlier checks set, so the
+            // figure is derived rather than hardcoded: doubling it, then doubled
+            // again because a loop needs two passes to confirm.
+            seen.listens = ui._mmss(ui.nextScanWindowSeconds() * 2);
+            // A resolved tune has nothing more to look for.
+            ui.tuneAnalysis = { looped: true, storedSeconds: 120, loopStartSeconds: 0 };
+            ui.updateSongLoopStatus();
+            seen.hiddenWhenLooped = btn.hidden;
+            // ...and neither has one that has already been searched to the cap.
+            ui._scanWindowOverride = window.uiController.constructor.MAX_SCAN_WINDOW;
+            ui.tuneAnalysis = {
+                looped: false, fadedOut: false, truncated: true, cappedAtMaxSeconds: true,
+                analyzedSeconds: 7200, storedSeconds: 7200, loopStartSeconds: 7200,
+            };
+            ui.updateSongLoopStatus();
+            seen.hiddenAtCap = btn.hidden;
+            seen.saidAtCap = status.textContent;
+            ui._scanWindowOverride = 0;
+            ui.tuneAnalysis = null;
+            ui.updateSongLoopStatus();
+            return seen;
+        });
+        check('A scan that resolved nothing offers to keep looking',
+            keepLooking.offered && /keep looking/i.test(keepLooking.said), keepLooking.said);
+        check('And says how far that would listen',
+            keepLooking.label.includes(keepLooking.listens)
+            && keepLooking.said.includes(keepLooking.listens),
+            `${keepLooking.label} vs ${keepLooking.listens}`);
+        check('It is not offered when the tune was measured', keepLooking.hiddenWhenLooped);
+        check('Nor when the search is already at its limit',
+            keepLooking.hiddenAtCap && !/keep looking/i.test(keepLooking.saidAtCap),
+            keepLooking.saidAtCap);
+
+        // ...and pressing it really does run a wider search, rather than leaving
+        // the tune unmeasured because the old job was still letting go.
+        const searchedAgain = await page.evaluate(async () => {
+            const ui = window.uiController;
+            const before = ui.scanWindowSeconds();
+            await ui.keepLooking();
+            const widened = ui.scanWindowSeconds();
+            // The scan runs in the background; wait for it to settle either way.
+            for (let i = 0; i < 240 && (ui.analysisRunning || !ui.tuneAnalysis); i++) {
+                await new Promise(r => setTimeout(r, 500));
+            }
+            const after = ui.scanWindowSeconds();
+            ui._scanWindowOverride = 0;
+            return { before, widened, after, measured: !!ui.tuneAnalysis,
+                studioOpen: window.studioModal.isOpen };
+        });
+        check('Keeping looking widens the search', searchedAgain.widened === searchedAgain.before * 2,
+            `${searchedAgain.before} -> ${searchedAgain.widened}`);
+        check('...and the wider search actually runs and lands',
+            searchedAgain.measured && searchedAgain.after === searchedAgain.widened,
+            JSON.stringify(searchedAgain));
         check('There is a way to stop searching and keep the answer',
             stopScan.hasStopButton && stopScan.hasStopMethod, JSON.stringify({
                 b: stopScan.hasStopButton, m: stopScan.hasStopMethod }));

@@ -33,6 +33,14 @@ class UIController {
         // the new tune's state.
         this._analysisToken = 0;
         this._analysisCancelled = false;   // last scan ended because the user stopped it
+        // Seconds of music the scan looks through for THIS tune when the user has
+        // asked it to keep looking; 0 = whatever Advanced settings says. Cleared
+        // on a new tune (see processFile).
+        this._scanWindowOverride = 0;
+        // Whether the loaded tune is invisible to the live bar methods, and which
+        // tune that answer belongs to (an _analysisToken). See checkVuVisibility.
+        this._vuBlind = null;
+        this._vuBlindFor = -1;
         this.selectedVisualizer = null;
         this.visualizerConfig = null;
         // Sticky image selections (Logo / Bitmap) so a user's chosen image
@@ -744,6 +752,9 @@ class UIController {
         }).join('');
         box.hidden = false;
         this._wireQuickExport();
+        // The bars-are-blind warning belongs to the look now selected, so it is
+        // re-decided with the row (the check itself is cached per tune).
+        this.renderVuNotes();
     }
 
     _wireQuickExport() {
@@ -1144,6 +1155,9 @@ class UIController {
             // while the user is choosing a visualizer.
             this.tuneAnalysis = null;
 
+            // ...and so does a widened search window: a long tune the user chose
+            // to keep looking at says nothing about the next one.
+            this._scanWindowOverride = 0;
             // New SID: the forced-loop decision belongs to the previous tune.
             this._loopChoiceTouched = false;
             this._loopChoiceAsked = false;
@@ -2200,6 +2214,9 @@ class UIController {
         // analysis cache key, so changing either makes anything already measured
         // describe a different search. Same treatment as the engine below.
         const rescan = () => {
+            // The setting is the new starting point, so a per-tune "keep looking"
+            // widening does not silently stack on top of it.
+            this._scanWindowOverride = 0;
             this._analysisToken++;
             this.cancelAnalysis();
             this._hideAnalysisChip();
@@ -2670,18 +2687,20 @@ class UIController {
     /**
      * Both live methods claim a bar only for a voice with the gate open and a
      * waveform selected. Some tunes drive the SID audibly without ever meeting
-     * that test, so the bars sit empty while the music plays. Say so on the
-     * picker rather than letting someone find out from the exported file.
+     * that test, so the bars sit empty while the music plays. Say so wherever the
+     * choice is being made rather than letting someone find out from the
+     * exported file.
      *
      * The FFT method reads the rendered audio, so it is unaffected - which makes
      * it the answer whenever this fires.
+     *
+     * The answer is about the TUNE, and it costs 1,200 frames of 6510, so it is
+     * worked out once per tune and re-shown from there on every visualizer switch.
      */
     async checkVuVisibility() {
-        const note = document.getElementById('methodVuNote');
-        if (!note) return;
-        note.hidden = true;
         const h = this.sidHeader;
-        if (!h || !this.analyzer || !this.analyzer.Module) return;
+        if (!h || !this.analyzer || !this.analyzer.Module) return this.renderVuNotes();
+        if (this._vuBlindFor === this._analysisToken) return this.renderVuNotes();
         const token = ++this._vuToken;
         let res;
         try {
@@ -2706,12 +2725,39 @@ class UIController {
         // every gate closed are ordinary - across the tunes in SID/ they run from
         // 26% to 95% on tunes whose bars are fine - and a tune that genuinely
         // opens with silence has nothing wrong with it either.
-        if (res.leadingSeconds < 3 || !res.leadingAudible) return;
+        this._vuBlind = (res.leadingSeconds >= 3 && res.leadingAudible) ? res : null;
+        this._vuBlindFor = this._analysisToken;
+        this.renderVuNotes();
+    }
 
-        note.hidden = false;
-        note.textContent = `Heads up: this tune plays its first ${this._mmss(res.leadingSeconds)} `
-            + 'without opening a note the way the live methods look for, so their bars will be '
-            + 'empty over that stretch. Best looking reads the sound itself and is unaffected.';
+    /**
+     * Show the VU-blind warning where the user actually is. The Method panel
+     * carries it for whoever opens the Studio; the quick path has no method
+     * picker, so it gets the same warning under the looks - but only while a
+     * live method is what would be exported.
+     */
+    renderVuNotes() {
+        const res = this._vuBlind;
+        const lead = res ? this._mmss(res.leadingSeconds) : '';
+        const opening = res
+            ? `Heads up: this tune plays its first ${lead} without opening a note the way the `
+              + 'live methods look for, so their bars will be empty over that stretch. '
+            : '';
+        const method = document.getElementById('methodVuNote');
+        if (method) {
+            method.textContent = opening && `${opening}Best looking reads the sound itself and is unaffected.`;
+            method.hidden = !opening;
+        }
+        const quick = document.getElementById('quickExportWarn');
+        if (quick) {
+            // dataSource is set only on the bar players this check covers, and
+            // 'fft' is the method it does not apply to.
+            const source = this.selectedVisualizer?.dataSource;
+            const live = !!source && source !== 'fft';
+            quick.textContent = opening && `${opening}For bars that follow the sound instead, `
+                + 'choose Best looking under Method in "Change everything".';
+            quick.hidden = !opening || !live;
+        }
     }
 
     async createLayoutSelectorHTML(visualizer, config) {
@@ -4169,7 +4215,9 @@ class UIController {
             }
             bakeParams = {
                 framesPerKeyframe: resolved.rate.fpk,
-                maxLoopSeconds: adv.maxLoopSeconds,
+                // The window the measurement used, widening included: a different
+                // one here re-renders the tune and can resolve a different loop.
+                maxLoopSeconds: this.scanWindowSeconds(),
                 minLoopSeconds: adv.minLoopSeconds,
                 outputMaxSeconds: adv.storedSeconds,
                 // Must match the engine the analysis above rendered with, or the
@@ -4476,6 +4524,19 @@ class UIController {
      */
     static get STOP_OFFER_SECONDS() { return 45; }
 
+    /**
+     * Seconds of music the scan assumes a tune runs to, before anyone asks for
+     * more. The render goes to twice this, so the default listens to 20 minutes.
+     */
+    static get DEFAULT_SCAN_WINDOW() { return 600; }
+
+    /**
+     * Where "keep looking" stops doubling. At this window the render listens to
+     * two hours of one tune; past that the answer is a typed-in length, not more
+     * waiting.
+     */
+    static get MAX_SCAN_WINDOW() { return 3600; }
+
     static get PER_TUNE_OPTION_IDS() {
         return new Set(['sidTitle', 'sidAuthor', 'sidCopyright', 'songSelector', 'songLengthManual']);
     }
@@ -4548,6 +4609,7 @@ class UIController {
             this._hideAnalysisChip();
             this.updateSongLoopStatus();
         });
+        on('songLengthKeepLooking', 'click', () => this.keepLooking());
         on('songLengthManual', 'input', () => {
             this.updateSongLoopStatus();
             if (window.studioModal) window.studioModal.queueRefresh();
@@ -4588,6 +4650,13 @@ class UIController {
         const canMeasure = !!this.sidHeader && !multiSong && !a;
         show('songLengthMeasure', canMeasure && !scanning);
         show('songLengthStop', scanning);
+        // A scan that resolved nothing is the one case where searching further
+        // can still produce an answer, so the offer only appears there.
+        const unresolved = !!a && !a.looped && !a.fadedOut && !multiSong;
+        const further = unresolved && !scanning ? this.nextScanWindowSeconds() : null;
+        show('songLengthKeepLooking', !!further);
+        const keep = document.getElementById('songLengthKeepLooking');
+        if (keep && further) keep.textContent = `Keep looking (up to ${this._mmss(further * 2)})`;
         const manualWrap = document.querySelector('.song-length-manual');
         if (manualWrap) manualWrap.hidden = !this.sidHeader || multiSong || !!(a && a.looped);
         const showToggleRow = document.getElementById('showSongLengthToggle')?.closest('.info-row');
@@ -4627,9 +4696,13 @@ class UIController {
                 'is used instead. Forced looping is unavailable.';
             enabled = false;
         } else {
-            text = `${this._scanEndedBecause(a)} — so the C64 shows a running clock with no total, ` +
-                'and forced looping is unavailable. Type the length in if you know it'
-                + (a.cappedAtMaxSeconds ? ', or raise the scan window under Advanced settings.' : '.');
+            text = `${this._scanEndedBecause(a)} — so the C64 shows a running clock with no total, `
+                + 'and forced looping is unavailable. '
+                + (further
+                    ? `Keep looking listens to up to ${this._mmss(further * 2)} of the tune. It starts `
+                      + 'the search over, so allow about as long as this one took. Or type the length '
+                      + 'in if you know it.'
+                    : 'Type the length in if you know it.');
             enabled = false;
         }
         // The length can be measured or typed and still deliberately left off the
@@ -5490,6 +5563,49 @@ class UIController {
         this._analysisJob.stopAc.abort();
     }
 
+    /**
+     * How far the scan looks for the tune in hand, in seconds of music. The
+     * Advanced setting is where it starts; "Keep looking" raises it for this
+     * tune only, so one long tune never slows down every tune after it.
+     * The render itself goes to twice this (a loop needs two passes to confirm).
+     */
+    scanWindowSeconds() {
+        return this._scanWindowOverride || this.getAdvancedSettings().maxLoopSeconds
+            || UIController.DEFAULT_SCAN_WINDOW;
+    }
+
+    /** What a "keep looking" would search to, or null when there is nowhere left to go. */
+    nextScanWindowSeconds() {
+        const now = this.scanWindowSeconds();
+        if (now >= UIController.MAX_SCAN_WINDOW) return null;
+        return Math.min(UIController.MAX_SCAN_WINDOW, now * 2);
+    }
+
+    /**
+     * Search further for a tune that came back with nothing. The render cannot
+     * pick up where it stopped - the engine is torn down with it - so this
+     * restarts the scan with the window doubled. That is the whole cost, and the
+     * status line states it before the user commits.
+     */
+    async keepLooking() {
+        const next = this.nextScanWindowSeconds();
+        if (!next || !this.sidHeader) return;
+        this._scanWindowOverride = next;
+        // Anything still running was measuring a shorter window; drop it and its
+        // result, and wait for it to actually let go before starting the next one
+        // (startBackgroundAnalysis refuses to run two).
+        this._analysisToken++;
+        const running = this._analysisJob;
+        this.cancelAnalysis();
+        if (running) { try { await running.promise; } catch (e) { /* aborted */ } }
+        this._hideAnalysisChip();
+        this.tuneAnalysis = null;
+        this._analysisCancelled = false;
+        this.updateSongLoopStatus();
+        if (window.studioModal) window.studioModal.queueRefresh();
+        this.startBackgroundAnalysis();
+    }
+
     // Start the scan when the SID loads and report it in the corner chip, so the
     // wait overlaps with choosing a visualizer instead of landing on the Generate
     // button. Not started on the main-thread fallback path: there the render runs
@@ -5646,7 +5762,7 @@ class UIController {
         // at least two passes to confirm). The render stops early the moment a loop
         // OR a long silence is found, so long tunes rarely cost the full window.
         const adv = this.getAdvancedSettings();
-        const maxLoopSeconds = opts.maxLoopSeconds || adv.maxLoopSeconds || 600;
+        const maxLoopSeconds = opts.maxLoopSeconds || this.scanWindowSeconds();
         const minLoopSeconds = adv.minLoopSeconds;
         const baseProgress = opts.onProgress || this._analysisProgressCallback('Analysing SID Music',
             'Deep-analysing the SID tune for a better visualisation. This finishes early as soon ' +
@@ -5664,9 +5780,11 @@ class UIController {
             maxSeconds: Math.max(30, maxLoopSeconds * 2),
             minLoopSeconds,
             engine: adv.bakeEngine,
-            // Same cap the export will bake with, or the length/segment/memory
-            // figures shown here would not be the ones the PRG ends up storing.
-            outputMaxSeconds: adv.storedSeconds,
+            // This is a measurement, not a stream: how much of a non-looping tune
+            // the spectrometer can STORE is an export-time cap (see
+            // computeBakeRates), and applying it here made every tune that plays
+            // past it look like it ended there.
+            measureOnly: true,
         };
         try {
             // A scan already done for these exact bytes and settings is the same
@@ -5724,10 +5842,11 @@ class UIController {
         try {
             const { tuneKey } = await import(cb('./spectrometer-bake-core.js'));
             const base = tuneKey(sidBytes, o.subtune, 44100, o.maxSeconds, o.minLoopSeconds, o.engine);
-            // v2: a stored result now distinguishes a tune that faded out from one
-            // that was still playing where the analysis stopped. A v1 entry cannot
-            // tell them apart, so it must not be read back as either.
-            return `${base}|${o.numBars}x${o.maxHeight}|${o.outputMaxSeconds || 0}|v2`;
+            // v2 distinguishes a tune that faded out from one still playing where
+            // the analysis stopped; v3 measures to where the music really ends
+            // rather than to the spectrometer's stored-length cap. Older entries
+            // answer a different question, so they must not be read back.
+            return `${base}|${o.numBars}x${o.maxHeight}|${o.outputMaxSeconds || 0}|v3`;
         } catch (e) {
             return null;   // no key, no cache - the scan still runs
         }
@@ -5739,7 +5858,12 @@ class UIController {
         const cb = window.cacheBust || (s => s);
         const { estimateBakeBytes, _internals } = await import(cb('./spectrometer-bake.js'));
         const budget = (_internals && _internals.DEFAULTS && _internals.DEFAULTS.budgetBytes) || 28672;
-        const dur = analysis.storedSeconds;
+        // The analysis measures the whole tune. What the spectrometer STORES of a
+        // non-looping one is capped by the Advanced stored-length choice, so that
+        // is what the rates are priced against - a 15-minute ambient piece is cut
+        // to fit, not refused as too long.
+        const dur = analysis.looped ? analysis.storedSeconds
+            : Math.min(analysis.storedSeconds, this.getAdvancedSettings().storedSeconds);
         const rates = [{ fpk: 1, hz: '50' }, { fpk: 2, hz: '25' }, { fpk: 3, hz: '16.66' }]
             .map(r => ({ ...r, est: estimateBakeBytes(dur, { framesPerKeyframe: r.fpk, frameHz: analysis.frameHz }) }));
         return { rates, budget };

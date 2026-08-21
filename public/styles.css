@@ -1637,6 +1637,19 @@ details[open].panel > summary h2::after {
     font-size: 0.8em;
 }
 
+/* Same warning as the Studio's .method-vu-note, on the page that has no Method
+   panel to put it on. */
+.quick-export-warn {
+    margin: var(--space-sm) 0 0;
+    padding: 8px 10px;
+    text-align: left;
+    border-left: 3px solid var(--warning);
+    background: rgba(232, 168, 56, 0.08);
+    color: var(--text-secondary);
+    font-size: 0.85em;
+    line-height: 1.5;
+}
+
 .open-studio-btn {
     background: transparent;
     border: 1px solid var(--border-light);

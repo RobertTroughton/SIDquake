@@ -99,7 +99,14 @@ Compiled into `sidplayfp.wasm` (playback only, lazily loaded):
   outside the Studio, running the same export. Picking a look built around a
   picture opens the gallery for it, rather than exporting the player's stock
   logo. A bar look lands on the live "VU meter · Clever" bar data (see
-  `SIDPlayers/BAR_HEIGHT_METHODS.md`); the spectrometer is a Studio choice
+  `SIDPlayers/BAR_HEIGHT_METHODS.md`); the spectrometer is a Studio choice.
+  A tune the live methods cannot see is warned about here as well as on the
+  Method panel (`renderVuNotes`)
+- Song length (`runTuneAnalysis` → Song tab): the scan measures the tune itself
+  (`measureOnly`), so no length is capped by what the spectrometer can store.
+  A scan that resolves neither a loop nor an ending gives the C64 a running
+  clock with no total, and offers "Keep looking" — the same search with the
+  window doubled for that tune
 - PRG export workflow with progress feedback
 - C64 color palette constants
 
