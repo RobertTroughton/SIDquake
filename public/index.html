@@ -1287,6 +1287,15 @@
             return src + (src.indexOf('?') >= 0 ? '&' : '?') + 't=' + Date.now();
         };
 
+        // An element with an id is exposed on window under that name, and
+        // <div id="studioModal"> shares its name with the controller
+        // studio-modal.js assigns. Until that script runs - or if it never does,
+        // because the fetch failed - window.studioModal answers with the DIV, so
+        // every `if (window.studioModal)` guard passes and the first method call
+        // throws (it took out loading a tune, which resets the Studio). Claim the
+        // name first, so a script that is not there reads as not there.
+        window.studioModal = null;
+
         window.lazyScripts = {};
         window.loadScript = function(src) {
             if (!window.lazyScripts[src]) {

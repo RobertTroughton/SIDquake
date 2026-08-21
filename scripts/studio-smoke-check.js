@@ -1103,6 +1103,34 @@ async function loadSid(page, file) {
             await earlyTap.close();
         }
 
+        // --- a script that never arrives must read as missing -----------------
+        // An element id is a window property, and <div id="studioModal"> shares
+        // its name with the controller. With that script missing, every
+        // `if (window.studioModal)` guard used to be handed the DIV and the
+        // first call threw - which killed loading a tune, Random SID included.
+        const noStudio = await browser.newPage({ viewport: { width: 1400, height: 900 } });
+        try {
+            const errors = [];
+            noStudio.on('pageerror', (e) => errors.push(String(e)));
+            await noStudio.route('**/studio-modal.js*', (route) => route.abort());
+            await noStudio.goto(base, { waitUntil: 'load' });
+            await noStudio.waitForFunction(() => !!window.uiController, null, { timeout: 60000 });
+            const guard = await noStudio.evaluate(() => ({
+                tag: window.studioModal && window.studioModal.tagName || null,
+                guardPasses: !!window.studioModal,
+            }));
+            await loadSid(noStudio, 'Flex-Lundia.sid');
+            const loaded = await noStudio.waitForFunction(
+                () => !!(window.uiController.sidHeader && window.uiController.sidHeader.name !== undefined),
+                null, { timeout: 60000 }).then(() => true).catch(() => false);
+            check('A missing script does not leave its element standing in for it',
+                guard.tag === null && guard.guardPasses === false, JSON.stringify(guard));
+            check('...so a tune still loads without the Studio',
+                loaded && !errors.length, JSON.stringify({ loaded, errors }));
+        } finally {
+            await noStudio.close();
+        }
+
         // --- the choice survives a reload -------------------------------------
         const remembered = await page.evaluate(async () => {
             const ui = window.uiController;

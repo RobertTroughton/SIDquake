@@ -24,6 +24,7 @@
  *   node scripts/seam-latency.js
  *   node scripts/seam-latency.js --visualizer=RaistlinBarsWithLogo --frames=3000
  *   node scripts/seam-latency.js --sid=jammer-mm.sid      # multi-speed: more collisions
+ *   node scripts/seam-latency.js --method=realtime       # the bar data to export with
  *
  * The C64 ROMs come from the ones committed under roms/.
  */
@@ -122,6 +123,7 @@ const SPLIT_WRITES = ['8d', '11', 'd0', '8e', '21', 'd0', '8c', '18', 'd0'];
     const opts = {
         sid: arg('sid', 'psych858o-xtrovert.sid'),
         visualizer: arg('visualizer', 'DefaultWithLogo'),
+        method: arg('method', ''),
         logo: arg('logo', path.join(ROOT, 'public', 'PNG', 'Logos', 'facet-psychoandstinsen.png'))
     };
     const frames = Number(arg('frames', '1500'));

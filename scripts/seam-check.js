@@ -20,6 +20,11 @@
  *   node scripts/seam-check.js                       # default tune + logo
  *   node scripts/seam-check.js --keep=/tmp/seam      # keep .prg and PNGs
  *   node scripts/seam-check.js --visualizer=raistlinbarswithlogo
+ *   node scripts/seam-check.js --visualizer=RaistlinBarsWithLogo --method=fft
+ *
+ * --method (fft | realtime | shadow) picks the bar data the export uses; the
+ * live methods play the tune inside the frame the split happens in, so the
+ * seam is worth checking per method. Omitted: whatever the app selects.
  *
  * The C64 ROMs VICE needs are the ones committed under roms/.
  */
@@ -90,6 +95,7 @@ function seamReport(prof, label) {
     const opts = {
         sid: arg('sid', 'psych858o-xtrovert.sid'),
         visualizer: arg('visualizer', 'DefaultWithLogo'),
+        method: arg('method', ''),
         logo: arg('logo', path.join(ROOT, 'public', 'PNG', 'Logos', 'facet-psychoandstinsen.png')),
         frames: Number(arg('frames', '12'))
     };
