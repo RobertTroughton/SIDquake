@@ -2946,6 +2946,11 @@ class UIController {
                     <span class="palette-frame-title">${frameTitle}</span>
                     ${customFlag}
                 </div>
+                ${kind === 'fade' ? `<div class="palette-live">
+                    <canvas class="palette-live-canvas" width="240" height="80"
+                            aria-label="These colours on the bars"></canvas>
+                    <span class="palette-live-label">Your colours</span>
+                </div>` : ''}
                 ${presetGrid}
                 ${swatchesBlock}
                 <div class="palette-hint">${hint}</div>
@@ -3034,6 +3039,21 @@ class UIController {
         if (!input) return;
         const values = input.value.split(',').map(s => parseInt(s, 10) & 0x0F);
         this._selectFadePreset(editor, this._matchFadePreset(values));
+    }
+
+    /**
+     * Redraw the fade editor's own preview from the values currently in it. The
+     * presets have always shown what they produce; the colours the user then
+     * edits by hand did not, so fine-tuning was done against six flat swatches
+     * with no idea what the bars would look like.
+     */
+    _drawLivePalette(editor) {
+        if (!editor || editor.dataset.kind !== 'fade') return;
+        const canvas = editor.querySelector('.palette-live-canvas');
+        const input = document.getElementById(editor.dataset.editorId);
+        if (!canvas || !input) return;
+        const values = input.value.split(',').map(v => parseInt(v, 10) & 0x0F);
+        this._drawFadePresetCanvas(canvas, values);
     }
 
     // Draw a preset's live preview: a small spectrum whose bars are coloured by
@@ -3607,6 +3627,8 @@ class UIController {
                     this.markPaletteDirty(editor);
                 });
             });
+            // ...and the editor's own preview, from whatever is in it now.
+            this._drawLivePalette(editor);
             editor.querySelector('.palette-load')?.addEventListener('click', () => this.loadPalette(editor));
             editor.querySelector('.palette-save')?.addEventListener('click', () => this.savePalette(editor));
         });
@@ -3709,6 +3731,7 @@ class UIController {
         if (!input) return;
         input.value = Array.from(editor.querySelectorAll('.palette-swatch'))
             .map(s => parseInt(s.dataset.value) & 0x0F).join(',');
+        this._drawLivePalette(editor);
     }
 
     applyPaletteValues(editor, values) {

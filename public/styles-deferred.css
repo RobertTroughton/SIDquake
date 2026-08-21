@@ -5048,3 +5048,25 @@
     display: block;
     margin-top: 4px;
 }
+
+/* The fade editor's own preview: what the colours currently in it produce,
+   drawn the same way the preset thumbnails are. */
+.palette-live {
+    display: flex;
+    align-items: center;
+    gap: var(--space-sm);
+    margin-bottom: var(--space-sm);
+}
+
+.palette-live-canvas {
+    width: 120px;
+    height: 40px;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    image-rendering: pixelated;
+}
+
+.palette-live-label {
+    color: var(--text-muted);
+    font-size: 0.8em;
+}

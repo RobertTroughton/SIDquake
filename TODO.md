@@ -486,8 +486,11 @@ wish of both experienced musicians and the beginner alike.
   back pixel for pixel, so a misreading of the VIC's rules (colour-RAM bit 3,
   the ECM background bits, a bitmap's screen nibbles) fails the build rather
   than quietly showing the user something the export will not produce.
-- **Live palette preview for custom fades**, not just the five presets — the
-  presets already render through the real `getHeightColorTable` (`ui.js:1999`).
+- **Done: a live preview for a custom fade.** The presets always showed what
+  they produce; the colours edited by hand after picking one did not, so
+  fine-tuning was done against six flat swatches. The fade editor now draws its
+  own preview through the same `getHeightColorTable` path the preset thumbnails
+  use, updating as each swatch changes.
 - **Done: a text-layout preview** of the three 32-column rows, drawn under the
   metadata fields with the selected font's own charset and the same case
   conversion, PETSCII substitution and centring the export applies — so it comes

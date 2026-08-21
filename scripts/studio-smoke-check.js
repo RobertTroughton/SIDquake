@@ -1145,6 +1145,49 @@ async function loadSid(page, file) {
         check('And reserving everything is refused rather than ignored',
             respected.refused === true, JSON.stringify(respected));
 
+        // --- a custom fade shows what it produces, not just its swatches -------
+        const fade = await page.evaluate(async () => {
+            const ui = window.uiController;
+            await ui.selectVisualizer(VISUALIZERS.find(v => v.id === 'RaistlinBars'));
+            await new Promise(r => setTimeout(r, 900));
+            const editor = document.querySelector('.palette-editor[data-kind="fade"]');
+            if (!editor) return { skipped: 'no fade editor on this player' };
+            const canvas = editor.querySelector('.palette-live-canvas');
+            if (!canvas) return { missing: true };
+
+            const colours = () => {
+                const px = canvas.getContext('2d')
+                    .getImageData(0, 0, canvas.width, canvas.height).data;
+                const seen = new Set();
+                for (let i = 0; i < px.length; i += 4) {
+                    seen.add((px[i] << 16) | (px[i + 1] << 8) | px[i + 2]);
+                }
+                return [...seen].sort().join(',');
+            };
+            const before = colours();
+
+            // Change the fade by hand, the way a user fine-tuning would.
+            const input = document.getElementById(editor.dataset.editorId);
+            const swatches = [...editor.querySelectorAll('.palette-swatch')];
+            ui.setPaletteSwatch(swatches[0], 7);
+            ui.setPaletteSwatch(swatches[1], 8);
+            ui.syncPaletteInput(editor);
+            await new Promise(r => setTimeout(r, 100));
+            return {
+                before, after: colours(), values: input.value,
+                distinctBefore: before.split(',').length,
+            };
+        });
+        if (fade.skipped) {
+            console.log(`SKIP  fade preview - ${fade.skipped}`);
+        } else {
+            check('A custom fade is previewed, not just listed as swatches',
+                !fade.missing && fade.distinctBefore > 2,
+                JSON.stringify({ distinct: fade.distinctBefore }));
+            check('And the preview follows the colours as they are edited',
+                fade.before !== fade.after, JSON.stringify({ values: fade.values }));
+        }
+
         // --- the text lines, as the C64 will draw them ------------------------
         const textPreview = await page.evaluate(async () => {
             const ui = window.uiController;
