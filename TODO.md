@@ -16,20 +16,18 @@ source; where a claim still needs a browser to confirm it, it says so.
 Ranked by value against effort, not by section order. Each line names the section
 that holds the detail.
 
-1. Build the curated Random SID pool file. One build script, ~2 MB off the front
-   door. *(Mobile and first impression)*
-2. Background the loop/length analysis from load with a corner status chip, and
+1. Background the loop/length analysis from load with a corner status chip, and
    turn the Song tab's row into "show the song length on screen?" *(Analysis
    timing)*
-3. Move Generate PRG onto every tab; collapse Technical Details; move the frame
+2. Move Generate PRG onto every tab; collapse Technical Details; move the frame
    rate, stored bars and analysis engine behind an Advanced disclosure; restore
    the scan window, min-loop and bank override into it. *(Progressive disclosure)*
-4. Ship the eleven preview GIFs and set `animated: true`. *(Preview)*
-5. Don't auto-open the Studio below 720px; un-hide the visualiser on phones;
+3. Ship the eleven preview GIFs and set `animated: true`. *(Preview)*
+4. Don't auto-open the Studio below 720px; un-hide the visualiser on phones;
    autoplay after Random SID. *(Mobile and first impression)*
-6. The completion panel that tells a first-timer what a .prg is and how to run
+5. The completion panel that tells a first-timer what a .prg is and how to run
    it. *(Language)*
-7. Multi-file drop and a queue. *(Batch)*
+6. Multi-file drop and a queue. *(Batch)*
 
 Bigger pieces worth planning rather than picking up: the live in-browser preview,
 recipe files plus the `sidquake-build` CLI, the listener-first entry point, and
@@ -334,12 +332,6 @@ stylesheets, pre-hidden modal DOM, all three `.wasm` modules lazily loaded, a
 problem is aim: every optimisation assumes a visitor who already wants to export
 a PRG.
 
-- **Random SID downloads 2 MB to pick one of 6,775 strings.** `hvsc-random.js:68`
-  fetches the whole `hvsc-index.json` (11.98 MB raw, ~2.04 MB gzipped, 61,157
-  entries) and then filters it through the 30 curated prefixes in
-  `hvsc-random.json`. Pre-build that filtered path list — roughly 300 KB raw,
-  ~51 KB gzipped — and the front door gets ~40× cheaper. Biggest single win on
-  the site, and it is a build-script addition.
 - **`?tune=` deep links prefetch the same 2 MB** (`index.html:1102`) and
   `hvsc-browser.js` awaits the full index before touching the tune. The edge
   function `netlify/edge-functions/tune-og.js` already resolves a tune from a

@@ -235,8 +235,8 @@ toolchain, takes minutes).
 **Generated output — never edit by hand** — `public/prg/*-code.bin`,
 `*.codereloc.json`, `*.reloc.json`, `*.gfx.json`, the fixed-bank `*.bin`,
 `public/*.wasm` and their emscripten JS glue (`sidquake.js`, `sidplayfp.js`,
-`exomizer.js`), and `SIDPlayers/INC/FreqTable*.bin`. Regenerate rather than
-patch.
+`exomizer.js`), `public/hvsc-random-pool.json` and `SIDPlayers/INC/FreqTable*.bin`.
+Regenerate rather than patch.
 
 **Gotchas**
 
