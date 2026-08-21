@@ -245,7 +245,7 @@ body {
 
 .site-header-badge {
     font-family: var(--font-mono);
-    font-size: 0.7em;
+    font-size: 0.78em;
     letter-spacing: 4px;
     color: var(--text-muted);
     margin-bottom: var(--space-md);
@@ -284,9 +284,9 @@ body {
     margin-top: var(--space-md);
     padding: 3px 12px 2px;
     font-family: var(--font-mono);
-    font-size: 0.64rem;
+    font-size: 0.76rem;
     font-weight: 700;
-    letter-spacing: 3px;
+    letter-spacing: 2px;
     text-transform: uppercase;
     color: var(--accent);
     background: rgba(255, 255, 255, 0.02);
@@ -901,7 +901,9 @@ details[open].panel > summary h2::after {
     }
 
     .slider-wrapper {
+        flex: none;
         width: 100%;
+        height: 44px;
     }
 
     .color-value {
@@ -928,25 +930,41 @@ details[open].panel > summary h2::after {
         gap: 4px;
     }
 
-    /* Touch targets: the pointer is a fingertip here, so the app's own
-       controls get 44px of height to land on. */
+    .info-value.editable {
+        padding: 8px 10px;
+    }
+}
+
+/* Touch targets: where the pointer is a fingertip the app's own controls get
+   44px of height to land on. Asked of the pointer rather than the width, so a
+   tablet - wider than any breakpoint here, and still operated by hand - gets
+   them too. */
+@media (max-width: 768px), (pointer: coarse) {
     .upload-btn,
     .export-button,
     .btn,
     .file-button,
     .number-input,
-    .select-input {
+    .select-input,
+    .palette-load,
+    .palette-save {
         min-height: 44px;
     }
 
-    input[type="checkbox"] {
-        width: 22px;
-        height: 22px;
+    input[type="checkbox"],
+    input[type="radio"] {
+        width: 24px;
+        height: 24px;
         flex-shrink: 0;
     }
 
-    .info-value.editable {
-        padding: 8px 10px;
+    .palette-swatch-chip,
+    .palette-preset-icon {
+        min-height: 44px;
+    }
+
+    .page-tab {
+        min-height: 44px;
     }
 }
 
@@ -979,7 +997,7 @@ details[open].panel > summary h2::after {
     }
 
     .site-header-badge {
-        font-size: 0.6em;
+        font-size: 0.75em;
         letter-spacing: 2px;
     }
 
@@ -1275,8 +1293,8 @@ details[open].panel > summary h2::after {
     left: 0;
     right: 0;
     background: rgba(0, 0, 0, 0.8);
-    color: var(--text-muted);
-    font-size: 11px;
+    color: var(--text-secondary);
+    font-size: 12px;
     text-align: center;
     padding: 3px 4px;
     white-space: nowrap;
@@ -1288,9 +1306,11 @@ details[open].panel > summary h2::after {
     color: var(--text-primary);
 }
 
+/* Dark on the accent, not white: white on this gold reads at 3.2:1, under
+   the 4.5 the rest of the app holds to. */
 .palette-preset-icon.selected .palette-preset-name {
-    color: #fff;
-    background: rgba(212, 162, 76, 0.85);
+    color: #12100b;
+    background: rgba(212, 162, 76, 0.95);
 }
 
 .palette-preset-check {
@@ -1560,12 +1580,17 @@ details[open].panel > summary h2::after {
     font-size: 0.9em;
 }
 
+/* A grid rather than a wrapping flex row: with six fixed-width cards the wrap
+   fell where the container happened to end - five and a stray one on a tablet,
+   three rows of two on a phone. auto-fit packs them evenly at whatever width
+   there is, and the cap keeps them card-sized instead of stretching across a
+   desktop. */
 .quick-export-looks {
-    display: flex;
-    flex-wrap: wrap;
-    justify-content: center;
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(92px, 1fr));
     gap: var(--space-sm);
-    margin-bottom: var(--space-md);
+    max-width: 760px;
+    margin: 0 auto var(--space-md);
 }
 
 .quick-look {
@@ -1573,7 +1598,6 @@ details[open].panel > summary h2::after {
     flex-direction: column;
     align-items: center;
     gap: 6px;
-    width: 116px;
     padding: 8px;
     background: var(--bg-surface);
     border: 2px solid var(--border-light);

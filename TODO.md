@@ -30,9 +30,10 @@ something this list cannot supply on its own:
   than a side effect of a fix.
 - **A player rebuild** (`[asm]`) — the Default player's technical block, a
   scroller on the bars-with-logo players, multi-song song length, a Group field,
-  NTSC gating in `SetupStableRaster`. These are buildable here, but their effect
-  is on what a C64 draws, and nothing in this repo can confirm that without an
-  emulator and eyes.
+  NTSC gating in `SetupStableRaster`. These are buildable here, and their effect
+  is on what a C64 draws: `scripts/seam-check.js` and `scripts/seam-latency.js`
+  will run an export in VICE and look at it, but only around the raster splits.
+  Anything else still needs eyes.
 
 Bigger pieces worth planning rather than picking up: the live in-browser player
 preview (it needs each player's own graphics to be faithful, and a preview that
@@ -303,6 +304,31 @@ manifest's fixed 110px label and 150px status columns left the value 36px of a
 the value), and the table scrolls inside its own box above that. Still open: 49
 `font-size: *px` declarations (down to 9px) ignore a raised browser default font,
 though zoom scales them.
+
+## Cross-device layout
+
+A seven-viewport sweep (`scripts/device-check.js`) from a 390px iPhone to a
+2560px desktop. The sweep passes; `docs/RESPONSIVE.md` holds the conventions.
+What is left:
+
+- **No `viewport-fit=cover` on any page**, so the two `env(safe-area-inset-*)`
+  calls (`styles-deferred.css` on the browser footer, `studio-modal.css` on the
+  Studio's) evaluate to zero. Nothing lands under the Dynamic Island today
+  because iOS insets the whole layout viewport instead; the cost is that the
+  fullscreen modals cannot paint edge to edge, and in landscape there are black
+  bars either side. Adopting it means adding insets to both modal headers, both
+  close buttons and the analysis chip in the same change — the four places that
+  currently sit at `top: 10px` or `bottom: 16px` and would end up underneath.
+- **The 16-colour strip is width-bound.** 29px a colour on a tablet, 19px on a
+  390px phone: sixteen targets in a row cannot all clear 24px on a screen that
+  narrow. Wrapping it to two rows of eight is the fix if it ever matters.
+- **`.page-tabs` is a `role="tablist"` where each tab is its own tab stop**,
+  rather than the single stop plus arrow keys the APG asks for. The Studio rail
+  and the HVSC listing both already do it properly and can be copied.
+- **Google Fonts is a third-party gate on the `load` event** (`index.html`). It
+  is loaded `media="print" onload=...` so it blocks neither render nor the app,
+  and first contentful paint is ~180ms regardless — but the icon font is already
+  self-hosted under `public/fonts/`, and these two families could be.
 
 ## Mobile and first impression
 

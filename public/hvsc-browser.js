@@ -815,6 +815,15 @@ window.hvscBrowser = (function () {
     }
 
     function handleItemClick(e, entry) {
+        // A folder has nothing to do but open, and double-tapping to open one
+        // is a file-manager habit a touchscreen never taught anybody - iOS may
+        // even take the second tap as a zoom. One tap opens it; tunes keep
+        // select-then-confirm, because selecting one previews it.
+        if (entry.isDirectory && isCoarsePointer()) {
+            handleItemDoubleClick(entry);
+            return;
+        }
+
         document.querySelectorAll('.file-item').forEach(item => {
             item.classList.remove('selected');
         });
@@ -827,6 +836,10 @@ window.hvscBrowser = (function () {
         if (!entry.isDirectory) {
             previewSID(entry);
         }
+    }
+
+    function isCoarsePointer() {
+        return window.matchMedia && window.matchMedia('(pointer: coarse)').matches;
     }
 
     function updateInfoPanel(entry) {
@@ -897,9 +910,14 @@ window.hvscBrowser = (function () {
 
     // Whether the panel holds real details or just its placeholder — on a
     // phone the placeholder is dropped entirely so the listing gets the room.
+    // The same flag rides on the browser itself, because the transport and the
+    // spectrum strip below the list are inert until a tune is picked and cost
+    // the listing a couple of hundred pixels while you are still looking.
     function markInfoPanel(hasInfo) {
         const panel = document.getElementById('sidInfoPanel');
         if (panel) panel.classList.toggle('has-info', hasInfo);
+        const browser = document.querySelector('.browser-container');
+        if (browser) browser.classList.toggle('has-tune', hasInfo);
     }
 
     function escapeHtml(str) {

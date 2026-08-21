@@ -32,7 +32,7 @@
 
 .genesis-nav-label {
 	color: #858585;
-	font-size: 0.65rem;
+	font-size: 0.78rem;
 	text-transform: uppercase;
 	letter-spacing: 0.2em;
 	margin-right: -0.5rem;
@@ -63,7 +63,8 @@
 	transition: color 0.2s ease, background-color 0.2s ease;
 	padding: 0.3rem 0.65rem;
 	border-radius: 6px;
-	display: block;
+	display: flex;
+	align-items: center;
 	position: relative;
 }
 
@@ -124,6 +125,13 @@
 		padding: 0.3rem 0.5rem;
 	}
 
+	/* The label reads as a heading for the row of site links, and at 0.65rem
+	   it was the smallest text on the page. */
+	.genesis-nav-label {
+		font-size: 0.78rem;
+		letter-spacing: 0.14em;
+	}
+
 	.genesis-nav-links a.active::after {
 		display: none;
 	}
@@ -140,5 +148,17 @@
 		flex: 1;
 		text-align: center;
 		min-width: 72px;
+	}
+}
+
+/* The cross-site links are four small pills in a row: fine under a mouse,
+   under 44px for a fingertip. */
+@media (pointer: coarse) {
+	.genesis-header .genesis-nav-links a[href],
+	.genesis-header .genesis-nav-links a[href]:link,
+	.genesis-header .genesis-nav-links a[href]:visited {
+		min-height: 44px;
+		padding-left: 0.75rem;
+		padding-right: 0.75rem;
 	}
 }

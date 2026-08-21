@@ -1085,6 +1085,17 @@
     opacity: 1;
 }
 
+/* Without a mouse there is no hover to reveal it with, so the instruction sits
+   there faintly instead of never appearing at all. */
+@media (hover: none) {
+    .image-preview-overlay {
+        opacity: 1;
+        background: linear-gradient(to top, rgba(0, 0, 0, 0.75), rgba(0, 0, 0, 0.15) 60%);
+        align-items: flex-end;
+        padding-bottom: 8px;
+    }
+}
+
 .image-preview-frame.drag-active {
     border-color: var(--accent);
     box-shadow: 0 0 0 2px var(--accent) inset;
@@ -1306,9 +1317,12 @@
     /* Pin to a definite width (never content-driven) so the browser stays the
        same size whether a folder holds sub-folders or tunes. Shrinks only on
        viewports narrower than the modal + its 20px overlay padding. */
-    width: min(780px, calc(100vw - 40px));
-    height: 90vh;
-    max-height: 650px;
+    /* Tall and wide enough to be a listing rather than a peephole: the height
+       cap used to be a flat 650px, which threw away most of a laptop's screen
+       and left three tunes visible out of a search's several hundred. */
+    width: min(1100px, calc(100vw - 40px));
+    height: 92vh;
+    max-height: 900px;
     display: flex;
     flex-direction: column;
     overflow: hidden;
@@ -1358,8 +1372,12 @@
 .browser-container {
     background: var(--bg-secondary);
     border-radius: var(--radius-sm);
+    /* Capped: the standalone page has no modal around it, so an uncapped
+       width stretched each row across the whole monitor and left a tune's
+       name and its year a screen apart. */
     width: 100%;
-    height: 600px;
+    max-width: 1100px;
+    height: min(900px, calc(100dvh - 40px));
     display: flex;
     flex-direction: column;
     overflow: hidden;
@@ -1388,7 +1406,7 @@
 
 /* "HVSC #NN" pill — signals the mirror is current with a given HVSC release */
 .hvsc-version-badge {
-    font-size: 11px;
+    font-size: 12px;
     font-weight: 700;
     letter-spacing: 0.03em;
     line-height: 1;
@@ -1537,7 +1555,7 @@
 
 .search-result-path {
     color: var(--text-muted);
-    font-size: 11px;
+    font-size: 12px;
     font-family: var(--font-mono);
     white-space: nowrap;
     overflow: hidden;
@@ -1607,6 +1625,11 @@
 
 .file-list {
     flex: 1;
+    /* The list is the only flexible child of a column of fixed-height chrome,
+       so it absorbs the whole shortfall on a short viewport - down to zero
+       rows, which reads as "no results" rather than "no room". Keep a few rows
+       always: the chrome below can scroll out of the way instead. */
+    min-height: 8rem;
     overflow-y: auto;
     background: var(--bg-primary);
     user-select: none;
@@ -1746,11 +1769,11 @@
     background: none;
     color: var(--text-muted);
     font: inherit;
-    font-size: 11px;
+    font-size: 12px;
     text-transform: uppercase;
     letter-spacing: 0.08em;
     line-height: 1;
-    padding: 5px 6px;
+    padding: 7px 6px;
     cursor: pointer;
     -webkit-appearance: none;
     appearance: none;
@@ -1782,7 +1805,7 @@
 
 .hvsc-path-text {
     font-family: var(--font-mono);
-    font-size: 11px;
+    font-size: 12px;
     color: var(--text-secondary);
     overflow: hidden;
     text-overflow: ellipsis;
@@ -1798,7 +1821,7 @@
 
 .hvsc-choose-btn,
 .hvsc-cancel-btn {
-    font-size: 11px;
+    font-size: 12px;
     padding: 5px 14px;
     flex-shrink: 0;
 }
@@ -1814,7 +1837,7 @@
     background: var(--bg-elevated);
     color: var(--text-muted);
     padding: 8px 15px;
-    font-size: 11px;
+    font-size: 12px;
     border-top: 1px solid var(--border);
     display: flex;
     align-items: center;
@@ -1926,12 +1949,19 @@
     background: var(--text-muted);
 }
 
-/* ---------- narrow screens: fullscreen, info panel below the list ----------
+/* ---------- narrow or short screens: fullscreen, info panel below the list --
    The info panel's 382px minimum is wider than a phone, and the file panel is
    allowed to shrink, so side by side the file list collapses to zero width and
-   the listing renders invisibly. Stack them instead. */
+   the listing renders invisibly. Stack them instead.
 
-@media (max-width: 720px) {
+   Short viewports need the same treatment for the same reason turned ninety
+   degrees. A phone in landscape is ~850px wide and ~390px tall: too wide for a
+   width query, far too short for a floating 900px box whose fixed chrome alone
+   is taller than the screen. That left the list with no height at all - the
+   search found tunes and showed none of them. Browser zoom at 200% lands in
+   the same place. */
+
+@media (max-width: 720px), (max-height: 560px) {
     .hvsc-modal {
         padding: 0;
     }
@@ -1955,7 +1985,10 @@
     .sid-info-panel {
         width: auto;
         min-width: 0;
-        max-height: 40%;
+        /* Capped in pixels as well as in percent: on a tall phone 40% was
+           380px of details pushing the listing down to three rows the moment
+           you touched a tune. */
+        max-height: min(40%, 220px);
         border-left: none;
         border-top: 1px solid var(--border);
     }
@@ -1992,32 +2025,6 @@
         flex: 1 1 auto;
     }
 
-    /* Rows and chrome sized for a fingertip rather than a mouse pointer. */
-    .file-item {
-        min-height: 44px;
-        font-size: 14px;
-    }
-
-    .hvsc-listheader .hvsc-nav-btn {
-        width: 40px;
-        height: 36px;
-    }
-
-    .hvsc-listheader .hvsc-col {
-        min-height: 40px;
-        padding: 10px 6px;
-    }
-
-    .hvsc-modal-close,
-    .gallery-modal-close {
-        width: 44px;
-        height: 44px;
-    }
-
-    .search-bar {
-        min-height: 44px;
-    }
-
     /* Everything below the listing competes with it for a phone's height, so
        the decoration gives way: the spectrum strip halves, the info panel
        waits until there is something to show, and the credit line tightens. */
@@ -2026,6 +2033,125 @@
     }
 
     .sid-info-panel:not(.has-info) {
+        display: none;
+    }
+}
+
+/* ---------- sized for a fingertip ----------
+   Deliberately not the same question as "is the screen narrow". These rules
+   used to live in the width query above, which meant an iPad - a touch device
+   wider than every breakpoint in the file - got mouse-sized controls: 26x24
+   navigation buttons, 21px sort headers and 30px rows, all well under the 44px
+   both platforms ask for. What decides these is the pointer, so ask about the
+   pointer. Layout stays on the width and height queries. */
+
+@media (max-width: 720px), (max-height: 560px), (pointer: coarse) {
+    .file-item {
+        min-height: 44px;
+        font-size: 14px;
+    }
+
+    .hvsc-listheader .hvsc-nav-btn {
+        width: 44px;
+        height: 44px;
+    }
+
+    .hvsc-listheader .hvsc-col {
+        min-height: 44px;
+        padding: 12px 6px;
+    }
+
+    .hvsc-modal-close,
+    .gallery-modal-close,
+    .image-selector-modal-close,
+    .logo-fit-close {
+        width: 44px;
+        height: 44px;
+    }
+
+    .search-bar {
+        min-height: 44px;
+    }
+
+    .hvsc-choose-btn,
+    .hvsc-cancel-btn {
+        min-height: 44px;
+        font-size: 14px;
+    }
+
+    /* Seventeen colours in a row: the one grid in the logo tools where a
+       near-miss picks the wrong colour rather than doing nothing. */
+    .logo-fit-swatch {
+        width: 44px;
+        height: 44px;
+    }
+}
+
+/* ---------- a phone held sideways ----------
+   ~390px of height for a browser whose chrome alone wants more than that. The
+   rules above already dropped everything inert; what is left has to give up
+   its padding and its second lines. Nothing here removes information: the
+   heading is decoration the search box explains, and the folder path is on
+   every search result anyway. */
+
+@media (max-height: 560px) and (orientation: landscape) {
+    .browser-title {
+        display: none;
+    }
+
+    .browser-header {
+        padding: 8px 10px;
+    }
+
+    /* The heading used to carry the gap the close button sits in; with it gone
+       the search field has to leave that room itself. */
+    .browser-search {
+        padding-right: 44px;
+    }
+
+    .status-bar {
+        padding: 3px 12px;
+    }
+
+    .hvsc-attribution {
+        padding: 3px 12px 4px;
+    }
+
+    /* Wide enough for one row, so the footer stops spending a line on the
+       path and the buttons come back up beside it. */
+    .hvsc-modal-footer {
+        flex-wrap: nowrap;
+        padding: 6px 12px calc(6px + env(safe-area-inset-bottom, 0px));
+    }
+
+    .hvsc-path-text {
+        flex: 1 1 auto;
+        order: 0;
+    }
+
+    /* A search result stacks title, author and folder into three lines, which
+       is 64px of a 390px screen per tune. Sideways there is width going spare
+       instead, so put the title and author on one line and drop the folder -
+       the footer shows where you are. */
+    .file-item.search-result {
+        align-items: center;
+    }
+
+    .search-result-text {
+        flex-direction: row;
+        align-items: baseline;
+        gap: 8px;
+    }
+
+    .search-result-title {
+        flex: 0 1 auto;
+    }
+
+    .search-result-author {
+        flex: 1 1 auto;
+    }
+
+    .search-result-path {
         display: none;
     }
 }
@@ -2162,7 +2288,7 @@
 
 .gallery-item-name {
     color: var(--text-secondary);
-    font-size: 11px;
+    font-size: 12px;
     font-weight: 500;
     text-align: center;
     white-space: nowrap;
@@ -2209,13 +2335,23 @@
 }
 
 /* Logos the current visualizer can't convert (wrong mode / over its charset
-   budget) stay visible but dimmed; the tooltip carries the reason. */
+   budget) stay visible but dimmed, with the reason printed on the card. It
+   used to be in the title tooltip alone, which a touchscreen cannot ask for -
+   so on a phone a card was simply greyed out and unexplained. */
 .gallery-item-card.gallery-item-unusable {
-    opacity: 0.45;
+    opacity: 0.55;
 }
 
 .gallery-item-card.gallery-item-unusable:hover {
-    opacity: 0.8;
+    opacity: 0.85;
+}
+
+.gallery-item-reason {
+    margin-top: 4px;
+    color: #ff9b9b;
+    font-size: 12px;
+    line-height: 1.3;
+    text-align: center;
 }
 
 /* Same badge on the main input preview frame. */
@@ -2943,11 +3079,38 @@
     background: var(--bg-surface);
 }
 
-/* Phone-sized transport controls, and a browser that spends its height on the
+/* Below the listing sit the transport, the spectrum strip and the credit line.
+   None of them does anything until a tune is picked - every control is
+   disabled, the spectrum has no audio to draw - but together they were taking
+   a couple of hundred pixels off the listing for the whole time you were
+   looking for something. Hold them back until there is a tune to play; the
+   browser marks itself `.has-tune` when one is selected. */
+.browser-container:not(.has-tune) .hvsc-player-container,
+.browser-container:not(.has-tune) .hvsc-visualizer {
+    display: none;
+}
+
+/* The attribution has to stay on screen, but it is a credit and not a
+   paragraph: one line, ellipsised, rather than three wrapped ones. */
+.hvsc-attribution {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+/* An info panel showing nothing but "Select a SID file" is 382px of the
+   listing's width on a desktop and a slab of its height on a phone. The narrow
+   rules already dropped it; do the same at every size. */
+.sid-info-panel:not(.has-info) {
+    display: none;
+}
+
+/* Finger-sized transport controls, and a browser that spends its height on the
    listing: the spectrum strip is decoration and the credit line can be small.
    (These sit after the rules they override, not with the other narrow-screen
-   HVSC rules further up.) */
-@media (max-width: 720px) {
+   HVSC rules further up.) The pointer query brings tablets in: a 24x17 speed
+   button is a mouse target wherever the screen is wide enough to hold it. */
+@media (max-width: 720px), (max-height: 560px), (pointer: coarse) {
     .sid-player {
         gap: var(--space-sm);
         padding: 6px 10px;
@@ -3705,7 +3868,7 @@
 
 .site-footer-tech {
     font-family: var(--font-mono);
-    font-size: 0.72em;
+    font-size: 0.78em;
     letter-spacing: 0.5px;
     color: var(--text-muted);
     opacity: 0.65;
@@ -3722,11 +3885,31 @@
     font-size: 0.82em;
 }
 
-.site-footer-links a {
+.site-footer-links a,
+.site-footer-toggle {
     color: var(--text-secondary);
     text-decoration: none;
     border-bottom: 1px solid transparent;
     transition: color 0.15s ease, border-color 0.15s ease;
+}
+
+/* The footer row is a handful of links and one checkbox on a line of their
+   own, not links inside a sentence, so they can take the height a pointer
+   needs without disturbing any prose around them. */
+.site-footer-links a,
+.site-footer-toggle {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    min-height: 24px;
+    padding: 0 4px;
+}
+
+@media (max-width: 768px), (pointer: coarse) {
+    .site-footer-links a,
+    .site-footer-toggle {
+        min-height: 44px;
+    }
 }
 
 .site-footer-links a:hover,

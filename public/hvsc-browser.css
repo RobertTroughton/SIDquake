@@ -7,10 +7,14 @@
 body {
     font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
     background: #0f1117;
-    height: 100vh;
+    /* min-height, and aligned to the start rather than centred: a container
+       taller than the viewport overflows a centred flex line in BOTH
+       directions, and the half above the top edge cannot be scrolled to. In
+       landscape that put the title and the search box permanently off-screen. */
+    min-height: 100dvh;
     display: flex;
     justify-content: center;
-    align-items: center;
+    align-items: flex-start;
     padding: 20px;
     color: #e8eaed;
 }
