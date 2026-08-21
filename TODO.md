@@ -371,8 +371,13 @@ a human required between every blocking wait.
   - **Drop a recipe onto the page** to apply it. It carries no tune, so the
     loaded one is left alone.
 
+  - **Applied across a whole queue.** A settings file dropped with (or before) a
+    set is held for the run and re-applied to every tune, minus its song block —
+    sub-tune, forced loop and a typed-in length describe the tune the recipe was
+    made from, not the next one. The queue says when that is what it is building
+    from.
+
   Still open:
-  - **Apply one across a whole queue** rather than per tune.
   - **Custom uploaded images can only be named, not carried.** A recipe records
     the slot and the filename and asks for the image again; a gallery pick
     restores in full.

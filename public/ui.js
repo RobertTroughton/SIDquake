@@ -770,7 +770,10 @@ class UIController {
         const recipes = all.filter(f => /\.json$/i.test(f.name));
         for (const f of recipes) {
             try {
-                await this.applyRecipe(JSON.parse(await f.text()));
+                const parsed = JSON.parse(await f.text());
+                // Held for the run: every tune in a queue gets these settings,
+                // rather than the first one's carrying over by luck.
+                if (await this.applyRecipe(parsed)) this._queueRecipe = parsed;
             } catch (e) {
                 this.setRecipeNote(`Could not read ${f.name}.`, true);
             }
@@ -800,10 +803,15 @@ class UIController {
 
         const note = document.getElementById('sidQueueNote');
         if (note) {
-            note.textContent = this._queueRunning
+            // Say when a dropped settings file - not the panels in front of the
+            // user - is what every tune will be built with.
+            const fromRecipe = this._queueRecipe
+                ? ' Every tune is built from the settings file you dropped.' : '';
+            note.textContent = (this._queueRunning
                 ? 'Exporting each tune with the settings below. Every file lands in your downloads.'
                 : 'Set up the first tune the way you want the whole set, then export them all. '
-                + 'Each one is measured and built with the same visualizer and options.';
+                + 'Each one is measured and built with the same visualizer and options.')
+                + fromRecipe;
         }
 
         const icon = { pending: '·', loaded: '▸', building: '…', done: '✓', failed: '✕' };
@@ -831,6 +839,8 @@ class UIController {
         on('sidQueueClear', () => {
             this._queue = [];
             this._queueStop = true;
+            // Clearing the set clears what it was going to be built from too.
+            this._queueRecipe = null;
             this.renderQueue();
         });
     }
@@ -844,6 +854,7 @@ class UIController {
         this._queueRunning = true;
         this._queueStop = false;
         const wanted = this._lastVisualizerId;
+        const recipe = this._queueRecipe || null;
         this.renderQueue();
         try {
             for (const item of this._queue) {
@@ -853,6 +864,10 @@ class UIController {
                 this.renderQueue();
                 try {
                     await this.processFile(item.file);
+                    // Re-apply the settings file the set was dropped with. Not
+                    // its song block: sub-tune and loop answer belong to the
+                    // tune it was made from.
+                    if (recipe) await this.applyRecipe(recipe, { perTune: false, quiet: true });
                     const got = this.selectedVisualizer?.dataSourceGroup
                         || this.selectedVisualizer?.id;
                     if (wanted && got !== wanted) {
@@ -2126,10 +2141,21 @@ class UIController {
         return `${base}.sqrecipe.json`;
     }
 
-    async applyRecipe(recipe) {
+    /**
+     * @param {object} recipe
+     * @param {object} [opts]
+     * @param {boolean} [opts.perTune=true] - apply the song block too. False
+     *   when replaying a recipe across a queue: sub-tune, forced loop and a
+     *   typed-in length describe the tune the recipe was made from, not the
+     *   next one.
+     * @param {boolean} [opts.quiet=false] - skip the note; a queue run reports
+     *   per tune instead.
+     */
+    async applyRecipe(recipe, opts = {}) {
+        const { perTune = true, quiet = false } = opts;
         if (!recipe || !recipe.sidquake || recipe.sidquake.recipe !== 1) {
             this.setRecipeNote('That does not look like a SIDquake settings file.', true);
-            return;
+            return false;
         }
 
         // Advanced settings first: they change what an analysis means, and
@@ -2175,7 +2201,7 @@ class UIController {
             this._optionMemory = Object.assign({}, recipe.options);
         }
 
-        if (recipe.song) {
+        if (recipe.song && perTune) {
             const songSel = document.getElementById('songSelector');
             if (songSel && recipe.song.subtune) songSel.value = String(recipe.song.subtune);
             const forceLoop = document.getElementById('forceLoopToggle');
@@ -2201,9 +2227,12 @@ class UIController {
         }
 
         if (window.studioModal) window.studioModal.queueRefresh();
-        this.setRecipeNote(missing.length
-            ? `Settings applied. Pick your own image again for: ${missing.join(', ')} — a settings file can't carry the image itself.`
-            : 'Settings applied.');
+        if (!quiet) {
+            this.setRecipeNote(missing.length
+                ? `Settings applied. Pick your own image again for: ${missing.join(', ')} — a settings file can't carry the image itself.`
+                : 'Settings applied.');
+        }
+        return true;
     }
 
     setRecipeNote(text, isError = false) {

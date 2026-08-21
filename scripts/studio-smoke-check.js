@@ -643,6 +643,34 @@ async function loadSid(page, file) {
         check('There is a switch for saving one with every PRG',
             builtBlock.always === true, JSON.stringify(builtBlock));
 
+        // A settings file dropped with a set drives the whole set.
+        const queueRecipe = await page.evaluate(async () => {
+            const ui = window.uiController;
+            const saved = ui.buildRecipe();
+            saved.song = { subtune: 3, forceLoop: true, showLength: false, manualLengthSeconds: 90 };
+            const file = new File([JSON.stringify(saved)], 'set.sqrecipe.json',
+                { type: 'application/json' });
+            await ui.acceptFiles([file]);
+            await new Promise(r => setTimeout(r, 600));
+            const held = !!ui._queueRecipe;
+
+            // The song block belongs to the tune the recipe was made from, so a
+            // queue replay must leave it out. (The typed-in length is a poor
+            // witness: the background scan fills that field in on its own.)
+            const loop = document.getElementById('forceLoopToggle');
+            const applied = loop ? loop.checked : null;   // the recipe said true
+            if (loop) loop.checked = false;
+            await ui.applyRecipe(saved, { perTune: false, quiet: true });
+            await new Promise(r => setTimeout(r, 600));
+            return { held, applied, afterReplay: loop ? loop.checked : null };
+        });
+        check('A settings file dropped with a set is held for the run',
+            queueRecipe.held === true, JSON.stringify(queueRecipe));
+        check('Applying it normally carries the song settings',
+            queueRecipe.applied === true, JSON.stringify(queueRecipe));
+        check('And a queue replay leaves the first tune\'s song settings behind',
+            queueRecipe.afterReplay === false, JSON.stringify(queueRecipe));
+
         // --- the brands webfont is never requested ----------------------------
         const brands = await page.evaluate(() => ({
             fabUsages: document.querySelectorAll('.fab, [class*="fa-github"], [class*="fa-youtube"]').length,
