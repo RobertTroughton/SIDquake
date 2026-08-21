@@ -278,9 +278,12 @@ a PRG.
   shards for 61,157 tunes, so the median is 1.5 KB but the worst is 31 KB.
   Twelve bits would even that out, but `build-share-meta.js` and
   `netlify/edge-functions/tune-og.js` have to agree, so it is a paired change.
-- **Split STIL out of the index.** It is ~34% of the 11.98 MB and is read one
-  entry at a time for the selected tune (`hvsc-browser.js:627`). Shard it the way
-  `build-share-meta.js` already shards.
+- **Done: STIL is split out of the index** — 4.0 MB of 12.5 MB serialised, on
+  29,509 of 61,157 entries. The browser fetches `hvsc-index-lite.json` (1,121 KB
+  gzipped, against 2,042 KB) and pulls `hvsc-stil.json` only when something needs
+  it. It is part of the search haystack, so a search kicks the fetch off and
+  re-runs once it lands: first results are immediate, commentary matches fold in
+  a moment later.
 - **The upload buttons are live-looking but dead for the first second or two** —
   they ship in static HTML (`index.html:146-158`) and handlers attach in `ui.js`,
   fourth in a deliberately yielded load chain (`index.html:1133-1150`). A first

@@ -498,21 +498,56 @@ window.hvscBrowser = (function () {
         }
     }
 
+    // STIL commentary, split out of the index because it is a third of it and is
+    // read one entry at a time. Folded back onto the entries when it lands, and
+    // the per-entry search haystacks are dropped so they rebuild including it.
+    let stilSplit = false;
+    let stilPromise = null;
+    let stilLoaded = false;
+
+    function loadStil(onReady) {
+        if (!stilSplit || stilLoaded) return Promise.resolve(false);
+        if (!stilPromise) {
+            stilPromise = fetch('hvsc-stil.json')
+                .then((res) => (res.ok ? res.json() : {}))
+                .then((table) => {
+                    for (const e of (searchIndex && searchIndex.entries) || []) {
+                        const text = table[e.p];
+                        if (text) e.s = text;
+                        // Built lazily and cached; drop it so commentary counts.
+                        delete e._hay;
+                    }
+                    stilLoaded = true;
+                    return true;
+                })
+                .catch(() => { stilPromise = null; return false; });
+        }
+        return onReady ? stilPromise.then((ok) => { if (ok) onReady(); return ok; }) : stilPromise;
+    }
+
     function loadSearchIndex() {
         if (searchIndex) return Promise.resolve(searchIndex);
         if (searchIndexPromise) return searchIndexPromise;
         // Deep-linked pages start this fetch in an early inline script so the
-        // ~2MB index downloads while the UI scripts are still loading.
+        // index downloads while the UI scripts are still loading.
+        //
+        // The lite index is the same thing without the STIL commentary - about a
+        // third of it, read one entry at a time - which loadStil() fetches
+        // separately when something actually needs it. A deploy that has not run
+        // build-index-split.js falls back to the full file.
         const source = window.hvscIndexPrefetch
             ? window.hvscIndexPrefetch
-            : fetch('hvsc-index.json').then((res) => {
-                if (!res.ok) throw new Error(`HTTP ${res.status}`);
-                return res.json();
-            });
+            : fetch('hvsc-index-lite.json')
+                .then((res) => (res.ok ? res.json() : Promise.reject(new Error('no lite index'))))
+                .catch(() => fetch('hvsc-index.json').then((res) => {
+                    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+                    return res.json();
+                }));
         window.hvscIndexPrefetch = null;   // adopt once; retries fetch fresh
         searchIndexPromise = source
             .then((data) => {
                 searchIndex = data;
+                stilSplit = !!data.stilSplit;
                 buildTree(data.entries || []);
                 updateVersionBadge(data.hvsc);
                 return data;
@@ -668,9 +703,15 @@ window.hvscBrowser = (function () {
         const hex = (v) => '$' + v.toString(16).toUpperCase().padStart(4, '0');
         const endAddr = loadAddr + dataSize;
 
-        // STIL comment (from the index) if we have one for this path.
+        // STIL comment (from the index) if we have one for this path. When it has
+        // been split out, fetch it and redraw this panel once it arrives.
         const meta = entry.meta || (metaByPath && metaByPath.get(entry.path));
         const stil = meta && meta.s ? meta.s : '';
+        if (!stil && stilSplit && !stilLoaded) {
+            loadStil(() => {
+                if (currentSelection && currentSelection.path === entry.path) updateInfoPanel(entry);
+            });
+        }
 
         let html = '';
         if (isUnsupported(entry.meta)) html += `<div class="sid-info-note">RSID — preview only; not usable in the SIDquake tool.</div>`;
@@ -1140,6 +1181,15 @@ window.hvscBrowser = (function () {
         // Only render the latest query's results (guards against out-of-order fetches)
         const currentInput = document.getElementById('hvscSearchBar').value.trim();
         if (currentInput !== query) return;
+
+        // Searching is what needs the commentary. Fetch it in the background and
+        // re-run once it lands, so the first results appear straight away and
+        // commentary matches fold in a moment later rather than everyone paying
+        // for it up front.
+        loadStil(() => {
+            const live = document.getElementById('hvscSearchBar');
+            if (live && live.value.trim() === query) runSearch(query);
+        });
 
         const terms = query.toLowerCase().split(/\s+/).filter(Boolean).map(foldDiacritics);
         const matches = [];

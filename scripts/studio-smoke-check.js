@@ -404,6 +404,32 @@ async function loadSid(page, file) {
                 shard.bytes < 200 * 1024, `${Math.round(shard.bytes / 1024)} KB raw vs 11700 KB`);
         }
 
+        // --- the index ships without its commentary ---------------------------
+        const split = await page.evaluate(async () => {
+            const lite = await fetch('hvsc-index-lite.json');
+            if (!lite.ok) return { built: false };
+            const data = await lite.json();
+            const withStil = (data.entries || []).filter(e => e.s).length;
+            const stil = await fetch('hvsc-stil.json');
+            const table = stil.ok ? await stil.json() : {};
+            return {
+                built: true,
+                flagged: data.stilSplit === true,
+                entries: (data.entries || []).length,
+                stilInIndex: withStil,
+                stilEntries: Object.keys(table).length,
+            };
+        });
+        if (!split.built) {
+            check('the split index is built (npm run build-index-split)', false, 'not found');
+        } else {
+            check('The index ships without STIL commentary',
+                split.flagged && split.stilInIndex === 0 && split.entries > 60000,
+                JSON.stringify(split));
+            check('And the commentary is a separate file',
+                split.stilEntries > 20000, `${split.stilEntries} entries`);
+        }
+
         // --- the HVSC listing is a listbox ------------------------------------
         const hvsc = await page.evaluate(async () => {
             document.getElementById('hvscBtn').click();

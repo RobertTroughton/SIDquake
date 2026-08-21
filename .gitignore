@@ -33,6 +33,10 @@ node_modules/
 # Per-tune share metadata shards for the tune-og edge function: generated
 # from hvsc-index.json at build time (npm run build-share-meta).
 /public/share-meta/
+# Derived from the committed hvsc-index.json at build time
+# (scripts/build-index-split.js).
+/public/hvsc-index-lite.json
+/public/hvsc-stil.json
 /CSDbMusicFetch/xml
 
 # Song length scanner journal + generated reports (see tools/songlengths/README.md)

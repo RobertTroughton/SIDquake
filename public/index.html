@@ -1186,8 +1186,14 @@
         // shard first, so nobody waits on this to hear anything.
         try {
             if (new URLSearchParams(location.search).get('tune')) {
-                window.hvscIndexPrefetch = fetch('hvsc-index.json')
-                    .then(function(r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); });
+                window.hvscIndexPrefetch = fetch('hvsc-index-lite.json')
+                    .then(function(r) { return r.ok ? r.json() : Promise.reject(new Error('no lite index')); })
+                    .catch(function() {
+                        return fetch('hvsc-index.json').then(function(r) {
+                            if (!r.ok) throw new Error('HTTP ' + r.status);
+                            return r.json();
+                        });
+                    });
                 window.hvscIndexPrefetch.catch(function() {});  // no unhandled rejection
             }
         } catch (e) { /* non-fatal */ }

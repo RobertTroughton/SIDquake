@@ -7,10 +7,11 @@
     "extract-hvsc": "node scripts/extract-hvsc.js",
     "build-hvsc-index": "node tools/build-hvsc-index.js",
     "build-seo-pages": "node scripts/build-seo-pages.js",
-    "build": "node scripts/extract-hvsc.js && node scripts/build-seo-pages.js && node scripts/build-share-meta.js && node scripts/build-random-pool.js",
+    "build": "node scripts/extract-hvsc.js && node scripts/build-seo-pages.js && node scripts/build-share-meta.js && node scripts/build-random-pool.js && node scripts/build-index-split.js",
     "netlify-build": "npm run build",
     "build-share-meta": "node scripts/build-share-meta.js",
     "build-random-pool": "node scripts/build-random-pool.js",
+    "build-index-split": "node scripts/build-index-split.js",
     "songlengths": "node tools/songlengths/scan.mjs",
     "songlengths-report": "node tools/songlengths/report.mjs",
     "build-social-card": "node scripts/build-social-card.js"

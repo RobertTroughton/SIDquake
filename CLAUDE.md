@@ -197,7 +197,8 @@ KickAssembler 6502 source for the visualiser players.
   binary?". Needs `java` only.
 - WASM: `scripts/build-*-wasm.sh`, needs emsdk. `0-build.bat` hardcodes
   `EMSDK_PATH`. The `.wasm` + their emscripten JS glue are committed.
-- Site: `npm run build` (HVSC extract + SEO pages + share meta). Netlify serves
+- Site: `npm run build` (HVSC extract + SEO pages + share meta + random pool +
+  index/STIL split). Netlify serves
   `public/` as-is; there is no compile step for the app JS.
 
 **Test** — `npm test`. Two harnesses drive the *real assembled 6502* in the WASM
