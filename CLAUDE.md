@@ -197,6 +197,9 @@ KickAssembler 6502 source for the visualiser players.
   binary?". Needs `java` only.
 - WASM: `scripts/build-*-wasm.sh`, needs emsdk. `0-build.bat` hardcodes
   `EMSDK_PATH`. The `.wasm` + their emscripten JS glue are committed.
+- Icons: `scripts/build-icon-font.py`, needs Python with `fonttools` + `brotli`
+  and network access to cdnjs. Run it after adding or removing an `fa-` class;
+  `--check` diffs instead of overwriting. Output is committed.
 - Site: `npm run build` (HVSC extract + SEO pages + share meta + random pool +
   index/STIL split). Netlify serves
   `public/` as-is; there is no compile step for the app JS.
@@ -235,7 +238,8 @@ toolchain, takes minutes).
   `SIDPlayers/BAR_HEIGHT_METHODS.md` (the three bar-data methods). `TODO.md` is
   outstanding work only and is kept current.
 
-**Generated output — never edit by hand** — `public/prg/*-code.bin`,
+**Generated output — never edit by hand** — `public/icons.css` +
+`public/fonts/sidquake-icons.woff2`, `public/prg/*-code.bin`,
 `*.codereloc.json`, `*.reloc.json`, `*.gfx.json`, the fixed-bank `*.bin`,
 `public/*.wasm` and their emscripten JS glue (`sidquake.js`, `sidplayfp.js`,
 `exomizer.js`), `public/hvsc-random-pool.json` and `SIDPlayers/INC/FreqTable*.bin`.

@@ -103,6 +103,10 @@ async function loadSid(page, file) {
     const page = await browser.newPage({ viewport: { width: 1400, height: 900 } });
 
     const errors = [];
+    // Every URL the page asks for, so a check can assert that nothing goes to a
+    // third-party origin.
+    const requests = [];
+    page.on('request', (r) => requests.push(r.url()));
     page.on('pageerror', (e) => errors.push(String(e)));
     page.on('console', (m) => { if (m.type() === 'error') errors.push(m.text()); });
 
@@ -670,6 +674,32 @@ async function loadSid(page, file) {
             queueRecipe.applied === true, JSON.stringify(queueRecipe));
         check('And a queue replay leaves the first tune\'s song settings behind',
             queueRecipe.afterReplay === false, JSON.stringify(queueRecipe));
+
+        // --- icons come from our own origin -----------------------------------
+        const icons = await page.evaluate(async () => {
+            // Wait for the deferred stylesheet to swap in.
+            for (let i = 0; i < 100 && !document.fonts.check('900 16px "SIDquake Icons"'); i++) {
+                await new Promise(r => setTimeout(r, 50));
+            }
+            const el = document.querySelector('.fa-music, .fas.fa-music');
+            const cs = el ? getComputedStyle(el, '::before') : null;
+            const glyph = cs ? cs.content.replace(/["']/g, '') : '';
+            return {
+                loaded: document.fonts.check('900 16px "SIDquake Icons"'),
+                family: el ? getComputedStyle(el).fontFamily : null,
+                glyph: glyph ? glyph.codePointAt(0).toString(16) : null,
+                width: el ? Math.round(el.getBoundingClientRect().width) : 0,
+            };
+        });
+        check('The icon font is the subset served from this origin',
+            icons.loaded === true && /SIDquake Icons/.test(icons.family || ''),
+            JSON.stringify(icons));
+        check('And an icon still resolves to a real glyph',
+            icons.glyph === 'f001' && icons.width > 4, JSON.stringify(icons));
+
+        const offOrigin = requests.filter(u => /cdnjs|fontawesome/i.test(u));
+        check('Nothing is fetched from cdnjs any more', offOrigin.length === 0,
+            offOrigin.slice(0, 3).join(' | '));
 
         // --- the brands webfont is never requested ----------------------------
         const brands = await page.evaluate(() => ({

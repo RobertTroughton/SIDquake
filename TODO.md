@@ -317,10 +317,14 @@ a PRG.
   and publicly reachable. It is disallowed in `robots.txt` now, but it is still
   8% of `public/` for a dev artifact — it belongs outside the deployed directory,
   which is the owner's call since it is deliberately committed.
-- **Still open: self-host a subset of the solid icon font.** The brands file is
-  no longer requested (the two marks that used it are inline SVG), but the solid
-  set is still ~157 KB from cdnjs for 58 glyphs, and cdnjs is a third-party
-  origin on the critical path.
+- **Done: the icon font is self-hosted and subset.** The whole solid set — ~150 KB
+  of webfont plus ~100 KB of stylesheet, from a third-party origin on the
+  critical path — is replaced by the 59 glyphs the site uses: 5.6 KB of woff2 and
+  3.4 KB of CSS, served from our own origin, with the cdnjs preconnect gone.
+  `scripts/build-icon-font.py` regenerates both (Python + fonttools; `--check`
+  diffs rather than overwrites), and reads Font Awesome's own alias selectors so
+  the FA5 names still in the markup (`fa-cogs`, `fa-times`) resolve. A browser
+  check fails if anything is fetched from cdnjs again.
 
 ## The listener product
 
