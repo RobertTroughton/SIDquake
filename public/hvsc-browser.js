@@ -292,6 +292,40 @@ window.hvscBrowser = (function () {
         return ok;
     }
 
+    // FNV-1a low byte, the shard a tune's metadata lives in. Must match
+    // scripts/build-share-meta.js and netlify/edge-functions/tune-og.js.
+    function shareShardOf(p) {
+        let h = 0x811c9dc5;
+        for (let i = 0; i < p.length; i++) {
+            h ^= p.charCodeAt(i);
+            h = (h * 0x01000193) >>> 0;
+        }
+        return (h & 0xff).toString(16).padStart(2, '0');
+    }
+
+    // A shared link arrives with exactly one tune in mind, and waiting for the
+    // ~2 MB collection index before a note is heard is the whole cost of
+    // arriving that way. The share-meta shard the edge function already reads to
+    // build the link preview is ~1.5 KB and holds everything playback needs, so
+    // start there; the index catches up in its own time for browsing.
+    async function quickPlayFromShard(rawPath) {
+        const path = normalizeTunePath(rawPath);
+        if (!path) return false;
+        const key = path.startsWith(ROOT + '/') ? path.substring(ROOT.length + 1) : path;
+        try {
+            const res = await fetch('share-meta/' + shareShardOf(key) + '.json');
+            if (!res.ok) return false;
+            const table = await res.json();
+            if (!table[key]) return false;
+            deepLinkPlaying = path;
+            autoplayNext = true;
+            await previewSID({ path, name: path.split('/').pop(), isDirectory: false });
+            return true;
+        } catch (_) {
+            return false;   // no shards deployed; the index path still works
+        }
+    }
+
     /**
      * Deep link: navigate to a tune's folder, select it and load its preview.
      * Returns false when the path isn't in the index (caller falls back).
@@ -319,6 +353,13 @@ window.hvscBrowser = (function () {
         // Deep-linked tunes should start playing on arrival. If the browser
         // blocks the AudioContext (no gesture yet), sid-playback.js retries
         // on the first interaction.
+        // Already playing from the share-meta shard: reloading it here would
+        // restart the tune from the beginning just as the index lands.
+        if (deepLinkPlaying === entry.path) {
+            deepLinkPlaying = null;
+            updateInfoPanel(entry);
+            return true;
+        }
         autoplayNext = true;
         previewSID(entry);
         return true;
@@ -347,6 +388,8 @@ window.hvscBrowser = (function () {
         // (window.HVSC_EMBED_START).
         const startPath = (typeof window !== 'undefined' && window.HVSC_EMBED_START) || ROOT;
         const tuneParam = (typeof window !== 'undefined' && window.HVSC_EMBED_TUNE) || getTuneParamFromUrl();
+        // Sound first, listing second: don't make a shared link wait for the index.
+        if (tuneParam) quickPlayFromShard(tuneParam);
         loadSearchIndex()
             .then(async () => {
                 if (tuneParam && await openTuneByPath(tuneParam)) return;
@@ -685,7 +728,10 @@ window.hvscBrowser = (function () {
         document.body.removeChild(a);
     }
 
-    let autoplayNext = false;   // set by deep links: play as soon as loaded
+    let autoplayNext = false;
+    // Path already started from the share-meta shard, so the index-driven
+    // deep-link path knows not to reload it.
+    let deepLinkPlaying = null;
 
     async function previewSID(entry) {
         updateShareUrl(entry.path);

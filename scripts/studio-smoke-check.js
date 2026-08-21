@@ -378,6 +378,32 @@ async function loadSid(page, file) {
         });
         check('An export failure does not erase itself after 5s', stays === true);
 
+        // --- a shared link resolves from a shard, not the 2MB index -----------
+        const shard = await page.evaluate(async () => {
+            // The exact table build-share-meta.js writes, reached the way
+            // hvsc-browser.js reaches it. If these two ever disagree on the
+            // shard function, a deep link silently falls back to the index.
+            const key = 'MUSICIANS/H/Hubbard_Rob/Commando.sid';
+            const shardOf = (p) => {
+                let h = 0x811c9dc5;
+                for (let i = 0; i < p.length; i++) { h ^= p.charCodeAt(i); h = (h * 0x01000193) >>> 0; }
+                return (h & 0xff).toString(16).padStart(2, '0');
+            };
+            const res = await fetch('share-meta/' + shardOf(key) + '.json');
+            if (!res.ok) return { built: false };
+            const table = await res.json();
+            const bytes = (await new Response(JSON.stringify(table)).arrayBuffer()).byteLength;
+            return { built: true, hasTune: !!table[key], meta: table[key], bytes };
+        });
+        if (!shard.built) {
+            check('share-meta shards are built (npm run build-share-meta)', false, 'not found');
+        } else {
+            check('A shared tune resolves from its share-meta shard',
+                shard.hasTune && Array.isArray(shard.meta), JSON.stringify(shard.meta));
+            check('And that shard is a fraction of the index',
+                shard.bytes < 200 * 1024, `${Math.round(shard.bytes / 1024)} KB raw vs 11700 KB`);
+        }
+
         // --- the HVSC listing is a listbox ------------------------------------
         const hvsc = await page.evaluate(async () => {
             document.getElementById('hvscBtn').click();

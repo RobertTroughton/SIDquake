@@ -271,11 +271,13 @@ stylesheets, pre-hidden modal DOM, all three `.wasm` modules lazily loaded, a
 problem is aim: every optimisation assumes a visitor who already wants to export
 a PRG.
 
-- **`?tune=` deep links prefetch the same 2 MB** (`index.html:1102`) and
-  `hvsc-browser.js` awaits the full index before touching the tune. The edge
-  function `netlify/edge-functions/tune-og.js` already resolves a tune from a
-  `share-meta/<shard>.json` of ~1.5 KB gzipped. Shared links are how this
-  audience arrives.
+- **Deep links play from their share-meta shard now** (median 1.5 KB gzipped,
+  against 2,041 KB for the index), so nobody waits on the index to hear
+  anything. Still open: the *listing* behind the player waits for the full
+  index, and the shard distribution is lopsided — a low byte of FNV-1a gives 219
+  shards for 61,157 tunes, so the median is 1.5 KB but the worst is 31 KB.
+  Twelve bits would even that out, but `build-share-meta.js` and
+  `netlify/edge-functions/tune-og.js` have to agree, so it is a paired change.
 - **Split STIL out of the index.** It is ~34% of the 11.98 MB and is read one
   entry at a time for the selected tune (`hvsc-browser.js:627`). Shard it the way
   `build-share-meta.js` already shards.

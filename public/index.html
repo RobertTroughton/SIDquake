@@ -1179,10 +1179,11 @@
 
     <!-- Lazy script loader + core script bootstrapper -->
     <script>
-        // Deep link (?tune=): the HVSC browser will need the collection index
-        // (~2MB gzipped), so start fetching it now instead of waiting for the
-        // UI scripts to load and open the modal. hvsc-browser.js picks this
-        // promise up in loadSearchIndex().
+        // Deep link (?tune=): the browser needs the collection index (~2MB
+        // gzipped) to show the listing, so start it now rather than waiting for
+        // the UI scripts. hvsc-browser.js picks this promise up in
+        // loadSearchIndex() - and plays the tune from its ~1.5KB share-meta
+        // shard first, so nobody waits on this to hear anything.
         try {
             if (new URLSearchParams(location.search).get('tune')) {
                 window.hvscIndexPrefetch = fetch('hvsc-index.json')
