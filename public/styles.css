@@ -727,7 +727,9 @@ details[open].panel > summary h2::after {
 }
 
 .visualizer-card.disabled {
-    opacity: 0.4;
+    /* Dimmed, but not so far that the reason it gives becomes unreadable - it
+       used to sit at 0.4, about 1.7:1 against the card. */
+    opacity: 0.75;
     cursor: not-allowed;
 }
 
@@ -737,15 +739,13 @@ details[open].panel > summary h2::after {
     border-color: var(--border);
 }
 
-.visualizer-card.disabled .visualizer-info::after {
-    content: attr(data-reason);
-    position: absolute;
-    bottom: 5px;
-    left: 15px;
-    right: 15px;
-    font-size: 0.8em;
-    color: var(--error);
-    font-weight: 600;
+/* Why this look can't be built for the loaded tune. Real text in the card, so
+   it is selectable, findable and reaches a screen reader. */
+.visualizer-reason {
+    margin-top: var(--space-sm);
+    font-size: 0.82em;
+    line-height: 1.4;
+    color: var(--warning);
 }
 
 .disabled .visualizer-card {

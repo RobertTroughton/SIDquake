@@ -113,7 +113,7 @@
                         <img class="site-header-logo site-header-logo--tall" src="sidquake-logo-portrait.svg" alt="SIDquake" width="336" height="116">
                     </h1>
                     <div class="site-header-version" title="SIDquake version 2.00">v2.00</div>
-                    <p class="site-header-subtitle">The Easiest Way for Artists to Bundle &amp; Ship Their C64 SID Music</p>
+                    <p class="site-header-subtitle">Turn a C64 tune into a program people can run — and listen to 61,000 more</p>
                 </div>
             </div>
             <!-- Page Tabs -->
@@ -140,7 +140,7 @@
                 <!-- Drag & Drop Area -->
                 <div class="upload-section" id="uploadSection">
                     <div class="upload-icon"><i class="fas fa-file-upload"></i></div>
-                    <div class="upload-text">Drop your SID file here</div>
+                    <div class="upload-text">Drop your SID tune here</div>
                     <div class="upload-subtext">or use the buttons below</div>
                 </div>
 
@@ -152,7 +152,7 @@
                     </button>
                     <button class="upload-btn" id="hvscBtn">
                         <i class="fas fa-music"></i>
-                        <span>Browse HVSC</span>
+                        <span>Browse 61,000 C64 tunes</span>
                     </button>
                     <button class="upload-btn random-btn" id="randomBtn">
                         <i class="fas fa-random"></i>
@@ -192,7 +192,7 @@
                 <div class="song-author" id="songAuthor">Load a SID file to begin</div>
                 <div class="sid-player-container" id="mainPlayerContainer"></div>
                 <button class="export-button open-studio-btn" id="openStudioBtn" style="display: none;">
-                    <i class="fas fa-sliders-h"></i> Open Studio
+                    <i class="fas fa-sliders-h"></i> Make a C64 program from this
                 </button>
             </div>
 
@@ -218,7 +218,7 @@
             <!-- SONG tab -->
             <section class="studio-panel" data-studio-tab="song">
               <h2 class="studio-panel-title">Song</h2>
-              <p class="studio-panel-sub">Metadata written into the exported PRG — edit it here, or save a modified SID.</p>
+              <p class="studio-panel-sub">The title, your name and the song length, as they will appear on the C64 screen. You can also save a .sid file with your edits.</p>
               <div class="section-group info-section" id="infoSection">
                 <div class="info-panels" id="infoPanels">
                     <!-- File Information Panel -->
@@ -370,7 +370,7 @@
             <!-- VISUALIZER tab -->
             <section class="studio-panel active" data-studio-tab="visualizer">
               <h2 class="studio-panel-title">Visualizer</h2>
-              <p class="studio-panel-sub">Pick a player — the steps that follow adapt to what it needs.</p>
+              <p class="studio-panel-sub">Choose what people see while your tune plays. The steps after this one change to match.</p>
 
               <!-- Visualizer Grid (cards populated by visualizer-registry.js) -->
               <div class="visualizer-grid" id="visualizerGrid">
@@ -383,7 +383,7 @@
             <!-- METHOD tab (only shown for players with a choice of method) -->
             <section class="studio-panel" data-studio-tab="method">
               <h2 class="studio-panel-title">Method</h2>
-              <p class="studio-panel-sub">How the bars are generated. <b>Spectrometer</b> looks best and is the default — switch only if you need multi-song playback or lower CPU. Optional.</p>
+              <p class="studio-panel-sub">Optional — the first one is already chosen and is the one to keep unless your file holds several tunes.</p>
               <div id="methodMount"></div>
             </section>
 
@@ -423,7 +423,7 @@
             <div class="export-status" id="exportStatus" role="status" aria-live="polite"></div>
             <div class="studio-nav-btns" id="studioNavBtns"></div>
             <button class="export-button" id="exportPRGButton" disabled>
-                <i class="fas fa-download"></i> Generate PRG
+                <i class="fas fa-download"></i> Make my C64 program
             </button>
         </footer>
       </div>

@@ -173,27 +173,29 @@ a file. Everything else stays exactly where it is behind "Customise".
 ## Language — the beginner's jargon audit
 
 The teenage-beginner persona could not complete a release, and the cause was
-almost entirely vocabulary. Highest-value replacements, all in visible UI text:
+almost entirely vocabulary. A first pass has been through the front door, the
+Studio panel copy, the method cards, the compression labels, the multi-song
+warning and the greyed-out reasons (which now describe the *look*, not the
+tune, and carry the SID's address range for the expert). Still to do:
 
-- "Linker" (`index.html:7`), "Bundle & Ship" (`index.html:113`) — say what it
-  does: turn a tune into a program people can run.
-- "PRG" — never explained anywhere a first-timer will see it, yet it is the
-  button label (`index.html:375`). One clause on first use.
-- "HVSC" — a four-letter button on the landing page (`index.html:152`), defined
-  only in About section 04. "Browse 61,000 classic C64 tunes".
-- The method cards (`ui.js:1582-1601`): "frequency spectrum", "baked", "ADSR
-  approximation", "restore modified memory trick", "save/restore code",
-  "shadow-register method", "multispeed", "runtime CPU". One card also warns
-  "Sound quality may be affected" with no sense of scale, which frightens a
-  beginner into freezing.
-- Export-tab dropdowns: "depack", "5 slices (finest)", "SID core", "no C64
-  environment".
-- **Greyed-out reasons blame the user's tune.** "Needs a slower tune (max 1
-  call/frame)" (`ui.js:943`) and "No room in C64 memory alongside this tune"
-  (`ui.js:941`) read as "your tune is broken". Rephrase around the *look*: "This
-  look doesn't fit alongside your tune — here's what does", with the working
-  alternatives right there. Also make them specific for the expert: "SID at
-  $1000-$27FF blocks VIC bank 0".
+- **The visualiser names.** Fifteen entries sharing three words — "Raistlin
+  Bars", "Raistlin Bars (Shadow)", "Raistlin Mirror Bars With Logo
+  (Spectrometer)" — and two of them are people's handles, which read as
+  technical terms. The Shadow / Spectrometer variants are already reached
+  through the Method tab, so the grid should show one card per look with a plain
+  name: "Bars", "Mirrored bars", "Bars with a picture", "3D columns", "Just the
+  text", "Coloured stripes".
+- **"PRG" still appears** in the About tab, the Releases copy and the memory
+  map. The button and the completion panel say what it is now; the rest doesn't.
+- **The logo input's description** ("320x200 or 384x272 PNG; only the top 11
+  char rows (88px) are shown. Charset-friendly images export as a charset") is
+  four unknown words to a beginner and belongs behind the same disclosure the
+  Advanced settings use.
+- **"Max stored bars — 5 slices (finest)"** is unguessable. Now that it is
+  advanced-hidden it matters less, but it still needs a sentence saying what a
+  slice is.
+- **Move "Embed HVSC" out of the main tab row.** It is a developer page sitting
+  next to the one tab a newcomer needs.
 - **Done: the completion panel** replaces the self-dismissing "Saved …" toast —
   what the file is, an emulator link and three steps to run it, the SYS address
   explained rather than printed, where releases get shared, and an offer to

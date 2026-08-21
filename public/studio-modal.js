@@ -184,8 +184,8 @@ class StudioModal {
     }
 
     // Bottom-right Prev/Next rail in the footer - a guided path through the
-    // tabs. On the last (Export) tab, Next is replaced by the Generate PRG
-    // button, so the wizard leads straight into the export.
+    // tabs. The Generate button is on every tab, so this is a way through the
+    // sections rather than a gate in front of the export.
     renderNav() {
         const nav = document.getElementById('studioNavBtns');
         if (!nav) return;

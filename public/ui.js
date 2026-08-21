@@ -456,8 +456,12 @@ class UIController {
 
         grid.innerHTML = '';
 
-        for (let i = 0; i < VISUALIZERS.length; i++) {
-            const viz = VISUALIZERS[i];
+        // Same filter the real grid applies: the shadow / spectrometer variants
+        // are reached through the Method tab, not as separate cards, so showing
+        // them here rendered the same list two different ways.
+        const shown = VISUALIZERS.filter(v => !v.hidden);
+        for (let i = 0; i < shown.length; i++) {
+            const viz = shown[i];
             const card = this.createVisualizerCard(viz);
             card.classList.add('disabled');
             card.style.pointerEvents = 'none';
@@ -940,10 +944,13 @@ class UIController {
                     </option>`).join('')}
             </select>
             <div id="fftMultiSongNote" style="display:none;margin-top:8px;padding:8px 10px;border:1px solid rgba(255,183,77,.4);border-radius:6px;background:rgba(255,183,77,.08);font-size:12px;line-height:1.4">
-                <b style="color:#ffb74d">⚠ Multi-song + Spectrometer:</b> only the <b>default song</b> is visualised — song-switching is <b>disabled</b> and the song length is hidden. For full multi-song support, choose a <b>VU meter</b> method on the Method tab.
+                <b style="color:#ffb74d">This file holds several tunes.</b> The Spectrometer works out its
+                bars in advance, and it can only do that for one of them. If you carry on: the exported
+                program plays and shows <b>only the tune selected above</b>, the buttons that switch between
+                tunes stop working, and no song length is shown.
+                To keep all the tunes, pick a <b>VU meter</b> method on the Method tab instead.
                 <label style="display:flex;gap:6px;margin-top:8px;align-items:center;cursor:pointer">
-                    <input type="checkbox" id="fftMultiSongConsent"> I understand — visualise the default song only
-                </label>
+                    <input type="checkbox" id="fftMultiSongConsent"> Yes — just the one tune</label>
             </div>
         `;
 
@@ -998,6 +1005,9 @@ class UIController {
         if (!grid) return;
 
         grid.innerHTML = '';
+        // Cards are radios (see createVisualizerCard), so the grid is the group.
+        grid.setAttribute('role', 'radiogroup');
+        grid.setAttribute('aria-label', 'Visualizer');
 
         const requiredCalls = this.analysisResults?.numCallsPerFrame || 1;
 
@@ -1054,7 +1064,7 @@ class UIController {
         if (compatible.length > 0 && incompatible.length > 0) {
             const separator = document.createElement('div');
             separator.className = 'visualizer-separator';
-            separator.innerHTML = '<span>Incompatible with this SID (no room in C64 memory alongside the tune)</span>';
+            separator.innerHTML = '<span>These looks won\'t work with this tune — each says why</span>';
             separator.style.cssText = `
             grid-column: 1 / -1;
             text-align: center;
@@ -1097,34 +1107,58 @@ class UIController {
             card.classList.add('disabled');
         }
 
+        // Why a look can't be built for THIS tune. Phrased around the look, not
+        // the tune: "needs a slower tune" reads as "your music is wrong", and a
+        // first-timer takes that personally. The specifics an expert wants (which
+        // addresses are in the way, what the cap is) come after the plain
+        // sentence rather than instead of it.
         let disabledMessage = '';
         if (noMemoryFit) {
-            disabledMessage = `No room in C64 memory alongside this tune`;
+            const lo = this.sidHeader?.loadAddress;
+            const size = this.sidHeader?.fileSize || this.analysisResults?.dataBytes || 0;
+            const hex = (n) => '$' + n.toString(16).toUpperCase().padStart(4, '0');
+            const where = (lo != null && size)
+                ? ` (it sits at ${hex(lo)}-${hex(lo + size - 1)})` : '';
+            disabledMessage = `This look needs C64 memory your tune is already using${where}.`;
         } else if (tooManyCalls) {
-            disabledMessage = `Needs a slower tune (max ${caps.maxCalls} call${caps.maxCalls > 1 ? 's' : ''}/frame)`;
+            disabledMessage = `This look can't keep up with your tune — it plays `
+                + `${requiredCalls} times per frame and this one handles `
+                + `${caps.maxCalls}.`;
         } else if (tooManySidChips) {
             disabledMessage = caps.maxSid === 1
-                ? `Single-SID tunes only`
-                : `Up to ${caps.maxSid} SID chips only`;
+                ? `This look works with one SID chip; your tune uses ${requiredSidChips}.`
+                : `This look works with up to ${caps.maxSid} SID chips; your tune uses ${requiredSidChips}.`;
         }
+
+        const esc = (t) => String(t).replace(/[&<>"]/g, c =>
+            ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 
         card.innerHTML = `
         <div class="visualizer-preview">
-            <img src="${visualizer.preview}" alt="${visualizer.name}" 
+            <img src="${visualizer.preview}" alt="" aria-hidden="true"
                  onerror="this.onerror=null;this.src='previews/default.png'">
         </div>
-        <div class="visualizer-info" ${isDisabled ? `data-reason="${disabledMessage}"` : ''}>
+        <div class="visualizer-info">
             <h3>${visualizer.name}</h3>
             <p>${visualizer.description}</p>
+            ${isDisabled ? `<p class="visualizer-reason">${esc(disabledMessage)}</p>` : ''}
         </div>
-        <div class="visualizer-selected-badge"><i class="fas fa-check"></i> Selected</div>
+        <div class="visualizer-selected-badge"><i class="fas fa-check" aria-hidden="true"></i> Selected</div>
     `;
 
-        if (!isDisabled) {
+        // Radio semantics rather than a blanket aria-label: the label used to
+        // override the card's contents, so neither the description nor the
+        // "Selected" state was ever spoken.
+        card.setAttribute('role', 'radio');
+        card.setAttribute('aria-checked', 'false');
+        if (isDisabled) {
+            // Reachable, and it says why. Skipping it entirely left the user
+            // asking a question the interface refused to answer.
+            card.tabIndex = -1;
+            card.setAttribute('aria-disabled', 'true');
+        } else {
             const choose = () => this.selectVisualizer(visualizer);
             card.tabIndex = 0;
-            card.setAttribute('role', 'button');
-            card.setAttribute('aria-label', `Select visualizer: ${visualizer.name}`);
             card.addEventListener('click', choose);
             card.addEventListener('keydown', (e) => {
                 if (e.key === 'Enter' || e.key === ' ') {
@@ -1221,7 +1255,9 @@ class UIController {
     async selectVisualizer(visualizer, { remember = true } = {}) {
         const cards = document.querySelectorAll('.visualizer-card');
         cards.forEach(card => {
-            card.classList.toggle('selected', card.dataset.id === visualizer.id);
+            const on = card.dataset.id === visualizer.id;
+            card.classList.toggle('selected', on);
+            card.setAttribute('aria-checked', on ? 'true' : 'false');
         });
 
         // Bar styles default to the Spectrometer (precomputed) source - the best
@@ -1864,12 +1900,12 @@ class UIController {
             <div class="option-group-title">Compression</div>
             <div class="compression-options">
                 <label class="compression-radio-option">
-                    <input type="radio" 
-                           name="compression-type" 
+                    <input type="radio"
+                           name="compression-type"
                            value="none">
                     <div class="compression-details">
                         <span class="compression-name">None</span>
-                        <span class="compression-desc">Uncompressed PRG</span>
+                        <span class="compression-desc">Biggest file, and you have to type a SYS command to start it</span>
                     </div>
                 </label>
                 <label class="compression-radio-option">
@@ -1879,7 +1915,7 @@ class UIController {
                            checked>
                     <div class="compression-details">
                         <span class="compression-name">Exomizer</span>
-                        <span class="compression-desc">Smallest file, slower to depack</span>
+                        <span class="compression-desc">Smallest file. Starts on its own, after a short pause while it unpacks.</span>
                     </div>
                 </label>
                 <label class="compression-radio-option">
@@ -1888,7 +1924,7 @@ class UIController {
                            value="tscrunch">
                     <div class="compression-details">
                         <span class="compression-name">TSCrunch</span>
-                        <span class="compression-desc">Fast to depack on the C64</span>
+                        <span class="compression-desc">Slightly bigger, but starts almost instantly on the C64.</span>
                     </div>
                 </label>
             </div>
@@ -1917,26 +1953,30 @@ class UIController {
         const variantOf = m => members.find(v => v.dataSource === m);
 
         const cards = [
-            { m: 'fft', name: 'Spectrometer', tags: ['perfect sound', 'reads audio spectrum'],
-              desc: 'A true frequency spectrum of the audio, “baked” into the file.',
-              rows: [['pro', 'Looks best — a real audio spectrum'],
-                     ['pro', 'Perfect sound, even multispeed SIDs'],
-                     ['pro', 'Lowest runtime CPU'],
-                     ['con', 'Larger file'],
-                     ['con', 'Single song only']] },
-            { m: 'realtime', name: 'VU meter · Clever', tags: ['real-time', 'perfect sound', 'smaller file'],
-              desc: 'Bars from the notes played + an ADSR approximation, generated live. Uses a “restore modified memory” trick so the visual sees the data it needs without touching the sound.',
-              rows: [['pro', 'Perfect sound quality'],
-                     ['pro', 'Full multi-song support'],
+            { m: 'fft', name: 'Best looking', tags: ['recommended', 'follows the actual sound'],
+              desc: 'SIDquake listens to the whole tune here in the browser and stores what it '
+                  + 'hears, so the bars follow the real sound exactly.',
+              rows: [['pro', 'The bars match the music closely'],
+                     ['pro', 'Works with any tune, however it is written'],
+                     ['pro', 'Leaves the C64 the most time for other things'],
+                     ['con', 'Makes a bigger file'],
+                     ['con', 'Only one tune per file'],
+                     ['con', 'Has to listen to the tune first — usually under a minute']] },
+            { m: 'realtime', name: 'Live · careful', tags: ['works out the bars on the C64', 'smaller file'],
+              desc: 'The C64 works the bars out as it plays, from the notes the tune is playing. '
+                  + 'This version takes extra care not to disturb the music.',
+              rows: [['pro', 'The music sounds exactly as written'],
+                     ['pro', 'Keeps every tune in a multi-tune file'],
                      ['pro', 'Smaller file'],
-                     ['con', 'Higher CPU (plays the tune twice)'],
-                     ['con', 'Slightly larger (save/restore code)']] },
-            { m: 'shadow', name: 'VU meter · Shadow', tags: ['real-time', 'lowest CPU', 'smallest file'],
-              desc: 'The traditional live route — the same note-based bars, captured with a lighter single-play method.',
-              rows: [['pro', 'Lower CPU'],
-                     ['pro', 'Full multi-song support'],
+                     ['pro', 'Nothing to work out first — exports straight away'],
+                     ['con', 'Leaves the C64 less spare time (it plays the tune twice over)']] },
+            { m: 'shadow', name: 'Live · light', tags: ['works out the bars on the C64', 'smallest file'],
+              desc: 'The same note-based bars by the older, lighter route.',
+              rows: [['pro', 'Leaves the C64 more spare time than the careful version'],
+                     ['pro', 'Keeps every tune in a multi-tune file'],
                      ['pro', 'Smallest file'],
-                     ['con', 'Sound quality may be affected']] },
+                     ['pro', 'Nothing to work out first — exports straight away'],
+                     ['con', 'A few tunes sound slightly different this way']] },
         ].filter(c => variantOf(c.m));
 
         const html = cards.map(c => {
@@ -3297,7 +3337,7 @@ class UIController {
         // everything through the UI and returns nothing.
         this._lastExportOk = false;
         if (!this.selectedVisualizer) {
-            this.showExportStatus('Please select a visualizer', 'error');
+            this.showExportStatus('Choose what people will see first — pick one on the Visualizer tab.', 'error');
             return;
         }
 
