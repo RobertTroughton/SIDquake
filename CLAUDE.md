@@ -215,8 +215,22 @@ covers the browser UI — the exceptions are `scripts/mobile-layout-check.js`
 (HVSC and Studio modals at phone widths) and `scripts/logo-drop-check.js`
 (picking a logo lands in the input the exporter reads) and
 `scripts/studio-smoke-check.js` (load a SID -> Studio -> background analysis ->
-export manifest, and the sticky visualizer choice); none are in `npm test`, all
-need Playwright, which isn't a dependency (`npm install --no-save playwright`). Also run `scripts/build-players.sh
+export manifest, and the sticky visualizer choice) and
+`scripts/device-check.js` (a device matrix from iPhone to 2560px desktop:
+horizontal scrolling, clipped content, tap target and text sizes, contrast, and
+how many HVSC rows fit); none are in `npm test`, all
+need Playwright, which isn't a dependency (`npm install --no-save playwright`).
+
+Nothing in `npm test` sees a VIC-II, so the players' raster splits are covered
+by two scripts that export a real `.prg` and run it in VICE
+(`apt-get install -y vice xvfb`; the C64 ROMs come from `roms/`):
+`scripts/seam-check.js` renders frames and checks the line below the logo's
+sprite curtain holds info text rather than data fetched through the logo's
+pointers, and `scripts/seam-latency.js` breaks on the split handler's `$d011`
+write to report how many cycles of margin the switch has left. Both share
+`scripts/lib/seam-lib.js`. Run them after touching a logo player's split.
+
+Also run `scripts/build-players.sh
 --check` after touching `SIDPlayers/`, and `scripts/cpu-crosscheck/run.sh` after
 touching the 6510 decoder or either bus adapter (not in `npm test`: needs a C++
 toolchain, takes minutes).
