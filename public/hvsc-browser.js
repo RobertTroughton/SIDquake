@@ -531,6 +531,60 @@ window.hvscBrowser = (function () {
         return onReady ? stilPromise.then((ok) => { if (ok) onReady(); return ok; }) : stilPromise;
     }
 
+    /**
+     * Say how the collection index is coming along. It is 7.5 MB, and until it
+     * lands the file list is a spinner with nothing to read - which on a phone
+     * is many seconds of a page that looks stuck rather than busy.
+     * @param {{loaded:number,total:number}|null} at - null while the size is unknown
+     */
+    function indexProgress(at) {
+        const box = document.querySelector('#fileList .file-list-loading');
+        if (!box) return;
+        let line = box.querySelector('.file-list-loading-text');
+        if (!line) {
+            line = document.createElement('p');
+            line.className = 'file-list-loading-text';
+            // Polite: it updates every chunk, and a screen reader must not read
+            // out every percentage.
+            line.setAttribute('aria-live', 'polite');
+            box.appendChild(line);
+        }
+        const mb = (n) => (n / (1024 * 1024)).toFixed(1);
+        line.textContent = at && at.total
+            ? `Loading the collection — ${mb(at.loaded)} of ${mb(at.total)} MB`
+            : 'Loading the collection…';
+    }
+
+    /** Fetch and parse an index file, reporting progress as it arrives. */
+    function readIndex(url) {
+        // Say something before the request has even been answered: on a slow
+        // connection the wait for headers is itself several seconds of a page
+        // that looks stuck.
+        indexProgress(null);
+        return fetch(url).then(async (res) => {
+            if (!res.ok) throw new Error(`HTTP ${res.status}`);
+            const total = Number(res.headers.get('content-length')) || 0;
+            // No body reader (or no length): fall back to a plain parse rather
+            // than losing the index for the sake of a progress line.
+            if (!res.body || !res.body.getReader) { indexProgress(null); return res.json(); }
+            const reader = res.body.getReader();
+            const chunks = [];
+            let loaded = 0;
+            indexProgress({ loaded: 0, total });
+            for (;;) {
+                const { done, value } = await reader.read();
+                if (done) break;
+                chunks.push(value);
+                loaded += value.length;
+                indexProgress({ loaded, total });
+            }
+            const buf = new Uint8Array(loaded);
+            let at = 0;
+            for (const c of chunks) { buf.set(c, at); at += c.length; }
+            return JSON.parse(new TextDecoder().decode(buf));
+        });
+    }
+
     function loadSearchIndex() {
         if (searchIndex) return Promise.resolve(searchIndex);
         if (searchIndexPromise) return searchIndexPromise;
@@ -542,13 +596,9 @@ window.hvscBrowser = (function () {
         // separately when something actually needs it. A deploy that has not run
         // build-index-split.js falls back to the full file.
         const source = window.hvscIndexPrefetch
-            ? window.hvscIndexPrefetch
-            : fetch('hvsc-index-lite.json')
-                .then((res) => (res.ok ? res.json() : Promise.reject(new Error('no lite index'))))
-                .catch(() => fetch('hvsc-index.json').then((res) => {
-                    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-                    return res.json();
-                }));
+            ? window.hvscIndexPrefetch.then((data) => { indexProgress(null); return data; })
+            : readIndex('hvsc-index-lite.json')
+                .catch(() => readIndex('hvsc-index.json'));
         window.hvscIndexPrefetch = null;   // adopt once; retries fetch fresh
         searchIndexPromise = source
             .then((data) => {

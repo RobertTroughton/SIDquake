@@ -1190,6 +1190,38 @@ async function loadSid(page, file) {
             clean.sys === 0x1234 && clean.honoured === true
             && clean.components === clean.before, JSON.stringify(clean));
 
+        // --- the collection index says how far along it is ---------------------
+        // 7.5 MB behind a bare spinner is a page that looks stuck rather than
+        // busy, so hold the response back and read what the list says.
+        const slow = await browser.newPage({ viewport: { width: 1400, height: 900 } });
+        try {
+            let release = null;
+            const held = new Promise((r) => { release = r; });
+            await slow.route('**/hvsc-index*.json', async (route) => {
+                await held;
+                await route.continue();
+            });
+            await slow.goto(base, { waitUntil: 'load' });
+            await slow.waitForFunction(() => !!window.uiController, null, { timeout: 20000 });
+            await slow.evaluate(() => window.uiController.openHVSCBrowser());
+            const said = await slow.waitForFunction(
+                () => {
+                    const el = document.querySelector('#fileList .file-list-loading-text');
+                    return el && /Loading the collection/i.test(el.textContent) ? el.textContent : null;
+                }, null, { timeout: 20000 }).then(h => h.jsonValue()).catch(() => null);
+            const polite = await slow.evaluate(() => {
+                const el = document.querySelector('#fileList .file-list-loading-text');
+                return el ? el.getAttribute('aria-live') : null;
+            });
+            release();
+            check('The list says what it is waiting for, not just a spinner',
+                typeof said === 'string' && /collection/i.test(said), String(said));
+            check('And announces it politely rather than on every chunk',
+                polite === 'polite', String(polite));
+        } finally {
+            await slow.close();
+        }
+
         // --- the bake worker runs one job at a time ---------------------------
         const workerJobs = await page.evaluate(async () => {
             const cb = window.cacheBust || (s => s);

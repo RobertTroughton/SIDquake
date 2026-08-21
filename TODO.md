@@ -302,8 +302,11 @@ a PRG.
   `scripts/test-share-shards.js` lifts the function out of all three files that
   carry a copy (Node build script, Deno edge function, browser) and checks they
   agree over every path in the index, since nothing can import across those
-  boundaries. Still open: the *listing* behind the player waits for the full
-  index.
+  boundaries. The *listing* behind the player still waits for the full index —
+  a per-directory shard would fix that properly — but it no longer waits behind
+  a bare spinner: it says "Loading the collection", and counts the megabytes as
+  the body streams, announced politely so a screen reader is not read every
+  chunk.
 - **Done: STIL is split out of the index** — 4.0 MB of 12.5 MB serialised, on
   29,509 of 61,157 entries. The browser fetches `hvsc-index-lite.json` (1,121 KB
   gzipped, against 2,042 KB) and pulls `hvsc-stil.json` only when something needs
