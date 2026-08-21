@@ -404,6 +404,16 @@ async function loadSid(page, file) {
                 shard.bytes < 200 * 1024, `${Math.round(shard.bytes / 1024)} KB raw vs 11700 KB`);
         }
 
+        // --- the brands webfont is never requested ----------------------------
+        const brands = await page.evaluate(() => ({
+            fabUsages: document.querySelectorAll('.fab, [class*="fa-github"], [class*="fa-youtube"]').length,
+            svgMarks: document.querySelectorAll('svg.brand-icon').length,
+        }));
+        check('No element pulls a Font Awesome brand glyph', brands.fabUsages === 0,
+            `${brands.fabUsages} usages`);
+        check('The GitHub and YouTube marks are inline SVG', brands.svgMarks >= 7,
+            `${brands.svgMarks} marks`);
+
         // --- the index ships without its commentary ---------------------------
         const split = await page.evaluate(async () => {
             const lite = await fetch('hvsc-index-lite.json');

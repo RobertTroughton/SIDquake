@@ -290,9 +290,10 @@ a PRG.
   tap that does nothing is a bounce.
 - **`public/songlengths-report.html` is 1.4 MB** of internal QA output, deployed,
   publicly reachable and not disallowed in `robots.txt`.
-- **Font Awesome brands costs ~117 KB for two icons** (`fa-github`, `fa-youtube`).
-  Self-host a subset of the solid set and drop the brands file and one
-  third-party origin from the critical path.
+- **Still open: self-host a subset of the solid icon font.** The brands file is
+  no longer requested (the two marks that used it are inline SVG), but the solid
+  set is still ~157 KB from cdnjs for 58 glyphs, and cdnjs is a third-party
+  origin on the critical path.
 
 ## The listener product
 

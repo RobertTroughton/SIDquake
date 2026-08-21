@@ -1502,3 +1502,14 @@ details[open].panel > summary h2::after {
     letter-spacing: 0.5px;
     color: var(--text-muted);
 }
+
+/* GitHub and YouTube marks, inlined rather than pulled from Font Awesome's
+   brands webfont - that file is about 117 KB for these two glyphs, and a
+   browser only fetches a webfont when something uses it. Sized like the icon
+   font it replaces so surrounding layout is unchanged. */
+.brand-icon {
+    width: 1em;
+    height: 1em;
+    vertical-align: -0.125em;
+    display: inline-block;
+}
