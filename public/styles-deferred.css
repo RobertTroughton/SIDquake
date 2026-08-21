@@ -1395,7 +1395,7 @@
 
 /* "HVSC #NN" pill — signals the mirror is current with a given HVSC release */
 .hvsc-version-badge {
-    font-size: 11px;
+    font-size: 12px;
     font-weight: 700;
     letter-spacing: 0.03em;
     line-height: 1;
@@ -1544,7 +1544,7 @@
 
 .search-result-path {
     color: var(--text-muted);
-    font-size: 11px;
+    font-size: 12px;
     font-family: var(--font-mono);
     white-space: nowrap;
     overflow: hidden;
@@ -1758,11 +1758,11 @@
     background: none;
     color: var(--text-muted);
     font: inherit;
-    font-size: 11px;
+    font-size: 12px;
     text-transform: uppercase;
     letter-spacing: 0.08em;
     line-height: 1;
-    padding: 5px 6px;
+    padding: 7px 6px;
     cursor: pointer;
     -webkit-appearance: none;
     appearance: none;
@@ -1794,7 +1794,7 @@
 
 .hvsc-path-text {
     font-family: var(--font-mono);
-    font-size: 11px;
+    font-size: 12px;
     color: var(--text-secondary);
     overflow: hidden;
     text-overflow: ellipsis;
@@ -1810,7 +1810,7 @@
 
 .hvsc-choose-btn,
 .hvsc-cancel-btn {
-    font-size: 11px;
+    font-size: 12px;
     padding: 5px 14px;
     flex-shrink: 0;
 }
@@ -1826,7 +1826,7 @@
     background: var(--bg-elevated);
     color: var(--text-muted);
     padding: 8px 15px;
-    font-size: 11px;
+    font-size: 12px;
     border-top: 1px solid var(--border);
     display: flex;
     align-items: center;
@@ -2014,32 +2014,6 @@
         flex: 1 1 auto;
     }
 
-    /* Rows and chrome sized for a fingertip rather than a mouse pointer. */
-    .file-item {
-        min-height: 44px;
-        font-size: 14px;
-    }
-
-    .hvsc-listheader .hvsc-nav-btn {
-        width: 40px;
-        height: 36px;
-    }
-
-    .hvsc-listheader .hvsc-col {
-        min-height: 40px;
-        padding: 10px 6px;
-    }
-
-    .hvsc-modal-close,
-    .gallery-modal-close {
-        width: 44px;
-        height: 44px;
-    }
-
-    .search-bar {
-        min-height: 44px;
-    }
-
     /* Everything below the listing competes with it for a phone's height, so
        the decoration gives way: the spectrum strip halves, the info panel
        waits until there is something to show, and the credit line tightens. */
@@ -2049,6 +2023,56 @@
 
     .sid-info-panel:not(.has-info) {
         display: none;
+    }
+}
+
+/* ---------- sized for a fingertip ----------
+   Deliberately not the same question as "is the screen narrow". These rules
+   used to live in the width query above, which meant an iPad - a touch device
+   wider than every breakpoint in the file - got mouse-sized controls: 26x24
+   navigation buttons, 21px sort headers and 30px rows, all well under the 44px
+   both platforms ask for. What decides these is the pointer, so ask about the
+   pointer. Layout stays on the width and height queries. */
+
+@media (max-width: 720px), (max-height: 560px), (pointer: coarse) {
+    .file-item {
+        min-height: 44px;
+        font-size: 14px;
+    }
+
+    .hvsc-listheader .hvsc-nav-btn {
+        width: 44px;
+        height: 44px;
+    }
+
+    .hvsc-listheader .hvsc-col {
+        min-height: 44px;
+        padding: 12px 6px;
+    }
+
+    .hvsc-modal-close,
+    .gallery-modal-close,
+    .image-selector-modal-close,
+    .logo-fit-close {
+        width: 44px;
+        height: 44px;
+    }
+
+    .search-bar {
+        min-height: 44px;
+    }
+
+    .hvsc-choose-btn,
+    .hvsc-cancel-btn {
+        min-height: 44px;
+        font-size: 14px;
+    }
+
+    /* Seventeen colours in a row: the one grid in the logo tools where a
+       near-miss picks the wrong colour rather than doing nothing. */
+    .logo-fit-swatch {
+        width: 44px;
+        height: 44px;
     }
 }
 
@@ -2066,6 +2090,12 @@
 
     .browser-header {
         padding: 8px 10px;
+    }
+
+    /* The heading used to carry the gap the close button sits in; with it gone
+       the search field has to leave that room itself. */
+    .browser-search {
+        padding-right: 44px;
     }
 
     .status-bar {
@@ -3054,11 +3084,12 @@
     display: none;
 }
 
-/* Phone-sized transport controls, and a browser that spends its height on the
+/* Finger-sized transport controls, and a browser that spends its height on the
    listing: the spectrum strip is decoration and the credit line can be small.
    (These sit after the rules they override, not with the other narrow-screen
-   HVSC rules further up.) */
-@media (max-width: 720px), (max-height: 560px) {
+   HVSC rules further up.) The pointer query brings tablets in: a 24x17 speed
+   button is a mouse target wherever the screen is wide enough to hold it. */
+@media (max-width: 720px), (max-height: 560px), (pointer: coarse) {
     .sid-player {
         gap: var(--space-sm);
         padding: 6px 10px;
@@ -3816,7 +3847,7 @@
 
 .site-footer-tech {
     font-family: var(--font-mono);
-    font-size: 0.72em;
+    font-size: 0.78em;
     letter-spacing: 0.5px;
     color: var(--text-muted);
     opacity: 0.65;
@@ -3833,11 +3864,31 @@
     font-size: 0.82em;
 }
 
-.site-footer-links a {
+.site-footer-links a,
+.site-footer-toggle {
     color: var(--text-secondary);
     text-decoration: none;
     border-bottom: 1px solid transparent;
     transition: color 0.15s ease, border-color 0.15s ease;
+}
+
+/* The footer row is a handful of links and one checkbox on a line of their
+   own, not links inside a sentence, so they can take the height a pointer
+   needs without disturbing any prose around them. */
+.site-footer-links a,
+.site-footer-toggle {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    min-height: 24px;
+    padding: 0 4px;
+}
+
+@media (max-width: 768px), (pointer: coarse) {
+    .site-footer-links a,
+    .site-footer-toggle {
+        min-height: 44px;
+    }
 }
 
 .site-footer-links a:hover,

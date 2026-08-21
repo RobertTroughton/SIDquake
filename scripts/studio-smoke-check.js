@@ -1769,12 +1769,26 @@ async function loadSid(page, file) {
                 backCloses.opened && backCloses.stillOpen === false,
                 JSON.stringify(backCloses));
 
-            const vizShown = await phone.evaluate(() => {
+            // The spectrum earns its rows while a tune plays, but not before
+            // one is chosen: until then it has no audio to draw and the listing
+            // wants the height. So it waits on the browser's has-tune flag
+            // rather than being dropped on phones outright.
+            const viz = await phone.evaluate(() => {
                 const el = document.querySelector('.hvsc-visualizer');
                 if (!el) return 'absent';
-                return getComputedStyle(el).display;
+                const browser = document.querySelector('.browser-container');
+                const read = () => getComputedStyle(el).display;
+                browser.classList.remove('has-tune');
+                const browsing = read();
+                browser.classList.add('has-tune');
+                const playing = read();
+                browser.classList.remove('has-tune');
+                return { browsing, playing };
             });
-            check('The spectrum visualizer is not hidden on a phone', vizShown !== 'none', vizShown);
+            check('The spectrum visualizer waits until a tune is chosen',
+                viz !== 'absent' && viz.browsing === 'none', JSON.stringify(viz));
+            check('The spectrum visualizer is not hidden on a phone once one is',
+                viz !== 'absent' && viz.playing !== 'none', JSON.stringify(viz));
         } finally {
             await phone.close();
         }

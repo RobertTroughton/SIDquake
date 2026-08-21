@@ -245,7 +245,7 @@ body {
 
 .site-header-badge {
     font-family: var(--font-mono);
-    font-size: 0.7em;
+    font-size: 0.78em;
     letter-spacing: 4px;
     color: var(--text-muted);
     margin-bottom: var(--space-md);
@@ -284,9 +284,9 @@ body {
     margin-top: var(--space-md);
     padding: 3px 12px 2px;
     font-family: var(--font-mono);
-    font-size: 0.64rem;
+    font-size: 0.76rem;
     font-weight: 700;
-    letter-spacing: 3px;
+    letter-spacing: 2px;
     text-transform: uppercase;
     color: var(--accent);
     background: rgba(255, 255, 255, 0.02);
@@ -928,25 +928,41 @@ details[open].panel > summary h2::after {
         gap: 4px;
     }
 
-    /* Touch targets: the pointer is a fingertip here, so the app's own
-       controls get 44px of height to land on. */
+    .info-value.editable {
+        padding: 8px 10px;
+    }
+}
+
+/* Touch targets: where the pointer is a fingertip the app's own controls get
+   44px of height to land on. Asked of the pointer rather than the width, so a
+   tablet - wider than any breakpoint here, and still operated by hand - gets
+   them too. */
+@media (max-width: 768px), (pointer: coarse) {
     .upload-btn,
     .export-button,
     .btn,
     .file-button,
     .number-input,
-    .select-input {
+    .select-input,
+    .palette-load,
+    .palette-save {
         min-height: 44px;
     }
 
-    input[type="checkbox"] {
-        width: 22px;
-        height: 22px;
+    input[type="checkbox"],
+    input[type="radio"] {
+        width: 24px;
+        height: 24px;
         flex-shrink: 0;
     }
 
-    .info-value.editable {
-        padding: 8px 10px;
+    .palette-swatch-chip,
+    .palette-preset-icon {
+        min-height: 44px;
+    }
+
+    .page-tab {
+        min-height: 44px;
     }
 }
 
@@ -979,7 +995,7 @@ details[open].panel > summary h2::after {
     }
 
     .site-header-badge {
-        font-size: 0.6em;
+        font-size: 0.75em;
         letter-spacing: 2px;
     }
 

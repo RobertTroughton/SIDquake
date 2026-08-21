@@ -275,15 +275,36 @@ async function checkStudio(page, size) {
     const page = await openPage(browser, base, DESKTOP);
     await page.evaluate(() => window.uiController.openHVSCBrowser());
     await page.waitForSelector('#fileList .file-item', { timeout: 30000 });
+
+    // With nothing chosen the panel holds a placeholder and no more, so it
+    // stands aside and the listing takes the width.
+    const empty = await page.evaluate(() => {
+        const info = document.getElementById('sidInfoPanel');
+        return {
+            hidden: getComputedStyle(info).display === 'none',
+            listW: Math.round(document.querySelector('#hvscModal .file-panel').getBoundingClientRect().width)
+        };
+    });
+    check(empty.hidden, 'hvsc @1280: an empty info panel does not hold the width',
+        'list ' + empty.listW + 'px');
+
+    // Filled, it comes back beside the list rather than under it. The flag is
+    // set here rather than by choosing a tune: populating the panel for real
+    // needs the .sid itself, and a checkout without the HVSC archive extracted
+    // would fail on the download instead of on the layout this is about.
+    await page.evaluate(() => document.getElementById('sidInfoPanel').classList.add('has-info'));
+    await page.waitForTimeout(200);
     const wide = await page.evaluate(() => {
         const panel = document.querySelector('#hvscModal .file-panel').getBoundingClientRect();
         const info = document.getElementById('sidInfoPanel').getBoundingClientRect();
         return {
             sideBySide: Math.abs(panel.y - info.y) < 2 && info.width > 300,
-            listW: Math.round(panel.width)
+            listW: Math.round(panel.width),
+            infoW: Math.round(info.width)
         };
     });
-    check(wide.sideBySide, 'hvsc @1280: info panel stays beside the list', 'list ' + wide.listW + 'px');
+    check(wide.sideBySide, 'hvsc @1280: a filled info panel sits beside the list',
+        'list ' + wide.listW + 'px, info ' + wide.infoW + 'px');
     await page.context().close();
 
     await browser.close();

@@ -6,7 +6,7 @@
 //
 //   * horizontal scrolling anywhere (the page should only ever move up/down),
 //   * anything clipped off the side of the viewport,
-//   * tap targets under the 44px the platforms ask for,
+//   * tap targets under 44px on a touch device, 24px under a mouse,
 //   * body text under 12px, and text under a 4.5:1 contrast ratio,
 //   * how many HVSC rows actually fit on screen at once.
 //
@@ -92,7 +92,10 @@ async function launch(chromium) {
 //
 // Everything below runs in the browser. It walks the rendered tree once and
 // reports the accessibility and layout facts the checks assert on.
-function probe() {
+function probe(minTarget) {
+    // 44px is the iOS/Android touch guideline; under a mouse the bar is WCAG
+    // 2.2's 24px, and holding a desktop to 44 just buries the real findings.
+    const MIN_TARGET = minTarget;
     const vw = window.innerWidth;
     const out = {
         scrollW: document.documentElement.scrollWidth,
@@ -179,11 +182,15 @@ function probe() {
         }
 
         // Tap target size. A link sitting in a run of prose is sized by its
-        // text and can't be padded to 44px without breaking the line, so it
-        // is reported separately from a standalone control.
+        // text and can't be padded out without breaking the line, so it is
+        // reported separately from a standalone control. A control wrapped in
+        // its own <label> is as big as the label: a 24px checkbox inside a
+        // 44px label is a 44px target.
+        const wrapper = el.closest('label');
+        const box = wrapper && wrapper !== el ? wrapper.getBoundingClientRect() : r;
         if (el.matches(TAPPABLE) && r.width > 0 && r.height > 0 &&
             cs.pointerEvents !== 'none' && !parked(r) &&
-            Math.min(r.width, r.height) < 44) {
+            Math.min(box.width, box.height) < MIN_TARGET) {
             const rec = { el: name(el), w: Math.round(r.width), h: Math.round(r.height),
                 text: (el.textContent || el.value || '').trim().slice(0, 24) };
             (cs.display.startsWith('inline') && !el.matches('button, input, select, textarea')
@@ -236,14 +243,15 @@ async function auditPage(browser, base, dev, pg, shots) {
     const loadMs = Date.now() - t0;
     await page.waitForTimeout(2500);
 
-    const r = await page.evaluate(probe);
+    const r = await page.evaluate(probe, dev.touch ? 44 : 24);
     const label = `${dev.id} ${pg.id}`;
 
     check(r.scrollW <= r.clientW + 1, `${label}: no horizontal scroll`,
         r.scrollW > r.clientW ? `${r.scrollW}px of content in ${r.clientW}px` : '');
     check(r.overflow.length === 0, `${label}: nothing clipped off-screen`,
         r.overflow.map(o => `${o.el} [${o.left}..${o.right}]`).join(', '));
-    check(r.smallTaps.length === 0, `${label}: tap targets >= 44px`,
+    const minTarget = dev.touch ? 44 : 24;
+    check(r.smallTaps.length === 0, `${label}: tap targets >= ${minTarget}px`,
         r.smallTaps.map(t => `${t.el} ${t.w}x${t.h}`).join(', '));
     if (r.inlineTaps.length) {
         console.log('  note   ' + label + ': small inline links  ' +
