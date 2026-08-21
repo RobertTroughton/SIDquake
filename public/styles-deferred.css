@@ -1761,9 +1761,14 @@
 .hvsc-listheader .hvsc-col.active { color: var(--accent); }
 .hvsc-listheader .hvsc-col i { font-size: 9px; }
 
-/* Column positions mirror the file rows: name fills, year hugs the right. */
+/* Column positions mirror the file rows: name fills, year hugs the right. The
+   relevance column only appears against a search, so it takes no space in a
+   folder listing. */
 .hvsc-listheader .hvsc-col-name { flex: 1; justify-content: flex-start; margin-left: 24px; }
 .hvsc-listheader .hvsc-col-year { justify-content: flex-end; }
+.hvsc-listheader .hvsc-col-match { justify-content: flex-start; margin-left: 24px; }
+.hvsc-listheader .hvsc-col-match[hidden] { display: none; }
+.hvsc-listheader .hvsc-col-match:not([hidden]) + .hvsc-col-name { flex: 1; margin-left: 0; }
 
 /* Modal footer: current folder as plain text bottom-left, actions bottom-right. */
 .hvsc-modal-footer {

@@ -37,13 +37,27 @@ window.hvscBrowser = (function () {
     // browser reopens the way the user left it.
     let sortKey = 'name';   // 'name' | 'year'
     let sortDir = 'asc';    // 'asc' | 'desc'  (for year: asc = oldest first)
+    // A search is a different question from a folder listing, so it keeps its own
+    // order. Its default is relevance: sorting matches for "hubbard" by name puts
+    // whatever happens to start with "A" above Rob Hubbard's own tunes.
+    let searchSortKey = 'match';   // 'match' | 'name' | 'year'
+    let searchSortDir = 'desc';
+    let searchTerms = [];          // folded query terms, for scoring
     try {
         const saved = JSON.parse(localStorage.getItem('hvsc-sort') || 'null');
         if (saved && (saved.key === 'name' || saved.key === 'year')) {
             sortKey = saved.key;
             sortDir = saved.dir === 'desc' ? 'desc' : 'asc';
         }
+        if (saved && ['match', 'name', 'year'].includes(saved.searchKey)) {
+            searchSortKey = saved.searchKey;
+            searchSortDir = saved.searchDir === 'asc' ? 'asc' : 'desc';
+        }
     } catch (e) { /* no saved sort */ }
+
+    /** The key/direction in force for whichever list is showing. */
+    const activeKey = () => (searchMode ? searchSortKey : sortKey);
+    const activeDir = () => (searchMode ? searchSortDir : sortDir);
 
     /** Numeric release year for sorting; NaN when unknown (sorts last). */
     function yearNum(metaOrEntry) {
@@ -67,18 +81,66 @@ window.hvscBrowser = (function () {
         return compareFiles(a.meta, a.name, b.meta, b.name);
     }
 
-    /** Order two files by the current sortKey/sortDir (unknown years last). */
+    /** Order two files by the current sort key/direction (unknown years last). */
     function compareFiles(metaA, nameA, metaB, nameB) {
-        if (sortKey === 'year') {
+        const key = activeKey(), dir = activeDir();
+        if (key === 'match') {
+            const sa = (metaA && metaA._score) || 0, sb = (metaB && metaB._score) || 0;
+            if (sa !== sb) return dir === 'desc' ? sb - sa : sa - sb;
+            return nameA.localeCompare(nameB);
+        }
+        if (key === 'year') {
             const ya = yearNum(metaA), yb = yearNum(metaB);
             const na = isNaN(ya), nb = isNaN(yb);
             if (na && nb) return nameA.localeCompare(nameB);
             if (na) return 1;
             if (nb) return -1;
-            if (ya !== yb) return sortDir === 'asc' ? ya - yb : yb - ya;
+            if (ya !== yb) return dir === 'asc' ? ya - yb : yb - ya;
             return nameA.localeCompare(nameB);
         }
-        return sortDir === 'asc' ? nameA.localeCompare(nameB) : nameB.localeCompare(nameA);
+        return dir === 'asc' ? nameA.localeCompare(nameB) : nameB.localeCompare(nameA);
+    }
+
+    const escapeRe = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+    /**
+     * How well an entry answers the query. Title beats author beats filename
+     * beats a hit that was only in the commentary, and a whole-query match beats
+     * the same words scattered. Scores are only ever compared with each other,
+     * so the absolute numbers mean nothing.
+     */
+    function relevance(e, terms) {
+        if (!terms.length) return 0;
+        const title = foldDiacritics((e.t || '').toLowerCase());
+        const author = foldDiacritics((e.a || '').toLowerCase());
+        const file = foldDiacritics(e.p.split('/').pop().toLowerCase());
+        const whole = terms.join(' ');
+        let score = 0;
+
+        if (title === whole) score += 1000;
+        else if (title.startsWith(whole)) score += 600;
+        else if (title.includes(whole)) score += 300;
+        if (author === whole) score += 500;
+        else if (author.startsWith(whole)) score += 450;
+        // Someone typing a surname wants that composer's catalogue, so a whole
+        // word in the author name counts for nearly as much as leading with it -
+        // "Rob Hubbard" is what "hubbard" is looking for, not only the three
+        // tunes actually called Hubbard.
+        else if (new RegExp('\\b' + escapeRe(whole) + '\\b').test(author)) score += 420;
+        else if (author.includes(whole)) score += 120;
+
+        for (const t of terms) {
+            if (title.startsWith(t)) score += 120;
+            else if (new RegExp('\\b' + escapeRe(t)).test(title)) score += 80;
+            else if (title.includes(t)) score += 40;
+            if (author.startsWith(t)) score += 60;
+            else if (author.includes(t)) score += 30;
+            if (file.includes(t)) score += 15;
+        }
+        // Among equally good matches the shorter title is usually the one being
+        // looked for - "Commando" over "Commando (Remix Edit Long Version)".
+        if (score > 0 && title) score += Math.max(0, 40 - title.length) / 10;
+        return score;
     }
 
     /** Sorted copy of search matches (index entries) by the current sort. */
@@ -121,6 +183,7 @@ window.hvscBrowser = (function () {
         bar.innerHTML =
             '<button type="button" class="btn hvsc-nav-btn" id="homeBtn" title="Collection root"><i class="fas fa-home"></i></button>'
             + '<button type="button" class="btn hvsc-nav-btn" id="upBtn" title="Up one folder"><i class="fas fa-level-up-alt"></i></button>'
+            + '<button type="button" class="hvsc-col hvsc-col-match" data-key="match" hidden>Best match <i></i></button>'
             + '<button type="button" class="hvsc-col hvsc-col-name" data-key="name">Name <i class="fas fa-arrow-up"></i></button>'
             + '<button type="button" class="hvsc-col hvsc-col-year" data-key="year">Year <i></i></button>';
         fileList.parentNode.insertBefore(bar, fileList);
@@ -133,14 +196,26 @@ window.hvscBrowser = (function () {
     }
 
     function onSortClick(key) {
-        if (key === sortKey) {
+        if (searchMode) {
+            if (key === searchSortKey) {
+                searchSortDir = searchSortDir === 'asc' ? 'desc' : 'asc';
+            } else {
+                searchSortKey = key;
+                // Best match and Year both read best strongest-first.
+                searchSortDir = key === 'name' ? 'asc' : 'desc';
+            }
+        } else if (key === sortKey) {
             sortDir = sortDir === 'asc' ? 'desc' : 'asc';
         } else {
             sortKey = key;
             sortDir = key === 'year' ? 'desc' : 'asc'; // year defaults to newest first
         }
-        try { localStorage.setItem('hvsc-sort', JSON.stringify({ key: sortKey, dir: sortDir })); }
-        catch (e) { /* ok */ }
+        try {
+            localStorage.setItem('hvsc-sort', JSON.stringify({
+                key: sortKey, dir: sortDir,
+                searchKey: searchSortKey, searchDir: searchSortDir,
+            }));
+        } catch (e) { /* ok */ }
         updateListHeader();
         reRenderCurrentView();
     }
@@ -148,13 +223,17 @@ window.hvscBrowser = (function () {
     function updateListHeader() {
         const bar = document.getElementById('hvscListHeader');
         if (!bar) return;
+        // "Best match" only means anything against a query.
+        const matchCol = bar.querySelector('.hvsc-col-match');
+        if (matchCol) matchCol.hidden = !searchMode;
+        const key = activeKey(), dir = activeDir();
         bar.querySelectorAll('.hvsc-col').forEach((btn) => {
-            const active = btn.dataset.key === sortKey;
+            const active = btn.dataset.key === key;
             btn.classList.toggle('active', active);
             const icon = btn.querySelector('i');
             if (icon) {
                 icon.className = active
-                    ? 'fas ' + (sortDir === 'asc' ? 'fa-arrow-up' : 'fa-arrow-down')
+                    ? 'fas ' + (dir === 'asc' ? 'fa-arrow-up' : 'fa-arrow-down')
                     : '';
             }
         });
@@ -1165,6 +1244,7 @@ window.hvscBrowser = (function () {
     function exitSearchMode() {
         if (!searchMode) return;
         searchMode = false;
+        updateListHeader();
         const header = document.getElementById('filePanelHeader');
         if (header) header.textContent = 'Files & Directories';
         // Repaint the current directory so selection/state is consistent
@@ -1229,6 +1309,7 @@ window.hvscBrowser = (function () {
         }
 
         searchMode = true;
+        updateListHeader();   // "Best match" belongs to a search, so show it now
         currentSelection = null;
         syncChooseButton();
         clearInfoPanel();
@@ -1289,6 +1370,8 @@ window.hvscBrowser = (function () {
             if (ok) matches.push(e);
         }
 
+        searchTerms = terms;
+        for (const e of matches) e._score = relevance(e, terms);
         lastSearchMatches = matches;
         renderSearchResults(sortMatches(matches), limit);
         const total = matches.length;

@@ -1528,6 +1528,61 @@ async function loadSid(page, file) {
                 first > 0 && first < 500 && first % 60 === 0,
                 `${first} rows in the first paint, of a 500 cap`);
 
+            // Relevance: searching an author's name must not rank whatever
+            // happens to start with "A" above their own tunes.
+            const relevance = await page.evaluate(async () => {
+                const input = document.getElementById('hvscSearchBar');
+                input.value = 'hubbard';
+                input.dispatchEvent(new Event('input', { bubbles: true }));
+                await new Promise(r => setTimeout(r, 1200));
+                const rows = [...document.querySelectorAll('#fileList .file-item')].slice(0, 10);
+                const named = rows.map(r => ({
+                    title: (r.querySelector('.search-result-title') || {}).textContent || '',
+                    author: (r.querySelector('.search-result-author') || {}).textContent || '',
+                }));
+                const col = document.querySelector('.hvsc-col-match');
+                return {
+                    shown: !!col && !col.hidden,
+                    active: !!col && col.classList.contains('active'),
+                    top: named.slice(0, 5),
+                    // "hubbard" matches 123 entries by title/author/path and
+                    // thousands more only in the commentary. The strong ones
+                    // must come first.
+                    strong: named.filter(n => /hubbard/i.test(n.title + n.author)).length,
+                    byAuthor: named.filter(n => /hubbard/i.test(n.author)).length,
+                    count: rows.length,
+                };
+            });
+            check('A search is ordered by how well it matches',
+                relevance.shown && relevance.active, JSON.stringify(relevance));
+            check('So a name in the title or author beats a mention in the commentary',
+                relevance.count > 0 && relevance.strong === relevance.count,
+                JSON.stringify(relevance));
+            check('And the composer\'s own tunes are among them',
+                relevance.byAuthor > 0, JSON.stringify(relevance));
+
+            const byName = await page.evaluate(async () => {
+                document.querySelector('.hvsc-col-name').click();
+                await new Promise(r => setTimeout(r, 900));
+                const col = document.querySelector('.hvsc-col-name');
+                let stored = null;
+                try { stored = JSON.parse(localStorage.getItem('hvsc-sort')); } catch (e) { /* blocked */ }
+                return { active: col.classList.contains('active'), stored };
+            });
+            check('And the column headers still override that',
+                byName.active === true && byName.stored
+                && byName.stored.searchKey === 'name', JSON.stringify(byName));
+
+            // Put it back for the checks below.
+            await page.evaluate(async () => {
+                document.querySelector('.hvsc-col-match').click();
+                await new Promise(r => setTimeout(r, 600));
+                const input = document.getElementById('hvscSearchBar');
+                input.value = 'a';
+                input.dispatchEvent(new Event('input', { bubbles: true }));
+                await new Promise(r => setTimeout(r, 1200));
+            });
+
             const settled = await page.evaluate(async () => {
                 await new Promise(r => setTimeout(r, 1500));
                 return {

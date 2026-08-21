@@ -645,7 +645,15 @@ Spectrometer is unaffected (it FFTs rendered audio), so it stays the
 recommendation, and the warning says so. **The underlying bug is still open.**
 
 ## Search / product
-- **Search relevance ranking** — results follow the Name/Year column sort. Add a "Relevance" sort mode (title/author-prefix weighting) so ranking doesn't fight the column sort. (Diacritic folding + true total count are done.)
+- **Done: search relevance ranking.** A search keeps its own order, separate
+  from a folder listing's, and defaults to "Best match": a whole-query title
+  match beats a prefix beats a word beats a substring, an author's name carries
+  nearly as much as a title prefix (someone typing a surname wants that
+  composer's catalogue, not the three tunes named after them), the filename and
+  path count for a little, and a hit that was only in the STIL commentary scores
+  nothing at all. Ties go to the shorter title. Name and Year still override it
+  and the choice is remembered per list. (Diacritic folding + true total count
+  were already done.)
 
 ## Build / infra
 - **Release WASM flags** — consider `-flto`, `-sASSERTIONS=0`, `--closure 1`.
