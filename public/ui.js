@@ -1785,6 +1785,9 @@ class UIController {
                 // budget, so a shorter stream buys back spectral detail - see
                 // UIController.STORED_LENGTH_CHOICES.
                 storedSeconds: Number.isFinite(s.storedSeconds) ? Math.min(600, Math.max(30, s.storedSeconds)) : 480,
+                // A VIC bank base the user would rather the graphics went in, or
+                // 0 for automatic. Soft - see createBankOptionHTML.
+                preferredGfxBank: [0x4000, 0x8000, 0xC000].includes(s.preferredGfxBank) ? s.preferredGfxBank : 0,
                 // SID engine the spectrometer analysis renders with. 'fp'
                 // (libsidplayfp) is the default because it plays every tune; 'resid'
                 // (the lightweight core in sidquake.wasm) is ~2.1x faster but gets a
@@ -1923,6 +1926,14 @@ class UIController {
             this._advanced = cur;
             rescan();
         });
+        const bank = document.getElementById('advGfxBank');
+        if (bank) bank.addEventListener('change', () => {
+            const cur = this._advanced || {};
+            cur.preferredGfxBank = parseInt(bank.value, 10) || 0;
+            this._advanced = cur;
+            save();
+            // Placement is decided at build time, so nothing to re-analyse.
+        });
         const eng = document.getElementById('advBakeEngine');
         if (eng) eng.addEventListener('change', () => {
             const cur = this._advanced || {};
@@ -1963,6 +1974,34 @@ class UIController {
         </div>`;
     }
 
+    // Which VIC bank the graphics go in. Automatic placement maximises the
+    // largest free CPU block, which is right when nothing else has a claim on
+    // memory - but a disk with a shared loader wants every PRG in the same bank,
+    // and only the person building it knows that. A preference that cannot be
+    // made to work is ignored rather than failing the export, and the export
+    // says so.
+    createBankOptionHTML() {
+        const cur = this.getAdvancedSettings().preferredGfxBank || '';
+        const opt = (v, label) =>
+            `<option value="${v}"${String(cur) === String(v) ? ' selected' : ''}>${label}</option>`;
+        return `
+        <div class="option-group">
+            <div class="option-group-title">Memory</div>
+            <div class="option-row">
+                <label class="option-label" for="advGfxBank">Put the graphics in</label>
+                <div class="option-control">
+                    <select id="advGfxBank" class="number-input">
+                        ${opt('', 'Wherever leaves most room (the default)')}
+                        ${opt(0x4000, 'VIC bank 1 — $4000')}
+                        ${opt(0x8000, 'VIC bank 2 — $8000')}
+                        ${opt(0xC000, 'VIC bank 3 — $C000')}
+                    </select>
+                </div>
+            </div>
+            <p class="flow-note">Only matters if something else has a claim on C64 memory — a shared loader across a disk, say. If the tune leaves no room in the bank you choose, the export uses one that works and tells you.</p>
+        </div>`;
+    }
+
     // Everything on the Export tab that a normal export never needs. Collapsed by
     // default; the open/closed state is remembered like the settings themselves.
     createAdvancedSettingsHTML(config) {
@@ -1975,6 +2014,7 @@ class UIController {
                 ${config?.spectrometerBake ? this.createFrameRateOptionHTML() : ''}
                 ${this.createAnalysisEngineOptionHTML()}
                 ${this.createScanWindowOptionHTML()}
+                ${this.createBankOptionHTML()}
             </div>
         </details>`;
     }
@@ -3779,6 +3819,9 @@ class UIController {
                 // mid-build would land half-applied - and it is what a caller
                 // without a page would have to supply.
                 optionValues: this._captureOptionValues(),
+                // Soft VIC-bank preference (Advanced settings). Ignored when the
+                // tune leaves no room for it.
+                preferredGfxBank: this.getAdvancedSettings().preferredGfxBank || null,
                 // Song length on the C64 (Song tab): whether to show one at all, and
                 // a length the user typed rather than one the scan measured.
                 showSongLength: this.showSongLength(),
@@ -3864,6 +3907,11 @@ class UIController {
             // the page rather than in a dialog that dismisses itself after two
             // seconds. (It used to do both, for one event.)
             this._lastExportOk = true;
+            const wanted = this.getAdvancedSettings().preferredGfxBank;
+            if (wanted && this.prgExporter.lastGfxBankPreferenceHonoured === false) {
+                this.showExportStatus('The graphics could not go in the bank you asked for — '
+                    + 'this tune leaves no room there, so a bank that works was used instead.', 'warning');
+            }
             this.renderExportDone({
                 filename,
                 sizeKB,

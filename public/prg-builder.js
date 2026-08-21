@@ -2007,7 +2007,13 @@ class SIDquakePRGExporter {
     // chosen bank. The graphics blob is raw VIC data (the bar family bakes no address
     // pointers into it), so it needs no patching. The layout config is bank4000-
     // relative in both paths, so its address transform is identical to planRelocation.
-    planRelocationCodeOnly(codeTable, codeBin, gfxBin, baseLayout, actualSidAddress, sidDataLength, chooseCodePage) {
+    // preferredGfxBank: a VIC bank base the caller would rather have ($4000 /
+    // $8000 / $C000). Automatic placement maximises the largest free CPU block,
+    // which is right when nothing else has a claim on memory - but a disk with a
+    // shared loader wants every PRG in the same bank, and only the person
+    // building it knows that. Tried first, and only if it is actually viable;
+    // otherwise the automatic choice stands.
+    planRelocationCodeOnly(codeTable, codeBin, gfxBin, baseLayout, actualSidAddress, sidDataLength, chooseCodePage, preferredGfxBank = null) {
         // The table's byte offsets are only meaningful against the exact blob
         // it was generated with (they're regenerated together by the build).
         // A size mismatch means one of the two is stale - relocating anyway
@@ -2058,18 +2064,27 @@ class SIDquakePRGExporter {
             return true;
         };
         let gfxBankBase = null, codePage = null, bestScore = -1;
-        for (const b of [0xC000, 0x8000, 0x4000]) {
-            if (!viable(b)) continue;
-            const gfxRes = { start: b + gfxOffset, end: b + size };
-            const cp = chooseCodePage(codeLen, gfxRes);
-            if (cp === null) continue;                 // no free page for code with this bank
-            const score = this.largestFreeCpuBlock([
-                { start: sidStart, end: sidEnd },
-                { start: cp, end: cp + codeLen },
-                gfxRes,
-            ]);
-            if (score > bestScore) { bestScore = score; gfxBankBase = b; codePage = cp; }
+        // A viable preference wins outright; scoring only decides between the rest.
+        const banks = [0xC000, 0x8000, 0x4000];
+        const order = preferredGfxBank && banks.includes(preferredGfxBank)
+            ? [preferredGfxBank] : banks;
+        for (const pass of (order === banks ? [banks] : [order, banks])) {
+            for (const b of pass) {
+                if (!viable(b)) continue;
+                const gfxRes = { start: b + gfxOffset, end: b + size };
+                const cp = chooseCodePage(codeLen, gfxRes);
+                if (cp === null) continue;             // no free page for code with this bank
+                const score = this.largestFreeCpuBlock([
+                    { start: sidStart, end: sidEnd },
+                    { start: cp, end: cp + codeLen },
+                    gfxRes,
+                ]);
+                if (score > bestScore) { bestScore = score; gfxBankBase = b; codePage = cp; }
+            }
+            if (gfxBankBase !== null) break;           // the preference was viable
         }
+        this.lastGfxBankPreferenceHonoured = !preferredGfxBank
+            || gfxBankBase === preferredGfxBank;
         if (gfxBankBase === null) throw new Error('Relocation (code-only): no free VIC bank for graphics');
         const gfxBankNum = gfxBankBase / 0x4000;
 
@@ -2246,7 +2261,7 @@ class SIDquakePRGExporter {
                     shadowMirrorAddress: codeTable.shadowMirror,
                     shadowOrderAddress: codeTable.shadowOrder };
             }
-            plan = this.planRelocationCodeOnly(codeTable, codeBin, gfxBin, effBaseLayout, actualSidAddress, sidData.length, chooseCodePage);
+            plan = this.planRelocationCodeOnly(codeTable, codeBin, gfxBin, effBaseLayout, actualSidAddress, sidData.length, chooseCodePage, this._preferredGfxBank || null);
         } else {
             const table = await (await fetch(vizConfig.relocTable, { cache: 'no-cache' })).json();
             const baseBin = await this.loadBinaryFile(vizConfig.relocBase);
@@ -2401,10 +2416,15 @@ class SIDquakePRGExporter {
             // Every option's value, captured once by the caller. Without it the
             // build reads the live DOM as each option comes up, so anything that
             // changed mid-build would land half-applied.
-            optionValues = null
+            optionValues = null,
+            // A VIC bank the caller would rather the graphics went in. Soft:
+            // ignored when it cannot be made to work.
+            preferredGfxBank = null
         } = options;
 
         this._optionValues = optionValues;
+        this._preferredGfxBank = preferredGfxBank;
+        this.lastGfxBankPreferenceHonoured = true;
         try {
             this.builder.clear();
             this.lastBakeInfo = null;   // only set when a baked-spectrometer export runs
@@ -2711,6 +2731,7 @@ class SIDquakePRGExporter {
             // Never outlive the build: a stale snapshot would quietly shadow the
             // live controls on the next export.
             this._optionValues = null;
+            this._preferredGfxBank = null;
         }
     }
 }

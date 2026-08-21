@@ -31,12 +31,6 @@ produces a wrong result or dead UI.
   `prg/<id>.gif` and swaps on hover, gated on `visualizer.animated`. No registry
   entry sets `animated: true` and there are no `.gif` files in `public/prg/`.
   Users pick a *motion* effect from a frozen still.
-- **The memory-bank override is dead code.** `createLayoutSelectorHTML`
-  (`ui.js:1623-1692`) builds a complete layout radio group with per-bank ranges
-  and overlap reasons. Nothing calls it; `selectedLayoutKey` is hardcoded `null`
-  (`ui.js:3044`). Automatic placement is the right default and the scoring behind
-  it is good (`prg-builder.js:2026`) — but the override is written and
-  unreachable.
 
 ## Analysis timing — run it in the background, then ask a better question
 

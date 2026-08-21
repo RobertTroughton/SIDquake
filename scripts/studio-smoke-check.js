@@ -509,6 +509,32 @@ async function loadSid(page, file) {
         check('A name with nothing usable falls back rather than producing ".prg"',
             naming.unnameable.length > 0, naming.unnameable);
 
+        // --- the VIC bank preference ------------------------------------------
+        const bank = await page.evaluate(() => {
+            const ui = window.uiController;
+            const sel = document.getElementById('advGfxBank');
+            if (!sel) return { present: false };
+            sel.value = String(0x8000);
+            sel.dispatchEvent(new Event('change', { bubbles: true }));
+            const saved = JSON.parse(localStorage.getItem('sidquakeAdvanced') || '{}');
+            const readBack = ui.getAdvancedSettings().preferredGfxBank;
+            sel.value = '';
+            sel.dispatchEvent(new Event('change', { bubbles: true }));
+            return {
+                present: true,
+                stored: saved.preferredGfxBank,
+                readBack,
+                clearsToAuto: ui.getAdvancedSettings().preferredGfxBank,
+                inAdvanced: !!document.getElementById('advancedSettings')
+                    .contains(document.getElementById('advGfxBank')),
+            };
+        });
+        check('The graphics bank can be preferred, and is remembered',
+            bank.present && bank.stored === 0x8000 && bank.readBack === 0x8000,
+            JSON.stringify(bank));
+        check('It clears back to automatic, and lives under Advanced',
+            !bank.clearsToAuto && bank.inAdvanced, JSON.stringify(bank));
+
         // --- settings save and reload ------------------------------------------
         const recipe = await page.evaluate(async () => {
             const ui = window.uiController;
