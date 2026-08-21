@@ -835,6 +835,40 @@ async function loadSid(page, file) {
         const h1Count = await page.evaluate(() => document.querySelectorAll('h1').length);
         check('The document has a single h1', h1Count === 1, `${h1Count} found`);
 
+        // --- the rail survives typing -----------------------------------------
+        const railReuse = await page.evaluate(async () => {
+            window.studioModal.activate('song');
+            await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
+            const rail = document.getElementById('studioRail');
+            const before = [...rail.querySelectorAll('.studio-tab')];
+            // Panels stay mounted, so pick one that is actually showing -
+            // focus() on a hidden field is a no-op.
+            const field = [...document.querySelectorAll('#studioPanels input[type="text"]')]
+                .find(el => el.offsetParent !== null);
+            if (!field) return { skipped: 'no visible text field on the open panel' };
+            field.focus();
+            field.value = field.value + 'x';
+            field.dispatchEvent(new Event('input', { bubbles: true }));
+            await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
+            const after = [...rail.querySelectorAll('.studio-tab')];
+            return {
+                count: after.length,
+                sameNodes: before.length === after.length
+                    && before.every((b, i) => b === after[i]),
+                focusKept: document.activeElement === field,
+                field: field.id || field.name || field.className,
+                landedOn: document.activeElement.id || document.activeElement.tagName,
+            };
+        });
+        if (railReuse.skipped) {
+            console.log(`SKIP  rail reuse - ${railReuse.skipped}`);
+        } else {
+            check('Typing in a panel does not rebuild the tab rail',
+                railReuse.sameNodes === true, JSON.stringify(railReuse));
+            check('And the field keeps focus while it types',
+                railReuse.focusKept === true, JSON.stringify(railReuse));
+        }
+
         // --- overlay precedence -----------------------------------------------
         const overlays = await page.evaluate(() => {
             const tagged = [...document.querySelectorAll('[data-overlay]')].map(el => el.id);

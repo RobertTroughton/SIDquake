@@ -193,11 +193,13 @@ other twenty places that needed them.
 
 **Blockers.**
 
-- **Still open: the rail and nav are rebuilt wholesale on every refresh.** Focus
-  is now carried across the rebuild (`_preservingFocus`) and the rail only
-  scrolls when the tab actually changed, so the keyboard cost is gone — but
-  `queueRefresh` still throws away and recreates every button on each keystroke.
-  Diff the tab list and update in place.
+- **The rail is updated in place — done.** Focus is carried across a real
+  rebuild (`_preservingFocus`), the rail only scrolls when the tab actually
+  changed, and `renderRail` now compares the tab-id signature: when the tab set
+  has not changed it updates the existing buttons' active state and status glyph
+  instead of recreating them, so typing in a panel leaves the rail's DOM alone.
+  `renderNav` still rebuilds its two buttons and position label each refresh —
+  three nodes, so it was left as it is.
 - **Modal precedence — done.** The two hand-maintained id lists are gone (and the
   one in `ui.js` had already drifted, missing the logo tool). Every overlay
   carries `data-overlay`, and `overlay-stack.js` works out what is above what

@@ -378,7 +378,6 @@ class StudioModal {
     renderRail(prevTabs) {
         const tabs = this.tabList();
         const prev = prevTabs || tabs.map(t => t.id);
-        this.rail.innerHTML = '';
         this.rail.setAttribute('role', 'tablist');
         this.rail.setAttribute('aria-orientation', 'vertical');
         if (!this._railKeysWired) {
@@ -401,6 +400,35 @@ class StudioModal {
                 this.activate(go);
             });
         }
+        // queueRefresh runs on every keystroke in a panel. When the tab set has
+        // not changed, only the status glyph and the active tab can differ, so
+        // update the existing buttons rather than throwing them away.
+        const signature = tabs.map(t => t.id).join('|');
+        if (signature === this._railSignature && !prevTabs) {
+            for (const t of tabs) {
+                const btn = this.rail.querySelector(`#studio-tab-${CSS.escape(t.id)}`);
+                if (!btn) { this._railSignature = null; break; }
+                const st = this.tabStatus(t.id);
+                const on = t.id === this.activeTab;
+                btn.classList.toggle('active', on);
+                btn.setAttribute('aria-selected', on ? 'true' : 'false');
+                btn.tabIndex = on ? 0 : -1;
+                btn.setAttribute('aria-label', `${t.label} — ${st.title}`);
+                const glyph = btn.querySelector('.studio-tab-status');
+                if (glyph) {
+                    glyph.className = `studio-tab-status ${st.cls}`;
+                    glyph.title = st.title;
+                    glyph.textContent = st.glyph;
+                }
+            }
+            if (this._railSignature) {
+                this._scrollActiveTabIntoView();
+                return;
+            }
+        }
+
+        this.rail.textContent = '';
+        this._railSignature = signature;
         tabs.forEach((t, i) => {
             if ((i === 2 && tabs.length > 3) || t.id === 'export') {
                 const sep = document.createElement('div');
@@ -430,15 +458,17 @@ class StudioModal {
             btn.addEventListener('click', () => this.activate(t.id));
             this.rail.appendChild(btn);
         });
-        // Rebuilding the rail put its scroll position back to the start, so
-        // bring the active tab back into view - but only when the tab actually
-        // changed. queueRefresh rebuilds on every keystroke, and scrolling the
-        // rail while someone types in a panel is pure noise.
-        if (this._scrollRailOnNextRender) {
-            this._scrollRailOnNextRender = false;
-            const active = this.rail.querySelector('.studio-tab.active');
-            if (active) active.scrollIntoView({ block: 'nearest', inline: 'nearest' });
-        }
+        this._scrollActiveTabIntoView();
+    }
+
+    // Rebuilding the rail puts its scroll position back to the start, so bring
+    // the active tab back into view - but only when the tab actually changed.
+    // Scrolling the rail while someone types in a panel is pure noise.
+    _scrollActiveTabIntoView() {
+        if (!this._scrollRailOnNextRender) return;
+        this._scrollRailOnNextRender = false;
+        const active = this.rail.querySelector('.studio-tab.active');
+        if (active) active.scrollIntoView({ block: 'nearest', inline: 'nearest' });
     }
 
     // ---------------------------------------------------------------------
