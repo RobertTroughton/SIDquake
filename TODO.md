@@ -347,15 +347,20 @@ a human required between every blocking wait.
 - **Still open: the queue re-measures every tune.** Each export blocks on that
   tune's own scan. The persisted analysis cache below is what makes a re-run of
   the same set fast.
-- **Recipe files** (`.sqrecipe.json`): player + data source, every option value,
-  logo reference and its placement, compression, sub-tune, forced-loop answer and
-  the analysis settings — plus a `built` block (load address, uncompressed span,
-  file size, block count, loop frames, PRG hash) written back for diffing. Import
-  by drop, export alongside every PRG. Half of it already exists as
-  `_captureOptionValues` (`ui.js:1216`), and "Export option snapshot" below is
-  the same change: snapshot once at Generate, build from the snapshot, write the
-  snapshot out as the recipe. The pipeline is already deterministic — no
-  timestamp reaches the PRG — so same inputs give same bytes.
+- **Recipes exist** (`.sqrecipe.json`, saved and loaded from the Export tab):
+  player + data source, every option value, gallery image picks, sub-tune,
+  forced-loop answer, song-length choices, compression and the analysis
+  settings. Still open:
+  - **A `built` block** — load address, uncompressed span, file size, block
+    count, loop frames, PRG hash — written back after an export so two builds
+    can be diffed. The pipeline is already deterministic (no timestamp reaches
+    the PRG), so same inputs give same bytes.
+  - **Write one alongside every PRG**, rather than only on request.
+  - **Drop a recipe onto the page** to apply it, and apply one across a whole
+    queue rather than per tune.
+  - **Custom uploaded images can only be named, not carried.** A recipe records
+    the slot and the filename and asks for the image again; a gallery pick
+    restores in full.
 - **A `sidquake-build` CLI.** The precedent is already in the repo:
   `tools/songlengths/scan-worker.mjs:37` loads `public/sidquake.js` /
   `public/sidplayfp.js` in Node by passing `wasmBinary` directly and imports

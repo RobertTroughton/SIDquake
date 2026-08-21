@@ -427,6 +427,16 @@
                    renderManifest). -->
               <div class="studio-manifest" id="exportManifest"></div>
 
+              <!-- Save the whole setup, or apply a saved one. A music disk wants
+                   every tune built the same way, and a release wants to be
+                   rebuildable next year. -->
+              <div class="recipe-row">
+                  <button type="button" class="file-button" id="recipeSave">Save these settings</button>
+                  <button type="button" class="file-button" id="recipeLoadBtn">Load settings…</button>
+                  <input type="file" id="recipeLoad" accept=".json,.sqrecipe.json" hidden>
+                  <span class="option-hint" id="recipeNote">A small .json you can keep with the tune, share with a group, or check into a repo.</span>
+              </div>
+
               <!-- Compression / advanced settings / bake readout (populated by ui.js) -->
               <div id="exportConfigMount"></div>
 

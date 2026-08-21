@@ -404,6 +404,48 @@ async function loadSid(page, file) {
                 shard.bytes < 200 * 1024, `${Math.round(shard.bytes / 1024)} KB raw vs 11700 KB`);
         }
 
+        // --- settings save and reload ------------------------------------------
+        const recipe = await page.evaluate(async () => {
+            const ui = window.uiController;
+            await ui.selectVisualizer(VISUALIZERS.find(v => v.id === 'RaistlinBars'));
+            await new Promise(r => setTimeout(r, 700));
+            // Set something distinctive through the real control, so the recipe
+            // has to have picked it up the way a user's choice would be.
+            const grid = document.querySelector('.bar-style-grid');
+            const thumbs = [...grid.querySelectorAll('.bar-style-thumbnail')];
+            ui.selectGridThumb(grid, thumbs[thumbs.length - 1]);
+            const configId = grid.dataset.configId;
+            const chosen = document.getElementById(configId).value;
+
+            const saved = ui.buildRecipe();
+
+            // Change it back, then apply the recipe and see it return.
+            ui.selectGridThumb(grid, thumbs[0]);
+            const reset = document.getElementById(configId).value;
+            await ui.applyRecipe(saved);
+            await new Promise(r => setTimeout(r, 700));
+            return {
+                version: saved.sidquake && saved.sidquake.recipe,
+                card: saved.player && saved.player.card,
+                chosen, reset,
+                restored: document.getElementById(configId).value,
+                note: document.getElementById('recipeNote').textContent,
+            };
+        });
+        check('A recipe records the player and the options',
+            recipe.version === 1 && recipe.card === 'RaistlinBars',
+            JSON.stringify({ version: recipe.version, card: recipe.card }));
+        check('Applying it puts a changed option back',
+            recipe.chosen !== recipe.reset && recipe.restored === recipe.chosen,
+            `chose ${recipe.chosen}, reset to ${recipe.reset}, restored ${recipe.restored}`);
+        check('And it says so', /applied/i.test(recipe.note), recipe.note);
+
+        const rejects = await page.evaluate(async () => {
+            await window.uiController.applyRecipe({ nope: true });
+            return document.getElementById('recipeNote').textContent;
+        });
+        check('A file that is not a recipe is refused', /does not look like/i.test(rejects), rejects);
+
         // --- the brands webfont is never requested ----------------------------
         const brands = await page.evaluate(() => ({
             fabUsages: document.querySelectorAll('.fab, [class*="fa-github"], [class*="fa-youtube"]').length,
@@ -700,6 +742,8 @@ async function loadSid(page, file) {
     }
 
     const failed = results.filter(r => !r.ok);
+    // Repeated at the end so a truncated log still names what went wrong.
+    for (const f of failed) console.log(`FAILED: ${f.name}${f.detail ? ` - ${f.detail}` : ''}`);
     console.log(`\n${results.length - failed.length}/${results.length} checks passed`);
     process.exit(failed.length ? 1 : 0);
 })().catch((e) => { console.error(e); process.exit(1); });

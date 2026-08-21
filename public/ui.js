@@ -1448,6 +1448,7 @@ class UIController {
         }
 
         this._wireAdvancedSettings();
+        this._wireRecipeControls();
         await this.attachOptionEventListeners(config);
         this._restoreOptionValues(this._optionMemory);
         await this._restoreImageSelections(config, req);
@@ -1862,6 +1863,157 @@ class UIController {
                 ${this.createScanWindowOptionHTML()}
             </div>
         </details>`;
+    }
+
+    // ---------------------------------------------------------------------
+    // Recipes: the whole setup as a small file
+    // ---------------------------------------------------------------------
+
+    // Everything that decides what an export looks like, in one JSON. A music
+    // disk wants every tune built the same way, and a release ought to be
+    // rebuildable next year - neither was possible when the settings existed
+    // only as live DOM state in one browser tab.
+    //
+    // A custom uploaded image can only be referenced by name: the file itself is
+    // not ours to keep, and a JSON cannot carry a file handle the browser will
+    // accept back. Gallery picks restore in full.
+    buildRecipe() {
+        const viz = this.selectedVisualizer;
+        const images = {};
+        for (const [slot, sel] of Object.entries(this._imageSelectionMemory || {})) {
+            if (!sel) continue;
+            images[slot] = sel.kind === 'gallery'
+                ? { kind: 'gallery', file: sel.file }
+                : { kind: 'custom', name: (sel.fileObj && sel.fileObj.name) || 'your own image' };
+        }
+        const songSel = document.getElementById('songSelector');
+        const forceLoop = document.getElementById('forceLoopToggle');
+        return {
+            sidquake: { recipe: 1 },
+            player: viz ? { card: this._lastVisualizerId || viz.id, dataSource: viz.dataSource || null } : null,
+            // The session memory holds only values the user actually chose; the
+            // live panels add whatever this player exposes right now.
+            options: Object.assign({}, this._optionMemory, this._captureOptionValues()),
+            images,
+            song: {
+                subtune: songSel ? parseInt(songSel.value, 10) : null,
+                forceLoop: !!(forceLoop && forceLoop.checked),
+                showLength: this.showSongLength(),
+                manualLengthSeconds: this.manualSongLengthSeconds(),
+            },
+            analysis: this.getAdvancedSettings(),
+        };
+    }
+
+    saveRecipe() {
+        const recipe = this.buildRecipe();
+        const base = (this.currentFileName || 'sidquake').replace(/\.sid$/i, '');
+        this.downloadFile(JSON.stringify(recipe, null, 2), `${base}.sqrecipe.json`);
+        this.setRecipeNote(`Saved ${base}.sqrecipe.json.`);
+    }
+
+    async applyRecipe(recipe) {
+        if (!recipe || !recipe.sidquake || recipe.sidquake.recipe !== 1) {
+            this.setRecipeNote('That does not look like a SIDquake settings file.', true);
+            return;
+        }
+
+        // Advanced settings first: they change what an analysis means, and
+        // getAdvancedSettings is read by everything downstream.
+        if (recipe.analysis) {
+            const a = this.getAdvancedSettings();
+            this._advanced = Object.assign({}, a, recipe.analysis);
+            try { localStorage.setItem('sidquakeAdvanced', JSON.stringify(this._advanced)); } catch (e) { /* blocked */ }
+        }
+
+        // The option memory is what survives a player switch, so seed it before
+        // selecting the player and its panels will pick the values up.
+        if (recipe.options) this._optionMemory = Object.assign({}, recipe.options);
+        if (recipe.images) {
+            this._imageSelectionMemory = {};
+            for (const [slot, sel] of Object.entries(recipe.images)) {
+                if (sel && sel.kind === 'gallery' && sel.file) {
+                    this._imageSelectionMemory[slot] = { kind: 'gallery', file: sel.file };
+                }
+            }
+        }
+
+        const missing = Object.entries(recipe.images || {})
+            .filter(([, sel]) => sel && sel.kind === 'custom')
+            .map(([, sel]) => sel.name);
+
+        if (recipe.player && recipe.player.card) {
+            const card = (typeof VISUALIZERS !== 'undefined')
+                && VISUALIZERS.find(v => v.id === recipe.player.card);
+            if (card) {
+                this._lastDataSource = recipe.player.dataSource || this._lastDataSource;
+                await this.selectVisualizer(card);
+            }
+        }
+
+        // Seeding the memory alone is not enough: rendering the panels folds the
+        // live DOM into that memory FIRST (loadVisualizerOptions), so whatever
+        // was on screen would overwrite the recipe on its way past. Put the
+        // values on the controls now the panels exist, and restore the memory
+        // behind them so a later player switch still carries them.
+        if (recipe.options) {
+            this._restoreOptionValues(recipe.options);
+            this._optionMemory = Object.assign({}, recipe.options);
+        }
+
+        if (recipe.song) {
+            const songSel = document.getElementById('songSelector');
+            if (songSel && recipe.song.subtune) songSel.value = String(recipe.song.subtune);
+            const forceLoop = document.getElementById('forceLoopToggle');
+            if (forceLoop) forceLoop.checked = !!recipe.song.forceLoop;
+            this._loopChoiceTouched = true;   // the recipe decided; don't prompt
+            const show = document.getElementById('showSongLengthToggle');
+            if (show) show.checked = recipe.song.showLength !== false;
+            const manual = document.getElementById('songLengthManual');
+            if (manual) manual.value = recipe.song.manualLengthSeconds
+                ? this._mmss(recipe.song.manualLengthSeconds) : '';
+            this.updateSongLoopStatus();
+        }
+
+        if (recipe.options && recipe.options.__compression) {
+            const radio = document.querySelector(
+                `input[name="compression-type"][value="${recipe.options.__compression}"]`);
+            if (radio) radio.checked = true;
+        }
+
+        if (window.studioModal) window.studioModal.queueRefresh();
+        this.setRecipeNote(missing.length
+            ? `Settings applied. Pick your own image again for: ${missing.join(', ')} — a settings file can't carry the image itself.`
+            : 'Settings applied.');
+    }
+
+    setRecipeNote(text, isError = false) {
+        const el = document.getElementById('recipeNote');
+        if (!el) return;
+        el.textContent = text;
+        el.style.color = isError ? 'var(--warning)' : '';
+    }
+
+    _wireRecipeControls() {
+        if (this._recipeWired) return;
+        this._recipeWired = true;
+        const save = document.getElementById('recipeSave');
+        if (save) save.addEventListener('click', () => this.saveRecipe());
+        const btn = document.getElementById('recipeLoadBtn');
+        const input = document.getElementById('recipeLoad');
+        if (btn && input) {
+            btn.addEventListener('click', () => input.click());
+            input.addEventListener('change', async () => {
+                const file = input.files && input.files[0];
+                input.value = '';
+                if (!file) return;
+                try {
+                    await this.applyRecipe(JSON.parse(await file.text()));
+                } catch (e) {
+                    this.setRecipeNote('Could not read that settings file.', true);
+                }
+            });
+        }
     }
 
     createCompressionOptionsHTML() {

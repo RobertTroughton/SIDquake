@@ -4854,3 +4854,17 @@
         display: none;
     }
 }
+
+/* Save / load a whole Studio setup as a small file. */
+.recipe-row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--space-sm);
+    margin-bottom: var(--space-md);
+}
+
+.recipe-row .option-hint {
+    flex: 1 1 100%;
+    margin: 0;
+}
