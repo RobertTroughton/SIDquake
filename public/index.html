@@ -437,6 +437,18 @@
                   <span class="option-hint" id="recipeNote">A small .json you can keep with the tune, share with a group, or check into a repo.</span>
               </div>
 
+              <div class="recipe-row">
+                  <label class="option-label" for="filenameTemplate">File name</label>
+                  <input type="text" id="filenameTemplate" class="number-input" style="width:18em"
+                         value="{name}" spellcheck="false"
+                         aria-describedby="filenameTemplateHint">
+                  <span class="option-hint" id="filenameTemplateHint">
+                      Use <code>{name}</code>, <code>{title}</code>, <code>{author}</code>,
+                      <code>{song}</code> or <code>{index}</code>. Only a-z, 0-9, - and !
+                      survive a C64 directory, so everything else is dropped.
+                  </span>
+              </div>
+
               <!-- Compression / advanced settings / bake readout (populated by ui.js) -->
               <div id="exportConfigMount"></div>
 

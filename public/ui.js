@@ -1921,6 +1921,7 @@ class UIController {
                 manualLengthSeconds: this.manualSongLengthSeconds(),
             },
             analysis: this.getAdvancedSettings(),
+            naming: { template: (document.getElementById('filenameTemplate') || {}).value || '{name}' },
         };
     }
 
@@ -1992,6 +1993,11 @@ class UIController {
             if (manual) manual.value = recipe.song.manualLengthSeconds
                 ? this._mmss(recipe.song.manualLengthSeconds) : '';
             this.updateSongLoopStatus();
+        }
+
+        if (recipe.naming && recipe.naming.template) {
+            const tpl = document.getElementById('filenameTemplate');
+            if (tpl) tpl.value = recipe.naming.template;
         }
 
         if (recipe.options && recipe.options.__compression) {
@@ -3633,12 +3639,7 @@ class UIController {
         const selectedSong = songSelector ? parseInt(songSelector.value) : this.sidHeader.startSong;
 
         try {
-            // Sanitize filename: lowercase, remove .sid extension, keep only a-z, 0-9, -, !
-            const baseName = this.currentFileName ?
-                this.currentFileName
-                    .replace(/\.sid$/i, '')
-                    .toLowerCase()
-                    .replace(/[^a-z0-9\-!]/g, '') : 'output';
+            const baseName = this.exportBaseName();
 
             // Update progress
             this.updateBusy('Loading Visualizer', 'Reading configuration...');
@@ -4362,6 +4363,35 @@ class UIController {
     }
 
     // Helper functions
+    // The name the exported PRG gets, from the template on the Export tab.
+    // Placeholders: {name} the SID's filename, {title} / {author} the metadata,
+    // {index} the tune's position in a queue (2 digits), {song} the sub-tune.
+    // Anything outside a-z 0-9 - ! is dropped, because that is what survives a
+    // C64 directory and a .d64 image intact.
+    exportBaseName() {
+        const clean = (v) => String(v || '').toLowerCase().replace(/[^a-z0-9\-!]/g, '');
+        const sidName = clean((this.currentFileName || '').replace(/\.sid$/i, ''));
+        const songSel = document.getElementById('songSelector');
+        const idx = (this._queue || []).findIndex(i => i.file && i.file.name === this.currentFileName);
+        const fields = {
+            name: sidName,
+            title: clean(this.sidHeader && this.sidHeader.name),
+            author: clean(this.sidHeader && this.sidHeader.author),
+            song: songSel ? clean(songSel.value) : '',
+            index: idx >= 0 ? String(idx + 1).padStart(2, '0') : '',
+        };
+
+        const tplEl = document.getElementById('filenameTemplate');
+        const template = (tplEl && tplEl.value.trim()) || '{name}';
+        let out = template.replace(/\{(\w+)\}/g, (m, key) =>
+            (Object.prototype.hasOwnProperty.call(fields, key) ? fields[key] : ''));
+        out = clean(out).replace(/-+/g, '-').replace(/^-|-$/g, '');
+
+        // A title made entirely of characters the C64 has no room for would
+        // otherwise produce a file called ".prg".
+        return out || sidName || 'output';
+    }
+
     downloadFile(data, filename) {
         const blob = new Blob([data], { type: 'application/octet-stream' });
         const url = URL.createObjectURL(blob);

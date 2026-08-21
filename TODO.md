@@ -374,10 +374,11 @@ a human required between every blocking wait.
   option provider (which is the snapshot above) and the module is DOM-free.
   `fetch` shims to `fs`; the only genuine browser dependency left is
   `convertLogoPNG`'s `new Image()` + canvas (`:1060`).
-- **Filename templates**, plus a real fallback: `ui.js:3134` strips everything
-  outside `[a-z0-9\-!]` and the `'output'` fallback only fires when
-  `currentFileName` is falsy, so a title with no Latin characters yields a file
-  named `.prg`.
+- **Done: filename templates** — `{name}`, `{title}`, `{author}`, `{song}`,
+  `{index}`, carried in a recipe so a set names its files consistently. The
+  fallback is real now: a title with nothing a C64 directory can hold used to
+  produce a file called `.prg`, because the `'output'` fallback only fired when
+  there was no filename at all, not when sanitising emptied it.
 - **Layout hints** — preferred VIC bank, preferred code region, reserved ranges —
   soft, falling back to automatic with a visible note. A disk with a shared
   loader wants every PRG in the same bank.

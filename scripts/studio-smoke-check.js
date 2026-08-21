@@ -430,6 +430,28 @@ async function loadSid(page, file) {
                 snapshot.fromDom === snapshot.live, JSON.stringify(snapshot));
         }
 
+        // --- file naming ------------------------------------------------------
+        const naming = await page.evaluate(() => {
+            const ui = window.uiController;
+            const tpl = document.getElementById('filenameTemplate');
+            const before = ui.exportBaseName();
+            tpl.value = '{author}-{title}';
+            const templated = ui.exportBaseName();
+            // A title with nothing a C64 directory can hold must not yield ".prg".
+            const realTitle = ui.sidHeader.name;
+            ui.sidHeader.name = '\u3042\u3044\u3046';
+            ui.sidHeader.author = '\u3048\u304a';
+            const unnameable = ui.exportBaseName();
+            ui.sidHeader.name = realTitle;
+            tpl.value = '{name}';
+            return { before, templated, unnameable };
+        });
+        check('The file name follows its template',
+            naming.templated.includes('-') && naming.templated !== naming.before,
+            `${naming.before} -> ${naming.templated}`);
+        check('A name with nothing usable falls back rather than producing ".prg"',
+            naming.unnameable.length > 0, naming.unnameable);
+
         // --- settings save and reload ------------------------------------------
         const recipe = await page.evaluate(async () => {
             const ui = window.uiController;
