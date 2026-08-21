@@ -4574,3 +4574,29 @@
         max-width: none;
     }
 }
+
+/* Song length controls (Song tab): measure / stop / type it in, on one line
+   that wraps rather than crushing the input on a narrow panel. */
+.song-length-row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 10px;
+}
+
+.song-length-manual {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    color: var(--text-secondary);
+    font-size: 0.9em;
+}
+
+.song-length-manual input {
+    width: 5.5em;
+    text-align: center;
+}
+
+.song-length-row .option-hint {
+    flex: 1 1 100%;
+}

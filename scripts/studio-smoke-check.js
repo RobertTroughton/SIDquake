@@ -171,6 +171,27 @@ async function loadSid(page, file) {
             JSON.stringify(cancelled));
         check('A cancelled scan leaves no analysis', cancelled.analysis === false);
 
+        // --- Song tab length controls -----------------------------------------
+        await page.evaluate(() => window.studioModal.activate('song'));
+        await page.waitForTimeout(200);
+        const songTab = await page.evaluate(() => {
+            const ui = window.uiController;
+            const manual = document.getElementById('songLengthManual');
+            manual.value = '3:41';
+            manual.dispatchEvent(new Event('input', { bubbles: true }));
+            const typed = ui.manualSongLengthSeconds();
+            document.getElementById('showSongLengthToggle').checked = false;
+            document.getElementById('showSongLengthToggle')
+                .dispatchEvent(new Event('change', { bubbles: true }));
+            const off = ui.showSongLength();
+            document.getElementById('showSongLengthToggle').checked = true;
+            return { typed, off, status: document.getElementById('songLoopStatus').textContent };
+        });
+        check('A typed song length parses to seconds', songTab.typed === 221, `${songTab.typed}`);
+        check('The show-length toggle is read back', songTab.off === false);
+        check('The Song tab reports the length state', /length|clock|Measur/i.test(songTab.status),
+            songTab.status.slice(0, 60));
+
         // --- the scan actually produces a length ------------------------------
         let finished = false;
         try {

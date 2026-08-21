@@ -2259,12 +2259,23 @@ class SIDquakePRGExporter {
     // frames, for a fade-out tune the user chose to loop): the clock gets a real
     // length equal to the restart point and wraps to 0:00:00 - the exact frame
     // the shared player code re-inits the tune (both count the same IRQ frames).
-    patchSongLengthFields(layout, tuneAnalysis, multiSong, forcedLoopFrames = 0) {
+    // opts.show=false: the user asked for no length on screen, so every field is
+    // zeroed exactly as if none had been found.
+    // opts.manualSeconds: a length the user typed rather than one the scan
+    // measured. Treated as the tune's period - the clock counts to it and wraps
+    // to 0:00, the same geometry a forced loop gets, but WITHOUT re-initialising
+    // the music (lastMusicLoopFrames stays whatever the caller set). Never write
+    // a length without a loop end: CheckLoopWrap (INC/timer.asm) compares the
+    // clock against bakedLoopEnd* and would wrap on the very first frame.
+    patchSongLengthFields(layout, tuneAnalysis, multiSong, forcedLoopFrames = 0, opts = {}) {
         if (!layout || !layout.bakedHasLengthAddress) return;
         const byte = (v) => new Uint8Array([v & 0xFF]);
+        const show = opts.show !== false;
+        const manualSeconds = Math.max(0, Math.floor(opts.manualSeconds || 0));
         const looped = !!(tuneAnalysis && tuneAnalysis.looped);
         const forced = forcedLoopFrames > 0 && !multiSong;
-        const hasLength = ((looped || forced) && !multiSong) ? 1 : 0;
+        const manual = manualSeconds > 0 && !multiSong;
+        const hasLength = (show && (looped || forced || manual) && !multiSong) ? 1 : 0;
 
         // No length to show (multi-song, no loop, or analysis skipped): explicitly
         // ZERO every length/loop byte. The injected data block writes the SID
@@ -2282,15 +2293,23 @@ class SIDquakePRGExporter {
         }
 
         // Player timer fps (integer): the elapsed clock counts these per second.
-        const fps = tuneAnalysis.isNtsc ? 60 : 50;
+        // A typed length can be the only thing we have, so nothing below may
+        // assume an analysis exists.
+        const fps = (tuneAnalysis && tuneAnalysis.isNtsc) ? 60 : 50;
         // Loop geometry in RAW raster frames. The analysis loop points are in
         // keyframes at keyframeHz; one keyframe = step raster frames. A forced
-        // loop always restarts from the very beginning: start 0, end = restart.
-        const step = Math.max(1, Math.round((tuneAnalysis.frameHz || fps) / (tuneAnalysis.keyframeHz || (fps / 2))));
+        // loop always restarts from the very beginning: start 0, end = restart,
+        // and so does a typed length (the user is stating the tune's period).
+        const step = tuneAnalysis
+            ? Math.max(1, Math.round((tuneAnalysis.frameHz || fps) / (tuneAnalysis.keyframeHz || (fps / 2))))
+            : 1;
+        // A measured loop wins over a typed one - the user can clear the field if
+        // they disagree with it.
         const loopEndFrames = forced ? forcedLoopFrames
-            : Math.max(0, Math.round((tuneAnalysis.numKeyframes || 0) * step));
-        const loopStartFrames = forced ? 0
-            : Math.max(0, Math.round((tuneAnalysis.loopStart || 0) * step));
+            : looped ? Math.max(0, Math.round((tuneAnalysis.numKeyframes || 0) * step))
+                : manualSeconds * fps;
+        const loopStartFrames = (forced || (manual && !looped)) ? 0
+            : Math.max(0, Math.round(((tuneAnalysis && tuneAnalysis.loopStart) || 0) * step));
 
         // Decompose a raw-frame count into the displayed MM:SS + intra-second frame.
         const triple = (frames) => {
@@ -2339,7 +2358,11 @@ class SIDquakePRGExporter {
             selectedSong = 0,
             tuneAnalysis = null,
             bakeParams = null,
-            forceSongLoop = false
+            forceSongLoop = false,
+            // Song length shown on the C64: the user can suppress it, or state it
+            // themselves instead of waiting for the scan to measure it.
+            showSongLength = true,
+            manualLengthSeconds = 0
         } = options;
 
         try {
@@ -2522,7 +2545,8 @@ class SIDquakePRGExporter {
                 // Non-spectrometer players show the song length too, reusing the on-load
                 // analysis (single-song only) instead of rendering. No-op unless the
                 // player's layout exposes the length fields.
-                this.patchSongLengthFields(layout, tuneAnalysis, multiSong, this.lastMusicLoopFrames);
+                this.patchSongLengthFields(layout, tuneAnalysis, multiSong, this.lastMusicLoopFrames,
+                    { show: showSongLength, manualSeconds: manualLengthSeconds });
             }
 
             // Check if this visualizer needs save/restore functionality

@@ -16,18 +16,15 @@ source; where a claim still needs a browser to confirm it, it says so.
 Ranked by value against effort, not by section order. Each line names the section
 that holds the detail.
 
-1. Turn the Song tab's looping panel into a song-length row: measured / measuring
-   / not measured, with [Measure] and a manual `m:ss` entry, and reframe the
-   question as "show the song length on screen?" *(Analysis timing)*
-2. Move Generate PRG onto every tab; collapse Technical Details; move the frame
+1. Move Generate PRG onto every tab; collapse Technical Details; move the frame
    rate, stored bars and analysis engine behind an Advanced disclosure; restore
    the scan window, min-loop and bank override into it. *(Progressive disclosure)*
-3. Ship the eleven preview GIFs and set `animated: true`. *(Preview)*
-4. Don't auto-open the Studio below 720px; un-hide the visualiser on phones;
+2. Ship the eleven preview GIFs and set `animated: true`. *(Preview)*
+3. Don't auto-open the Studio below 720px; un-hide the visualiser on phones;
    autoplay after Random SID. *(Mobile and first impression)*
-5. The completion panel that tells a first-timer what a .prg is and how to run
+4. The completion panel that tells a first-timer what a .prg is and how to run
    it. *(Language)*
-6. Multi-file drop and a queue. *(Batch)*
+5. Multi-file drop and a queue. *(Batch)*
 
 Bigger pieces worth planning rather than picking up: the live in-browser preview,
 recipe files plus the `sidquake-build` CLI, the listener-first entry point, and
@@ -88,16 +85,13 @@ Export, and no prompt is needed at all.
   now appears only when Generate is pressed before the scan has finished, and it
   adopts the running job rather than starting a second render. A user who stops
   the scan is not asked again at Generate.
-- **Reframe the Song tab.** Replace "Song end not analysed yet…"
-  (`index.html:298`) with a live row: `Song length — analysing… 1:20` →
-  `Song length — 3:42 · [x] show on screen` → `Song length — not measured ·
-  [Measure] [Type it in __:__]`. Merge the Song Looping toggle into it; both are
-  the same underlying fact.
-- **Let the user type it in.** A composer knows their tune is 3:41. Writing
-  `bakedLenMin/Sec/hasLength` directly (`prg-builder.js:2274-2325`) skips the
-  render entirely, and settles the case where the scan finds nothing.
-- **Never a dead end.** Cancelling or skipping must always still produce a file,
-  and the completion panel offers it back: "Add the song length? [Measure and
+- **Done: the Song tab is a length panel** — measuring / measured / typed / not
+  measured, with Measure, Stop, a manual `m:ss` entry and a "show the song length
+  on the C64 screen" toggle. A typed length or an unticked toggle both skip the
+  scan entirely at export.
+- **Still open: offer it back after the export.** Cancelling or skipping always
+  produces a file, but nothing invites the user to add the length afterwards —
+  the completion panel (below) should say "Add the song length? [Measure and
   rebuild]".
 - **Move the too-long check before the render.** `resolveAdvancedRate` returning
   null (`ui.js:2988-2995`) tells the user "this tune is too long for the

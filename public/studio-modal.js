@@ -452,6 +452,26 @@ class StudioModal {
         const loopToggle = document.getElementById('forceLoopToggle');
         const wantLoop = !!(loopToggle && loopToggle.checked);
         const lmmss = s => { const t = Math.round(s || 0), m = Math.floor(t / 60), sec = t % 60; return `${m}:${String(sec).padStart(2, '0')}`; };
+        // Song length: what the C64 will actually show, since it can be measured,
+        // typed, still being measured, or deliberately left off.
+        if (header.songs <= 1) {
+            const manual = ui.manualSongLengthSeconds ? ui.manualSongLengthSeconds() : 0;
+            if (!ui.showSongLength || !ui.showSongLength()) {
+                rows.push(this.manifestRow('Song length', 'running clock only', 'off', 'skip', 'song'));
+            } else if (la && (la.looped || la.fadedOut)) {
+                rows.push(this.manifestRow('Song length',
+                    `${lmmss(la.looped ? la.storedSeconds : la.loopStartSeconds)} · measured`,
+                    'ok', 'inc', 'song'));
+            } else if (manual) {
+                rows.push(this.manifestRow('Song length', `${lmmss(manual)} · typed in`, 'ok', 'inc', 'song'));
+            } else if (ui.analysisRunning) {
+                rows.push(this.manifestRow('Song length', 'measuring…', 'pending', 'pend', 'song'));
+            } else {
+                rows.push(this.manifestRow('Song length', 'not measured — running clock only',
+                    'off', 'skip', 'song'));
+            }
+        }
+
         if (header.songs <= 1) {
             if (la && la.looped) {
                 rows.push(this.manifestRow('Song loop', `loops naturally at ${lmmss(la.storedSeconds)}`, 'ok', 'inc', 'song'));

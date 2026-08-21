@@ -293,9 +293,28 @@
                          current by uiController.updateSongLoopStatus(); the
                          toggle is read at export time (all visualizers). -->
                     <div class="panel" id="songLoopPanel">
-                        <h2><i class="fas fa-repeat"></i> Song Looping</h2>
+                        <h2><i class="fas fa-repeat"></i> Song Length &amp; Looping</h2>
                         <div class="info-row">
                             <span class="info-value" id="songLoopStatus" style="white-space:normal">Song end not analysed yet — SIDquake checks how the song ends during export.</span>
+                        </div>
+                        <!-- Length controls: measure it, stop measuring, or state it
+                             yourself. Shown/hidden by ui.js updateSongLoopStatus. -->
+                        <div class="info-row song-length-row">
+                            <button type="button" class="file-button" id="songLengthMeasure">Measure now</button>
+                            <button type="button" class="file-button" id="songLengthStop" hidden>Stop measuring</button>
+                            <label class="song-length-manual" for="songLengthManual">
+                                <span>or type it in</span>
+                                <input type="text" id="songLengthManual" class="number-input"
+                                       inputmode="numeric" placeholder="m:ss" size="5"
+                                       aria-describedby="songLengthManualHint">
+                            </label>
+                            <span class="option-hint" id="songLengthManualHint">Use this if you already know how long the tune runs before it repeats.</span>
+                        </div>
+                        <div class="info-row">
+                            <label for="showSongLengthToggle" style="display:flex;align-items:center;gap:8px;cursor:pointer">
+                                <input type="checkbox" id="showSongLengthToggle" checked>
+                                <span>Show the song length (MM:SS) on the C64 screen</span>
+                            </label>
                         </div>
                         <div class="info-row">
                             <label for="forceLoopToggle" style="display:flex;align-items:center;gap:8px;cursor:pointer">

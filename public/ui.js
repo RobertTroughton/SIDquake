@@ -776,6 +776,9 @@ class UIController {
             this._loopChoiceAsked = false;
             const forceLoopToggle = document.getElementById('forceLoopToggle');
             if (forceLoopToggle) forceLoopToggle.checked = false;
+            // A length typed for the previous tune says nothing about this one.
+            const manualLen = document.getElementById('songLengthManual');
+            if (manualLen) manualLen.value = '';
             this.updateSongLoopStatus();
 
             this.hideBusy();
@@ -3086,7 +3089,8 @@ class UIController {
                 // export would re-render (and could resolve a different loop).
                 bakeEngine: adv.bakeEngine,
             };
-        } else if (!multiSong && !this.tuneAnalysis && !this._analysisCancelled) {
+        } else if (!multiSong && !this.tuneAnalysis && !this._analysisCancelled
+            && this.showSongLength() && !this.manualSongLengthSeconds()) {
             // Every visualizer benefits from knowing how the song ends: players with
             // a timer show the length, and a detected FADE-OUT is what unlocks the
             // Song Looping option (restart the tune when it ends) - which works on
@@ -3186,6 +3190,10 @@ class UIController {
                 // Forced song loop (Song tab toggle): restart fade-out tunes when
                 // they end. The exporter applies it to single-song tunes only.
                 forceSongLoop: forceSongLoop,
+                // Song length on the C64 (Song tab): whether to show one at all, and
+                // a length the user typed rather than one the scan measured.
+                showSongLength: this.showSongLength(),
+                manualLengthSeconds: this.manualSongLengthSeconds(),
                 // Frame rate + loop-search window chosen in the spectrometer export modal.
                 bakeParams: bakeParams,
                 // Progress for the visualisation build (the slow analysis is already
@@ -3344,23 +3352,91 @@ class UIController {
 
     // Keep the Song tab's "Song Looping" panel truthful for the current tune:
     // what we know about how the song ends, and whether the toggle can apply.
+    /** The typed song length in whole seconds, or 0 when the field is empty/invalid. */
+    manualSongLengthSeconds() {
+        const el = document.getElementById('songLengthManual');
+        const secs = this._parseMMSS(el && el.value);
+        return Number.isFinite(secs) && secs > 0 ? Math.floor(secs) : 0;
+    }
+
+    /** Is the song length wanted on the C64 screen at all? */
+    showSongLength() {
+        const el = document.getElementById('showSongLengthToggle');
+        return !el || el.checked;
+    }
+
+    // One-time wiring for the Song tab's length controls. The panel is static
+    // markup, so this runs once and the handlers survive every reload.
+    _wireSongLengthControls() {
+        if (this._songLengthWired) return;
+        this._songLengthWired = true;
+        const on = (id, evt, fn) => {
+            const el = document.getElementById(id);
+            if (el) el.addEventListener(evt, fn);
+        };
+        on('songLengthMeasure', 'click', () => {
+            // An explicit "measure" overrides an earlier decision to stop.
+            this._analysisCancelled = false;
+            this.startBackgroundAnalysis();
+            this.updateSongLoopStatus();
+        });
+        on('songLengthStop', 'click', () => {
+            this.cancelAnalysis();
+            this._hideAnalysisChip();
+            this.updateSongLoopStatus();
+        });
+        on('songLengthManual', 'input', () => {
+            this.updateSongLoopStatus();
+            if (window.studioModal) window.studioModal.queueRefresh();
+        });
+        on('showSongLengthToggle', 'change', () => {
+            this.updateSongLoopStatus();
+            if (window.studioModal) window.studioModal.queueRefresh();
+        });
+    }
+
     updateSongLoopStatus() {
         const status = document.getElementById('songLoopStatus');
         const toggle = document.getElementById('forceLoopToggle');
         if (!status || !toggle) return;
+        this._wireSongLengthControls();
         const a = this.tuneAnalysis;
         const multiSong = !!(this.sidHeader && this.sidHeader.songs > 1);
+        const manual = this.manualSongLengthSeconds();
+        const scanning = this.analysisRunning;
+
+        // Length controls: measuring and typing are alternatives, and neither is
+        // offered when a multi-song SID rules a length out entirely.
+        const show = (id, on) => { const el = document.getElementById(id); if (el) el.hidden = !on; };
+        const canMeasure = !!this.sidHeader && !multiSong && !a;
+        show('songLengthMeasure', canMeasure && !scanning);
+        show('songLengthStop', scanning);
+        const manualWrap = document.querySelector('.song-length-manual');
+        if (manualWrap) manualWrap.hidden = !this.sidHeader || multiSong || !!(a && a.looped);
+        const showToggleRow = document.getElementById('showSongLengthToggle')?.closest('.info-row');
+        if (showToggleRow) showToggleRow.hidden = !this.sidHeader || multiSong;
+
         let text;
         let enabled = true;
         if (!this.sidHeader) {
             text = 'Load a SID first.';
             enabled = false;
         } else if (multiSong) {
-            text = 'Multi-song SID — forced looping applies to single-song exports only.';
+            text = 'Multi-song SID — the C64 shows a running clock, with no total length, ' +
+                'and forced looping applies to single-song exports only.';
             enabled = false;
+        } else if (scanning) {
+            text = 'Measuring the song length — playing the tune through to find where it ' +
+                'loops or fades out. Carry on choosing a visualizer; this runs in the background.';
+        } else if (!a && manual) {
+            text = `Song length ${this._mmss(manual)}, as typed. The C64 clock counts up to it ` +
+                'and wraps there.';
+        } else if (!a && this._analysisCancelled) {
+            text = 'Measuring stopped — the export will show a running clock with no total. ' +
+                'Measure again, or type the length in.';
         } else if (!a) {
-            text = 'Song end not analysed yet — SIDquake checks how the song ends during export. ' +
-                'Tick the box now if you already want a loop added should the song fade out.';
+            text = 'Song length not measured yet. It is worked out in the background once the ' +
+                'Studio opens, and at the latest when you export.';
         } else if (a.looped) {
             text = `This song loops naturally (repeats at ${this._mmss(a.storedSeconds)}) — no forced loop needed.`;
             enabled = false;
@@ -3369,9 +3445,19 @@ class UIController {
                 (toggle.checked
                     ? 'A loop will be added: the exported PRG restarts the song there.'
                     : 'No loop will be added: the exported PRG goes silent there.');
-        } else {
-            text = `No repeat or fade-out found within the analysis window (${this._mmss(a.analyzedSeconds)} scanned) — forced looping is unavailable.`;
+        } else if (manual) {
+            text = `No repeat or fade-out found in ${this._mmss(a.analyzedSeconds)} of scanning, ` +
+                `so the typed length ${this._mmss(manual)} is used instead. Forced looping is unavailable.`;
             enabled = false;
+        } else {
+            text = `No repeat or fade-out found within the analysis window (${this._mmss(a.analyzedSeconds)} scanned) ` +
+                '— forced looping is unavailable. Type the length in if you know it.';
+            enabled = false;
+        }
+        // The length can be measured or typed and still deliberately left off the
+        // screen; say so rather than showing a figure the export will not use.
+        if (!multiSong && this.sidHeader && !this.showSongLength()) {
+            text += ' The C64 will show a running clock only — "show the song length" is unticked.';
         }
         status.textContent = text;
         toggle.disabled = !enabled;
