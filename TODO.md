@@ -361,7 +361,11 @@ a human required between every blocking wait.
   - **Custom uploaded images can only be named, not carried.** A recipe records
     the slot and the filename and asks for the image again; a gallery pick
     restores in full.
-- **A `sidquake-build` CLI.** The precedent is already in the repo:
+- **A `sidquake-build` CLI.** The option-provider refactor is done —
+  `prg-builder.js` reads option values through `optionValue(id)` and has one DOM
+  read left, for the `File` in a file input. What remains is a headless logo
+  path (`convertLogoPNG` uses `new Image()` and a canvas), `fetch` shimmed to
+  `fs`, and the wrapper itself. The precedent is already in the repo:
   `tools/songlengths/scan-worker.mjs:37` loads `public/sidquake.js` /
   `public/sidplayfp.js` in Node by passing `wasmBinary` directly and imports
   `spectrometer-bake-core.js` unmodified, with a resumable JSONL journal and
@@ -481,7 +485,10 @@ VIC asset at any *valid slot within a bank* — not just shift whole banks in
 
 ## Refactor / cleanup
 - **Media-converter consolidation** — reassess whether `png_converter` is still needed or whether CharSetLab (or its functions) can replace it; unify the font/PETSCII/image conversion paths on a faster shared core.
-- **Export option snapshot** — the exporter reads option state from the live DOM rather than a captured snapshot (`_captureOptionValues` exists but isn't used for export). No observed desync today (the modal is static during export).
+- **Export option snapshot — done.** `createPRG` takes an `optionValues`
+  snapshot and reads it through `optionValue(id)`, falling back to the document
+  for anything absent. Only one DOM read is left in `prg-builder.js`, and it
+  cannot be a snapshot: it wants the `File` from a file input.
 
 ## Loop detection — give the user control of the scan
 The analysis cap (`maxLoopSeconds`, default 600 s → a 1200 s render cap) is now

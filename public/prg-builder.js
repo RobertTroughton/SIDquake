@@ -846,7 +846,11 @@ class SIDquakePRGExporter {
         };
 
         for (const inputConfig of vizConfig.inputs) {
-            const inputElement = document.getElementById(inputConfig.id);
+            // The one read that cannot come from a snapshot: this is a file
+            // input, and what is wanted is the File itself. A caller without a
+            // DOM has to supply the bytes another way.
+            const inputElement = typeof document !== 'undefined'
+                ? document.getElementById(inputConfig.id) : null;
             let fileData = null;
 
             if (inputElement && inputElement.files.length > 0) {
@@ -869,8 +873,8 @@ class SIDquakePRGExporter {
                         await petsciiConverter.init();
 
                         // Get background color from bgColor option if available
-                        const bgColorElement = document.getElementById('bgColor');
-                        const bgColor = bgColorElement ? (parseInt(bgColorElement.value) & 0x0F) : 0;
+                        const bgColorValue = this.optionValue('bgColor');
+                        const bgColor = bgColorValue !== null ? (parseInt(bgColorValue) & 0x0F) : 0;
 
                         fileData = await petsciiConverter.convertPNGToPETSCII(file, bgColor);
                     } catch (petsciiError) {
@@ -942,8 +946,8 @@ class SIDquakePRGExporter {
                             const petsciiConverter = new PETSCIIConverter();
                             await petsciiConverter.init();
 
-                            const bgColorElement = document.getElementById('bgColor');
-                            const bgColor = bgColorElement ? (parseInt(bgColorElement.value) & 0x0F) : 0;
+                            const bgColorValue = this.optionValue('bgColor');
+                            const bgColor = bgColorValue !== null ? (parseInt(bgColorValue) & 0x0F) : 0;
 
                             fileData = await petsciiConverter.convertPNGToPETSCII(pngFile, bgColor);
                         } catch (petsciiError) {
@@ -1123,11 +1127,26 @@ class SIDquakePRGExporter {
     }
 
     // Read an editable palette from a hidden input (comma-separated 0..15
+    // Option values for this export. createPRG captures them once and installs
+    // the snapshot here, so a build reads a fixed set rather than whatever the
+    // live DOM happens to hold at the moment each option is processed - and so
+    // a caller without a DOM can supply them directly. Falls through to the
+    // document when a value is not in the snapshot.
+    optionValue(id) {
+        if (this._optionValues && Object.prototype.hasOwnProperty.call(this._optionValues, id)) {
+            return this._optionValues[id];
+        }
+        if (typeof document === 'undefined') return null;
+        const el = document.getElementById(id);
+        return el ? el.value : null;
+    }
+
     // values maintained by the palette-editor UI). Falls back to the supplied
     // default when the control is absent (e.g. headless exports).
     readPaletteInput(inputId, fallback) {
-        const el = document.getElementById(inputId);
-        if (!el || !el.value) return fallback;
+        const value = this.optionValue(inputId);
+        if (!value) return fallback;
+        const el = { value };
         const vals = el.value.split(',')
             .map(s => parseInt(s.trim(), 10))
             .filter(n => !isNaN(n))
@@ -1171,8 +1190,10 @@ class SIDquakePRGExporter {
         const optionComponents = [];
 
         for (const optionConfig of vizConfig.options) {
-            const element = document.getElementById(optionConfig.id);
-            if (!element) continue;
+            // Only ever read for its value, so the snapshot can stand in.
+            const value = this.optionValue(optionConfig.id);
+            if (value === null || value === undefined) continue;
+            const element = { value };
 
             // Special handling for font when charset data should be injected
             if (optionConfig.id === 'font' && layout.charsetAddress && vizConfig.fontType) {
@@ -1568,8 +1589,8 @@ class SIDquakePRGExporter {
         // least twice a loop's length to confirm it, so the analysis cap is 2x the
         // chosen "max song length" (the user never sees the doubling).
         const domInt = (id, dflt) => {
-            const el = typeof document !== 'undefined' && document.getElementById(id);
-            return el ? (parseInt(el.value, 10) || dflt) : dflt;
+            const v = this.optionValue(id);
+            return v !== null && v !== undefined ? (parseInt(v, 10) || dflt) : dflt;
         };
         const maxLoopSeconds = (bakeParams && bakeParams.maxLoopSeconds) || domInt('loopSearchSeconds', 600);
         const analysisSeconds = Math.max(30, maxLoopSeconds * 2);
@@ -2376,9 +2397,14 @@ class SIDquakePRGExporter {
             // Song length shown on the C64: the user can suppress it, or state it
             // themselves instead of waiting for the scan to measure it.
             showSongLength = true,
-            manualLengthSeconds = 0
+            manualLengthSeconds = 0,
+            // Every option's value, captured once by the caller. Without it the
+            // build reads the live DOM as each option comes up, so anything that
+            // changed mid-build would land half-applied.
+            optionValues = null
         } = options;
 
+        this._optionValues = optionValues;
         try {
             this.builder.clear();
             this.lastBakeInfo = null;   // only set when a baked-spectrometer export runs
@@ -2681,6 +2707,10 @@ class SIDquakePRGExporter {
         } catch (error) {
             console.error('Error creating PRG:', error);
             throw error;
+        } finally {
+            // Never outlive the build: a stale snapshot would quietly shadow the
+            // live controls on the next export.
+            this._optionValues = null;
         }
     }
 }

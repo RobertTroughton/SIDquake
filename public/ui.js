@@ -3657,6 +3657,11 @@ class UIController {
                 // Forced song loop (Song tab toggle): restart fade-out tunes when
                 // they end. The exporter applies it to single-song tunes only.
                 forceSongLoop: forceSongLoop,
+                // Every option's value as it stands now. The builder used to read
+                // the DOM as each option came up, so anything that changed
+                // mid-build would land half-applied - and it is what a caller
+                // without a page would have to supply.
+                optionValues: this._captureOptionValues(),
                 // Song length on the C64 (Song tab): whether to show one at all, and
                 // a length the user typed rather than one the scan measured.
                 showSongLength: this.showSongLength(),

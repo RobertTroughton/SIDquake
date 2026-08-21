@@ -404,6 +404,32 @@ async function loadSid(page, file) {
                 shard.bytes < 200 * 1024, `${Math.round(shard.bytes / 1024)} KB raw vs 11700 KB`);
         }
 
+        // --- the build reads a snapshot, not the live page --------------------
+        const snapshot = await page.evaluate(async () => {
+            const ui = window.uiController;
+            await ui.ensurePRGExporter();
+            const b = ui.prgExporter;
+            const grid = document.querySelector('.bar-style-grid');
+            if (!grid) return { skipped: true };
+            const id = grid.dataset.configId;
+            const live = document.getElementById(id).value;
+            // With a snapshot installed the builder must report the snapshot's
+            // value even while the control on the page says something else.
+            b._optionValues = { [id]: '9' };
+            const fromSnapshot = b.optionValue(id);
+            b._optionValues = null;
+            const fromDom = b.optionValue(id);
+            return { skipped: false, live, fromSnapshot, fromDom };
+        });
+        if (snapshot.skipped) {
+            check('the builder option snapshot is testable', false, 'no grid on this player');
+        } else {
+            check('The builder reads its option snapshot when it has one',
+                snapshot.fromSnapshot === '9', JSON.stringify(snapshot));
+            check('And falls back to the page when it does not',
+                snapshot.fromDom === snapshot.live, JSON.stringify(snapshot));
+        }
+
         // --- settings save and reload ------------------------------------------
         const recipe = await page.evaluate(async () => {
             const ui = window.uiController;
