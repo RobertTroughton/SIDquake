@@ -385,13 +385,14 @@ async function loadSid(page, file) {
         // --- a shared link resolves from a shard, not the 2MB index -----------
         const shard = await page.evaluate(async () => {
             // The exact table build-share-meta.js writes, reached the way
-            // hvsc-browser.js reaches it. If these two ever disagree on the
-            // shard function, a deep link silently falls back to the index.
+            // hvsc-browser.js reaches it. That the four copies of this function
+            // agree is scripts/test-share-shards.js's job; this one checks the
+            // shard is actually there and holds what a shared link needs.
             const key = 'MUSICIANS/H/Hubbard_Rob/Commando.sid';
             const shardOf = (p) => {
                 let h = 0x811c9dc5;
-                for (let i = 0; i < p.length; i++) { h ^= p.charCodeAt(i); h = (h * 0x01000193) >>> 0; }
-                return (h & 0xff).toString(16).padStart(2, '0');
+                for (let i = 0; i < p.length; i++) { h ^= p.charCodeAt(i); h = Math.imul(h, 0x01000193); }
+                return ((h >>> 0) & 0xfff).toString(16).padStart(3, '0');
             };
             const res = await fetch('share-meta/' + shardOf(key) + '.json');
             if (!res.ok) return { built: false };
@@ -405,7 +406,7 @@ async function loadSid(page, file) {
             check('A shared tune resolves from its share-meta shard',
                 shard.hasTune && Array.isArray(shard.meta), JSON.stringify(shard.meta));
             check('And that shard is a fraction of the index',
-                shard.bytes < 200 * 1024, `${Math.round(shard.bytes / 1024)} KB raw vs 11700 KB`);
+                shard.bytes < 8 * 1024, `${shard.bytes} B raw vs 11,700 KB`);
         }
 
         // --- the build reads a snapshot, not the live page --------------------

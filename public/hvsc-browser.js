@@ -297,15 +297,16 @@ window.hvscBrowser = (function () {
         return ok;
     }
 
-    // FNV-1a low byte, the shard a tune's metadata lives in. Must match
-    // scripts/build-share-meta.js and netlify/edge-functions/tune-og.js.
+    // FNV-1a low 12 bits, the shard a tune's metadata lives in. Must match
+    // scripts/build-share-meta.js and netlify/edge-functions/tune-og.js - see
+    // the note there on Math.imul and on 12 bits.
     function shareShardOf(p) {
         let h = 0x811c9dc5;
         for (let i = 0; i < p.length; i++) {
             h ^= p.charCodeAt(i);
-            h = (h * 0x01000193) >>> 0;
+            h = Math.imul(h, 0x01000193);
         }
-        return (h & 0xff).toString(16).padStart(2, '0');
+        return ((h >>> 0) & 0xfff).toString(16).padStart(3, '0');
     }
 
     // A shared link arrives with exactly one tune in mind, and waiting for the

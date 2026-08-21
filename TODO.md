@@ -292,13 +292,18 @@ stylesheets, pre-hidden modal DOM, all three `.wasm` modules lazily loaded, a
 problem is aim: every optimisation assumes a visitor who already wants to export
 a PRG.
 
-- **Deep links play from their share-meta shard now** (median 1.5 KB gzipped,
-  against 2,041 KB for the index), so nobody waits on the index to hear
-  anything. Still open: the *listing* behind the player waits for the full
-  index, and the shard distribution is lopsided — a low byte of FNV-1a gives 219
-  shards for 61,157 tunes, so the median is 1.5 KB but the worst is 31 KB.
-  Twelve bits would even that out, but `build-share-meta.js` and
-  `netlify/edge-functions/tune-og.js` have to agree, so it is a paired change.
+- **Deep links play from their share-meta shard now**, so nobody waits on the
+  index to hear anything, and the shards are even. The lopsidedness turned out to
+  be a bug rather than a tuning problem: `h * 0x01000193` passes 2^53 and loses
+  exactly the low bits the shard was taken from, which left 212 of 256 shards in
+  use with the largest holding 966 tunes against a median of 33. With `Math.imul`
+  and 12 bits it is 4,096 shards, median 15 tunes and largest 30 — about 1.5 KB
+  raw whichever tune a link points at, against a 31 KB worst case.
+  `scripts/test-share-shards.js` lifts the function out of all three files that
+  carry a copy (Node build script, Deno edge function, browser) and checks they
+  agree over every path in the index, since nothing can import across those
+  boundaries. Still open: the *listing* behind the player waits for the full
+  index.
 - **Done: STIL is split out of the index** — 4.0 MB of 12.5 MB serialised, on
   29,509 of 61,157 entries. The browser fetches `hvsc-index-lite.json` (1,121 KB
   gzipped, against 2,042 KB) and pulls `hvsc-stil.json` only when something needs

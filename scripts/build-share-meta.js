@@ -13,14 +13,24 @@ const ROOT = path.join(__dirname, '..');
 const INDEX = path.join(ROOT, 'public', 'hvsc-index.json');
 const OUT_DIR = path.join(ROOT, 'public', 'share-meta');
 
-// FNV-1a 32-bit, low byte selects the shard. Must match tune-og.js.
+// FNV-1a 32-bit, low 12 bits select the shard. Must match tune-og.js and
+// hvsc-browser.js - scripts/test-share-shards.js checks that all three agree.
+//
+// Math.imul, NOT `(h * 0x01000193) >>> 0`: h reaches ~4.3e9 and the prime is
+// ~1.7e7, so the plain multiply exceeds 2^53 and silently loses the low bits
+// the shard is taken from. That is not a hash - it left 212 of 256 shards in
+// use, the largest holding 966 tunes against a median of 33.
+//
+// 12 bits, not 8: at 8 the shards are even but big (about 240 tunes each), and
+// a deep link fetches one to play one tune. At 12 the median is 15 tunes and
+// the largest 29, so a shared link downloads about 1.5 KB whichever tune it is.
 function shardOf(p) {
     let h = 0x811c9dc5;
     for (let i = 0; i < p.length; i++) {
         h ^= p.charCodeAt(i);
-        h = (h * 0x01000193) >>> 0;
+        h = Math.imul(h, 0x01000193);
     }
-    return (h & 0xff).toString(16).padStart(2, '0');
+    return ((h >>> 0) & 0xfff).toString(16).padStart(3, '0');
 }
 
 function main() {
