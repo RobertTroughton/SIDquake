@@ -425,12 +425,15 @@ a human required between every blocking wait.
   program runs, and a warning when an uncompressed file is mostly the empty
   space between its parts. The memory map still draws those holes as "unused",
   which reads as free RAM rather than bytes paid for.
-- **Show the layout before the export, not after.** `renderMemoryMap` is only
-  called on success (`ui.js:3193`) and `clearMemoryMap` wipes it on any
-  visualiser change (`ui.js:1093`). `selectValidLayouts` already runs on every
-  card render, and `placeRelocatedVisualizer` needs only the SID bytes and the
-  config — so bank, code page, PRG load address, span and an estimated compressed
-  size can all be shown live.
+- **Done: the layout is shown before the export.** Picking a player runs the same
+  placement the export would (`previewPlacement`, on a scratch builder so the real
+  one and `lastSysAddress` are untouched) and reports the SYS address, where the
+  music sits, the code page, the graphics address and VIC bank, and the span so
+  far. It says plainly that it is a plan: the song data, the player stub and any
+  bitmaps are placed later, so that span is a floor. The memory map still waits
+  for a real export, because that one is the finished image. Still open: an
+  estimated compressed size, which needs a run through exomizer to be worth
+  printing.
 
 ## Preview — the missing feedback loop
 

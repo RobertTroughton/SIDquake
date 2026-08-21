@@ -4922,3 +4922,45 @@
     color: var(--text-accent);
     font-weight: 400;
 }
+
+/* "Where it goes", shown before an export rather than only after one. It is a
+   plan, not the finished image, so it stays visibly plainer than the memory map
+   the export draws. */
+.placement-plan {
+    margin-top: var(--space-md);
+    padding: 12px 14px;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: var(--bg-surface);
+    font-size: 0.85em;
+}
+
+.placement-plan h4 {
+    margin: 0 0 6px;
+    font-size: 0.95em;
+    color: var(--text-secondary);
+    font-weight: 600;
+}
+
+.placement-plan dl {
+    display: grid;
+    grid-template-columns: auto 1fr;
+    gap: 3px 12px;
+    margin: 0;
+}
+
+.placement-plan dt {
+    color: var(--text-muted);
+}
+
+.placement-plan dd {
+    margin: 0;
+    font-family: var(--font-mono);
+    color: var(--text-primary);
+}
+
+.placement-plan .pp-note {
+    margin: 8px 0 0;
+    color: var(--text-muted);
+    line-height: 1.5;
+}

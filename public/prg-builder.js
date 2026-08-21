@@ -2223,6 +2223,42 @@ class SIDquakePRGExporter {
     // Relocatable export: place the SID, the relocated code + graphics blobs, and
     // return the transformed layout. Graphics stay in a VIC bank; code goes on any
     // free page. (Currently wired for the no-input players, e.g. RaistlinBars.)
+    /**
+     * Run the placement without building anything, so the page can say where a
+     * tune's code and graphics will land BEFORE the user commits to an export.
+     * Uses a scratch builder, so the real one is untouched, and restores
+     * lastSysAddress - a preview must not look like an export happened.
+     *
+     * What comes back is a plan, not a finished image: the data block, the
+     * player stub and any user bitmaps are added later by createPRG, so the
+     * component list here is short of the final one. Callers must present it as
+     * a plan.
+     * @param {number|null} preferredGfxBank - the same soft preference an export
+     *   would apply, so the preview answers the question the user actually asked.
+     * @returns {Promise<{plan: object, info: object, gfxBankHonoured: boolean}>}
+     */
+    async previewPlacement(vizConfig, actualSidAddress, sidData, preferredGfxBank = null) {
+        const realBuilder = this.builder;
+        const realSys = this.lastSysAddress;
+        const realBank = this._preferredGfxBank;
+        const realHonoured = this.lastGfxBankPreferenceHonoured;
+        this.builder = new PRGBuilder();
+        this._preferredGfxBank = preferredGfxBank;
+        try {
+            const plan = await this.placeRelocatedVisualizer(vizConfig, actualSidAddress, sidData);
+            return {
+                plan,
+                info: this.builder.getInfo(),
+                gfxBankHonoured: this.lastGfxBankPreferenceHonoured !== false,
+            };
+        } finally {
+            this.builder = realBuilder;
+            this.lastSysAddress = realSys;
+            this._preferredGfxBank = realBank;
+            this.lastGfxBankPreferenceHonoured = realHonoured;
+        }
+    }
+
     async placeRelocatedVisualizer(vizConfig, actualSidAddress, sidData) {
         const baseLayout = vizConfig.layouts[vizConfig.relocBaseLayout || 'bank4000'];
 

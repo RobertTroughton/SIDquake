@@ -53,6 +53,9 @@ class UIController {
         // new tune keeps the bar style / colours / palettes / font the user set.
         // Holds only values the user actually changed (see _rememberOptionValues).
         this._optionMemory = {};
+        // Only the newest placement preview is shown; a user can change player
+        // faster than the placement runs.
+        this._planToken = 0;
         this.hvscBrowserWindow = null;
         this.mainPlayer = null;
         this.elements = this.cacheElements();
@@ -1504,6 +1507,11 @@ class UIController {
         this.updateMultiSongNote();
 
         this.loadVisualizerOptions(target);
+
+        // ...but where this player WILL go can be worked out now, so say so
+        // rather than making the user export to find out. Not awaited: it
+        // fetches the player's reloc table, and the panels must not wait on it.
+        this.renderPlacementPlan();
     }
 
     // What the user gets after Generate: the file, what it is, and how to run it.
@@ -4643,6 +4651,62 @@ class UIController {
         });
         el.style.display = 'block';
         this._wireTimelineCopy(el);
+    }
+
+    /**
+     * Say where this tune and player will land, before the user commits to an
+     * export. The map that already exists is only drawn on success, so until now
+     * the only way to find out which VIC bank a tune forced, or what the SYS
+     * address would be, was to export and look.
+     *
+     * This is deliberately a plan and says so: the data block, the player stub
+     * and any bitmaps are placed later, so the span here is a floor, not the
+     * final size.
+     */
+    async renderPlacementPlan() {
+        const el = document.getElementById('placementPlan');
+        if (!el) return;
+        const config = this.currentVisualizerConfig;
+        const hide = () => { el.hidden = true; el.innerHTML = ''; };
+        if (!config || !config.relocatable || !this.sidHeader || !this.prgExporter) return hide();
+
+        // Only the newest plan is shown: the user can change player faster than
+        // the placement runs.
+        const token = ++this._planToken;
+        let result;
+        try {
+            const sidInfo = this.prgExporter.extractSIDMusicData();
+            result = await this.prgExporter.previewPlacement(
+                config, sidInfo.loadAddress, sidInfo.data,
+                this.getAdvancedSettings().preferredGfxBank || null);
+        } catch (e) {
+            // "It will not fit" is already reported by the card grid; nothing
+            // useful to say here, so say nothing.
+            if (token === this._planToken) hide();
+            return;
+        }
+        if (token !== this._planToken) return;
+
+        const { plan, info } = result;
+        const hex = v => '$' + v.toString(16).toUpperCase().padStart(4, '0');
+        const sz = n => (n >= 1024 ? (n / 1024).toFixed(n % 1024 ? 1 : 0) + ' KB' : n + ' B');
+        const gfxAt = plan.gfxBankBase + plan.gfxOffset;
+        const wanted = this.getAdvancedSettings().preferredGfxBank;
+        const missedBank = !!wanted && result.gfxBankHonoured === false;
+
+        el.hidden = false;
+        el.innerHTML = `
+            <h4>Where it goes</h4>
+            <dl>
+                <dt>Run it with</dt><dd>SYS ${plan.visualizerLoadAddress}</dd>
+                <dt>Music</dt><dd>${hex(info.lowestAddress)} onwards</dd>
+                <dt>Player code</dt><dd>${hex(plan.codePage)} (${sz(plan.codeBlob.length)})</dd>
+                <dt>Graphics</dt><dd>${hex(gfxAt)}, VIC bank ${plan.gfxBankNum}</dd>
+                <dt>Uses so far</dt><dd>${hex(info.lowestAddress)}–${hex(info.highestAddress)}</dd>
+            </dl>
+            <p class="pp-note">${missedBank
+                ? 'This tune leaves no room in the bank you asked for, so a bank that works was chosen. '
+                : ''}A plan, not the finished file: the song data and anything you add still have to go in.</p>`;
     }
 
     renderMemoryMap(info, meta = {}) {

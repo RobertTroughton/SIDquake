@@ -994,6 +994,51 @@ async function loadSid(page, file) {
                 railReuse.focusKept === true, JSON.stringify(railReuse));
         }
 
+        // --- where it goes, before the export ---------------------------------
+        const plan = await page.evaluate(async () => {
+            const ui = window.uiController;
+            await ui.selectVisualizer(VISUALIZERS.find(v => v.id === 'RaistlinBars'));
+            await ui.renderPlacementPlan();
+            const el = document.getElementById('placementPlan');
+            const text = el.textContent;
+            const mapShown = getComputedStyle(document.getElementById('memoryMap')).display;
+            return {
+                shown: !el.hidden,
+                saysSys: /SYS \d+/.test(text),
+                saysBank: /VIC bank [0-3]/.test(text),
+                saysCode: /Player code/.test(text) && /\$[0-9A-F]{4}/.test(text),
+                saysItIsAPlan: /plan, not the finished file/i.test(text),
+                mapStillHidden: mapShown === 'none',
+            };
+        });
+        check('Where the export will land is shown before it happens', plan.shown === true,
+            JSON.stringify(plan));
+        check('It names the SYS address, the code page and the VIC bank',
+            plan.saysSys && plan.saysCode && plan.saysBank, JSON.stringify(plan));
+        check('And says it is a plan rather than the finished file',
+            plan.saysItIsAPlan === true, JSON.stringify(plan));
+        check('The memory map still waits for a real export',
+            plan.mapStillHidden === true, JSON.stringify(plan));
+
+        // A preview must not leave the exporter thinking an export happened.
+        const clean = await page.evaluate(async () => {
+            const ui = window.uiController;
+            const ex = ui.prgExporter;
+            ex.lastSysAddress = 0x1234;
+            ex.lastGfxBankPreferenceHonoured = true;
+            const before = ex.builder.getInfo().components.length;
+            await ui.renderPlacementPlan();
+            return {
+                sys: ex.lastSysAddress,
+                honoured: ex.lastGfxBankPreferenceHonoured,
+                components: ex.builder.getInfo().components.length,
+                before,
+            };
+        });
+        check('Previewing leaves the real exporter untouched',
+            clean.sys === 0x1234 && clean.honoured === true
+            && clean.components === clean.before, JSON.stringify(clean));
+
         // --- the bake worker runs one job at a time ---------------------------
         const workerJobs = await page.evaluate(async () => {
             const cb = window.cacheBust || (s => s);
