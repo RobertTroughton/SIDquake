@@ -933,6 +933,25 @@ details[open].panel > summary h2::after {
 }
 
 @media (max-width: 480px) {
+    /* Four uppercase mono labels with 24px of side padding need ~475px; trim
+       the padding and tracking so they fit a phone, and let the row scroll
+       rather than clip if a future tab pushes it over again. */
+    .page-tabs {
+        overflow-x: auto;
+        scrollbar-width: none;
+    }
+
+    .page-tabs::-webkit-scrollbar {
+        display: none;
+    }
+
+    .page-tab {
+        padding: 12px var(--space-sm);
+        gap: var(--space-xs);
+        letter-spacing: 0.5px;
+    }
+
+
     .site-header-logo--wide {
         display: none;
     }
@@ -999,7 +1018,12 @@ details[open].panel > summary h2::after {
 }
 
 .page-tab {
-    flex: 1;
+    /* min-width:0 so a tab can shrink below its longest word. Without it a
+       flex:1 item refuses to go under its intrinsic width, the row grows past
+       the viewport, and .container's overflow:hidden clips the last tab off
+       the screen with no way to scroll to it. */
+    flex: 1 1 0;
+    min-width: 0;
     display: flex;
     align-items: center;
     justify-content: center;

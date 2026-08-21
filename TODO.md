@@ -17,11 +17,9 @@ Ranked by value against effort, not by section order. Each line names the sectio
 that holds the detail.
 
 1. Ship the eleven preview GIFs and set `animated: true`. *(Preview)*
-2. Don't auto-open the Studio below 720px; un-hide the visualiser on phones;
-   autoplay after Random SID. *(Mobile and first impression)*
-3. The completion panel that tells a first-timer what a .prg is and how to run
+2. The completion panel that tells a first-timer what a .prg is and how to run
    it. *(Language)*
-4. Multi-file drop and a queue. *(Batch)*
+3. Multi-file drop and a queue. *(Batch)*
 
 Bigger pieces worth planning rather than picking up: the live in-browser preview,
 recipe files plus the `sidquake-build` CLI, the listener-first entry point, and
@@ -305,28 +303,15 @@ a PRG.
 - **Split STIL out of the index.** It is ~34% of the 11.98 MB and is read one
   entry at a time for the selected tune (`hvsc-browser.js:627`). Shard it the way
   `build-share-meta.js` already shards.
-- **The Studio auto-opens on every load** (`studio-modal.js:134`), and on a phone
-  `.studio-player-mount` is `display: none` (`studio-modal.css:440`) — so the
-  modal that opens uninvited is the one with no play button, over a page with no
-  Android Back handling (no `popstate` anywhere; `Escape` is the only close key).
-  Don't auto-open below 720px; the "Open Studio" button already exists.
-- **The visualiser is hidden on phones** (`styles-deferred.css:2962`).
-  `hvsc-visualizer.js` is 64 log-spaced bars with peak caps, a bass flash and an
-  idle demo wave — the most listener-friendly thing in the repo, switched off on
-  the one device with nothing else to look at.
-- **Nothing plays without work.** Random SID ends in two stacked modals with the
-  player below the fold; three taps and a scroll to hear anything. Autoplay once
-  a tune is chosen.
+- **Still open: no Android Back handling.** There is no `popstate`/`pushState`
+  anywhere; `Escape` is the only close key, and phones don't have one, so Back
+  navigates off the site instead of closing a modal. The Studio no longer opens
+  uninvited on a phone, which removes the worst case, but the HVSC browser is
+  still a modal with no hardware way out.
 - **The upload buttons are live-looking but dead for the first second or two** —
   they ship in static HTML (`index.html:146-158`) and handlers attach in `ui.js`,
   fourth in a deliberately yielded load chain (`index.html:1133-1150`). A first
   tap that does nothing is a bounce.
-- **The page-tab row may clip at 390px.** `.page-tab` is `flex: 1` with 48px
-  padding and uppercase Space Mono (`styles.css:946`), inside a container with
-  `overflow: hidden` (`styles.css:128`), and there is no `.page-tab` rule in
-  either mobile breakpoint. **Confirm in a browser**, then add a landing-page
-  overflow assertion to `scripts/mobile-layout-check.js` — the harness is good and
-  only ever looks at `#hvscModal` and `.studio-modal-content`.
 - **`public/songlengths-report.html` is 1.4 MB** of internal QA output, deployed,
   publicly reachable and not disallowed in `robots.txt`.
 - **Font Awesome brands costs ~117 KB for two icons** (`fa-github`, `fa-youtube`).

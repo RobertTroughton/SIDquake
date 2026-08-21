@@ -344,7 +344,7 @@ class UIController {
             const blob = await response.blob();
             const file = new File([blob], result.name, { type: 'application/octet-stream' });
 
-            await this.processFile(file);
+            await this.processFile(file, { autoplay: true });
 
         } catch (error) {
             this.hideBusy();
@@ -373,7 +373,7 @@ class UIController {
             const blob = await response.blob();
             const file = new File([blob], data.name, { type: 'application/octet-stream' });
 
-            await this.processFile(file);
+            await this.processFile(file, { autoplay: true });
 
         } catch (error) {
             console.error('Error downloading HVSC file:', error);
@@ -688,7 +688,10 @@ class UIController {
         }
     }
 
-    async processFile(file) {
+    // opts.autoplay: the tune was chosen by an explicit click (Random SID, an
+    // HVSC pick), so start it playing rather than making the user hunt for the
+    // play button under whatever opened on top.
+    async processFile(file, opts = {}) {
         if (!file.name.toLowerCase().endsWith('.sid')) {
             this.showModal('Please select a valid SID file', false);
             return;
@@ -696,6 +699,7 @@ class UIController {
 
         this.currentFileName = file.name;
         this.hasModifications = false;
+        const autoplay = !!(opts && opts.autoplay);
         this.elements.exportModifiedSIDButton.disabled = true;
 
         // A scan for the previous tune is now pointless, and its result must not
@@ -719,7 +723,7 @@ class UIController {
 
             const player = await this.ensureMainPlayer();
             if (player) {
-                player.loadFromBinary(new Uint8Array(buffer), file.name);
+                player.loadFromBinary(new Uint8Array(buffer), file.name, { autoplay });
             }
 
             this.updateBusy('Parsing SID Header', 'Extracting metadata...');

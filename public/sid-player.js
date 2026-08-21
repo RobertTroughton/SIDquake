@@ -157,7 +157,12 @@ class SIDPlayer {
         this.stopTimeUpdate();
     }
 
-    async loadFromBinary(data, filename) {
+    // opts.autoplay: start as soon as the tune is ready. Only pass it from a
+    // path the user actually clicked (Random SID, an HVSC pick) - the browser's
+    // autoplay policy needs that gesture, and starting sound unasked otherwise
+    // is rude.
+    async loadFromBinary(data, filename, opts = {}) {
+        this._autoplayOnLoad = !!opts.autoplay;
         this.stop();
         this.takeOwnership();
         this._ownershipLost = false;
@@ -234,6 +239,14 @@ class SIDPlayer {
         this.els.speedGroup.querySelectorAll('.sid-player-speed-btn').forEach(b => {
             b.classList.toggle('active', parseInt(b.dataset.speed, 10) === speed);
         });
+
+        // Asked for on load: play now the tune is ready. _syncPlayButton already
+        // handles the case where the audio context is still suspended, so a
+        // blocked start shows PLAY rather than a lying PAUSE.
+        if (this._autoplayOnLoad) {
+            this._autoplayOnLoad = false;
+            this.play();
+        }
     }
 
     togglePlay() {

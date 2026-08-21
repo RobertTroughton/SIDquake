@@ -2954,8 +2954,10 @@
         height: 24px;
     }
 
+    /* Kept on a phone. It is the only thing to look at while a tune plays, and
+       the listing above it scrolls - the bars are worth the rows they cost. */
     .hvsc-visualizer {
-        display: none;
+        height: 56px;
     }
 
     .hvsc-attribution {

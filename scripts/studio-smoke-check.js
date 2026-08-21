@@ -125,6 +125,15 @@ async function loadSid(page, file) {
             () => document.querySelectorAll('#exportManifest tr').length);
         check('Export manifest renders rows', manifestRows > 1, `${manifestRows} rows`);
 
+        // --- narrow viewports must not be dropped into the Studio -------------
+        const narrow = await page.evaluate(() => {
+            // matchMedia follows the emulated viewport, so drive it directly:
+            // the Studio's own isNarrow getter is what openForNewFile consults.
+            return { query: StudioModal.NARROW_QUERY, isNarrow: window.studioModal.isNarrow };
+        }).catch(() => null);
+        check('The Studio knows when it is on a narrow viewport',
+            !!narrow && narrow.isNarrow === false, JSON.stringify(narrow));
+
         // --- Generate PRG reachable from every tab ----------------------------
         const genEverywhere = await page.evaluate(() => {
             const tabs = window.studioModal.tabList().map(t => t.id);
@@ -268,6 +277,54 @@ async function loadSid(page, file) {
 
         const fatal = errors.filter(e => !/favicon|net::ERR_|404/i.test(e));
         check('No uncaught page errors', fatal.length === 0, fatal.slice(0, 3).join(' | '));
+
+        // --- phone width ------------------------------------------------------
+        const phone = await browser.newPage({ viewport: { width: 390, height: 780 } });
+        try {
+            await phone.goto(base, { waitUntil: 'load' });
+            await phone.waitForFunction(() => !!window.uiController, null, { timeout: 20000 });
+
+            const tabsFit = await phone.evaluate(() => {
+                const bar = document.querySelector('.page-tabs');
+                const container = document.querySelector('.container');
+                return {
+                    barScroll: bar.scrollWidth,
+                    barClient: bar.clientWidth,
+                    docScroll: document.documentElement.scrollWidth,
+                    docClient: document.documentElement.clientWidth,
+                    containerOverflow: getComputedStyle(container).overflowX,
+                };
+            });
+            check('The page-tab row is not clipped at 390px',
+                tabsFit.barScroll <= tabsFit.barClient + 1,
+                `${tabsFit.barScroll} > ${tabsFit.barClient}`);
+            check('The page does not scroll sideways at 390px',
+                tabsFit.docScroll <= tabsFit.docClient + 1,
+                `${tabsFit.docScroll} > ${tabsFit.docClient}`);
+
+            await loadSid(phone, 'Flex-Lundia.sid');
+            await phone.waitForFunction(() => window.uiController.sidHeader != null,
+                null, { timeout: 60000 });
+            await phone.waitForTimeout(1500);
+            const studioState = await phone.evaluate(() => ({
+                isNarrow: window.studioModal.isNarrow,
+                isOpen: window.studioModal.isOpen,
+                openBtnVisible: document.getElementById('openStudioBtn')?.offsetParent !== null,
+            }));
+            check('The Studio does not open itself on a phone',
+                studioState.isNarrow === true && studioState.isOpen === false,
+                JSON.stringify(studioState));
+            check('Open Studio is offered instead', studioState.openBtnVisible === true);
+
+            const vizShown = await phone.evaluate(() => {
+                const el = document.querySelector('.hvsc-visualizer');
+                if (!el) return 'absent';
+                return getComputedStyle(el).display;
+            });
+            check('The spectrum visualizer is not hidden on a phone', vizShown !== 'none', vizShown);
+        } finally {
+            await phone.close();
+        }
     } finally {
         if (!process.argv.includes('--keep')) await browser.close();
         server.close();

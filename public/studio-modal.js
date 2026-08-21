@@ -133,6 +133,17 @@ class StudioModal {
         }
     }
 
+    // Below this the tab rail is hidden and the header drops the player
+    // (studio-modal.css), so the Studio is a full-screen workspace with no way to
+    // hear the tune. Nobody builds a C64 executable one-handed at a bus stop -
+    // wait to be asked via "Open Studio" instead of landing them in it.
+    static NARROW_QUERY = '(max-width: 720px)';
+
+    get isNarrow() {
+        return typeof window.matchMedia === 'function'
+            && window.matchMedia(StudioModal.NARROW_QUERY).matches;
+    }
+
     // A new SID was loaded: clear per-file state and land on the Visualizer
     // tab (the first decision the user makes for the new tune).
     openForNewFile() {
@@ -140,7 +151,7 @@ class StudioModal {
         this.visited.add('song');
         this.activate('visualizer');
         this.refreshHeader();
-        this.open();
+        if (!this.isNarrow) this.open();
         if (this.isOpen) this.queueRefresh();
     }
 
