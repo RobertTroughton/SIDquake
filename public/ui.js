@@ -919,18 +919,19 @@ class UIController {
             this.updateTechnicalInfo(header);
             this.updateSongTitle(header);
 
-            this.updateBusy('Analyzing SID Music', 'This may take a few moments...');
+            const songs = header.songs || 1;
+            this.updateBusy('Analyzing SID Music',
+                songs > 1
+                    ? `Running all ${songs} tunes to see what the music touches. The page pauses while it does.`
+                    : 'Running the music to see what it touches. The page pauses while it does.');
 
             const frameCount = 30000;
-            let lastProgress = 0;
+            // sid_analyze blocks the main thread, so give the browser a frame to
+            // put the message above on screen first - otherwise the freeze
+            // arrives before the explanation for it does.
+            await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
 
-            this.analysisResults = await this.analyzer.analyze(frameCount, (current, total) => {
-                const percent = Math.floor((current / total) * 100);
-                if (percent !== lastProgress) {
-                    lastProgress = percent;
-                    this.updateBusy('Analyzing SID Music', `Processing frame ${current.toLocaleString()} of ${total.toLocaleString()} (${percent}%)`);
-                }
-            });
+            this.analysisResults = await this.analyzer.analyze(frameCount);
 
             this.analyzer.analysisResults = this.analysisResults;
 

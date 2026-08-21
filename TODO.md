@@ -205,10 +205,18 @@ other twenty places that needed them.
   tool also still needs its own Tab trap and focus restore (copy `ui.js:274-296`),
   and its document-level arrow handler swallows the Size slider's arrow keys —
   scope it to the canvas.
-- **Still open: the file load has no Cancel.** `processFile`'s overlay passes no
-  `onCancel`, so the 30,000-frame analysis can't be stopped. Random SID is
-  cancellable now, and the overlay itself is a labelled dialog that announces on
-  a throttle, focuses Cancel and makes the page behind `inert`.
+- **The file load still has no Cancel, and can't have one in JS.** `sid_analyze`
+  is a single synchronous WASM call — measured at ~470 ms for a one-song tune on
+  a fast desktop, and it runs the whole loop again per subtune — so the main
+  thread is held for its entire run and a Cancel button would be unclickable.
+  What was fixable is fixed: the overlay used to tick a fake `setInterval`
+  percentage the browser could not deliver until after the call had finished, so
+  it sat at 0% and jumped to 100%. It now says what is happening and that the
+  page will pause, and yields a frame so that message is on screen before the
+  freeze. A real Cancel needs `[WASM]`: chunk `sid_analyze` into resumable
+  batches with an entry point the JS side can drive frame by frame. Random SID
+  is cancellable, and the overlay is a labelled dialog that announces on a
+  throttle, focuses Cancel and makes the page behind `inert`.
 - **HVSC results now paint in chunks.** It is a proper listbox — roving
   tabindex, arrows, Home/End, PageUp/Down, type-ahead, announced counts — and a
   search paints 60 rows at a time across frames, abandoning the tail when the
