@@ -651,6 +651,10 @@ async function loadSid(page, file) {
                 filename: 'smoke-test.prg', sizeKB: '12.40',
                 isCompressed: false, compressionFailed: false,
                 compressionType: 'none', sysAddress: 16640,
+                bytes: 12698,
+                span: { lo: 0x0900, hi: 0xFF3F },
+                spanBytes: 0xFF3F - 0x0900 + 1,
+                usedBytes: 12698,
             });
             const el = document.getElementById('exportDone');
             return {
@@ -659,6 +663,9 @@ async function loadSid(page, file) {
                 explainsSys: /SYS 16640/.test(el.textContent),
                 linksEmulator: !!el.querySelector('a[href*="vice-emu"]'),
                 howToRun: !!el.querySelector('#exportDoneHow'),
+                blocks: /50 disk blocks/.test(el.textContent),
+                span: /\$0900-\$FF3F/.test(el.textContent),
+                emptyWarning: /empty space/.test(el.textContent),
             };
         });
         check('The completion panel appears', done.shown);
@@ -666,6 +673,10 @@ async function loadSid(page, file) {
         check('It explains the SYS address rather than just printing it', done.explainsSys);
         check('It links an emulator and how to run the file',
             done.linksEmulator && done.howToRun, JSON.stringify(done));
+        check('It reports disk blocks and where the program runs',
+            done.blocks && done.span, JSON.stringify(done));
+        check('And warns when an uncompressed file is mostly empty space',
+            done.emptyWarning, JSON.stringify(done));
 
         // --- multi-file queue -------------------------------------------------
         await loadSids(page, ['Flex-Lundia.sid', 'JCH-Crystalline.sid', 'Xiny-Laxity.sid']);

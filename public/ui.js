@@ -1300,9 +1300,28 @@ class UIController {
         let howOpen = true;
         try { howOpen = localStorage.getItem('sidquakeHowToRunClosed') !== '1'; } catch (e) { /* blocked */ }
 
+        // Disk blocks, because that is the unit a release is budgeted in - a .d64
+        // side holds 664. 254 usable bytes per block, plus the two-byte load
+        // address the PRG carries.
+        const blocks = info.bytes ? Math.ceil(info.bytes / 254) : null;
+        const hex = (n) => '$' + n.toString(16).toUpperCase().padStart(4, '0');
+        const facts = [`${esc(info.sizeKB)} KB`];
+        if (blocks) facts.push(`${blocks} disk block${blocks === 1 ? '' : 's'}`);
+        if (info.span) facts.push(`runs at ${hex(info.span.lo)}-${hex(info.span.hi)}`);
+
+        // An uncompressed export writes the gaps between components out as
+        // zeros, so a scattered layout costs real bytes and real blocks.
+        if (!info.isCompressed && info.spanBytes && info.usedBytes
+            && info.spanBytes - info.usedBytes > 8 * 1024) {
+            const wasted = ((info.spanBytes - info.usedBytes) / 1024).toFixed(1);
+            notes.push(`<p class="ed-note">About ${wasted} KB of this file is empty space `
+                + `between the parts, written out because the file has to be one `
+                + `continuous block. Compressing it removes that.</p>`);
+        }
+
         el.innerHTML = `
             <h4 class="ed-title">Your file is ready</h4>
-            <p class="ed-file"><strong>${esc(info.filename)}</strong> · ${esc(info.sizeKB)} KB · saved to your downloads</p>
+            <p class="ed-file"><strong>${esc(info.filename)}</strong> · ${facts.join(' · ')} · saved to your downloads</p>
             <p class="ed-what">It's a Commodore 64 program. It runs on a real C64, or on a C64 emulator on your computer.</p>
             ${notes.join('')}
             <details class="ed-how" id="exportDoneHow"${howOpen ? ' open' : ''}>
@@ -3754,6 +3773,14 @@ class UIController {
                 compressionFailed,
                 compressionType,
                 sysAddress: realSysAddress,
+                bytes: prgData.length,
+                // The runtime span the PRG covers. build() allocates
+                // highest-lowest+1 and zero-fills, so a tune low in memory with
+                // graphics high leaves a large hole that is still written out.
+                span: memInfo ? { lo: memInfo.lowestAddress, hi: memInfo.highestAddress } : null,
+                spanBytes: memInfo ? memInfo.totalSize : null,
+                usedBytes: memInfo
+                    ? memInfo.components.reduce((n, c) => n + c.size, 0) : null,
             });
 
             this.renderBakeTimeline(bakeInfo);

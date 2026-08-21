@@ -381,11 +381,11 @@ a human required between every blocking wait.
 - **Layout hints** — preferred VIC bank, preferred code region, reserved ranges —
   soft, falling back to automatic with a visible note. A disk with a shared
   loader wants every PRG in the same bank.
-- **Report block counts and the uncompressed span.** `build()` allocates
-  `highestAddress - lowestAddress + 1` and zero-fills (`prg-builder.js:76`), so a
-  SID at `$1000` with graphics at `$C000` is a ~60 KB file that is mostly zeros.
-  The memory map draws those holes as "unused", which reads as free RAM rather
-  than bytes paid for.
+- **Done: blocks, span and wasted space** are reported on the completion panel —
+  disk blocks because that is the unit a release is budgeted in, where the
+  program runs, and a warning when an uncompressed file is mostly the empty
+  space between its parts. The memory map still draws those holes as "unused",
+  which reads as free RAM rather than bytes paid for.
 - **Show the layout before the export, not after.** `renderMemoryMap` is only
   called on success (`ui.js:3193`) and `clearMemoryMap` wipes it on any
   visualiser change (`ui.js:1093`). `selectValidLayouts` already runs on every
