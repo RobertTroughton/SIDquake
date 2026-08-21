@@ -980,6 +980,46 @@ async function loadSid(page, file) {
         } finally {
             await phone.close();
         }
+
+        // --- the export manifest at the narrowest supported width -------------
+        const tiny = await browser.newPage({ viewport: { width: 320, height: 720 } });
+        try {
+            await tiny.goto(base, { waitUntil: 'load' });
+            await tiny.waitForFunction(() => !!window.uiController, null, { timeout: 20000 });
+            await loadSid(tiny, 'JCH-Crystalline.sid');
+            await tiny.waitForFunction(() => !!window.uiController.sidHeader, null, { timeout: 60000 });
+            await tiny.evaluate(() => document.getElementById('openStudioBtn').click());
+            await tiny.waitForFunction(() => window.studioModal?.isOpen, null, { timeout: 20000 });
+            await tiny.evaluate(() => window.studioModal.activate('export'));
+            // The manifest shows a single "pick a visualizer first" row until the
+            // selection lands, so wait for the real rows rather than a fixed pause.
+            await tiny.waitForFunction(
+                () => document.querySelectorAll('#exportManifest tr').length > 1,
+                null, { timeout: 20000 });
+            const fit = await tiny.evaluate(() => {
+                const mf = document.getElementById('exportManifest');
+                const panel = mf.closest('.studio-panel') || mf.parentElement;
+                const val = mf.querySelector('.mf-val');
+                return {
+                    rows: mf.querySelectorAll('tr').length,
+                    manifestWidth: Math.round(mf.getBoundingClientRect().width),
+                    panelWidth: panel.clientWidth,
+                    valueWidth: val ? Math.round(val.getBoundingClientRect().width) : 0,
+                    docScroll: document.documentElement.scrollWidth,
+                    docClient: document.documentElement.clientWidth,
+                };
+            });
+            check('The export manifest fits its panel at 320px',
+                fit.rows > 1 && fit.manifestWidth <= fit.panelWidth + 1, JSON.stringify(fit));
+            // The label and status columns are fixed at 110px and 150px on wide
+            // screens; unchecked, they leave the value a 36px sliver.
+            check('The value is not crushed by the fixed label and status columns',
+                fit.valueWidth >= fit.manifestWidth * 0.6, JSON.stringify(fit));
+            check('And the page does not scroll sideways at 320px',
+                fit.docScroll <= fit.docClient + 1, JSON.stringify(fit));
+        } finally {
+            await tiny.close();
+        }
     } finally {
         if (!process.argv.includes('--keep')) await browser.close();
         server.close();

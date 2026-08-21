@@ -259,11 +259,12 @@ second one).
 
 **Zoom.** Done: the footer wraps rather than crushing the status text out of
 sight, drops the summary below 900px, and carries the current tab's status where
-the rail is hidden — which on a 1440px monitor is exactly 200% zoom. Still open:
-`.studio-manifest` has no `overflow-x` wrapper, so a long value plus its edit
-button can push the table wider than the panel at 320px; and 49 `font-size: *px`
-declarations (down to 9px) ignore a raised browser default font, though zoom
-scales them.
+the rail is hidden — which on a 1440px monitor is exactly 200% zoom. The export
+manifest's fixed 110px label and 150px status columns left the value 36px of a
+320px screen; below 480px the three cells stack down the page instead (234px for
+the value), and the table scrolls inside its own box above that. Still open: 49
+`font-size: *px` declarations (down to 9px) ignore a raised browser default font,
+though zoom scales them.
 
 ## Mobile and first impression
 

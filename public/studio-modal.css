@@ -277,6 +277,9 @@
     background: var(--bg-surface);
     border: 1px solid var(--border);
     margin-bottom: var(--space-md);
+    /* A long value plus its edit button can outgrow a narrow panel; scroll the
+       table inside its own box rather than widening the whole Studio. */
+    overflow-x: auto;
 }
 
 .studio-manifest table {
@@ -319,6 +322,43 @@
 .studio-manifest td:last-child {
     text-align: right;
     width: 150px;
+}
+
+/* Phone widths: the fixed 110px label and 150px status columns leave the value
+   about 36px of a 320px screen, which is unreadable however it wraps. Stack the
+   three cells instead, so each row reads label / value / status down the page. */
+@media (max-width: 480px) {
+    .studio-manifest table,
+    .studio-manifest tbody,
+    .studio-manifest tr,
+    .studio-manifest td {
+        display: block;
+        width: auto;
+    }
+
+    .studio-manifest tr {
+        padding: 8px 10px;
+        border-bottom: 1px solid var(--border);
+    }
+
+    .studio-manifest tr:last-child {
+        border-bottom: none;
+    }
+
+    .studio-manifest td {
+        padding: 0;
+        border-bottom: none;
+    }
+
+    .studio-manifest td:first-child {
+        white-space: normal;
+        font-size: 0.85em;
+    }
+
+    .studio-manifest td:last-child {
+        text-align: left;
+        margin-top: 4px;
+    }
 }
 
 .mf-tag.inc { color: var(--success); border: 1px solid rgba(92, 184, 122, 0.4); }
