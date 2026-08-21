@@ -22,24 +22,8 @@ class PETSCIIConverter {
         };
 
         // C64 color palette (VICE PAL values)
-        this.C64_PALETTE = [
-            [0x00, 0x00, 0x00], // 0: Black
-            [0xFF, 0xFF, 0xFF], // 1: White
-            [0x81, 0x33, 0x38], // 2: Red
-            [0x75, 0xCE, 0xC8], // 3: Cyan
-            [0x8E, 0x3C, 0x97], // 4: Purple
-            [0x56, 0xAC, 0x4D], // 5: Green
-            [0x2E, 0x2C, 0x9B], // 6: Blue
-            [0xED, 0xF1, 0x71], // 7: Yellow
-            [0x8E, 0x50, 0x29], // 8: Orange
-            [0x55, 0x38, 0x00], // 9: Brown
-            [0xC4, 0x6C, 0x71], // 10: Light Red
-            [0x4A, 0x4A, 0x4A], // 11: Dark Grey
-            [0x7B, 0x7B, 0x7B], // 12: Grey
-            [0xA9, 0xFF, 0x9F], // 13: Light Green
-            [0x70, 0x6D, 0xEB], // 14: Light Blue
-            [0xB2, 0xB2, 0xB2]  // 15: Light Grey
-        ];
+        // Shared with every swatch the user picks from - see c64-palette.js.
+        this.C64_PALETTE = window.C64_PALETTE_RGB.map(c => c.slice());
 
         this.LOGO_COLS = 40;
         this.LOGO_ROWS = 9;

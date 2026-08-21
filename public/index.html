@@ -1202,7 +1202,9 @@
         // instead of blocking the main thread in one giant 2+ second task.
         (function() {
             var scripts = [
-                'error-modal.js', 'visualizer-registry.js', 'studio-modal.js', 'ui.js'
+                // c64-palette.js first: ui.js reads the shared colour table at
+                // module scope, so it has to be there before it parses.
+                'c64-palette.js', 'error-modal.js', 'visualizer-registry.js', 'studio-modal.js', 'ui.js'
             ];
             var i = 0;
             function loadNext() {

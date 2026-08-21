@@ -349,6 +349,26 @@ async function loadSid(page, file) {
         });
         check('An export failure does not erase itself after 5s', stays === true);
 
+        // --- one C64 palette --------------------------------------------------
+        const palette = await page.evaluate(async () => {
+            await window.loadScript('petscii-converter.js');
+            const conv = new PETSCIIConverter();
+            const shared = window.C64_PALETTE;
+            const same = shared.every((c, i) =>
+                c.rgb.every((v, k) => v === conv.C64_PALETTE[i][k]));
+            return {
+                shared: shared.length,
+                same,
+                red: shared[2].hex,
+                uiUsesShared: typeof C64_COLORS !== 'undefined' && C64_COLORS === shared,
+            };
+        });
+        check('The swatches and the image converter share one palette',
+            palette.same && palette.uiUsesShared && palette.shared === 16,
+            JSON.stringify(palette));
+        check('It is the real VICE PAL table, not the muted one',
+            palette.red.toLowerCase() === '#813338', palette.red);
+
         // --- Studio rail is a real tablist ------------------------------------
         const rail = await page.evaluate(() => {
             const railEl = document.getElementById('studioRail');

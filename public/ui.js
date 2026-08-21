@@ -1,24 +1,9 @@
 ﻿// UI controller for SIDquake web app.
 
 // C64 hardware palette (16 colors). Index matches the C64 color number.
-const C64_COLORS = [
-    { value: 0, name: 'Black', hex: '#000000' },
-    { value: 1, name: 'White', hex: '#FFFFFF' },
-    { value: 2, name: 'Red', hex: '#753d3d' },
-    { value: 3, name: 'Cyan', hex: '#7bb4b4' },
-    { value: 4, name: 'Purple', hex: '#7d4488' },
-    { value: 5, name: 'Green', hex: '#5c985c' },
-    { value: 6, name: 'Blue', hex: '#343383' },
-    { value: 7, name: 'Yellow', hex: '#cbcc7c' },
-    { value: 8, name: 'Orange', hex: '#7c552f' },
-    { value: 9, name: 'Brown', hex: '#523e00' },
-    { value: 10, name: 'Light Red', hex: '#a76f6f' },
-    { value: 11, name: 'Dark Grey', hex: '#4e4e4e' },
-    { value: 12, name: 'Grey', hex: '#767676' },
-    { value: 13, name: 'Light Green', hex: '#9fdb9f' },
-    { value: 14, name: 'Light Blue', hex: '#6d6cbc' },
-    { value: 15, name: 'Light Grey', hex: '#a3a3a3' }
-];
+// The swatches, colour pickers and palette editors all draw from the shared
+// table in c64-palette.js - see the note there about why there used to be two.
+const C64_COLORS = window.C64_PALETTE;
 
 class UIController {
     constructor() {

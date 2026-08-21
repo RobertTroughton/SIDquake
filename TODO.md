@@ -406,11 +406,6 @@ wish of both experienced musicians and the beginner alike.
 
 - **Still open: the logo's own background** is fixed by the PNG converter with
   no override (`$d021`-`$d024`). Border and screen are separate controls now.
-- **The UI palette is not the C64 palette.** `C64_COLORS` (`ui.js:4-21`) is a
-  muted set; `petscii-converter.js:25-42` has the real VICE PAL values. Users
-  choose in one palette and ship in another. (Also listed under "Palette drift"
-  below — same root cause, and it matters more than it looks for a tool whose job
-  is C64 aesthetics.)
 - **No scroller on the bars-with-logo players.** Bars + logo + greetings is the
   standard release layout and it is not buildable; `scrollText` exists only in
   `scrapcolumns.json` and `simplebitmapwithscroller.json`.
@@ -483,7 +478,6 @@ VIC asset at any *valid slot within a bank* — not just shift whole banks in
 
 ## Refactor / cleanup
 - **Media-converter consolidation** — reassess whether `png_converter` is still needed or whether CharSetLab (or its functions) can replace it; unify the font/PETSCII/image conversion paths on a faster shared core.
-- **Palette drift** — the C64 RGB values differ between `ui.js` and `petscii-converter.js`; consolidate to one shared palette.
 - **Export option snapshot** — the exporter reads option state from the live DOM rather than a captured snapshot (`_captureOptionValues` exists but isn't used for export). No observed desync today (the modal is static during export).
 
 ## Loop detection — give the user control of the scan
