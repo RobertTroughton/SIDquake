@@ -707,11 +707,22 @@ class UIController {
             .filter(v => !v.hidden && this.visualizerExportable(v).ok);
         if (!compatible.length) { box.hidden = true; return; }
 
-        // A handful of clearly different looks, in the order someone would
-        // scan them - not the whole grid again.
-        const order = ['RaistlinBars', 'RaistlinBarsWithLogo', 'RaistlinMirrorBars',
-            'ScrapColumns', 'SimpleRaster', 'default'];
-        const picks = order.map(id => compatible.find(v => v.id === id)).filter(Boolean).slice(0, 4);
+        // A handful of clearly different looks, in the order someone would scan
+        // them - not the whole grid again. Plain text first, then the same
+        // thing with a picture, then bars, bars with a picture, and two that
+        // are neither: each step is one visible change from the one before it.
+        const QUICK_LOOKS = 6;
+        const order = ['default', 'DefaultWithLogo', 'RaistlinBars',
+            'RaistlinBarsWithLogo', 'RaistlinMirrorBars', 'MusicalBlobs'];
+        const picks = order.map(id => compatible.find(v => v.id === id)).filter(Boolean);
+        // A tune that cannot take one of them (too little room, wrong call
+        // rate) would otherwise leave a gap, so top the row back up from
+        // whatever else is exportable.
+        for (const v of compatible) {
+            if (picks.length >= QUICK_LOOKS) break;
+            if (!picks.includes(v)) picks.push(v);
+        }
+        picks.length = Math.min(picks.length, QUICK_LOOKS);
         if (!picks.length) picks.push(compatible[0]);
 
         const current = this.selectedVisualizer?.dataSourceGroup || this.selectedVisualizer?.id;
