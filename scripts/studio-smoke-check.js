@@ -814,6 +814,27 @@ async function loadSid(page, file) {
         check('The queue can be cleared', cleared.shown === false && cleared.queued === 0,
             JSON.stringify(cleared));
 
+        // --- the drifting notes have an off switch ----------------------------
+        const notes = await page.evaluate(async () => {
+            const t = document.getElementById('notesToggle');
+            if (!t) return { present: false };
+            t.checked = false;
+            t.dispatchEvent(new Event('change', { bubbles: true }));
+            const stored = localStorage.getItem('sidquakeNotesOff');
+            await new Promise(r => setTimeout(r, 200));
+            const gone = !document.querySelector('.floating-notes-container');
+            t.checked = true;
+            t.dispatchEvent(new Event('change', { bubbles: true }));
+            return { present: true, stored, gone, restored: localStorage.getItem('sidquakeNotesOff') };
+        });
+        check('The background notes can be turned off and it sticks',
+            notes.present && notes.stored === '1' && notes.restored === '0',
+            JSON.stringify(notes));
+
+        // --- one h1 per document ----------------------------------------------
+        const h1Count = await page.evaluate(() => document.querySelectorAll('h1').length);
+        check('The document has a single h1', h1Count === 1, `${h1Count} found`);
+
         const fatal = errors.filter(e => !/favicon|net::ERR_|404/i.test(e));
         check('No uncaught page errors', fatal.length === 0, fatal.slice(0, 3).join(' | '));
 

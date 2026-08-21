@@ -129,6 +129,17 @@ textarea:focus-visible,
     .floating-notes-container {
         display: none !important;
     }
+
+    /* A spinner is normally an accepted loading indicator, but this one can run
+       for minutes while a tune is scanned. Hold it still and let the text
+       alongside it carry the progress. */
+    .busy-spinner,
+    .analysis-chip-spinner,
+    .file-list-spinner,
+    .preview-spinner {
+        animation: none !important;
+        border-top-color: var(--accent) !important;
+    }
 }
 
 /* ==========================================================================
@@ -1611,4 +1622,12 @@ details[open].panel > summary h2::after {
 .open-studio-btn:hover {
     border-color: var(--accent);
     color: var(--text-primary);
+}
+
+/* An off switch for the drifting notes, next to the other footer links. */
+.site-footer-toggle {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    cursor: pointer;
 }

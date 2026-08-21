@@ -15,6 +15,9 @@ class FreshFloatingNotes {
         // preference, don't spawn any - the container isn't created either, so
         // there is nothing to hide.
         if (window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+        // "I find this distracting" is not the same preference as the OS
+        // setting, so there is a switch of its own, in the footer.
+        if (FreshFloatingNotes.isTurnedOff()) return;
 
         this.createContainer();
         this.startFloating();
@@ -115,6 +118,31 @@ class FreshFloatingNotes {
             this.intervalId = null;
         }
     }
+
+    /** Remove every note already on screen as well as stopping new ones. */
+    clear() {
+        this.stop();
+        if (this.container) {
+            this.container.remove();
+            this.container = null;
+        }
+    }
+
+    static isTurnedOff() {
+        try { return localStorage.getItem('sidquakeNotesOff') === '1'; }
+        catch (e) { return false; }   // storage blocked: leave them on
+    }
+
+    static setTurnedOff(off) {
+        try { localStorage.setItem('sidquakeNotesOff', off ? '1' : '0'); } catch (e) { /* blocked */ }
+        const live = window.freshFloatingNotes;
+        if (off) {
+            if (live) live.clear();
+        } else if (live) {
+            live.createContainer();
+            live.startFloating();
+        }
+    }
 }
 
 // Initialise when the browser is idle so the decorative effect never delays
@@ -128,3 +156,5 @@ if ('requestIdleCallback' in window) {
         window.freshFloatingNotes = new FreshFloatingNotes();
     }, 3000);
 }
+
+window.FreshFloatingNotes = FreshFloatingNotes;

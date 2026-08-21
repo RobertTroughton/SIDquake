@@ -248,6 +248,24 @@ class UIController {
             return;
         });
 
+        // The drifting background notes: an off switch of their own, because
+        // "I find this distracting" is not the same preference as the OS
+        // reduced-motion setting.
+        // Reads and writes the stored preference directly: floating-notes.js
+        // loads when the browser is idle, so its class may not exist yet - and
+        // when it does not, the preference it reads on arrival is already right.
+        const notesToggle = document.getElementById('notesToggle');
+        if (notesToggle) {
+            let off = false;
+            try { off = localStorage.getItem('sidquakeNotesOff') === '1'; } catch (e) { /* blocked */ }
+            notesToggle.checked = !off;
+            notesToggle.addEventListener('change', () => {
+                const nowOff = !notesToggle.checked;
+                try { localStorage.setItem('sidquakeNotesOff', nowOff ? '1' : '0'); } catch (e) { /* blocked */ }
+                if (window.FreshFloatingNotes) window.FreshFloatingNotes.setTurnedOff(nowOff);
+            });
+        }
+
         // Show placeholder content until a SID is loaded.
         this.initializeAttractMode();
     }
@@ -5000,6 +5018,12 @@ class UIController {
     // Build a lightweight modal (reuses the modal-overlay CSS) with a title, a body we
     // can rewrite as the flow progresses, and a settable button row. Returns imperative
     // handles - the flows below drive it. Kept apart from ErrorModal (text-only body).
+    // UNUSED. Kept because it is the shape a future in-flow prompt would take -
+    // but if it is ever wired up it MUST be registered in studio-modal.js's
+    // modal-precedence list and given a Tab trap and focus restore, or it
+    // inherits the bug logoFitModal had: Escape closing the Studio underneath it
+    // and Tab being yanked out from behind the dialog. It builds its own element
+    // rather than reusing #modalOverlay, so the id-based check would miss it.
     _flowModal(title) {
         const overlay = document.createElement('div');
         overlay.className = 'modal-overlay flow-modal visible';
