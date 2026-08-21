@@ -648,6 +648,11 @@ moment.
   the setting that raises it), the user stopped it, or nothing genuinely
   repeated. Still open: a prompt *in the moment* offering [Keep searching], which
   wants the render to extend from where it stopped rather than restart.
+- **Done: a tune still playing where the analysis stops is no longer called a
+  fade-out.** `resolveKeyframes` reports `truncated` for it, so the Song tab, the
+  timeline and the manifest say the music was cut there, no song length reaches
+  the C64 (the clock just counts up), and no forced loop is offered back to a
+  point the tune never reaches. Covered by `scripts/test-song-end.js`.
 - **Drop the default cap 10 min → 6 min** once keep-searching exists, so the
   common case gets faster and the edge case stays reachable.
 - Edge cases worth covering: a tune that never loops (long ambient), one whose loop

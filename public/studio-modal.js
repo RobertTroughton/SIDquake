@@ -599,6 +599,9 @@ class StudioModal {
                 rows.push(this.manifestRow('Song length', `${lmmss(manual)} · typed in`, 'ok', 'inc', 'song'));
             } else if (ui.analysisRunning) {
                 rows.push(this.manifestRow('Song length', 'measuring…', 'pending', 'pend', 'song'));
+            } else if (la && la.truncated) {
+                rows.push(this.manifestRow('Song length', 'still playing where the scan stops — running clock only',
+                    'off', 'skip', 'song'));
             } else {
                 rows.push(this.manifestRow('Song length', 'not measured — running clock only',
                     'off', 'skip', 'song'));

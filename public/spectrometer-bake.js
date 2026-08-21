@@ -750,7 +750,7 @@ export async function bakeRows(rows, options = {}) {
 // loop (trim to intro+one cycle) or the fade-off (cap + trailing zeros to loop on).
 // Both the full bake and the lightweight analysis (analyzeRows) run this - the loop /
 // length figures the UI shows must match what an export actually stores. Returns
-// { kf, nk, step, loopStart, looped, fadedOut, analyzedKeyframes }.
+// { kf, nk, step, loopStart, looped, fadedOut, truncated, analyzedKeyframes }.
 function resolveKeyframes(store, o) {
     const nframes = store.count;
     // decimate frameHz -> keyframeHz, whiten and quantize to 0..maxHeight
@@ -762,6 +762,7 @@ function resolveKeyframes(store, o) {
     const analyzedKeyframes = nk;   // keyframes analysed before any loop trim
     let loopStart = 0;
     let fadedOut = false;
+    let truncated = false;          // still playing where the stream had to stop
     let forcedLoop = false;         // fade path only: stream rewired to wrap to keyframe 0
     // Loop detection runs at FRAME resolution, never on the keyframe grid: SID
     // players advance on the frame interrupt, so a tune's period is always an
@@ -794,26 +795,33 @@ function resolveKeyframes(store, o) {
         const budgetKf = o.budgetBytes - 256 * NB;
         const capKf = Math.max(1, Math.min(
             Math.floor((o.outputMaxSeconds || o.maxSeconds) * o.keyframeHz), budgetKf));
-        let musicEnd = Math.min(nk, capKf);
+        const lastKf = Math.min(nk, capKf);
+        let musicEnd = lastKf;
         while (musicEnd > 0) {
             let e = 0; const off = (musicEnd - 1) * NB;
             for (let b = 0; b < NB; b++) e += kf[off + b];
             if (e > silent) break;
             musicEnd--;
         }
+        // Trailing silence means the tune really ended. Music still playing at the
+        // last keyframe we can hold means it was CUT there - the render ran out of
+        // window, or the stream ran out of RAM. That is not an ending, and calling
+        // it one puts a made-up length on the C64 clock and offers a loop back to a
+        // point the tune never reaches.
+        truncated = musicEnd > 0 && musicEnd === lastKf;
         // Forced song loop (o.forceLoop, chosen by the user for fade-out tunes):
         // keep ~1 s of silent tail so the fade can breathe, then wrap the WHOLE
         // stream back to keyframe 0 - the C64 player restarts the music on that
         // wrap, so audio and bars restart together. Default (no force): hold
         // ~0.3 s of zeros and loop on them, so the bars just fade off and stay dark.
-        forcedLoop = !!o.forceLoop && musicEnd > 0;
+        forcedLoop = !!o.forceLoop && musicEnd > 0 && !truncated;
         const HOLD = forcedLoop ? Math.max(8, Math.round(o.keyframeHz)) : 8;
         nk = musicEnd + HOLD;
         const faded = new Uint8Array(nk * NB);     // keyframes past musicEnd stay zero
         faded.set(kf.subarray(0, musicEnd * NB));
         kf = faded;
         loopStart = forcedLoop ? 0 : musicEnd;     // forced: restart at the top; else fade off
-        fadedOut = true;
+        fadedOut = !truncated;
         // Frame-exact end of the music, found on the frame grid rather than by
         // scaling musicEnd back up - same reason as the loop bounds above.
         musicEndFrames = Math.min(nkF, musicEnd * step + step);
@@ -825,7 +833,7 @@ function resolveKeyframes(store, o) {
         }
     }
     return {
-        kf, nk, step, loopStart, looped: !!loop, fadedOut, forcedLoop, analyzedKeyframes,
+        kf, nk, step, loopStart, looped: !!loop, fadedOut, truncated, forcedLoop, analyzedKeyframes,
         loopStartFrames, loopEndFrames, musicEndFrames,
     };
 }
@@ -839,7 +847,7 @@ export function analyzeRows(rows, options = {}) {
     o.keyframeHz = o.frameHz / (o.framesPerKeyframe || 2);
     const store = asRowStore(rows, o.numBars);
     const analyzedSeconds = options.analyzedSeconds != null ? options.analyzedSeconds : store.count / o.frameHz;
-    const { nk, loopStart, looped, fadedOut, analyzedKeyframes,
+    const { nk, loopStart, looped, fadedOut, truncated, analyzedKeyframes,
             loopStartFrames, loopEndFrames, musicEndFrames } = resolveKeyframes(store, o);
     // The tune's playing length in raster frames, defined the way HVSC's
     // Songlengths counts it: everything up to the point the music repeats, i.e.
@@ -847,7 +855,7 @@ export function analyzeRows(rows, options = {}) {
     // is measured to where the music actually stops.
     const lengthFrames = looped ? loopEndFrames : musicEndFrames;
     return {
-        keyframeHz: o.keyframeHz, numKeyframes: nk, loopStart, looped, fadedOut,
+        keyframeHz: o.keyframeHz, numKeyframes: nk, loopStart, looped, fadedOut, truncated,
         analyzedKeyframes, analyzedSeconds,
         cappedAtMaxSeconds: !looped && !!options.hitCap,
         storedSeconds: nk / o.keyframeHz,
@@ -861,9 +869,9 @@ export function analyzeRows(rows, options = {}) {
 // Back half of the bake: quantize the per-frame targets to keyframes, resolve the
 // loop (or fade-off), vector-quantize, and pack. Returns { codebook, indices,
 // numBars, maxHeight, K, keyframeHz, numKeyframes, loopStart, looped, fadedOut,
-// totalBytes, reconstruct() }.
+// truncated, totalBytes, reconstruct() }.
 async function bakeFromStore(store, o, analyzedSeconds, hitCap, prog) {
-    const { kf, nk, step, loopStart, looped, fadedOut, forcedLoop, analyzedKeyframes } =
+    const { kf, nk, step, loopStart, looped, fadedOut, truncated, forcedLoop, analyzedKeyframes } =
         resolveKeyframes(store, o);
 
     // --- Split (product) vector quantization -------------------------------
@@ -929,6 +937,7 @@ async function bakeFromStore(store, o, analyzedSeconds, hitCap, prog) {
         // the maxSeconds cap (tune longer than we looked at).
         looped,
         fadedOut,
+        truncated,
         forcedLoop,
         analyzedKeyframes,
         analyzedSeconds,

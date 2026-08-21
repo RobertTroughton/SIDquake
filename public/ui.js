@@ -779,6 +779,32 @@ class UIController {
         if (!viz) return;
         await this.selectVisualizer(viz);
         this.renderQuickExport();
+        await this.quickChooseImage();
+    }
+
+    // A look built around a picture is not finished when it is picked: without
+    // this the quick path exports the player's stock logo, which is the one
+    // image nobody wants on their release. So the gallery opens straight away
+    // for the picture slot the chosen look has.
+    //
+    // Only when there is nothing to go on: an image already chosen this session
+    // (or remembered from the last) is the answer, and a slot the user closed
+    // the gallery on is not asked about again.
+    async quickChooseImage() {
+        try { await this._optionsReady; } catch (e) { return; }
+        const config = this.currentVisualizerConfig;
+        const mgr = window.imagePreviewManager;
+        const container = document.getElementById('studioPanels');
+        if (!config || !config.inputs || !mgr || !container) return;
+        this._quickImageAsked = this._quickImageAsked || new Set();
+        for (const input of config.inputs) {
+            if (!this._isImageInput(input) || !(input.gallery || []).length) continue;
+            const slot = this._imageSlot(input);
+            if (this._imageSelectionMemory[slot] || this._quickImageAsked.has(slot)) continue;
+            this._quickImageAsked.add(slot);
+            mgr.initGalleryModal().open(input, container);
+            return;   // one picture at a time; the rest stay on the Picture tab
+        }
     }
 
     // ---------------------------------------------------------------------
@@ -1502,9 +1528,13 @@ class UIController {
             card.setAttribute('aria-checked', on ? 'true' : 'false');
         });
 
-        // Bar styles default to the Spectrometer (precomputed) source - the best
-        // looking / lowest CPU option. If the tune is too fast/multi-SID for it,
-        // fall back to the first source that can handle it (realtime, then shadow).
+        // Bar styles default to the VU meter (Clever) source: it reads the tune as
+        // it plays, so it works on any tune, needs no precomputed stream in RAM,
+        // and never truncates a long one. The Spectrometer is the better-looking
+        // option and stays a click away on the Method tab, but it has to render
+        // and store the whole tune first, so it is not what a first export should
+        // silently opt into. If the tune is too fast/multi-SID for the VU meter,
+        // fall back to the first source that can handle it.
         // A source the user chose earlier in the session is tried first, so a
         // deliberate "shadow for this release" survives loading the next tune.
         let target = visualizer;
@@ -1512,11 +1542,12 @@ class UIController {
             const members = VISUALIZERS.filter(v => v.dataSourceGroup === visualizer.dataSourceGroup);
             const byMethod = m => members.find(v => v.dataSource === m);
             const order = this._lastDataSource
-                ? [this._lastDataSource, ...['fft', 'realtime', 'shadow'].filter(m => m !== this._lastDataSource)]
-                : ['fft', 'realtime', 'shadow'];
+                ? [this._lastDataSource, ...['realtime', 'fft', 'shadow'].filter(m => m !== this._lastDataSource)]
+                : ['realtime', 'fft', 'shadow'];
             const preferred = order.map(byMethod).filter(Boolean);
             // Prefer a source that can actually be built for this tune (fits memory
-            // + within the calls/SID caps); fall back to calls-usable, then FFT.
+            // + within the calls/SID caps); fall back to calls-usable, then FFT
+            // (the one source that needs no save/restore room of its own).
             target = preferred.find(v => this.visualizerExportable(v).ok)
                 || preferred.find(v => this.dataSourceUsable(v).ok)
                 || byMethod('fft') || visualizer;
@@ -1538,7 +1569,10 @@ class UIController {
         this.clearMemoryMap();
         this.updateMultiSongNote();
 
-        this.loadVisualizerOptions(target);
+        // Kept so a caller that needs the rendered panels (the quick path, which
+        // opens the logo picker over them) can wait for them. Not awaited here:
+        // the rest of this method must not sit behind a config fetch.
+        this._optionsReady = this.loadVisualizerOptions(target);
 
         // ...but where this player WILL go can be worked out now, so say so
         // rather than making the user export to find out. Not awaited: it
@@ -2582,11 +2616,11 @@ class UIController {
         if (!group) return '';
         const members = VISUALIZERS.filter(v => v.dataSourceGroup === group);
         if (members.length < 2) return '';
-        const current = visualizer.dataSource || 'fft';
+        const current = visualizer.dataSource || 'realtime';
         const variantOf = m => members.find(v => v.dataSource === m);
 
         const cards = [
-            { m: 'fft', name: 'Best looking', tags: ['recommended', 'follows the actual sound'],
+            { m: 'fft', name: 'Best looking', tags: ['follows the actual sound'],
               desc: 'SIDquake listens to the whole tune here in the browser and stores what it '
                   + 'hears, so the bars follow the real sound exactly.',
               rows: [['pro', 'The bars match the music closely'],
@@ -2594,8 +2628,9 @@ class UIController {
                      ['pro', 'Leaves the C64 the most time for other things'],
                      ['con', 'Makes a bigger file'],
                      ['con', 'Only one tune per file'],
+                     ['con', 'A tune that never repeats is cut short — there is only room to store so much'],
                      ['con', 'Has to listen to the tune first — usually under a minute']] },
-            { m: 'realtime', name: 'Live · careful', tags: ['works out the bars on the C64', 'smaller file'],
+            { m: 'realtime', name: 'Live · careful', tags: ['recommended', 'works out the bars on the C64', 'smaller file'],
               desc: 'The C64 works the bars out as it plays, from the notes the tune is playing. '
                   + 'This version takes extra care not to disturb the music.',
               rows: [['pro', 'The music sounds exactly as written'],
@@ -4532,6 +4567,8 @@ class UIController {
         const scanned = this._mmss(a.analyzedSeconds);
         if (a.stoppedEarly) return `You stopped the search after ${scanned}, and nothing repeated in it`;
         if (a.cappedAtMaxSeconds) return `Nothing repeated in ${scanned}, which is as far as the scan looks`;
+        if (a.truncated) return `Nothing repeated in ${scanned}, and the tune was still playing at `
+            + `${this._mmss(a.loopStartSeconds)} where the analysis stops`;
         return `No repeat or fade-out found in ${scanned} of scanning`;
     }
 
@@ -4590,8 +4627,8 @@ class UIController {
                 'is used instead. Forced looping is unavailable.';
             enabled = false;
         } else {
-            text = `${this._scanEndedBecause(a)} — forced looping is unavailable. ` +
-                'Type the length in if you know it'
+            text = `${this._scanEndedBecause(a)} — so the C64 shows a running clock with no total, ` +
+                'and forced looping is unavailable. Type the length in if you know it'
                 + (a.cappedAtMaxSeconds ? ', or raise the scan window under Advanced settings.' : '.');
             enabled = false;
         }
@@ -4655,6 +4692,9 @@ class UIController {
     //                   with a dashed arc so an added loop never reads as the
     //                   tune's own.
     //        'fade'   - no natural repeat; the tune fades out and holds silent
+    //        'cut'    - no natural repeat and the tune was STILL PLAYING where the
+    //                   analysis had to stop. Not an ending, so nothing here is
+    //                   presented as the song's length.
     //        'none'   - nothing conclusive; the whole stored span replays
     //   bars - true when the stream also drives baked FFT bars (wording differs).
     _timelineHTML(d) {
@@ -4666,9 +4706,10 @@ class UIController {
         const x2 = Math.round(introPct * 10);   // per-mille x for the loop-back arc target
         const forced = d.mode === 'forced';
         const faded = d.mode === 'fade';
+        const cut = d.mode === 'cut';
         const bars = !!d.bars;
-        // Nothing wraps back on a fade, so no arc is drawn for that case.
-        const arc = !faded;
+        // Nothing wraps back on a fade or a cut, so no arc is drawn for those.
+        const arc = !faded && !cut;
         const accent = forced ? '#ffb74d' : '#66bb6a';        // amber = we added it
         const bodyBg = forced
             ? 'linear-gradient(rgba(255,183,77,.30),rgba(255,183,77,.18));box-shadow:inset 0 0 0 1px rgba(255,183,77,.55);color:#ffe0b2'
@@ -4690,12 +4731,19 @@ class UIController {
             note = d.cappedAtMaxSeconds
                 ? `No repeat found within the <b>${mmss(d.analyzedSeconds)}</b> analysed (our cap) — rather than restart out of sync, it stops at <b>${mmss(introSec)}</b> and holds.`
                 : `The tune fades to silence around <b>${mmss(introSec)}</b> — ${tail} (no restart).`;
+        } else if (cut) {
+            const tail = bars
+                ? 'the bars stop there and hold'
+                : 'the C64 shows a running clock with no total length';
+            note = `No repeat found, and the tune was still playing at <b>${mmss(introSec)}</b> — `
+                + `as far as the analysis goes. That is not the song's end, so ${tail}.`;
         } else {
             note = `No repeat detected — the full <b>${mmss(storedSec)}</b> replays from the start.`;
         }
 
-        const bodyLabel = faded ? 'fade' : (forced ? 'plays, then restarts' : 'loop body');
+        const bodyLabel = faded ? 'fade' : (cut ? 'cut here' : (forced ? 'plays, then restarts' : 'loop body'));
         const legendBody = faded ? 'Fade to silence (held)'
+            : cut ? 'Still playing where the analysis stops'
             : (forced ? 'Whole tune — loop added by SIDquake' : 'Loop body (repeats)');
 
         // Raster-frame counts. Tools and tune databases work in frames, not mm:ss,
@@ -4763,16 +4811,16 @@ class UIController {
                   ${forced ? 'stroke-dasharray="5 4"' : ''} opacity="0.85"/>` : ''}
         </svg>
         <div class="bt-track">
-            ${introSec > 0 ? `<div class="bt-seg bt-intro" style="left:0;width:${introPct}%">${introPct > 14 ? (faded ? 'plays through' : 'intro') : ''}</div>` : ''}
+            ${introSec > 0 ? `<div class="bt-seg bt-intro" style="left:0;width:${introPct}%">${introPct > 14 ? (faded || cut ? 'plays through' : 'intro') : ''}</div>` : ''}
             <div class="bt-seg" style="left:${introPct}%;width:${100 - introPct}%;background:${bodyBg}">${(100 - introPct) > 14 ? bodyLabel : ''}</div>
         </div>
         <div class="bt-ticks">
             <span class="bt-tick bt-start" style="left:0%">0:00</span>
-            ${showMidTick ? `<span class="bt-tick" style="left:${introPct}%">${faded ? '⤓' : '⟲'} ${mmss(introSec)}</span>` : ''}
+            ${showMidTick ? `<span class="bt-tick" style="left:${introPct}%">${faded ? '⤓' : cut ? '⌁' : '⟲'} ${mmss(introSec)}</span>` : ''}
             <span class="bt-tick bt-end" style="left:100%">${mmss(storedSec)}</span>
         </div>
         <div class="bt-legend">
-            ${introSec > 0 ? `<span><i class="bt-sw" style="background:rgba(144,164,174,.4)"></i>${faded ? 'Tune (plays once)' : 'Intro (plays once)'}</span>` : ''}
+            ${introSec > 0 ? `<span><i class="bt-sw" style="background:rgba(144,164,174,.4)"></i>${faded || cut ? 'Tune (plays once)' : 'Intro (plays once)'}</span>` : ''}
             <span><i class="bt-sw" style="background:${forced ? 'rgba(255,183,77,.45)' : 'rgba(102,187,106,.4)'}"></i>${legendBody}</span>
         </div>
         <div class="bt-note">${note}</div>${framesRow}`;
@@ -4838,8 +4886,11 @@ class UIController {
             introSeconds = 0;
             totalFrames = forcedFrames;
             introFrames = 0;
-        } else if (a.fadedOut) {
-            mode = 'fade';
+        } else if (a.fadedOut || a.truncated) {
+            // 'cut' is the same geometry as a fade - the music runs to loopStart
+            // and the stream holds - but it is not an ending, so it is never
+            // described as one.
+            mode = a.truncated ? 'cut' : 'fade';
             storedSeconds = a.storedSeconds || 0;
             introSeconds = a.loopStartSeconds || 0;
             totalFrames = nkFrames;
@@ -4885,7 +4936,8 @@ class UIController {
         const forced = !!info.forcedLoop;
         const mode = info.looped ? 'loop'
             : forced ? 'forced'
-            : info.fadedOut ? 'fade' : 'none';
+            : info.fadedOut ? 'fade'
+            : info.truncated ? 'cut' : 'none';
         // One keyframe per `fpk` raster frames - the C64 cadence divisor the exporter
         // patches - so the stream's exact frame counts are just keyframes * fpk.
         const fpk = Math.max(1, info.framesPerKeyframe || 2);
@@ -5539,7 +5591,8 @@ class UIController {
             const len = this._mmss(a.looped ? a.storedSeconds : (a.loopStartSeconds || a.storedSeconds));
             msg = a.looped ? `Song length ${len} — loops`
                 : a.fadedOut ? `Song length ${len} — fades out`
-                    : `Analysed — ${len}`;
+                    : a.truncated ? `Still playing at ${len} — no length shown`
+                        : `Analysed — ${len}`;
         } else {
             chip.classList.add('is-failed');
             msg = this._analysisCancelled
@@ -5671,7 +5724,10 @@ class UIController {
         try {
             const { tuneKey } = await import(cb('./spectrometer-bake-core.js'));
             const base = tuneKey(sidBytes, o.subtune, 44100, o.maxSeconds, o.minLoopSeconds, o.engine);
-            return `${base}|${o.numBars}x${o.maxHeight}|${o.outputMaxSeconds || 0}`;
+            // v2: a stored result now distinguishes a tune that faded out from one
+            // that was still playing where the analysis stopped. A v1 entry cannot
+            // tell them apart, so it must not be read back as either.
+            return `${base}|${o.numBars}x${o.maxHeight}|${o.outputMaxSeconds || 0}|v2`;
         } catch (e) {
             return null;   // no key, no cache - the scan still runs
         }

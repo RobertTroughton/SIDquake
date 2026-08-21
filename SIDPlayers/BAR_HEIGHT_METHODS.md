@@ -150,3 +150,15 @@ three methods. ScrapColumns and the non-bar visualizers still ship (a) only.
 
 `scripts/build-players.sh` rebuilds every variant; `--check` builds to a temp
 directory and diffs against the committed artifacts instead of overwriting them.
+
+## Which one the app picks
+
+Selecting a bar card lands on **(a) modified-memory** — "VU meter · Clever" in
+the UI (`selectVisualizer` in `public/ui.js`). It works on any tune, needs no
+precomputed stream in RAM, keeps every subtune of a multi-song file, and exports
+with nothing to render first. Method (c) looks better and is one click away on
+the Method panel, but it has to render the whole tune and store it, which caps
+how much of a non-repeating tune it can show — not something a first export
+should opt into silently. A method the user chooses is remembered for the
+session and tried first on the next tune; anything that cannot be built for the
+tune in hand (calls/frame, SID count, memory) is skipped in that order.
