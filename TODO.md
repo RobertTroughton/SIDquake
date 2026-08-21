@@ -25,8 +25,9 @@ that holds the detail.
    unusable to usable with a keyboard or a screen reader. *(Accessibility)*
 3. Build the curated Random SID pool file. One build script, ~2 MB off the front
    door. *(Mobile and first impression)*
-4. The song-length row, the manual `m:ss` entry, and the Generate-time prompt with
-   a remembered answer. *(Analysis timing)*
+4. Background the loop/length analysis from load with a corner status chip, and
+   turn the Song tab's row into "show the song length on screen?" *(Analysis
+   timing)*
 5. Move Generate PRG onto every tab; collapse Technical Details; move the frame
    rate, stored bars and analysis engine behind an Advanced disclosure; restore
    the scan window, min-loop and bank override into it. *(Progressive disclosure)*
@@ -77,7 +78,7 @@ produces a wrong result or dead UI.
   it is good (`prg-builder.js:2026`) — but the override is written and
   unreachable.
 
-## Analysis timing — stop paying for the slow render up front
+## Analysis timing — run it in the background, then ask a better question
 
 **The problem.** Two separate slow passes, both unconditional, neither explained
 before it starts.
@@ -88,69 +89,77 @@ before it starts.
    wants to *hear* the tune needs this.
 2. **At Generate**, `runTuneAnalysis` renders the whole tune to find its loop or
    fade-out (`ui.js:2966` for spectrometer players, `ui.js:3002` for everyone
-   else). Minutes on a long tune, behind a full-screen overlay, at the last click
-   of a multi-tab wizard.
+   else). Minutes on a long tune, behind a full-screen modal overlay, at the last
+   click of a multi-tab wizard.
 
-The second one buys exactly two things for non-spectrometer players: a song
-length on the C64 screen, and the forced-loop option for tunes that fade out.
-Both are nice-to-haves. Imposing an unbounded wait for a nice-to-have, at the
-moment the user has already committed, is the wrong trade.
+**The design: start it on load, in the background, and never block on it unless
+the user reaches Generate first.** The user spends a minute or two picking a
+visualiser, a logo and a palette anyway. Spend that time rendering. Show a small
+non-blocking status chip in a corner ("Analysing tune… 1:20 scanned · ✕") rather
+than a modal, and let the user ignore it, cancel it, or carry on.
 
-**The design.** Ask, but split by whether there is a real choice, and make the
-answer reusable.
+That changes what there is to ask about. The question stops being "are you
+willing to wait several minutes?" — a cost the user cannot judge and resents
+being handed at the last click — and becomes a plain display choice on the Song
+tab: **"Show the song length (MM:SS) on screen?"**, already answered by the time
+they get there. For spectrometer players the bake is simply ready when they reach
+Export, and no prompt is needed at all.
 
-- **Spectrometer (FFT) players — never prompt.** The bake *is* the visualisation;
-  declining means not exporting. Instead state the cost where the choice is made:
-  add a con row to the Spectrometer method card (`ui.js:1582-1588`) — "Needs an
-  offline render first (usually under a minute)" — and put an **[Analyse now]**
-  button next to it so the render overlaps with picking a logo and a palette
-  instead of blocking the finish line.
-- **Every other player — a Song-tab row, not a modal.** Replace the current
-  "Song end not analysed yet…" line (`index.html:298`) with a live one:
-
-  > **Song length** — not measured.
-  > SIDquake plays the tune through once to find where it loops or fades out.
-  > Usually a few seconds; a long tune can take a couple of minutes.
-  > `[ Measure ]` · `[ Type it in __:__ ]`
-  > Without it the C64 shows a running clock but no total.
-
-- **Let the user type it in.** A composer knows their own tune is 3:41. Writing
+- **Status chip, not an overlay.** Progress already flows back per job
+  (`spectrometer-bake-runner.js:100-112`); it just needs somewhere quiet to land.
+  Keep the existing full-screen overlay for one case only: Generate pressed while
+  the job is still running, where blocking is honest.
+- **Cancel on tune change, on dismiss, and on an engine-setting change.** Hold the
+  `AbortController` on the controller so `processFile` can abort the previous
+  tune's job; changing `bakeEngine` already invalidates the result (`ui.js:1518`)
+  and should abort too.
+- **Reframe the Song tab.** Replace "Song end not analysed yet…"
+  (`index.html:298`) with a live row: `Song length — analysing… 1:20` →
+  `Song length — 3:42 · [x] show on screen` → `Song length — not measured ·
+  [Measure] [Type it in __:__]`. Merge the Song Looping toggle into it; both are
+  the same underlying fact.
+- **Let the user type it in.** A composer knows their tune is 3:41. Writing
   `bakedLenMin/Sec/hasLength` directly (`prg-builder.js:2274-2325`) skips the
-  render entirely. Five-second answer to a five-minute question.
-- **At Generate, if it still hasn't run**, one prompt with three outcomes:
-
-  > **Measure the song length first?**
-  > SIDquake can play the tune through once to find where it loops or fades out —
-  > usually under a minute, and it stops as soon as it finds the loop. The
-  > exported PRG then shows a running time, and tunes that fade out can be given
-  > a loop. Without it the PRG still works; it just has no length.
-  > `[ Skip — export now ]` `[ Measure, then export ]` `[ ] Remember for this session`
-
-  Wording rules the personas converged on: say **measure**, not "calculate";
-  give the honest range in the same breath as the ask (never "this may take a
-  while" alone — that reads as "possibly forever"); say what is lost in terms of
-  what appears on screen, not in terms of internal features.
-- **Never a dead end.** Skipping must always produce a file, and the success
-  screen offers it back: "Want the song length too? [Measure and rebuild]".
-- **Remember the answer.** Today one cancel means the same wall on every
-  re-export — `!this.tuneAnalysis` (`ui.js:3002`) is the only guard and
-  `runTuneAnalysis` nulls it on abort (`ui.js:3891`). Persist a per-SID "skipped"
-  flag next to `_loopChoiceAsked` / `_loopChoiceTouched` (`ui.js:37-39`), and a
-  session-level Always / Ask / Never in `sidquakeAdvanced`. For a music disk this
-  is the difference between one decision and twenty.
+  render entirely, and settles the case where the scan finds nothing.
+- **Never a dead end.** Cancelling or skipping must always still produce a file,
+  and the completion panel offers it back: "Add the song length? [Measure and
+  rebuild]".
 - **Move the too-long check before the render.** `resolveAdvancedRate` returning
   null (`ui.js:2988-2995`) tells the user "this tune is too long for the
-  spectrometer" *after* minutes of rendering. Estimate from a known or coarse
-  duration and refuse early.
+  spectrometer" *after* minutes of rendering.
 - **Defer the 30,000-frame load analysis** until the Studio opens (`ui.js:674`).
-  A listener never needs it; it costs 63 KB of WASM and seconds of CPU on every
-  load.
-- Related and already scoped further down: "Stop searching / use what we have",
-  and prompting at the cap instead of surrendering silently.
+  A listener never needs it; it costs 63 KB of WASM and seconds of CPU per load.
 
-**Caching, which matters as much as the prompt.** `createBakeCore` keeps exactly
+**What already works, and what has to be built.** The transport is ready — the
+bake runs in a real Web Worker, each job has its own `AbortController` reachable
+by an `abort` message (`spectrometer-bake-worker.js:87-89`), progress is posted
+back per job id, and the job table is on a global so `ui.js` and `prg-builder.js`
+share one worker and one render cache. Backgrounding needs no architectural
+change. The gaps:
+
+- **Nothing serialises jobs.** `self.onmessage` is `async` and starts each `run`
+  immediately (`spectrometer-bake-worker.js:71`), while `createBakeCore` holds a
+  single engine and a single `cache.rows` slot (`spectrometer-bake-core.js:276`).
+  Two overlapping runs would clobber each other's cache. Keep one in-flight
+  analysis per page: Generate must `await` the running job, not start a second.
+  Today the FFT branch (`ui.js:2966`) calls `runTuneAnalysis` unconditionally.
+- **A stale job must not write into the new tune's state.** `runTuneAnalysis`
+  assigns `this.tuneAnalysis` directly; a background job that resolves after
+  another SID has loaded would poison it. Use a request token, as
+  `loadVisualizerOptions` already does with `_optionsRequest` (`ui.js:1150`).
+- **A late result has to refresh the UI it feeds** — the Song-tab length row, the
+  Song Looping status, and the studio footer/manifest — since nothing is waiting
+  on it any more.
+- **Don't background on the main-thread fallback path.** When Workers or dynamic
+  `import()` inside one are unavailable, `spectrometer-bake-runner.js` runs the
+  core on the page; backgrounding there would jank the UI it is meant to keep
+  responsive. Fall back to running on demand.
+- Rendering while the tune plays is two cores' worth of work; check it on a phone
+  before making it the default there.
+
+**Caching, which matters as much as the timing.** `createBakeCore` keeps exactly
 one render slot (`spectrometer-bake-core.js:276-300`), in memory only. So:
-re-exporting the same tune is free, A → B → A re-renders A, and a page reload
+re-exporting the same tune is free, A -> B -> A re-renders A, and a page reload
 loses everything. Worse, `tuneKey` (`spectrometer-bake-core.js:52`) hashes the
 whole SID *including the header*, and the bytes come from `createModifiedSID()` —
 so **editing the title after an analysis invalidates it and forces a full
@@ -160,8 +169,7 @@ re-render**.
 - Persist the *summary* (`looped`, `fadedOut`, `loopStart`, `frameHz`,
   `lengthFrames`, `storedSeconds` — a couple of hundred bytes) to IndexedDB keyed
   by `tuneKey`. For every non-spectrometer export that summary is the entire
-  payload, so the second time a tune is ever touched the question is already
-  answered.
+  payload, so the second time a tune is ever touched the answer is already there.
 - Exclude the header bytes from the key, or key on the music payload only.
 - Make the cache importable, so `tools/songlengths/`'s journal — the same
   measurement, already computed across HVSC — can prime it.
@@ -170,6 +178,10 @@ re-render**.
   title, author, released) and the length for an HVSC tune becomes a lookup
   instead of a render. **Not confirmed** — the archive is an unfetched LFS
   pointer in a fresh clone.
+
+Related and already scoped further down: "Stop searching / use what we have", and
+prompting at the cap instead of surrendering silently. Both matter more once the
+scan is something the user watches rather than waits on.
 
 ## Progressive disclosure — what to show, hide, and restore
 
