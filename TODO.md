@@ -476,10 +476,16 @@ wish of both experienced musicians and the beginner alike.
   set `animated: true`. Cheapest possible win.
 - **A live in-browser mock** of the selected player driven off the `AnalyserNode`
   — `hvsc-visualizer.js` already proves the approach — updating as options change.
-- **Show the converted logo**, C64-quantised with cell colour clash visible, next
-  to the source. Today the preview is the *input* PNG
-  (`image-preview-manager.js:1077`); the classifier already computes the real
-  result to badge it.
+- **Done: the converted logo can be seen before the export.** The classifier
+  already computed the real result to badge it; `CharsetLabCore.renderResult`
+  now draws that result back to pixels — hires and multicolour characters, mixed
+  cells, ECM, and both bitmap modes — and a toggle under the preview swaps
+  between the source PNG and what the machine will show, so colour clash and
+  lost detail are visible in place. `scripts/test-c64-render.js` converts
+  pictures that already obey each mode's cell rules and checks the render comes
+  back pixel for pixel, so a misreading of the VIC's rules (colour-RAM bit 3,
+  the ECM background bits, a bitmap's screen nibbles) fails the build rather
+  than quietly showing the user something the export will not produce.
 - **Live palette preview for custom fades**, not just the five presets — the
   presets already render through the real `getHeightColorTable` (`ui.js:1999`).
 - **A text-layout preview** of the three 32-column rows with real centring, font

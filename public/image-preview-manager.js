@@ -458,7 +458,10 @@ class ImagePreviewManager {
         return {
             ok: true,
             label: LABELS[r.label] || r.label,
-            title: r.label + (r.charCount != null ? ` — ${r.charCount} chars` : '') + (r.isBitmap ? ' bitmap' : '')
+            title: r.label + (r.charCount != null ? ` — ${r.charCount} chars` : '') + (r.isBitmap ? ' bitmap' : ''),
+            // The fitted result itself, so the preview can draw what the C64
+            // will actually show rather than the PNG that went in.
+            result: r,
         };
     }
 
@@ -502,6 +505,49 @@ class ImagePreviewManager {
         // stops the export dead - spell the reason out next to the preview.
         this.setPreviewNote(config, 'warn', info.ok ? ''
             : `This image can't be used here: ${info.title.replace(/^Not usable here:\s*/i, '')}`);
+        this.renderC64Preview(config, wrapper, info);
+    }
+
+    /**
+     * Draw the conversion, so what a logo will look like on the machine - the
+     * colour clash, the lost detail - is visible before the export rather than
+     * after a round trip through an emulator. The preview otherwise shows the
+     * source PNG, which is not what the C64 gets.
+     */
+    renderC64Preview(config, wrapper, info) {
+        const canvas = wrapper.querySelector('.image-preview-c64');
+        const toggle = wrapper.querySelector('.preview-c64-toggle');
+        const img = wrapper.querySelector('.image-preview-img');
+        if (!canvas || !toggle || !img) return;
+
+        const show = (on) => {
+            canvas.hidden = !on;
+            img.style.visibility = on ? 'hidden' : '';
+            toggle.setAttribute('aria-pressed', on ? 'true' : 'false');
+            toggle.innerHTML = on
+                ? '<i class="fas fa-image"></i> Show the original'
+                : '<i class="fas fa-tv"></i> Show it as the C64 will';
+        };
+
+        let drawn = null;
+        try {
+            drawn = info.ok && info.result && typeof CharsetLabCore !== 'undefined'
+                ? CharsetLabCore.renderResult(info.result) : null;
+        } catch (e) {
+            drawn = null;   // a preview that cannot be drawn is simply not offered
+        }
+        if (!drawn) { toggle.hidden = true; show(false); return; }
+
+        canvas.width = drawn.width;
+        canvas.height = drawn.height;
+        canvas.getContext('2d').putImageData(
+            new ImageData(drawn.rgba, drawn.width, drawn.height), 0, 0);
+        toggle.hidden = false;
+        show(false);
+        if (!toggle.dataset.wired) {
+            toggle.dataset.wired = '1';
+            toggle.addEventListener('click', () => show(canvas.hidden));
+        }
     }
 
     // ─── Logo fitting (auto-placement + the Adjust crop tool) ───
@@ -727,9 +773,14 @@ class ImagePreviewManager {
                             <div class="preview-spinner"></div>
                             <div>Loading...</div>
                         </div>
+                        <canvas class="image-preview-c64" width="320" height="200" hidden
+                                aria-label="${config.label} as the C64 will show it"></canvas>
                         <div class="logo-type-badge"></div>
                     </div>
                 </div>
+                ${isLogo ? '<button type="button" class="file-button preview-c64-toggle" '
+                    + 'data-act="c64" aria-pressed="false" hidden>'
+                    + '<i class="fas fa-tv"></i> Show it as the C64 will</button>' : ''}
                 <div class="image-preview-hint"><i class="fas fa-hand-pointer"></i> Drag &amp; drop an image here, or:</div>
                 <div class="image-preview-actions">
                     <button type="button" class="file-button" data-act="browse"><i class="fas fa-folder-open"></i> Browse Files</button>

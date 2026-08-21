@@ -266,6 +266,37 @@ async function openStudioWithLogo(page) {
     check(Math.abs(halfWidth - fullWidth / 2) <= 4, 'and the size slider scales the logo',
         `${fullWidth}px -> ${halfWidth}px`);
 
+    // The converted logo can be seen before the export, not only after it.
+    const c64 = await page.evaluate(async () => {
+        const wrap = document.querySelector('.image-preview-wrapper');
+        const toggle = wrap.querySelector('.preview-c64-toggle');
+        const canvas = wrap.querySelector('.image-preview-c64');
+        if (!toggle || !canvas) return { missing: true };
+        const offered = !toggle.hidden;
+        toggle.click();
+        await new Promise(r => setTimeout(r, 200));
+        const ctx = canvas.getContext('2d');
+        const px = ctx.getImageData(0, 0, canvas.width, canvas.height).data;
+        // A blank canvas would pass a "is it shown" check for free, so count
+        // how many distinct colours actually got drawn.
+        const seen = new Set();
+        for (let i = 0; i < px.length; i += 4) {
+            seen.add((px[i] << 16) | (px[i + 1] << 8) | px[i + 2]);
+        }
+        const shown = !canvas.hidden && toggle.getAttribute('aria-pressed') === 'true';
+        toggle.click();
+        await new Promise(r => setTimeout(r, 200));
+        return {
+            offered, shown, colours: seen.size,
+            size: `${canvas.width}x${canvas.height}`,
+            backAgain: canvas.hidden && toggle.getAttribute('aria-pressed') === 'false',
+        };
+    });
+    check(!c64.missing && c64.offered, 'the converted logo can be previewed', JSON.stringify(c64));
+    check(c64.shown && c64.size === '320x200', 'it draws a full C64 screen', JSON.stringify(c64));
+    check(c64.colours > 1, 'with the picture actually on it', `${c64.colours} colours`);
+    check(c64.backAgain, 'and switches back to the original', JSON.stringify(c64));
+
     // The tool is a modal dialog: Tab must stay inside it, its own controls must
     // keep their arrow keys, and closing must hand focus back.
     // The logo panel may not be the Studio's active tab, and a button on a

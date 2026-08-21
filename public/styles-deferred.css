@@ -5017,3 +5017,18 @@
     font-size: 0.85em;
     line-height: 1.5;
 }
+
+/* The converted logo, drawn over the source in the same frame so the two can be
+   compared without the layout moving. */
+.image-preview-frame .image-preview-c64 {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    /* Keep the C64's own pixels crisp rather than smoothing them away. */
+    image-rendering: pixelated;
+}
+
+.preview-c64-toggle {
+    margin-top: var(--space-sm);
+}
