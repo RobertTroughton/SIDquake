@@ -154,10 +154,17 @@ animated previews below would pay off.
 
 **Structural fixes that serve both populations:**
 
-- **Persist the session's visualiser and option memory across a reload.** The
-  choice now survives loading another tune (`_lastVisualizerId`,
-  `_lastDataSource`, `_optionMemory`), but not a refresh or a new tab. Consider
-  putting it in localStorage next to `sidquakeAdvanced` — and note that the same
+- **Done: the visualiser and option memory survive a reload.** The player, data
+  source, option values and gallery image picks go into `sidquakeSession` next to
+  `sidquakeAdvanced`. Two things are deliberately left out: the fields that
+  describe the tune currently open (title, author, copyright, sub-tune, typed-in
+  length — the option snapshot is a sweep of the whole panel, so it catches them),
+  because carrying those into a new session would stamp one tune's credits onto
+  the next; and the advanced settings, which have their own store and would
+  otherwise exist in two places that drift apart. An uploaded image is recorded by
+  name only in a recipe and not at all here — a name cannot be re-read as a file,
+  and storing one would promise something the next page load could not deliver.
+  Note that the same
   state is most of a recipe file, so the two should be designed together.
 - **Drop the "2 / 8" wizard framing on desktop.** The rail is the navigation; the
   counter implies mandatory steps that are all already correct. Keep it at narrow

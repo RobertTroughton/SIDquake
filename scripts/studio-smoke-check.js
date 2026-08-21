@@ -994,6 +994,55 @@ async function loadSid(page, file) {
                 railReuse.focusKept === true, JSON.stringify(railReuse));
         }
 
+        // --- the choice survives a reload -------------------------------------
+        const remembered = await page.evaluate(async () => {
+            const ui = window.uiController;
+            await ui.selectVisualizer(VISUALIZERS.find(v => v.id === 'RaistlinBars'));
+            await new Promise(r => setTimeout(r, 600));
+            const grid = document.querySelector('.bar-style-grid');
+            const thumbs = [...grid.querySelectorAll('.bar-style-thumbnail')];
+            const configId = grid.dataset.configId;
+            const now = document.getElementById(configId).value;
+            ui.selectGridThumb(grid, thumbs.find(t => t.dataset.value !== now) || thumbs[0]);
+            ui._rememberOptionValues({ [configId]: document.getElementById(configId).value }, {});
+            let stored = null;
+            try { stored = JSON.parse(localStorage.getItem('sidquakeSession')); } catch (e) { /* blocked */ }
+            return {
+                stored,
+                chosen: document.getElementById(configId).value,
+                configId,
+            };
+        });
+        check('The player and options are written down for the next visit',
+            !!remembered.stored && remembered.stored.visualizer === 'RaistlinBars'
+            && remembered.stored.options[remembered.configId] === remembered.chosen,
+            JSON.stringify(remembered));
+        // The option sweep also catches the open tune's own fields; those must
+        // not follow the user into a new session and stamp one tune's credits
+        // onto the next.
+        const carried = Object.keys((remembered.stored && remembered.stored.options) || {});
+        check('But this tune\'s title, author and sub-tune are not',
+            !carried.some(k => ['sidTitle', 'sidAuthor', 'sidCopyright', 'songSelector',
+                'songLengthManual'].includes(k)), carried.join(', '));
+        check('Nor the advanced settings, which have their own store',
+            !carried.some(k => /^adv[A-Z]/.test(k)), carried.join(', '));
+
+        const afterReload = await page.evaluate(async () => {
+            // A fresh controller reads the same storage a reload would.
+            const fresh = Object.create(UIController.prototype);
+            fresh._optionMemory = {};
+            fresh._imageSelectionMemory = {};
+            fresh._restoreSessionMemory();
+            return {
+                visualizer: fresh._lastVisualizerId,
+                options: fresh._optionMemory,
+            };
+        });
+        check('And a fresh page picks them back up',
+            afterReload.visualizer === 'RaistlinBars'
+            && afterReload.options[remembered.configId] === remembered.chosen,
+            JSON.stringify(afterReload));
+
         // --- where it goes, before the export ---------------------------------
         const plan = await page.evaluate(async () => {
             const ui = window.uiController;

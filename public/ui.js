@@ -53,6 +53,11 @@ class UIController {
         // new tune keeps the bar style / colours / palettes / font the user set.
         // Holds only values the user actually changed (see _rememberOptionValues).
         this._optionMemory = {};
+        // ...and the same choices come back after a refresh or in a new tab.
+        // Someone setting up a music disk closes the tab between tunes, and
+        // starting from the alphabetically first player every time is the same
+        // annoyance a reload should not reintroduce.
+        this._restoreSessionMemory();
         // Only the newest placement preview is shown; a user can change player
         // faster than the placement runs.
         this._planToken = 0;
@@ -1494,7 +1499,10 @@ class UIController {
         }
         this.selectedVisualizer = target;
 
-        if (remember) this._lastVisualizerId = visualizer.id;
+        if (remember) {
+            this._lastVisualizerId = visualizer.id;
+            this._saveSessionMemory();
+        }
 
         // The quick path shows the same choice; keep the two from disagreeing.
         this.renderQuickExport();
@@ -1625,9 +1633,11 @@ class UIController {
         if (variant && variant !== this.selectedVisualizer) {
             this.selectedVisualizer = variant;
             this._lastDataSource = method;
+            this._saveSessionMemory();
             this.clearMemoryMap();
             this.updateMultiSongNote();
             this.loadVisualizerOptions(variant);
+            this.renderPlacementPlan();
         }
     }
 
@@ -1770,6 +1780,57 @@ class UIController {
                 this._optionMemory[id] = value;
             }
         }
+        this._saveSessionMemory();
+    }
+
+    /**
+     * The player, data source, option values and gallery image picks, so a
+     * reload does not start over. Only gallery picks are kept: a file the user
+     * uploaded cannot be re-read from a name, and storing one would promise
+     * something the next page load could not deliver.
+     */
+    _saveSessionMemory() {
+        // The option snapshot is a sweep of every control on the Studio panels,
+        // so it also picks up things that belong to the tune in front of the
+        // user rather than to the session: its title, author, copyright,
+        // sub-tune and typed-in length. Carrying those into a NEW session would
+        // stamp one tune's credits onto the next. The advanced settings are
+        // excluded for a different reason - they have their own store
+        // (sidquakeAdvanced), and two copies of one setting drift apart.
+        const options = {};
+        for (const [id, value] of Object.entries(this._optionMemory || {})) {
+            if (UIController.PER_TUNE_OPTION_IDS.has(id)) continue;
+            if (/^adv[A-Z]/.test(id)) continue;
+            options[id] = value;
+        }
+        const images = {};
+        for (const [slot, sel] of Object.entries(this._imageSelectionMemory || {})) {
+            if (sel && sel.kind === 'gallery' && sel.file) images[slot] = { kind: 'gallery', file: sel.file };
+        }
+        try {
+            localStorage.setItem('sidquakeSession', JSON.stringify({
+                v: 1,
+                visualizer: this._lastVisualizerId,
+                dataSource: this._lastDataSource,
+                options,
+                images,
+            }));
+        } catch (e) { /* storage blocked: the session memory is just not kept */ }
+    }
+
+    _restoreSessionMemory() {
+        let saved = null;
+        try { saved = JSON.parse(localStorage.getItem('sidquakeSession') || 'null'); }
+        catch (e) { return; }
+        if (!saved || saved.v !== 1) return;
+        this._lastVisualizerId = saved.visualizer || null;
+        this._lastDataSource = saved.dataSource || null;
+        if (saved.options && typeof saved.options === 'object') {
+            this._optionMemory = { ...saved.options };
+        }
+        if (saved.images && typeof saved.images === 'object') {
+            this._imageSelectionMemory = { ...saved.images };
+        }
     }
 
     // Per-option default values (keyed by id) for a parsed visualizer config,
@@ -1867,6 +1928,7 @@ class UIController {
             if (!el) continue;
             if (el.dataset.gallerySelected === 'true' && el.dataset.galleryFile) {
                 this._imageSelectionMemory[this._imageSlot(input)] = { kind: 'gallery', file: el.dataset.galleryFile };
+                this._saveSessionMemory();
             } else if (el.files && el.files.length) {
                 this._imageSelectionMemory[this._imageSlot(input)] = { kind: 'custom', fileObj: el.files[0] };
             }
@@ -4202,6 +4264,15 @@ class UIController {
     // easy to see where the SID, player code+graphics, spectrometer data and free
     // RAM all ended up. Reads the (uncompressed) component list the builder placed.
     // -------------------------------------------------------------------------
+    /**
+     * Option ids that describe the tune currently open, not the session. They
+     * come out of _captureOptionValues because it sweeps the whole panel, but
+     * they must never be carried into a new session.
+     */
+    static get PER_TUNE_OPTION_IDS() {
+        return new Set(['sidTitle', 'sidAuthor', 'sidCopyright', 'songSelector', 'songLengthManual']);
+    }
+
     static get MEMMAP_CATEGORIES() {
         return {
             sid:         { label: 'SID music',            color: '#4fc3f7' },
