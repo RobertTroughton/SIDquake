@@ -17,7 +17,7 @@ class ImageSelectorModal {
 
     createModalHTML() {
         const modalHTML = `
-            <div class="image-selector-modal" id="imageSelectorModal">
+            <div class="image-selector-modal" id="imageSelectorModal" data-overlay>
                 <div class="image-selector-modal-content">
                     <button class="image-selector-modal-close" id="imageSelectorModalClose"><i class="fas fa-times"></i></button>
                     <div class="image-selector-modal-body">
@@ -621,7 +621,7 @@ class ImagePreviewManager {
         return this.logoFit.get(config.id);
     }
 
-    async openLogoAdjust(config) {
+    async openLogoAdjust(config, opener = null) {
         const wrapper = document.querySelector(`[data-input-id="${config.id}"]`);
         const loading = wrapper && wrapper.querySelector('.image-preview-loading');
         let state;
@@ -645,6 +645,7 @@ class ImagePreviewManager {
             place: state.place,
             autoPlace: state.auto,
             title: `Adjust ${(config.label || 'logo').toLowerCase()}`,
+            returnFocusTo: opener || document.activeElement,
             onApply: place => this.applyLogoPlace(config, place)
         });
     }
@@ -755,7 +756,12 @@ class ImagePreviewManager {
         previewFrame.addEventListener('click', () => fileInput.click());
         wrapper.querySelector('[data-act="browse"]').addEventListener('click', () => fileInput.click());
         if (isLogo) {
-            wrapper.querySelector('[data-act="adjust"]').addEventListener('click', () => this.openLogoAdjust(config));
+            // Look the button up again on close rather than passing the node:
+            // the Studio's panel-click refresh moves focus before this handler
+            // runs, and the preview is rebuilt while the dialog is open.
+            wrapper.querySelector('[data-act="adjust"]').addEventListener('click',
+                () => this.openLogoAdjust(config,
+                    () => document.querySelector(`[data-input-id="${config.id}"] [data-act="adjust"]`)));
         }
 
         // Inline gallery grid (matches the font picker's grid on the tab).

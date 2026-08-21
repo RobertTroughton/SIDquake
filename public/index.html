@@ -220,7 +220,7 @@
     <!-- Studio modal: the whole configure->export pipeline lives here as tabs.
          Panels stay mounted when inactive - prg-builder reads option values
          from the DOM by id. -->
-    <div class="studio-modal" id="studioModal">
+    <div class="studio-modal" id="studioModal" data-overlay>
       <div class="studio-modal-content" role="dialog" aria-modal="true" aria-label="SIDquake Studio">
         <header class="studio-head">
             <i class="fas fa-compact-disc studio-head-icon"></i>
@@ -1036,7 +1036,7 @@
         </footer>
     </div>
     <!-- Unified modal: error / success / warning / confirm -->
-    <div class="modal-overlay" id="modalOverlay">
+    <div class="modal-overlay" id="modalOverlay" data-overlay>
         <div class="modal-content">
             <div class="modal-icon" id="modalIcon"></div>
             <div class="modal-title" id="modalTitle"></div>
@@ -1059,7 +1059,7 @@
                 aria-label="Stop analysing this tune">✕</button>
     </div>
 
-    <div class="busy-overlay" id="busyOverlay">
+    <div class="busy-overlay" id="busyOverlay" data-overlay>
         <div class="busy-content" role="dialog" aria-modal="true" aria-labelledby="busyMessage">
             <div class="busy-spinner" aria-hidden="true"></div>
             <div class="busy-message" id="busyMessage">Processing...</div>
@@ -1125,7 +1125,7 @@
     </script>
 
     <!-- HVSC Modal -->
-    <div class="hvsc-modal" id="hvscModal">
+    <div class="hvsc-modal" id="hvscModal" data-overlay>
         <div class="hvsc-modal-content" role="dialog" aria-modal="true" aria-label="Browse C64 tunes">
             <button class="hvsc-modal-close" id="hvscModalClose" aria-label="Close the tune browser">✕</button>
             <div class="hvsc-modal-body">
@@ -1199,7 +1199,7 @@
     </div>
 
     <!-- Gallery Modal -->
-    <div class="gallery-modal" id="galleryModal">
+    <div class="gallery-modal" id="galleryModal" data-overlay>
         <div class="gallery-modal-content">
             <button class="gallery-modal-close" id="galleryModalClose" aria-label="Close the gallery">✕</button>
             <div class="gallery-modal-body">
@@ -1275,7 +1275,8 @@
             var scripts = [
                 // c64-palette.js first: ui.js reads the shared colour table at
                 // module scope, so it has to be there before it parses.
-                'c64-palette.js', 'error-modal.js', 'visualizer-registry.js', 'studio-modal.js', 'ui.js'
+                'c64-palette.js', 'overlay-stack.js', 'error-modal.js', 'visualizer-registry.js',
+                'studio-modal.js', 'ui.js'
             ];
             var i = 0;
             function loadNext() {

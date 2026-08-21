@@ -49,12 +49,11 @@ class StudioModal {
         // Escape closes the Studio, and Tab is trapped inside it - but both
         // defer when another modal is layered above (that modal owns the
         // keyboard then; the error modal traps its own Tab/Escape).
+        // overlay-stack.js works that out from the overlays actually on screen,
+        // so a new one never has to be added to a list here.
         document.addEventListener('keydown', (e) => {
             if (!this.isOpen) return;
-            const above = ['hvscModal', 'galleryModal', 'busyOverlay', 'modalOverlay',
-                'imageSelectorModal', 'colorPickerModal', 'logoFitModal']
-                .some(id => document.getElementById(id)?.classList.contains('visible'));
-            if (above) return;
+            if (window.overlayAbove && window.overlayAbove('studioModal')) return;
             if (e.key === 'Escape') this.close();
             else if (e.key === 'Tab') this._trapTab(e);
         });

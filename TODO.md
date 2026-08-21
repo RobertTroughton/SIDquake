@@ -198,13 +198,16 @@ other twenty places that needed them.
   scrolls when the tab actually changed, so the keyboard cost is gone — but
   `queueRefresh` still throws away and recreates every button on each keystroke.
   Diff the tab list and update in place.
-- **Replace the hardcoded modal-precedence list with a real stack.**
-  `studio-modal.js:53` now names every overlay including `logoFitModal`, so the
-  keyboard trap is gone, but the next overlay added will reintroduce it. Push/pop
-  an id on open/close and have each handler act only when it is on top. The logo
-  tool also still needs its own Tab trap and focus restore (copy `ui.js:274-296`),
-  and its document-level arrow handler swallows the Size slider's arrow keys —
-  scope it to the canvas.
+- **Modal precedence — done.** The two hand-maintained id lists are gone (and the
+  one in `ui.js` had already drifted, missing the logo tool). Every overlay
+  carries `data-overlay`, and `overlay-stack.js` works out what is above what
+  from the z-index and document order actually in force, so a new overlay is
+  covered by tagging its markup. A smoke check fails if a fixed element above the
+  page is missing the attribute. The logo tool now traps Tab, hands focus back to
+  the button that opened it (looked up on close, since the preview is rebuilt
+  while the dialog is open) and blurs rather than stranding focus in a hidden
+  dialog when that button is gone; its arrow handler is scoped to the canvas, so
+  the Size slider keeps its own arrow keys.
 - **The file load still has no Cancel, and can't have one in JS.** `sid_analyze`
   is a single synchronous WASM call — measured at ~470 ms for a one-song tune on
   a fast desktop, and it runs the whole loop again per subtune — so the main

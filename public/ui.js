@@ -237,12 +237,11 @@ class UIController {
         // While the browser is open it owns the keyboard: Escape closes it and
         // Tab is trapped inside so focus can't fall through to the covered page.
         // Defer when another modal is layered above (that modal owns the keyboard).
+        // This list used to be maintained by hand here and had already drifted -
+        // overlay-stack.js reads it off the overlays actually on screen instead.
         document.addEventListener('keydown', (e) => {
             if (!document.getElementById('hvscModal')?.classList.contains('visible')) return;
-            const above = ['galleryModal', 'busyOverlay', 'modalOverlay',
-                'imageSelectorModal', 'colorPickerModal']
-                .some(id => document.getElementById(id)?.classList.contains('visible'));
-            if (above) return;
+            if (window.overlayAbove && window.overlayAbove('hvscModal')) return;
             if (e.key === 'Escape') closeHVSCModal();
             else if (e.key === 'Tab') this._trapHvscTab(e);
             return;
@@ -3264,6 +3263,7 @@ class UIController {
             overlay = document.createElement('div');
             overlay.id = 'colorPickerModal';
             overlay.className = 'color-picker-overlay';
+            overlay.setAttribute('data-overlay', '');
             overlay.innerHTML = `
                 <div class="color-picker-dialog" role="dialog" aria-label="Choose colour">
                     <div class="color-picker-head">

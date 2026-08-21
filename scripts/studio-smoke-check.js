@@ -835,6 +835,49 @@ async function loadSid(page, file) {
         const h1Count = await page.evaluate(() => document.querySelectorAll('h1').length);
         check('The document has a single h1', h1Count === 1, `${h1Count} found`);
 
+        // --- overlay precedence -----------------------------------------------
+        const overlays = await page.evaluate(() => {
+            const tagged = [...document.querySelectorAll('[data-overlay]')].map(el => el.id);
+            // Anything that covers the viewport and sits above the page (z 900)
+            // is an overlay and must carry the attribute, or the keyboard
+            // handlers will not know to stand down for it.
+            const untagged = [...document.querySelectorAll('div[id]')].filter((el) => {
+                const cs = getComputedStyle(el);
+                const z = parseInt(cs.zIndex, 10);
+                return cs.position === 'fixed' && z >= 1000 && !el.hasAttribute('data-overlay');
+            }).map(el => el.id);
+            return { tagged, untagged, hasHelper: typeof window.overlayAbove === 'function' };
+        });
+        check('Every overlay declares itself with data-overlay',
+            overlays.hasHelper && overlays.untagged.length === 0,
+            JSON.stringify(overlays));
+
+        const precedence = await page.evaluate(() => {
+            // Hide everything first so the comparison is only between the two
+            // being tested (a lingering toast is itself an overlay).
+            const was = [...document.querySelectorAll('[data-overlay].visible')];
+            for (const el of was) el.classList.remove('visible');
+            const studio = document.getElementById('studioModal');
+            const hvsc = document.getElementById('hvscModal');
+            studio.classList.add('visible');
+            hvsc.classList.add('visible');
+            const out = {
+                order: window.overlayOrder().map(o => `${o.id}:${o.z}`),
+                hvscAboveStudio: window.overlayAbove('studioModal'),
+                studioNotAboveHvsc: window.overlayAbove('hvscModal'),
+            };
+            hvsc.classList.remove('visible');
+            out.aloneIsClear = window.overlayAbove('studioModal');
+            studio.classList.remove('visible');
+            for (const el of was) el.classList.add('visible');
+            return out;
+        });
+        check('The browser layered over the Studio takes the keyboard',
+            precedence.hvscAboveStudio === true && precedence.studioNotAboveHvsc === false,
+            JSON.stringify(precedence));
+        check('And the Studio takes it back when nothing is above it',
+            precedence.aloneIsClear === false, JSON.stringify(precedence));
+
         // --- HVSC search paints in chunks -------------------------------------
         // The index is gitignored (npm run extract-hvsc builds it), so skip
         // rather than fail when it isn't there.

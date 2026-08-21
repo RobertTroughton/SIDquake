@@ -266,6 +266,59 @@ async function openStudioWithLogo(page) {
     check(Math.abs(halfWidth - fullWidth / 2) <= 4, 'and the size slider scales the logo',
         `${fullWidth}px -> ${halfWidth}px`);
 
+    // The tool is a modal dialog: Tab must stay inside it, its own controls must
+    // keep their arrow keys, and closing must hand focus back.
+    // The logo panel may not be the Studio's active tab, and a button on a
+    // hidden panel cannot take focus - so show it before testing focus at all.
+    await page.evaluate(() => {
+        const wrapper = document.querySelector('.image-preview-wrapper');
+        const panel = wrapper.closest('.studio-panel');
+        if (panel && panel.dataset.studioTab) window.studioModal.activate(panel.dataset.studioTab);
+    });
+    await page.waitForTimeout(500);
+    await page.evaluate(() => document.querySelector('[data-act="adjust"]').click());
+    await page.waitForSelector('#logoFitModal.visible', { timeout: 15000 });
+    const keys = await page.evaluate(() => {
+        const modal = document.getElementById('logoFitModal');
+        const content = modal.querySelector('.logo-fit-content');
+        const focusable = [...content.querySelectorAll(
+            'button, a[href], input, select, textarea, [tabindex]:not([tabindex="-1"])')]
+            .filter(el => !el.disabled && el.offsetParent !== null);
+        const last = focusable[focusable.length - 1];
+        last.focus();
+        document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Tab', bubbles: true }));
+        const trapped = content.contains(document.activeElement);
+
+        // Arrow keys used to be bound to the document, which ate these.
+        const slider = document.getElementById('logoFitScale');
+        slider.focus();
+        const arrow = new KeyboardEvent('keydown',
+            { key: 'ArrowRight', bubbles: true, cancelable: true });
+        slider.dispatchEvent(arrow);
+        const sliderKept = !arrow.defaultPrevented;
+
+        // The canvas still nudges.
+        const canvas = document.getElementById('logoFitCanvas');
+        canvas.focus();
+        const nudge = new KeyboardEvent('keydown',
+            { key: 'ArrowDown', bubbles: true, cancelable: true });
+        canvas.dispatchEvent(nudge);
+        return { trapped, sliderKept, canvasNudges: nudge.defaultPrevented,
+                 controls: focusable.length };
+    });
+    check(keys.trapped, 'Tab stays inside the Adjust tool', JSON.stringify(keys));
+    check(keys.sliderKept, 'the size slider keeps its own arrow keys', JSON.stringify(keys));
+    check(keys.canvasNudges, 'and the arrow keys still nudge on the canvas', JSON.stringify(keys));
+
+    const restored = await page.evaluate(() => {
+        const back = document.querySelector('[data-act="adjust"]');
+        document.getElementById('logoFitClose').click();
+        return { ok: document.activeElement === back, on: document.activeElement.tagName,
+                 shown: back ? back.offsetParent !== null : null };
+    });
+    check(restored.ok, 'closing it hands focus back where it came from', JSON.stringify(restored));
+    await page.waitForTimeout(400);
+
     // A real multicolour logo, moved down the screen and given the soft
     // transparent edges a logo exported from a modern tool has. Placing it must
     // not blend those edges into the background: the converter ignores alpha,
