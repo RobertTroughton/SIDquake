@@ -198,9 +198,10 @@ class StudioModal {
         nav.querySelectorAll('[data-go]').forEach(b =>
             b.addEventListener('click', () => this.activate(b.dataset.go)));
 
-        // Generate PRG lives only on the Export tab.
-        const exportBtn = document.getElementById('exportPRGButton');
-        if (exportBtn) exportBtn.style.display = onExport ? '' : 'none';
+        // Generate PRG is available from every tab. Everything has a working
+        // default from the moment a SID loads, so there is no reason to make
+        // someone walk to the end of the wizard to reach the button - and a user
+        // who only changed one thing should be one click from a file.
     }
 
     // Group a visualizer config's inputs/options into derived tabs.
@@ -289,10 +290,46 @@ class StudioModal {
         if (!this.tabList().some(t => t.id === tabId)) return;
         this.activeTab = tabId;
         this.visited.add(tabId);
-        this.renderRail();
-        this.renderNav();
+        this._scrollRailOnNextRender = true;
+        this._preservingFocus(() => {
+            this.renderRail();
+            this.renderNav();
+        });
         this.showActivePanel();
         this.queueRefresh();
+    }
+
+    // Both the rail and the footer nav are rebuilt wholesale, which destroys the
+    // very button the user just pressed: focus falls to <body> and the next Tab
+    // is thrown back to the top of the Studio. Note what was focused and hand
+    // focus to its replacement.
+    //
+    // The rail's replacement is the button for the same tab. The footer's is the
+    // button with the same role - press Next repeatedly and focus stays on Next -
+    // falling through to Generate PRG on the last tab, where Next disappears and
+    // generating is the only thing left to do.
+    _preservingFocus(rebuild) {
+        const active = document.activeElement;
+        const inRail = this.rail && this.rail.contains(active);
+        const nav = document.getElementById('studioNavBtns');
+        const inNav = nav && nav.contains(active);
+        const tabKey = inRail ? active.dataset.tab : null;
+        const navRole = inNav ? (active.classList.contains('next') ? 'next' : 'prev') : null;
+
+        rebuild();
+
+        if (inRail) {
+            const next = (tabKey && this.rail.querySelector(`[data-tab="${tabKey}"]`))
+                || this.rail.querySelector('.studio-tab.active')
+                || this.rail.querySelector('button');
+            if (next) next.focus();
+        } else if (inNav) {
+            const fresh = document.getElementById('studioNavBtns');
+            const next = fresh?.querySelector(`.${navRole}`)
+                || fresh?.querySelector('.studio-nav-btn')
+                || document.getElementById('exportPRGButton');
+            if (next) next.focus();
+        }
     }
 
     showActivePanel() {
@@ -329,15 +366,21 @@ class StudioModal {
             btn.className = 'studio-tab'
                 + (t.id === this.activeTab ? ' active' : '')
                 + (!prev.includes(t.id) ? ' entering' : '');
+            btn.dataset.tab = t.id;
             btn.innerHTML = `<i class="fas ${t.icon}"></i>${t.label}`
                 + `<span class="studio-tab-status ${st.cls}" title="${st.title}">${st.glyph}</span>`;
             btn.addEventListener('click', () => this.activate(t.id));
             this.rail.appendChild(btn);
         });
         // Rebuilding the rail put its scroll position back to the start, so
-        // bring the active tab back into view (a no-op when it never left).
-        const active = this.rail.querySelector('.studio-tab.active');
-        if (active) active.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+        // bring the active tab back into view - but only when the tab actually
+        // changed. queueRefresh rebuilds on every keystroke, and scrolling the
+        // rail while someone types in a panel is pure noise.
+        if (this._scrollRailOnNextRender) {
+            this._scrollRailOnNextRender = false;
+            const active = this.rail.querySelector('.studio-tab.active');
+            if (active) active.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+        }
     }
 
     // ---------------------------------------------------------------------
@@ -349,8 +392,10 @@ class StudioModal {
         this._refreshQueued = true;
         requestAnimationFrame(() => {
             this._refreshQueued = false;
-            this.renderRail();
-            this.renderNav();
+            this._preservingFocus(() => {
+                this.renderRail();
+                this.renderNav();
+            });
             this.renderManifest();
             this.renderFooter();
         });

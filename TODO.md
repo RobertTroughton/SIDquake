@@ -16,9 +16,9 @@ source; where a claim still needs a browser to confirm it, it says so.
 Ranked by value against effort, not by section order. Each line names the section
 that holds the detail.
 
-1. Move Generate PRG onto every tab; collapse Technical Details; move the frame
-   rate, stored bars and analysis engine behind an Advanced disclosure; restore
-   the scan window, min-loop and bank override into it. *(Progressive disclosure)*
+1. Collapse Technical Details; move the frame rate, stored bars and analysis
+   engine behind an Advanced disclosure; restore the scan window, min-loop and
+   bank override into it. *(Progressive disclosure)*
 2. Ship the eleven preview GIFs and set `animated: true`. *(Preview)*
 3. Don't auto-open the Studio below 720px; un-hide the visualiser on phones;
    autoplay after Random SID. *(Mobile and first impression)*
@@ -171,8 +171,6 @@ a file. Everything else stays exactly where it is behind "Customise".
 
 **Structural fixes that serve both populations:**
 
-- **Put Generate PRG on every tab**, not only Export (`studio-modal.js:198-199`).
-  Nothing forces a walk through the wizard once the settings are right.
 - **Persist the session's visualiser and option memory across a reload.** The
   choice now survives loading another tune (`_lastVisualizerId`,
   `_lastDataSource`, `_optionMemory`), but not a refresh or a new tab. Consider
@@ -237,14 +235,11 @@ other twenty places that needed them.
 
 **Blockers.**
 
-- **Activating a Studio tab destroys the button that was pressed.** `activate()`
-  calls `renderRail()`/`renderNav()`, both of which do `innerHTML = ''`
-  (`studio-modal.js:315`, `:193`), so focus falls to `<body>` and the next Tab is
-  slammed to `#studioClose` by `_trapTab` (`studio-modal.js:118`). Every step of
-  the wizard costs a full re-tab. Worse, `queueRefresh` fires on any
-  `input`/`change`/`click` in the panels (`studio-modal.js:64`), so typing one
-  character into the scroller rebuilds the whole rail and calls `scrollIntoView`.
-  Diff the tab list instead of rebuilding, and restore focus across any rebuild.
+- **Still open: the rail and nav are rebuilt wholesale on every refresh.** Focus
+  is now carried across the rebuild (`_preservingFocus`) and the rail only
+  scrolls when the tab actually changed, so the keyboard cost is gone — but
+  `queueRefresh` still throws away and recreates every button on each keystroke.
+  Diff the tab list and update in place.
 - **Replace the hardcoded modal-precedence list with a real stack.**
   `studio-modal.js:53` now names every overlay including `logoFitModal`, so the
   keyboard trap is gone, but the next overlay added will reintroduce it. Push/pop

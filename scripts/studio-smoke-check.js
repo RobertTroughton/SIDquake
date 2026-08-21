@@ -125,6 +125,39 @@ async function loadSid(page, file) {
             () => document.querySelectorAll('#exportManifest tr').length);
         check('Export manifest renders rows', manifestRows > 1, `${manifestRows} rows`);
 
+        // --- Generate PRG reachable from every tab ----------------------------
+        const genEverywhere = await page.evaluate(() => {
+            const tabs = window.studioModal.tabList().map(t => t.id);
+            const btn = document.getElementById('exportPRGButton');
+            const hidden = [];
+            for (const id of tabs) {
+                window.studioModal.activate(id);
+                if (btn.offsetParent === null) hidden.push(id);
+            }
+            return { tabs: tabs.length, hidden };
+        });
+        check('Generate PRG is visible on every tab', genEverywhere.hidden.length === 0,
+            `${genEverywhere.tabs} tabs, hidden on: ${genEverywhere.hidden.join(',') || 'none'}`);
+
+        // --- activating a tab must not throw focus away -----------------------
+        const focusKept = await page.evaluate(() => {
+            const rail = document.getElementById('studioRail');
+            const first = rail.querySelector('[data-tab]');
+            first.focus();
+            const before = document.activeElement === first;
+            first.click();
+            const after = document.activeElement;
+            return {
+                before,
+                stillInRail: rail.contains(after),
+                sameTab: after?.dataset?.tab === first.dataset.tab,
+                landedOnBody: after === document.body,
+            };
+        });
+        check('Focus survives activating a rail tab',
+            focusKept.before && focusKept.stillInRail && !focusKept.landedOnBody,
+            JSON.stringify(focusKept));
+
         // --- metadata edits reach the header the exporter reads ---------------
         const meta = await page.evaluate(() => {
             const ui = window.uiController;
