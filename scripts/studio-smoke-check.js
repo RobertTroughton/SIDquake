@@ -349,6 +349,65 @@ async function loadSid(page, file) {
         });
         check('An export failure does not erase itself after 5s', stays === true);
 
+        // --- Studio rail is a real tablist ------------------------------------
+        const rail = await page.evaluate(() => {
+            const railEl = document.getElementById('studioRail');
+            const tabs = [...railEl.querySelectorAll('[role="tab"]')];
+            const selected = tabs.filter(t => t.getAttribute('aria-selected') === 'true');
+            const panelFor = selected[0] && document.getElementById(
+                selected[0].getAttribute('aria-controls'));
+            const before = window.studioModal.activeTab;
+            railEl.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true }));
+            return {
+                list: railEl.getAttribute('role'),
+                tabs: tabs.length,
+                selected: selected.length,
+                tabStops: tabs.filter(t => t.tabIndex === 0).length,
+                panelLinked: !!panelFor && panelFor.getAttribute('role') === 'tabpanel',
+                moved: window.studioModal.activeTab !== before,
+            };
+        });
+        check('The Studio rail is a tablist with one selected tab',
+            rail.list === 'tablist' && rail.tabs > 1 && rail.selected === 1,
+            JSON.stringify(rail));
+        check('Each tab is linked to its panel', rail.panelLinked);
+        check('Arrow keys move between Studio sections',
+            rail.moved && rail.tabStops === 1, JSON.stringify(rail));
+
+        // --- headings run in order --------------------------------------------
+        const headings = await page.evaluate(() => {
+            const panel = document.querySelector('.studio-panel[data-studio-tab="song"]');
+            const levels = [...panel.querySelectorAll('h1,h2,h3,h4')]
+                .map(h => parseInt(h.tagName.slice(1), 10));
+            let ok = true;
+            for (let i = 1; i < levels.length; i++) if (levels[i] - levels[i - 1] > 1) ok = false;
+            return { levels, ok };
+        });
+        check('Studio headings do not run backwards or skip a level',
+            headings.ok && headings.levels[0] === 2, JSON.stringify(headings));
+
+        // --- the busy overlay says something ----------------------------------
+        const busy = await page.evaluate(() => {
+            const ui = window.uiController;
+            ui.showBusy('Smoke test', 'Working…', () => {});
+            const content = document.querySelector('#busyOverlay .busy-content');
+            const state = {
+                role: content.getAttribute('role'),
+                modal: content.getAttribute('aria-modal'),
+                announced: document.getElementById('busyAnnounce').textContent,
+                pageInert: !!document.querySelector('.container').inert,
+                focusOnCancel: document.activeElement === document.getElementById('busyCancel'),
+            };
+            ui.hideBusy();
+            state.inertCleared = !document.querySelector('.container').inert;
+            return state;
+        });
+        check('The busy overlay is a dialog and announces itself',
+            busy.role === 'dialog' && busy.modal === 'true' && /Smoke test/.test(busy.announced),
+            JSON.stringify(busy));
+        check('It focuses Cancel and makes the page behind inert',
+            busy.focusOnCancel && busy.pageInert && busy.inertCleared, JSON.stringify(busy));
+
         // --- the completion panel ---------------------------------------------
         // Rendered directly rather than by running a full export, which needs a
         // bake and a compressor and is not what this check is about.

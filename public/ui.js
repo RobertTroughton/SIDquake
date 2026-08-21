@@ -319,7 +319,10 @@ class UIController {
     }
 
     async selectRandomSID() {
-        this.showBusy('Finding Random SID', 'Exploring HVSC collection...');
+        // Cancellable: this fetches a pool file and then a tune, and a phone on a
+        // slow connection should not be stuck behind an overlay with no way out.
+        const randomAc = new AbortController();
+        this.showBusy('Finding Random SID', 'Exploring HVSC collection...', () => randomAc.abort());
 
         try {
             await window.loadScript('hvsc-random.js');
@@ -335,7 +338,7 @@ class UIController {
 
             this.showModal('Downloading SID from HVSC...', true);
 
-            const response = await fetch(result.url);
+            const response = await fetch(result.url, { signal: randomAc.signal });
 
             if (!response.ok) {
                 throw new Error('Failed to download SID file');
@@ -348,6 +351,9 @@ class UIController {
 
         } catch (error) {
             this.hideBusy();
+            // A user cancel is not a failure - say nothing and leave them where
+            // they were.
+            if (error && error.name === 'AbortError') return;
             console.error('Error selecting random SID:', error);
             this.showModal('Failed to select random SID: ' + error.message, false);
         }
@@ -4232,11 +4238,38 @@ class UIController {
     // pass no handler get the plain spinner, exactly as before.
     showBusy(message, submessage = '', onCancel = null) {
         if (this.elements.busyOverlay) {
+            this._busyOpener = document.activeElement;
             this.elements.busyMessage.textContent = message;
             this.elements.busySubmessage.textContent = submessage;
             this._wireBusyCancel(onCancel);
             this.elements.busyOverlay.classList.add('visible');
+            // The page behind is covered by an opaque blur, and the Studio stops
+            // trapping Tab while this is up - without inert, focus wanders around
+            // a page the user cannot see.
+            this._setPageInert(true);
+            this._announceBusy(`${message}. ${submessage}`, true);
+            // Cancel is the only thing that can be done here, so put focus on it.
+            const cancel = document.getElementById('busyCancel');
+            if (cancel && !cancel.hidden) cancel.focus();
         }
+    }
+
+    /** Hide the page behind a full-screen overlay from the keyboard and from AT. */
+    _setPageInert(on) {
+        const page = document.querySelector('.container');
+        if (!page) return;
+        try { page.inert = on; } catch (e) { /* older browser; the Tab trap still applies */ }
+    }
+
+    // The progress counter changes several times a second. Feeding every tick to
+    // a live region makes a screen reader unusable, so announce on a slow
+    // throttle and force the milestones (start, outcome) through.
+    _announceBusy(text, force = false) {
+        const now = Date.now();
+        if (!force && now - (this._lastBusyAnnounce || 0) < 10000) return;
+        this._lastBusyAnnounce = now;
+        const el = document.getElementById('busyAnnounce');
+        if (el) el.textContent = text;
     }
 
     // Show/reset the overlay's Cancel button. A fresh click handler is attached
@@ -4304,14 +4337,23 @@ class UIController {
                 this.elements.busyHint.textContent = hint;
                 this.elements.busyHint.hidden = !hint;
             }
+            this._announceBusy(`${message}. ${submessage}`);
         }
     }
 
-    hideBusy() {
+    hideBusy(outcome = '') {
         if (this.elements.busyOverlay) {
             this.elements.busyOverlay.classList.remove('visible');
             // Drop the cancel button + its handler so it never leaks into the next task.
             this._wireBusyCancel(null);
+            this._setPageInert(false);
+            if (outcome) this._announceBusy(outcome, true);
+            // Back to whatever was focused when the overlay took over.
+            if (this._busyOpener && typeof this._busyOpener.focus === 'function'
+                && this._busyOpener.isConnected) {
+                this._busyOpener.focus();
+            }
+            this._busyOpener = null;
         }
     }
 

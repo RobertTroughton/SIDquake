@@ -225,14 +225,10 @@ other twenty places that needed them.
   tool also still needs its own Tab trap and focus restore (copy `ui.js:274-296`),
   and its document-level arrow handler swallows the Size slider's arrow keys —
   scope it to the canvas.
-- **Still open: the busy overlay is silent and traps nothing.** `showBusy` sets
-  `textContent` and adds a class; it does not move focus, and `studio-modal.js`
-  deliberately stops trapping Tab while it is up, so focus roams the page behind
-  an opaque blur. The two longest operations — Random SID and the file load —
-  pass no `onCancel`, so the Cancel button is hidden entirely. (The multi-minute
-  scan no longer runs behind it, which was the worst case; the analysis chip has
-  a throttled live region and its own cancel.) It still needs `role="status"`, a
-  throttled announcement, focus on Cancel, and `inert` on the page behind.
+- **Still open: the file load has no Cancel.** `processFile`'s overlay passes no
+  `onCancel`, so the 30,000-frame analysis can't be stopped. Random SID is
+  cancellable now, and the overlay itself is a labelled dialog that announces on
+  a throttle, focuses Cancel and makes the page behind `inert`.
 - **Still open: the HVSC list puts every row in the tab order**
   (`hvsc-browser.js:743`) with no arrow keys and no virtualisation, and
   `#itemCount` changes silently. Make it a `role="listbox"` with roving tabindex
@@ -263,11 +259,11 @@ guard are in. Still wanted: a persisted user toggle for the drifting notes, sinc
 "I find this distracting" is not the same preference as the OS setting, and a
 static substitute for `.busy-spinner` when a scan runs for minutes.
 
-**Structure.** The Tool tab is a `<main>` with a heading and a skip link now.
-Still wrong inside the Studio: the heading order runs backwards, `<h3
-class="studio-panel-title">` followed by `<h2>` panel headings. The Studio rail
-buttons are also still plain buttons rather than `role="tab"` with
-`aria-selected`, so nothing says which section is current.
+**Structure.** Done: the Tool tab is a `<main>` with a heading and a skip link,
+the Studio's heading order runs h2 → h3, and the rail is a real `tablist` whose
+tabs carry `aria-selected` / `aria-controls`, answer to the arrow keys and cost
+one tab stop. Still open: two `<h1>`s in the document at once (the wide and tall
+logos are both in the DOM, hidden by media queries rather than `<picture>`).
 
 **Zoom.** The Studio rail is `display: none` below 720px
 (`studio-modal.css:404`), which on a 1440px monitor fires at exactly 200% browser

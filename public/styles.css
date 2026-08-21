@@ -522,7 +522,8 @@ body.file-dragging::after {
     background: var(--bg-surface);
 }
 
-.panel h2 {
+.panel h2,
+.panel h3 {
     color: var(--accent);
     margin-bottom: var(--space-md);
     font-size: 0.8em;

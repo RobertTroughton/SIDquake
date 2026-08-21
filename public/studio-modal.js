@@ -345,7 +345,13 @@ class StudioModal {
 
     showActivePanel() {
         for (const p of this.panels.querySelectorAll('.studio-panel')) {
-            p.classList.toggle('active', p.dataset.studioTab === this.activeTab);
+            const id = p.dataset.studioTab;
+            p.classList.toggle('active', id === this.activeTab);
+            // Paired with the rail buttons built in renderRail. Set here rather
+            // than in the markup so derived panels get it too.
+            p.id = `studio-panel-${id}`;
+            p.setAttribute('role', 'tabpanel');
+            p.setAttribute('aria-labelledby', `studio-tab-${id}`);
         }
     }
 
@@ -365,6 +371,28 @@ class StudioModal {
         const tabs = this.tabList();
         const prev = prevTabs || tabs.map(t => t.id);
         this.rail.innerHTML = '';
+        this.rail.setAttribute('role', 'tablist');
+        this.rail.setAttribute('aria-orientation', 'vertical');
+        if (!this._railKeysWired) {
+            this._railKeysWired = true;
+            this.rail.addEventListener('keydown', (e) => {
+                const tabIds = this.tabList().map(t => t.id);
+                const i = tabIds.indexOf(this.activeTab);
+                let go = null;
+                switch (e.key) {
+                    case 'ArrowDown': case 'ArrowRight': go = tabIds[(i + 1) % tabIds.length]; break;
+                    case 'ArrowUp': case 'ArrowLeft': go = tabIds[(i - 1 + tabIds.length) % tabIds.length]; break;
+                    case 'Home': go = tabIds[0]; break;
+                    case 'End': go = tabIds[tabIds.length - 1]; break;
+                    default: return;
+                }
+                e.preventDefault();
+                // activate() rebuilds the rail; _preservingFocus lands focus on
+                // the new tab's button.
+                this.rail.querySelector('.studio-tab.active')?.focus();
+                this.activate(go);
+            });
+        }
         tabs.forEach((t, i) => {
             if ((i === 2 && tabs.length > 3) || t.id === 'export') {
                 const sep = document.createElement('div');
@@ -378,8 +406,19 @@ class StudioModal {
                 + (t.id === this.activeTab ? ' active' : '')
                 + (!prev.includes(t.id) ? ' entering' : '');
             btn.dataset.tab = t.id;
-            btn.innerHTML = `<i class="fas ${t.icon}"></i>${t.label}`
-                + `<span class="studio-tab-status ${st.cls}" title="${st.title}">${st.glyph}</span>`;
+            // Real tab semantics: the rail is a tablist, so a screen reader says
+            // which section is current and how many there are, and the group is
+            // one tab stop with arrows to move between sections.
+            btn.id = `studio-tab-${t.id}`;
+            btn.setAttribute('role', 'tab');
+            btn.setAttribute('aria-selected', t.id === this.activeTab ? 'true' : 'false');
+            btn.setAttribute('aria-controls', `studio-panel-${t.id}`);
+            btn.tabIndex = t.id === this.activeTab ? 0 : -1;
+            // The status glyph is decoration for the tab's name; its meaning goes
+            // into the accessible name instead of being read as a symbol.
+            btn.innerHTML = `<i class="fas ${t.icon}" aria-hidden="true"></i>${t.label}`
+                + `<span class="studio-tab-status ${st.cls}" title="${st.title}" aria-hidden="true">${st.glyph}</span>`;
+            btn.setAttribute('aria-label', `${t.label} — ${st.title}`);
             btn.addEventListener('click', () => this.activate(t.id));
             this.rail.appendChild(btn);
         });

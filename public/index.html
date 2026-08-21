@@ -217,13 +217,13 @@
 
             <!-- SONG tab -->
             <section class="studio-panel" data-studio-tab="song">
-              <h3 class="studio-panel-title">Song</h3>
+              <h2 class="studio-panel-title">Song</h2>
               <p class="studio-panel-sub">Metadata written into the exported PRG — edit it here, or save a modified SID.</p>
               <div class="section-group info-section" id="infoSection">
                 <div class="info-panels" id="infoPanels">
                     <!-- File Information Panel -->
                     <div class="panel">
-                        <h2><i class="fas fa-file-alt"></i> File Information</h2>
+                        <h3><i class="fas fa-file-alt"></i> File Information</h3>
                         <div class="info-row">
                             <span class="info-label">Title:</span>
                             <span class="info-value editable" id="sidTitle" data-field="title" title="Click to edit">
@@ -263,7 +263,7 @@
                          init / play addresses and zero-page usage are reference
                          material, and this is the first panel on the first tab. -->
                     <details class="panel">
-                        <summary><h2><i class="fas fa-microchip"></i> Technical Details</h2></summary>
+                        <summary><h3><i class="fas fa-microchip"></i> Technical Details</h3></summary>
                         <div class="info-row">
                             <span class="info-label">Load Address:</span>
                             <span class="info-value" id="loadAddress">-</span>
@@ -315,7 +315,7 @@
                          current by uiController.updateSongLoopStatus(); the
                          toggle is read at export time (all visualizers). -->
                     <div class="panel" id="songLoopPanel">
-                        <h2><i class="fas fa-repeat"></i> Song Length &amp; Looping</h2>
+                        <h3><i class="fas fa-repeat"></i> Song Length &amp; Looping</h3>
                         <div class="info-row">
                             <span class="info-value" id="songLoopStatus" style="white-space:normal">Song end not analysed yet — SIDquake checks how the song ends during export.</span>
                         </div>
@@ -369,7 +369,7 @@
 
             <!-- VISUALIZER tab -->
             <section class="studio-panel active" data-studio-tab="visualizer">
-              <h3 class="studio-panel-title">Visualizer</h3>
+              <h2 class="studio-panel-title">Visualizer</h2>
               <p class="studio-panel-sub">Pick a player — the steps that follow adapt to what it needs.</p>
 
               <!-- Visualizer Grid (cards populated by visualizer-registry.js) -->
@@ -382,7 +382,7 @@
 
             <!-- METHOD tab (only shown for players with a choice of method) -->
             <section class="studio-panel" data-studio-tab="method">
-              <h3 class="studio-panel-title">Method</h3>
+              <h2 class="studio-panel-title">Method</h2>
               <p class="studio-panel-sub">How the bars are generated. <b>Spectrometer</b> looks best and is the default — switch only if you need multi-song playback or lower CPU. Optional.</p>
               <div id="methodMount"></div>
             </section>
@@ -392,7 +392,7 @@
 
             <!-- EXPORT tab -->
             <section class="studio-panel section-group export-section" data-studio-tab="export" id="exportSection">
-              <h3 class="studio-panel-title">Export</h3>
+              <h2 class="studio-panel-title">Export</h2>
 
               <!-- Shown after a successful export: what the file is, how to run
                    it, and anything worth going back for (populated by ui.js
@@ -996,11 +996,14 @@
     </div>
 
     <div class="busy-overlay" id="busyOverlay">
-        <div class="busy-content">
-            <div class="busy-spinner"></div>
+        <div class="busy-content" role="dialog" aria-modal="true" aria-labelledby="busyMessage">
+            <div class="busy-spinner" aria-hidden="true"></div>
             <div class="busy-message" id="busyMessage">Processing...</div>
-            <div class="busy-submessage" id="busySubmessage"></div>
+            <!-- The counter moves several times a second, so it is not announced
+                 directly; busyAnnounce carries a throttled summary instead. -->
+            <div class="busy-submessage" id="busySubmessage" aria-hidden="true"></div>
             <div class="busy-hint" id="busyHint" hidden></div>
+            <span class="visually-hidden" id="busyAnnounce" role="status" aria-live="polite"></span>
             <button type="button" class="busy-cancel-btn" id="busyCancel" hidden>Cancel</button>
         </div>
     </div>
