@@ -1631,3 +1631,10 @@ details[open].panel > summary h2::after {
     gap: 6px;
     cursor: pointer;
 }
+
+/* A button tapped before ui.js has attached its handlers: the tap is held and
+   replayed, so say it is coming rather than looking inert. */
+.upload-btn.is-waking {
+    opacity: 0.7;
+    cursor: progress;
+}

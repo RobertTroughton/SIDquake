@@ -305,10 +305,14 @@ a PRG.
   it. It is part of the search haystack, so a search kicks the fetch off and
   re-runs once it lands: first results are immediate, commentary matches fold in
   a moment later.
-- **The upload buttons are live-looking but dead for the first second or two** —
-  they ship in static HTML (`index.html:146-158`) and handlers attach in `ui.js`,
-  fourth in a deliberately yielded load chain (`index.html:1133-1150`). A first
-  tap that does nothing is a bounce.
+- **Done: an early tap on the upload buttons is held, not dropped.** They ship in
+  static HTML while their handlers attach in `ui.js`, fourth in a deliberately
+  yielded load chain, so for the first second or two they looked live and did
+  nothing. A small inline script holds the tap, marks the button as waking, and
+  replays it the moment the controller exists. Upload SID needs nothing from
+  `ui.js` at all, so it opens the file picker immediately; a file chosen that
+  early is still on the input, and the change event is re-fired once `ui.js` is
+  listening.
 - **`public/songlengths-report.html` is 1.4 MB** of internal QA output, deployed
   and publicly reachable. It is disallowed in `robots.txt` now, but it is still
   8% of `public/` for a dev artifact — it belongs outside the deployed directory,

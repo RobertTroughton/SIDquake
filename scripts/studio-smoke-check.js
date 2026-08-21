@@ -994,6 +994,32 @@ async function loadSid(page, file) {
                 railReuse.focusKept === true, JSON.stringify(railReuse));
         }
 
+        // --- a tap before ui.js is ready is not lost ---------------------------
+        const earlyTap = await browser.newPage({ viewport: { width: 1400, height: 900 } });
+        try {
+            // Stop the page at first paint and tap before the load chain runs.
+            await earlyTap.goto(base, { waitUntil: 'domcontentloaded' });
+            const tap = await earlyTap.evaluate(() => {
+                const early = !window.uiController;
+                document.getElementById('hvscBtn').click();
+                return { early, waking: !!document.querySelector('.upload-btn.is-waking') };
+            });
+            if (!tap.early) {
+                console.log('SKIP  early tap - ui.js was already up at first paint');
+            } else {
+                await earlyTap.waitForFunction(() => !!window.uiController, null, { timeout: 30000 });
+                const opened = await earlyTap.waitForFunction(
+                    () => document.getElementById('hvscModal').classList.contains('visible'),
+                    null, { timeout: 30000 }).then(() => true).catch(() => false);
+                check('A tap before the page finishes loading is acted on, not dropped',
+                    opened === true, JSON.stringify(tap));
+                check('And the button says the tap is coming rather than looking inert',
+                    tap.waking === true, JSON.stringify(tap));
+            }
+        } finally {
+            await earlyTap.close();
+        }
+
         // --- the choice survives a reload -------------------------------------
         const remembered = await page.evaluate(async () => {
             const ui = window.uiController;

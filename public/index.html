@@ -1310,6 +1310,60 @@
             requestAnimationFrame(function() { setTimeout(loadNext, 0); });
         })();
 
+        // The three upload buttons ship in the static HTML but their handlers
+        // attach in ui.js, fourth in the yielded load chain above - so for the
+        // first second or two they look live and do nothing, and a first tap
+        // that does nothing is a bounce. Hold that tap and act on it once the
+        // controller exists.
+        (function () {
+            var pending = null;
+            var wired = [];
+            function hold(id, act) {
+                var btn = document.getElementById(id);
+                if (!btn) return;
+                var onClick = function () {
+                    if (window.uiController) return;   // ui.js owns it now
+                    pending = act;
+                    btn.classList.add('is-waking');
+                };
+                btn.addEventListener('click', onClick);
+                wired.push(function () { btn.removeEventListener('click', onClick); });
+            }
+            // The file picker needs nothing from ui.js, so open it straight
+            // away. The chosen file is still on the input when ui.js attaches
+            // its change handler, so re-fire the event once it is there.
+            var input = document.getElementById('fileInput');
+            var uploadBtn = document.getElementById('uploadBtn');
+            var earlyPick = false;
+            if (input && uploadBtn) {
+                uploadBtn.addEventListener('click', function () {
+                    if (!window.uiController) input.click();
+                });
+                input.addEventListener('change', function () {
+                    if (!window.uiController && input.files && input.files.length) earlyPick = true;
+                });
+            }
+            hold('hvscBtn', function (ui) { ui.openHVSCBrowser(); });
+            hold('randomBtn', function (ui) { ui.selectRandomSID(); });
+
+            var tries = 0;
+            (function wait() {
+                if (window.uiController) {
+                    for (var i = 0; i < wired.length; i++) wired[i]();
+                    var btns = document.querySelectorAll('.upload-btn.is-waking');
+                    for (var j = 0; j < btns.length; j++) btns[j].classList.remove('is-waking');
+                    if (earlyPick && input) {
+                        input.dispatchEvent(new Event('change', { bubbles: true }));
+                    } else if (pending) {
+                        pending(window.uiController);
+                    }
+                    return;
+                }
+                if (tries++ > 300) return;   // 30s: something is badly wrong, stop polling
+                setTimeout(wait, 100);
+            })();
+        })();
+
         // Tab switching
         document.addEventListener('DOMContentLoaded', function() {
             var tabs = document.querySelectorAll('.page-tab');
