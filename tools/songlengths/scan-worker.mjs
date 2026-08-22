@@ -81,6 +81,10 @@ async function runAnalysis(sidBytes, task, maxSeconds) {
         minLoopSeconds,
         framesPerKeyframe: 2,
         engine: defaultEngine,
+        // Nothing is stored here, so the length is the tune's, not the
+        // spectrometer's: without this a tune playing past the export's
+        // stored-length cap was journalled as ending exactly there.
+        measureOnly: true,
         onProgress: () => {},
     });
 }

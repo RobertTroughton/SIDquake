@@ -368,6 +368,9 @@ export function createBakeCore(loadEngine) {
                 frameHz: cache.rows.frameHz, framesPerKeyframe: options.framesPerKeyframe,
                 minLoopSeconds: options.minLoopSeconds,
                 outputMaxSeconds: options.outputMaxSeconds,
+                // Measuring the tune rather than pricing a stream to store: see
+                // resolveKeyframes. Callers pricing a bake leave this off.
+                measureOnly: options.measureOnly,
                 analyzedSeconds: cache.rows.renderedSeconds, hitCap: cache.rows.hitCap,
             });
             return {

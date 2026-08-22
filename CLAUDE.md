@@ -227,8 +227,12 @@ by two scripts that export a real `.prg` and run it in VICE
 `scripts/seam-check.js` renders frames and checks the line below the logo's
 sprite curtain holds info text rather than data fetched through the logo's
 pointers, and `scripts/seam-latency.js` breaks on the split handler's `$d011`
-write to report how many cycles of margin the switch has left. Both share
-`scripts/lib/seam-lib.js`. Run them after touching a logo player's split.
+write to report how many cycles of margin the switch has left (`--watch=curtain`
+reads sprite 0's Y there instead, i.e. whether the curtain that hides the switch
+was up at all). Both take `--method` (which bar data to export with) and share
+`scripts/lib/seam-lib.js`. Run them after touching a logo player's split — with
+`scripts/make-test-logo.js`, since a shipped gallery logo's artwork stops short
+of the band and hides anything that goes wrong at its bottom edge.
 
 Also run `scripts/build-players.sh
 --check` after touching `SIDPlayers/`, and `scripts/cpu-crosscheck/run.sh` after

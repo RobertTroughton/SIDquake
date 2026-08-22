@@ -249,6 +249,22 @@ barGradientColors:                      // $80-$A7: per-bar colours (colorEffect
 .const CURTAIN_SPRITE_Y					= CURTAIN_TOP_BLOCK_LINE - 19	//; solid rows 19/20 land on the blocked lines
 .const CURTAIN_SPRITE_INDEX				= SPRITE_BASE_INDEX + 6			//; the freed 7th water-frame slot
 
+//; Where the sprites are handed back to curtain duty for the next frame. Two
+//; lines after the water's last (its Y + 20), and well before MUSIC_SYNC_LINE.
+//;
+//; It is a raster event of its own because the arming has a DEADLINE the frame's
+//; work cannot be trusted to meet: the VIC compares sprite Y once per line, so
+//; the sprites must be back on curtain duty before CURTAIN_SPRITE_Y. Riding on
+//; the tail of FrameCall they were not - behind the play call and
+//; UpdateBarColors' colour-RAM sweep, and skipped entirely when the dispatcher's
+//; overload guard drops a frame call - so at the switch the sprites were still
+//; on water duty on 15% of frames (46 of 300, measured with
+//; scripts/seam-latency.js --watch=curtain), leaving it written in the open: a
+//; two-line smear across the seam, on any logo whose artwork reaches the bottom
+//; of the band. An event of its own owes nothing to how long the frame's work
+//; takes.
+.const CURTAIN_ARM_LINE					= REFLECTION_SPRITES_YVAL + 23
+
 .import source "../INC/common.asm"
 .import source "../INC/keyboard.asm"
 .import source "../INC/musicplayback.asm"
@@ -632,7 +648,6 @@ FrameCall:
 #endif
 	jsr UpdateTimer
 #endif
-	jsr UpdateSprites
 
 	inc frameCounter
 	bne !skip+
@@ -706,7 +721,18 @@ SpectrometerD018:
 
 	jsr ApplyWaterSprites
 
+	SetNextRasterEvent(CURTAIN_ARM_LINE, CurtainArmIRQ)
+	jmp ExitIRQ
+
+//; The water has displayed: hand the sprites back to curtain duty for the top of
+//; the next frame (see CURTAIN_ARM_LINE).
+CurtainArmIRQ:
+	//; Music event first, so a slow frame can never cost the frame's play call.
 	SetNextRasterEvent(MUSIC_SYNC_LINE, MusicFrameHandler)
+	//; Sprite registers are music-safe, so let a mid-frame CIA call nest into
+	//; the writes rather than sit behind them.
+	cli
+	jsr UpdateSprites
 	jmp ExitIRQ
 
 //; =============================================================================
@@ -789,9 +815,10 @@ RenderToScreen1:
 //; SPRITE ANIMATION
 //; =============================================================================
 
-//; Bottom of frame (the water has displayed): configure the sprites as the
-//; curtain for the top of the next frame, and advance the wobble phase. The
-//; split handler (ApplyWaterSprites) flips them back to water duty.
+//; Configure the sprites as the curtain for the top of the next frame, and
+//; advance the wobble phase. Called from CurtainArmIRQ, on its own raster event
+//; once the water has displayed; the split handler (ApplyWaterSprites) flips
+//; them back to water duty.
 UpdateSprites:
 	ldx #$06
 	ldy #$0c							//; sprite 6 first: $d00c/$d00d, down to $d000/$d001
@@ -853,7 +880,14 @@ ApplyWaterSprites:
 	bcc !noClamp+
 	sbc #$06							//; 6,7 -> 0,1 (carry set by cmp)
 !noClamp:
-	ora #SPRITE_BASE_INDEX
+	//; ADD, not ORA. The base is $B9 here (the curtain took the slot above the six
+	//; water frames) and its low bit is already set, so ORA folded frames 0/1, 2/3
+	//; and 4/5 onto one pointer each: three of the six ever showed, each for twice
+	//; as long, and the shimmer jumped two rows at a time instead of drifting one -
+	//; the reflection blinked rather than moved. Carry is clear on the bcc path and
+	//; set after the sbc, so it has to be cleared here.
+	clc
+	adc #SPRITE_BASE_INDEX
 	.for (var i = 0; i < 7; i++) {
 		sta SPRITE_POINTERS_0 + i
 		sta SPRITE_POINTERS_1 + i

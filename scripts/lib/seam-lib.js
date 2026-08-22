@@ -97,6 +97,25 @@ async function exportPRG(opts) {
     }
     await page.waitForTimeout(1500);
 
+    // Which bar data the export uses. It decides the per-frame cycle cost the
+    // split has to survive - the live methods play the tune inside the same
+    // frame the switch happens in - so a seam has to be checked per method, not
+    // just per player. Default: whatever picking the card selects.
+    if (opts.method) {
+        const on = await page.evaluate((m) => {
+            const ui = window.uiController;
+            if (!ui.hasMethodChoice || !ui.hasMethodChoice()) return 'no method choice';
+            ui.selectDataSource(m);
+            return ui.selectedVisualizer && ui.selectedVisualizer.dataSource;
+        }, opts.method);
+        if (on !== opts.method) {
+            await browser.close(); server.close();
+            throw new Error('method "' + opts.method + '" not selected: ' + on);
+        }
+        console.log('  method ' + opts.method);
+        await page.waitForTimeout(1500);
+    }
+
     if (opts.logo) {
         await page.evaluate(() => window.studioModal && window.studioModal.open());
         await page.waitForTimeout(800);
@@ -153,10 +172,24 @@ async function exportPRG(opts) {
         return made;
     });
 
+    // Why nothing came out: the export refuses in several places (no layout
+    // fits, a consent unticked, the analysis cancelled) and each one leaves its
+    // reason on the page rather than throwing.
+    const why = out.length ? null : await page.evaluate(() => {
+        const bits = [];
+        const status = document.getElementById('exportStatus');
+        if (status && status.textContent.trim()) bits.push(status.textContent.trim());
+        const modal = document.getElementById('modalMessage');
+        if (modal && modal.textContent.trim()) bits.push(modal.textContent.trim());
+        const ui = window.uiController;
+        if (ui && ui._lastExportMessage) bits.push(ui._lastExportMessage);
+        return bits.join(' | ') || 'no reason on the page';
+    });
+
     await browser.close();
     server.close();
     if (errors.length) console.log('  note: page errors: ' + errors.join(' | '));
-    if (!out.length) throw new Error('export produced no .prg');
+    if (!out.length) throw new Error('export produced no .prg: ' + why);
     return Buffer.from(out[0].b64, 'base64');
 }
 

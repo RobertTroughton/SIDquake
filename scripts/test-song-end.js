@@ -90,6 +90,24 @@ function analyse(bake, rows, outputMaxSeconds, extra = {}) {
         'and so is music still playing where the scan window ends',
         JSON.stringify({ faded: cutAtWindow.fadedOut, cut: cutAtWindow.truncated }));
 
+    // --- measuring is not the same as storing --------------------------------
+    // Same tune, same stored-length cap. Pricing a stream cuts it; measuring the
+    // song follows it to the end, or a 15-minute ambient piece "ends" at 8:00.
+    const measured = analyse(bake, makeRows(300, 20), 120, { measureOnly: true });
+    check(measured.fadedOut && !measured.truncated,
+        'a measurement follows the music past the stored-length cap',
+        JSON.stringify({ faded: measured.fadedOut, cut: measured.truncated }));
+    const realEnd = measured.loopStart / measured.keyframeHz;
+    check(Math.abs(realEnd - 300) < 1, 'and reports where the music really ends', `${realEnd.toFixed(1)}s`);
+
+    // The C64 RAM budget is the same kind of cap and must not reach a
+    // measurement either: 40 bars leave 18,432 index bytes, ~12 minutes at 25 Hz.
+    const longer = analyse(bake, makeRows(800, 20), 0, { measureOnly: true });
+    check(longer.fadedOut && !longer.truncated
+        && Math.abs(longer.loopStart / longer.keyframeHz - 800) < 1,
+        'and past the RAM budget the C64 side would impose',
+        `${(longer.loopStart / longer.keyframeHz).toFixed(1)}s`);
+
     // --- a tune that repeats ------------------------------------------------
     const looped = analyse(bake, makeLoopingRows(20, 4), 600);
     check(looped.looped && !looped.truncated && !looped.fadedOut,

@@ -793,7 +793,11 @@ function resolveKeyframes(store, o) {
         const NB = o.numBars;
         const silent = o.maxHeight * NB * 0.02;   // near-zero total column energy
         const budgetKf = o.budgetBytes - 256 * NB;
-        const capKf = Math.max(1, Math.min(
+        // o.measureOnly: nothing is being stored, so neither the stored-length
+        // choice nor the C64 RAM budget has any say in how far the music is
+        // followed. Capping a MEASUREMENT with them reported a tune that plays
+        // past the cap as ending exactly there.
+        const capKf = o.measureOnly ? nk : Math.max(1, Math.min(
             Math.floor((o.outputMaxSeconds || o.maxSeconds) * o.keyframeHz), budgetKf));
         const lastKf = Math.min(nk, capKf);
         let musicEnd = lastKf;

@@ -127,7 +127,7 @@
       "accept": ".png",
       "required": false,
       "default": "PNG/Logos/0-default.png",
-      "description": "320x200 or 384x272 PNG; only the top 11 char rows (88px) are shown. Charset-friendly images export as a charset (smaller); anything else falls back to bitmap.",
+      "description": "320x200 or 384x272 PNG; artwork sits in the top 10 char rows (80px); the 11th is left clear of the split below the logo. Charset-friendly images export as a charset (smaller); anything else falls back to bitmap.",
       "galleryFiles": [
         "prg/galleries/logos.json"
       ],
@@ -247,6 +247,7 @@
         "bitmap"
       ],
       "charsetRows": 11,
+    "artRows": 10,
       "charsetMaxChars": 256
     }
   ],
