@@ -1590,6 +1590,22 @@ async function loadSid(page, file) {
             check('...and puts the Spectrometer back on offer',
                 state.after.spectrometer.ok === true);
 
+            // The picker and the transport are two views of one choice.
+            const sync = await many.evaluate(async () => {
+                const ui = window.uiController;
+                const sel = document.getElementById('songSelector');
+                sel.value = '2';
+                sel.dispatchEvent(new Event('change', { bubbles: true }));
+                await new Promise(r => setTimeout(r, 200));
+                const played = ui.mainPlayer ? ui.mainPlayer.currentSubtune : -1;
+                ui.mainPlayer.nextSubtune();
+                await new Promise(r => setTimeout(r, 200));
+                return { played, picked: sel.value, exports: ui.exportSubtuneIndex() };
+            });
+            check('Picking a tune plays that tune', sync.played === 1, JSON.stringify(sync));
+            check('And stepping the player picks it', sync.picked === '3' && sync.exports === 2,
+                JSON.stringify(sync));
+
             // The program itself has to be told it holds one tune, or the C64's
             // tune keys would step through tunes the export no longer describes.
             const built = await many.evaluate(async () => {
@@ -1619,7 +1635,7 @@ async function loadSid(page, file) {
             });
             check('A locked export tells the program it holds one tune',
                 built.numSongsByte === 1, JSON.stringify(built));
-            check('And which one that is', built.songNumberByte === 4, JSON.stringify(built));
+            check('And which one that is', built.songNumberByte === 2, JSON.stringify(built));
             check('The multi-tune page raised no errors', errs.length === 0, errs.slice(0, 2).join(' | '));
         } finally {
             await many.close();

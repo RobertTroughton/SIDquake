@@ -182,13 +182,23 @@ async function checkChooseDoesNotPlay(browser) {
         const { state, page } = await followLink(browser, base, true);
         const playingFirst = await page.evaluate(() => getSharedSIDPlayback().playing);
         const after = await page.evaluate(async () => {
+            // The fixture holds two tunes; step to the second, so what the tool
+            // starts on can be told apart from the file's own start song.
+            const stepped = document.querySelector('.hvsc-player-container .sid-player-next');
+            const wasEnabled = stepped && !stepped.disabled;
+            if (wasEnabled) stepped.click();
+            await new Promise(r => setTimeout(r, 300));
             hvscBrowser.chooseSong();
             for (let i = 0; i < 120 && !window.uiController.sidHeader; i++) {
                 await new Promise(r => setTimeout(r, 250));
             }
+            await new Promise(r => setTimeout(r, 500));
             return {
                 took: !!window.uiController.sidHeader,
                 playing: getSharedSIDPlayback().playing,
+                stepped: wasEnabled,
+                songs: window.uiController.sidHeader?.songs,
+                exports: window.uiController.exportSubtuneIndex(),
             };
         });
         await page.close();
@@ -197,6 +207,9 @@ async function checkChooseDoesNotPlay(browser) {
             `loaded=${state.loaded} playing=${playingFirst}`);
         check(after.took, 'choosing: the tune reaches the tool');
         check(!after.playing, 'choosing: and it waits to be played, rather than starting itself');
+        check(after.stepped && after.songs === 2 && after.exports === 1,
+            'choosing: the tune being previewed is the one the tool starts on',
+            JSON.stringify({ songs: after.songs, exports: after.exports }));
     } finally {
         server.close();
     }

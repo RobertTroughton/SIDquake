@@ -1203,6 +1203,10 @@ window.hvscBrowser = (function () {
             if (!cfg) {
                 window.postMessage({
                     type: 'sid-selected', name: base.name, path: base.path, url: base.url,
+                    // In a file of several tunes, the one being previewed is the
+                    // one the user means - the tool starts on it rather than on
+                    // the file's default song. 1-based, 0 when nothing played.
+                    subtune: hvscPlayer && hvscPlayer.loaded ? hvscPlayer.currentSubtune + 1 : 0,
                 }, '*');
                 return;
             }

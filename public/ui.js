@@ -37,6 +37,11 @@ class UIController {
         // asked it to keep looking; 0 = whatever Advanced settings says. Cleared
         // on a new tune (see processFile).
         this._scanWindowOverride = 0;
+        // Which tune of a multi-tune file the export starts on, 1-based, when
+        // something already decided (the tune previewed in the collection
+        // browser); 0 = the file's own start song. The Song tab's picker is the
+        // live answer after that.
+        this._chosenSubtune = 0;
         // A file holding several tunes, exported as one of them: the C64's tune
         // keys are taken away and in return the export gets a song length, the
         // forced loop and the spectrometer, all of which describe one tune.
@@ -303,6 +308,9 @@ class UIController {
             window.loadScript('sid-player.js')
         ]);
         this.mainPlayer = new SIDPlayer(container);
+        // The tune stepped to on the transport is the tune the user means to
+        // export, so the Song tab's picker follows it.
+        this.mainPlayer.onSubtuneChange = (index) => this.followPlayedSubtune(index);
         return this.mainPlayer;
     }
 
@@ -447,8 +455,9 @@ class UIController {
 
             // Taking a tune out of the browser is not a request to hear it: the
             // Studio opens over the page and the tune was already auditioned in
-            // the browser. Playing starts on the play button.
-            await this.processFile(file, { autoplay: false });
+            // the browser. Playing starts on the play button. The tune of a
+            // multi-tune file that was previewed carries over as the one to use.
+            await this.processFile(file, { autoplay: false, subtune: data.subtune });
 
         } catch (error) {
             console.error('Error downloading HVSC file:', error);
@@ -1090,6 +1099,10 @@ class UIController {
         this.currentFileName = file.name;
         this.hasModifications = false;
         const autoplay = !!(opts && opts.autoplay);
+        // Which tune to start on, when the caller knows (an HVSC pick made while
+        // that tune was previewing). Bounds-checked against the header below.
+        const wantSubtune = Math.max(0, parseInt(opts && opts.subtune, 10) || 0);
+        this._chosenSubtune = wantSubtune;
         this.elements.exportModifiedSIDButton.disabled = true;
 
         // A scan for the previous tune is now pointless, and its result must not
@@ -1113,7 +1126,8 @@ class UIController {
 
             const player = await this.ensureMainPlayer();
             if (player) {
-                player.loadFromBinary(new Uint8Array(buffer), file.name, { autoplay });
+                player.loadFromBinary(new Uint8Array(buffer), file.name,
+                    { autoplay, subtune: wantSubtune });
             }
 
             this.updateBusy('Parsing SID Header', 'Extracting metadata...');
@@ -1223,12 +1237,16 @@ class UIController {
 
         if (mount && this.sidHeader && this.sidHeader.songs > 1) {
             const songs = this.sidHeader.songs;
+            // The tune to start on: what the user was already listening to, or
+            // the one the file itself starts with.
+            const startOn = (this._chosenSubtune >= 1 && this._chosenSubtune <= songs)
+                ? this._chosenSubtune : this.sidHeader.startSong;
             mount.innerHTML = `
             <div id="songSelectorContainer" class="export-option song-selector-container">
                 <label for="songSelector">Which tune to use:</label>
                 <select id="songSelector">
                     ${Array.from({ length: Math.min(songs, 256) }, (_, i) => i + 1)
-                    .map(num => `<option value="${num}" ${num === this.sidHeader.startSong ? 'selected' : ''}>
+                    .map(num => `<option value="${num}" ${num === startOn ? 'selected' : ''}>
                         Tune ${num} of ${songs}${num === this.sidHeader.startSong ? ' (the usual one)' : ''}
                     </option>`).join('')}
                 </select>
@@ -1250,7 +1268,16 @@ class UIController {
                 });
             }
             const sel = document.getElementById('songSelector');
-            if (sel) sel.addEventListener('change', () => this._songChoiceChanged());
+            if (sel) {
+                sel.addEventListener('change', () => {
+                    this._chosenSubtune = parseInt(sel.value, 10) || 0;
+                    // Hearing the tune you are about to export is the point of
+                    // having a player on the page, so the transport follows the
+                    // pick as well as the other way round.
+                    if (this.mainPlayer) this.mainPlayer.setSubtune(this.exportSubtuneIndex());
+                    this._songChoiceChanged();
+                });
+            }
         }
 
         if (noteMount && this.sidHeader && this.sidHeader.songs > 1) {
@@ -1290,6 +1317,21 @@ class UIController {
      */
     multiSongExport() {
         return !!(this.sidHeader && this.sidHeader.songs > 1) && !this._singleSongLock;
+    }
+
+    /**
+     * The transport moved to another tune of the file: make that the tune the
+     * export uses. Silent when the pick already matches, so the two controls
+     * cannot chase each other.
+     */
+    followPlayedSubtune(index) {
+        const sel = document.getElementById('songSelector');
+        if (!sel) return;
+        const want = String(Math.max(0, index | 0) + 1);
+        if (sel.value === want || !sel.querySelector(`option[value="${want}"]`)) return;
+        sel.value = want;
+        this._chosenSubtune = parseInt(want, 10);
+        this._songChoiceChanged();
     }
 
     /** Which tune the export uses, 0-indexed: the Song tab's pick, or the file's own. */

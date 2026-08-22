@@ -163,8 +163,12 @@ class SIDPlayer {
     // path the user actually clicked (Random SID, an HVSC pick) - the browser's
     // autoplay policy needs that gesture, and starting sound unasked otherwise
     // is rude.
+    // opts.subtune: which tune of a multi-tune file to start on, 1-based, when
+    // that has already been decided elsewhere (the tune previewed in the
+    // collection browser). Without it the file's own start song is used.
     async loadFromBinary(data, filename, opts = {}) {
         this._autoplayOnLoad = !!opts.autoplay;
+        this._startSubtune = parseInt(opts.subtune, 10) || 0;
         this.stop();
         this.takeOwnership();
         this._ownershipLost = false;
@@ -211,7 +215,8 @@ class SIDPlayer {
     onLoaded(filename) {
         const player = getSharedSIDPlayback();
         this.totalSubtunes = player.getSubtuneCount() || 1;
-        const startSong = player.getStartSong();
+        const startSong = this._startSubtune || player.getStartSong();
+        this._startSubtune = 0;
         this.currentSubtune = Math.max(0, Math.min(startSong - 1, this.totalSubtunes - 1));
         this.loaded = true;
 
@@ -353,10 +358,23 @@ class SIDPlayer {
         }
     }
 
+    /** Play a specific tune of a multi-tune file, 0-indexed. */
+    setSubtune(index) {
+        const want = Math.max(0, Math.min(index | 0, this.totalSubtunes - 1));
+        if (!this.loaded || want === this.currentSubtune) return;
+        this.currentSubtune = want;
+        this.updateSubtuneDisplay();
+        if (window.hvscVisualizer && window.hvscVisualizer.reset) window.hvscVisualizer.reset();
+        if (this.isPlaying) this.play();
+    }
+
     updateSubtuneDisplay() {
         this.els.subtuneDisplay.textContent = `${this.currentSubtune + 1}/${this.totalSubtunes}`;
         this.els.prevBtn.disabled = this.currentSubtune <= 0;
         this.els.nextBtn.disabled = this.currentSubtune >= this.totalSubtunes - 1;
+        // Whoever is hosting the player may be showing the same choice elsewhere
+        // (the Studio's "which tune to use").
+        if (typeof this.onSubtuneChange === 'function') this.onSubtuneChange(this.currentSubtune);
     }
 
     startTimeUpdate() {
