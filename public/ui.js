@@ -134,6 +134,7 @@ class UIController {
             busyMessage: document.getElementById('busyMessage'),
             busySubmessage: document.getElementById('busySubmessage'),
             busyHint: document.getElementById('busyHint'),
+            busyNote: document.getElementById('busyNote'),
             busyCancel: document.getElementById('busyCancel'),
             sidTitle: document.getElementById('sidTitle'),
             sidAuthor: document.getElementById('sidAuthor'),
@@ -5110,6 +5111,10 @@ class UIController {
      * the machine has no glyph for, or one that will not fit, used to be
      * invisible until the export.
      */
+    // DEAD: the "On screen" row it drew into was removed from the File
+    // Information panel - three lines of C64 text squeezed into a 256x24 canvas
+    // read as overlapping mush, and the export's own text preview covers the
+    // same ground properly. Everything below no-ops on the missing element.
     async renderTextPreview() {
         const row = document.getElementById('textPreviewRow');
         const canvas = document.getElementById('textPreview');
@@ -5398,6 +5403,7 @@ class UIController {
             this._busyOpener = document.activeElement;
             this.elements.busyMessage.textContent = message;
             this.elements.busySubmessage.textContent = submessage;
+            this.setBusyNote('');          // a new job has found nothing yet
             this._wireBusyCancel(onCancel);
             this.elements.busyOverlay.classList.add('visible');
             // The page behind is covered by an opaque blur, and the Studio stops
@@ -5472,16 +5478,36 @@ class UIController {
     // song's length, and the cap reads 10:00.
     _analysisProgressCallback(title, hint) {
         return (label, frac, extra) => {
-            let sub;
-            if (extra && extra.loopFound) {
-                sub = label;   // "Loop found — ..." stands on its own, no counter
-            } else if (extra && extra.seconds != null) {
-                sub = `${label}… ${this._mmss(extra.seconds / 2)} scanned (up to ${this._mmss(extra.totalSeconds / 2)})`;
-            } else {
-                sub = `${label}… ${Math.round((frac || 0) * 100)}%`;
+            // Anything the scan FOUND goes on its own line and stays there; the
+            // counter keeps the line above it. extra.news comes from the render
+            // (see spectrometer-bake-core.js), so the two do not have to agree on
+            // wording - 'maybe' is a candidate still being checked, 'found' is
+            // settled.
+            if (extra && extra.news) {
+                const at = extra.seconds != null ? ` (at ${this._mmss(extra.seconds / 2)})` : '';
+                this.setBusyNote(label + at, extra.news);
             }
+            const sub = (extra && extra.seconds != null)
+                ? `Scanned ${this._mmss(extra.seconds / 2)} of up to ${this._mmss(extra.totalSeconds / 2)}`
+                : `${label}… ${Math.round((frac || 0) * 100)}%`;
             this.updateBusy(title, sub, hint);
         };
+    }
+
+    /**
+     * The overlay's found-something line: what the job has turned up, as opposed
+     * to where it has got to. It STAYS until the job replaces it or ends - a
+     * candidate loop used to be written over the progress counter and vanish on
+     * the next tick, a few hundred milliseconds later, which read as a flicker
+     * rather than as news.
+     * @param {string} text
+     * @param {'maybe'|'found'} [kind] - 'found' for something settled.
+     */
+    setBusyNote(text, kind = 'maybe') {
+        const el = this.elements.busyNote;
+        if (!el) return;
+        el.textContent = text || '';
+        el.classList.toggle('is-found', !!text && kind === 'found');
     }
 
     updateBusy(message, submessage = '', hint = '') {

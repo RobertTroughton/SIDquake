@@ -281,14 +281,6 @@
                                 <span class="info-count" id="sidCopyrightCount"></span>
                             </span>
                         </div>
-                        <div class="info-row text-preview-row" id="textPreviewRow" hidden>
-                            <span class="info-label">On screen:</span>
-                            <span class="info-value">
-                                <canvas id="textPreview" width="256" height="24"
-                                        aria-label="The three text lines as the C64 will show them"></canvas>
-                                <span class="option-hint" id="textPreviewNote"></span>
-                            </span>
-                        </div>
                         <div class="info-row">
                             <span class="info-label">Format:</span>
                             <span class="info-value" id="sidFormat">-</span>
@@ -1100,6 +1092,12 @@
                  directly; busyAnnounce carries a throttled summary instead. -->
             <div class="busy-submessage" id="busySubmessage" aria-hidden="true"></div>
             <div class="busy-hint" id="busyHint" hidden></div>
+            <!-- Reserved line for what the job has FOUND, as opposed to where it
+                 has got to: a candidate loop, a confirmed one, a tune that ended.
+                 It keeps its space whether or not there is news, so nothing
+                 above it moves, and news stays put instead of being overwritten
+                 by the next progress tick. -->
+            <div class="busy-note" id="busyNote" aria-live="polite"></div>
             <span class="visually-hidden" id="busyAnnounce" role="status" aria-live="polite"></span>
             <button type="button" class="busy-cancel-btn" id="busyCancel" hidden>Cancel</button>
         </div>

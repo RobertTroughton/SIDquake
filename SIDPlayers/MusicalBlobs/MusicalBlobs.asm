@@ -719,6 +719,27 @@ BottomIRQ:
                                 //; lower border where no sprite can hide the
                                 //; new-VIC grey dot it would emit.
 
+    //; Arm the seam IRQ FIRST, then open up, then do the frame's work.
+    //;
+    //; It used to be armed at the END of this handler, behind the play call,
+    //; AnalyseMusic and UpdateBars, with I set throughout. A frame whose work
+    //; ran past raster CURTAIN_IRQ_LINE armed $d012 after the beam had already
+    //; passed it, so NameIRQ did not fire that frame - and because each handler
+    //; in the chain arms the next, the whole chain skipped: no song-name window
+    //; (the row displayed as bitmap - a visible flash across the song name on a
+    //; bitmap-logo export) and no play call either. Armed up here it cannot be
+    //; missed, and the cli lets the seam IRQ interrupt the work and land on its
+    //; raster instead of waiting for the work to finish.
+    jsr ArmSeamIRQ
+    cli
+
+    //; A frame heavy enough to still be here when the next one's bottom IRQ
+    //; fires would otherwise re-enter this handler and play the tune twice.
+    //; The display slips a frame instead.
+    lda FrameBusy
+    bne !done+
+    inc FrameBusy
+
     lda FastForwardActive
     beq !normalPlay+
 
@@ -744,7 +765,7 @@ BottomIRQ:
 
     lda BorderColour
     sta $d020
-    jmp !arm+
+    jmp !finished+
 
 !normalPlay:
     inc visualizationUpdateFlag
@@ -763,12 +784,28 @@ BottomIRQ:
 !skipPlay:
     jsr UpdateBars
     jsr UpdateSongTimer
+!finished:
 
-!arm:
-    //; Both logo kinds arm their seam IRQ inside the curtained pair of lines
-    //; (CURTAIN_IRQ_LINE). Bitmap logos: the row-11 window (song name in char
-    //; mode) first, which then arms the split. Text logos: only the song-name
-    //; row's $d021 (it must not inherit the logo's background), then the split.
+    dec FrameBusy
+!done:
+    sei                         //; the rti restores the caller's I flag anyway,
+                                //; but the register pulls below must not be
+                                //; interrupted by the seam IRQ we just opened up
+    pla
+    sta $01
+    pla
+    tay
+    pla
+    tax
+    pla
+    rti
+
+//; Arm the seam IRQ inside the curtained pair of lines (CURTAIN_IRQ_LINE), and
+//; acknowledge the raster interrupt that got us here. Bitmap logos: the row-11
+//; window (song name in char mode) first, which then arms the split. Text logos:
+//; only the song-name row's $d021 (it must not inherit the logo's background),
+//; then the split.
+ArmSeamIRQ:
     ldx BitmapMode
     cpx #$02
     bcs !charLogo+
@@ -788,15 +825,11 @@ BottomIRQ:
 
     lda #$01
     sta $d019
+    rts
 
-    pla
-    sta $01
-    pla
-    tay
-    pla
-    tax
-    pla
-    rti
+//; Set while the bottom IRQ is doing the frame's work (see BottomIRQ).
+FrameBusy:
+    .byte $00
 
 // =============================================================================
 // SPLIT INTERRUPT (line SPLIT_RASTER)
