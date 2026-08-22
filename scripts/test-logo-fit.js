@@ -195,6 +195,34 @@ function onGrid(place) {
     check(inBand(place), 'and lands inside the band', JSON.stringify(placedBox(place)));
 }
 
+// ─── Art already at C64 width is clipped to the band, not squeezed into it ───
+//
+// The players promise "only the top N character rows are shown", and squeezing
+// 11 rows of art into 9 resamples pixels the artist placed one at a time -
+// enough to put a multicolour logo out of reach of every C64 mode.
+{
+    const img = image(320, 88, BLACK, { x0: 8, y0: 8, x1: 311, y1: 87 }, WHITE);
+    const place = LogoFit.plan(img.rgba, img.w, img.h, { band: 72, artBand: 72 });
+    check(place.needsFit, 'a logo taller than the band needs placing');
+    check(place.scale === 1, 'but it keeps its pixels', 'scale ' + place.scale);
+    check(placedBox(place).y0 === 0, 'and starts at the top, so it loses its bottom rows',
+        JSON.stringify(placedBox(place)));
+    check(place.clipped, 'the placement says it was cut');
+    const out = LogoFit.composite(img.rgba, place);
+    const px = (x, y) => [out[(y * 320 + x) * 4], out[(y * 320 + x) * 4 + 1], out[(y * 320 + x) * 4 + 2]].join();
+    const bg = [place.background.r, place.background.g, place.background.b].join();
+    check(px(160, 71) === WHITE.join(), 'the last row of the band still holds artwork', px(160, 71));
+    check(px(160, 72) === bg, 'and the first row past it is the surround colour', px(160, 72));
+}
+
+// ─── A source that is not C64-width still scales to fit ───
+{
+    const img = image(640, 400, BLACK, { x0: 8, y0: 8, x1: 631, y1: 391 }, WHITE);
+    const place = LogoFit.plan(img.rgba, img.w, img.h, { band: 88 });
+    check(place.scale < 1, 'an oversized image is still scaled to fit the band',
+        'scale ' + place.scale.toFixed(3));
+}
+
 // ─── Placing a VICE grab crops its border ───
 {
     const img = image(384, 272, BLUE, { x0: 40, y0: 40, x1: 340, y1: 100 }, WHITE);

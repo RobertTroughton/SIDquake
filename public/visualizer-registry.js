@@ -12,7 +12,7 @@ const VISUALIZERS = [
     },
     {
         id: 'DefaultWithLogo',
-        name: 'Text with a picture',
+        name: 'Default player with Logo',
         // The scene name, kept as a credit line on the card.
         sceneName: 'Default With Logo',
         description: 'The same information, with your own logo across the top.',

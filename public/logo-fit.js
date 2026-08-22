@@ -133,6 +133,14 @@
      * for the band; a source that's already screen-sized keeps its horizontal
      * placement (the artist put it there) and is only moved vertically.
      *
+     * Art already drawn at C64 width is never scaled to fit the band's HEIGHT -
+     * it is clipped to it, which is what the players promise ("only the top N
+     * character rows are shown"). Squeezing 11 rows of art into 9 resamples
+     * pixels the artist placed one at a time, and one in-between shade in a cell
+     * puts the whole logo out of reach of every C64 mode - multicolour bitmap
+     * included, whose pixels are 2px wide. A source at some other width is being
+     * resampled whatever happens, so that one still scales to fit.
+     *
      * @returns { scale, dx, dy } - draw the source at (dx,dy) sized w*scale by
      *          h*scale. dx/dy are multiples of 8.
      */
@@ -141,9 +149,12 @@
         var cw = bounds.x1 - bounds.x0 + 1, ch = bounds.y1 - bounds.y0 + 1;
         // Artwork that already fits is never resized. Artwork that doesn't is
         // scaled to a hair inside the screen/band, so there's always room to
-        // snap the result onto the character grid.
-        var scale = (cw <= W && ch <= band) ? 1
-            : Math.min(1, (W - 8) / cw, (band - Math.min(8, band >> 1)) / ch);
+        // snap the result onto the character grid - except for the height of a
+        // source already at C64 width, which is clipped instead (see above).
+        var c64Width = (w === W || w === VICE_W);
+        var fitW = cw <= W ? 1 : (W - 8) / cw;
+        var fitH = (ch <= band || c64Width) ? 1 : (band - Math.min(8, band >> 1)) / ch;
+        var scale = Math.min(1, fitW, fitH);
         var dx;
         if (scale === 1 && (w === W || w === VICE_W)) {
             dx = (W - w) / 2;                       // 0, or -32 for a VICE grab
@@ -151,8 +162,11 @@
             dx = snap8((W - cw * scale) / 2 - bounds.x0 * scale);
             dx = clamp8(dx, -bounds.x0 * scale, W - (bounds.x1 + 1) * scale);
         }
-        var dy = snap8(-bounds.y0 * scale);
-        dy = clamp8(dy, -bounds.y0 * scale, band - (bounds.y1 + 1) * scale);
+        // Top of the band. Artwork taller than the band has no "inside" to land
+        // in, so it starts at the top and loses its bottom rather than being
+        // pushed up and losing its top.
+        var top = -bounds.y0 * scale, foot = band - (bounds.y1 + 1) * scale;
+        var dy = foot > top ? clamp8(snap8(top), top, foot) : Math.ceil(top / 8) * 8;
         return { scale: scale, dx: dx, dy: dy };
     }
 
@@ -175,23 +189,43 @@
     function plan(rgba, w, h, opts) {
         opts = opts || {};
         var band = Math.max(8, Math.min(H, opts.band == null ? H : opts.band));
+        // The rows of that band the ARTWORK may use. A player whose raster split
+        // lands inside the last row of its logo band keeps that row clear (see
+        // artRows in its config): artwork there is drawn past the switch.
+        var artBand = Math.max(8, Math.min(band, opts.artBand == null ? band : opts.artBand));
         var region = screenRegion(w, h);
         var background = opts.background || edgeBackground(rgba, w, h, region);
         var bounds = contentBounds(rgba, w, h, background, region);
         var native = isNativeSize(w, h);
         var inBand = !bounds || (bounds.y0 >= region.y && bounds.y1 - region.y < band);
-        var auto = autoPlace(bounds, w, h, band);
+        // Auto-placement targets the art band, so an image that is being scaled
+        // anyway lands clear of the reserved rows.
+        var auto = autoPlace(bounds, w, h, artBand);
         var needsFit = !(native && inBand);
         var place = needsFit ? auto : { scale: 1, dx: -region.x, dy: -region.y };
         place.width = w;
         place.height = h;
         place.band = band;
+        place.artBand = artBand;
         place.background = background;
         place.bounds = bounds;
         place.native = native;
         place.needsFit = needsFit;
         place.auto = auto;
+        // Artwork past the art band is CLIPPED, never scaled to avoid it:
+        // rescaling a logo drawn to fill the band would resample its pixels, and
+        // one in-between shade in a cell puts the whole image out of reach of
+        // every C64 mode - multicolour bitmap included, whose pixels are 2px
+        // wide. Losing the bottom rows is the smaller loss. (True for both
+        // reasons a row can be out of bounds: reserved by the player, or simply
+        // below a band the artwork is taller than.)
+        place.clipped = !!bounds && placedBottom(place, bounds) > artBand;
         return place;
+    }
+
+    // Where the placed artwork's last row lands on the C64 screen.
+    function placedBottom(place, bounds) {
+        return Math.round((bounds.y1 + 1) * place.scale) + place.dy;
     }
 
     // Human-readable summary of what a fit did, for the notice under the
@@ -200,7 +234,9 @@
         var bits = [];
         if (place.width !== W || place.height !== H) bits.push(place.width + '×' + place.height + ' image');
         if (place.scale < 1) bits.push('scaled to ' + Math.round(place.scale * 100) + '%');
-        bits.push('artwork in the top ' + (place.band / 8) + ' character rows');
+        if (place.clipped) bits.push('cut off below the top ' + (place.artBand / 8) + ' rows');
+        bits.push('artwork in the top ' + ((place.artBand == null ? place.band : place.artBand) / 8)
+            + ' character rows');
         return bits.join(', ');
     }
 
@@ -232,7 +268,10 @@
         }
         var dw = Math.max(1, Math.round(sw * s)), dh = Math.max(1, Math.round(sh * s));
         var x0 = Math.max(0, place.dx), y0 = Math.max(0, place.dy);
-        var x1 = Math.min(W, place.dx + dw), y1 = Math.min(H, place.dy + dh);
+        // Rows the player keeps clear take the surround colour, whatever the
+        // artwork does there (see plan()'s artBand).
+        var floor = place.artBand == null ? H : Math.min(H, place.artBand);
+        var x1 = Math.min(W, place.dx + dw), y1 = Math.min(floor, place.dy + dh);
         for (var y = y0; y < y1; y++) {
             var sy = Math.min(sh - 1, Math.floor((y - place.dy) * sh / dh));
             for (var x = x0; x < x1; x++) {

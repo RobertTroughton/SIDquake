@@ -798,21 +798,24 @@ class UIController {
     // image nobody wants on their release. So the gallery opens straight away
     // for the picture slot the chosen look has.
     //
-    // Only when there is nothing to go on: an image already chosen this session
-    // (or remembered from the last) is the answer, and a slot the user closed
-    // the gallery on is not asked about again.
+    // Once per look, not once per picture slot: the slot is remembered across
+    // visualizers (and across sessions), so keying on it meant the first look
+    // picked was the only one that ever asked - every other look silently
+    // inherited whatever that one ended on. Closing the gallery is still an
+    // answer, and coming back to a look already asked about is not re-asked.
     async quickChooseImage() {
         try { await this._optionsReady; } catch (e) { return; }
         const config = this.currentVisualizerConfig;
         const mgr = window.imagePreviewManager;
         const container = document.getElementById('studioPanels');
         if (!config || !config.inputs || !mgr || !container) return;
+        // The look, not the variant: switching bar method is not a new picture.
+        const look = this.selectedVisualizer?.dataSourceGroup || this.selectedVisualizer?.id;
         this._quickImageAsked = this._quickImageAsked || new Set();
+        if (!look || this._quickImageAsked.has(look)) return;
         for (const input of config.inputs) {
             if (!this._isImageInput(input) || !(input.gallery || []).length) continue;
-            const slot = this._imageSlot(input);
-            if (this._imageSelectionMemory[slot] || this._quickImageAsked.has(slot)) continue;
-            this._quickImageAsked.add(slot);
+            this._quickImageAsked.add(look);
             mgr.initGalleryModal().open(input, container);
             return;   // one picture at a time; the rest stay on the Picture tab
         }
@@ -2009,7 +2012,16 @@ class UIController {
                 this._imageSelectionMemory[this._imageSlot(input)] = { kind: 'gallery', file: el.dataset.galleryFile };
                 this._saveSessionMemory();
             } else if (el.files && el.files.length) {
-                this._imageSelectionMemory[this._imageSlot(input)] = { kind: 'custom', fileObj: el.files[0] };
+                // The file in the input is the FITTED one - the placement
+                // rendered for THIS player's band. Carrying that to the next
+                // player fits an already-fitted image, and a second pass over a
+                // scaled logo resamples its pixels into shades no C64 mode has.
+                // The manager keeps what the user actually chose; remember that.
+                const fit = window.imagePreviewManager
+                    && window.imagePreviewManager.logoFit.get(input.id);
+                this._imageSelectionMemory[this._imageSlot(input)] = {
+                    kind: 'custom', fileObj: (fit && fit.original) || el.files[0],
+                };
             }
         }
     }

@@ -598,14 +598,23 @@ class ImagePreviewManager {
         // the user places them instead.
         const oddSize = LogoFit.sizeError(src.width, src.height);
         const band = LogoFit.bandHeight(config.charsetRows);
-        const place = LogoFit.plan(src.rgba, src.width, src.height, { band });
+        // artRows: how many of the player's charsetRows the ARTWORK may use.
+        // RaistlinBarsWithLogo converts 11 rows but keeps the last clear: the
+        // raster split to the spectrum half lands inside it, and artwork there
+        // shows up as a smear across the seam. The conversion still covers the
+        // full band, so the reserved row exports as background.
+        const artBand = LogoFit.bandHeight(config.artRows != null ? config.artRows : config.charsetRows);
+        const place = LogoFit.plan(src.rgba, src.width, src.height, { band, artBand });
         this.logoFit.set(config.id, {
             src, band, place, original: file,
             // What the "Auto-place" button offers, which for an image that
             // needed no fitting is not where it currently sits.
             auto: Object.assign({}, place, place.auto)
         });
-        if (!place.needsFit) return { file, fitted: false, place };
+        // A logo that needs no placing still has to go through render() when the
+        // player reserves rows its artwork reaches into - that pass is what
+        // clears them.
+        if (!place.needsFit && !place.clipped) return { file, fitted: false, place };
         if (oddSize) place.sizeNote = oddSize;
         return { file: await this.renderLogoFile(config), fitted: true, place };
     }
