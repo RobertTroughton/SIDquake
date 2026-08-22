@@ -162,3 +162,9 @@ how much of a non-repeating tune it can show — not something a first export
 should opt into silently. A method the user chooses is remembered for the
 session and tried first on the next tune; anything that cannot be built for the
 tune in hand (calls/frame, SID count, memory) is skipped in that order.
+
+Method (c) is offered for a file of several tunes only once the Song tab's
+"Export just this tune" is ticked: the stream is baked from one subtune, so
+until the export is locked to one there is nothing for it to describe. The lock
+is also what gives that export a song length and the forced loop — see
+`multiSongExport` in `public/ui.js`.

@@ -281,14 +281,6 @@
                                 <span class="info-count" id="sidCopyrightCount"></span>
                             </span>
                         </div>
-                        <div class="info-row text-preview-row" id="textPreviewRow" hidden>
-                            <span class="info-label">On screen:</span>
-                            <span class="info-value">
-                                <canvas id="textPreview" width="256" height="24"
-                                        aria-label="The three text lines as the C64 will show them"></canvas>
-                                <span class="option-hint" id="textPreviewNote"></span>
-                            </span>
-                        </div>
                         <div class="info-row">
                             <span class="info-label">Format:</span>
                             <span class="info-value" id="sidFormat">-</span>
@@ -428,16 +420,6 @@
               <div class="visualizer-grid" id="visualizerGrid">
               </div>
 
-              <!-- How the bars are worked out, for the players that offer a
-                   choice. Under the grid rather than on a tab of its own: it
-                   modifies the card just picked, and it is empty for every
-                   player that has no choice to make. -->
-              <details class="method-fold" id="methodFold" hidden>
-                  <summary>How the bars are worked out<span class="method-fold-current" id="methodFoldCurrent"></span></summary>
-                  <p class="option-hint">Optional — the first one is already chosen, and is the one to keep unless your file holds several tunes.</p>
-                  <div id="methodMount"></div>
-              </details>
-
               <!-- The Spectrometer's multi-tune caveat: it belongs to the
                    visualizer choice, not to the tune, so it stays here while the
                    tune selector itself lives on the Song tab. -->
@@ -445,6 +427,15 @@
 
               <!-- Visualizer-level extras (data source moved to its own tab) -->
               <div id="vizExtras"></div>
+            </section>
+
+            <!-- How the bars are worked out. A tab rather than a fold under the
+                 grid: folded away, people took the spectrometer for removed. The
+                 rail only carries it for players that offer the choice. -->
+            <section class="studio-panel" data-studio-tab="method">
+              <h2 class="studio-panel-title">How the bars are worked out</h2>
+              <p class="studio-panel-sub">Three ways to the same bars. The one already chosen works on any tune and exports straight away; the spectrometer follows the sound more closely, at the cost of listening to the tune first.</p>
+              <div id="methodMount"></div>
             </section>
 
             <!-- Derived tabs (Logo / Bitmap / Text / Style / Scroller) are
@@ -1100,62 +1091,16 @@
                  directly; busyAnnounce carries a throttled summary instead. -->
             <div class="busy-submessage" id="busySubmessage" aria-hidden="true"></div>
             <div class="busy-hint" id="busyHint" hidden></div>
+            <!-- Reserved line for what the job has FOUND, as opposed to where it
+                 has got to: a candidate loop, a confirmed one, a tune that ended.
+                 It keeps its space whether or not there is news, so nothing
+                 above it moves, and news stays put instead of being overwritten
+                 by the next progress tick. -->
+            <div class="busy-note" id="busyNote" aria-live="polite"></div>
             <span class="visually-hidden" id="busyAnnounce" role="status" aria-live="polite"></span>
             <button type="button" class="busy-cancel-btn" id="busyCancel" hidden>Cancel</button>
         </div>
     </div>
-
-    <!-- TSCrunch lazy loader - only imports the heavy compression library on first use -->
-    <script>
-        window.loadTSCrunch = async function() {
-            if (window.TSCrunch) return;
-
-            const { Cruncher, createSFX } = await import('./lib/index.js');
-
-            if (typeof Buffer === 'undefined') {
-                window.Buffer = {
-                    from: function (data) {
-                        if (data instanceof Uint8Array) return data;
-                        if (Array.isArray(data)) return new Uint8Array(data);
-                        return new Uint8Array(0);
-                    }
-                };
-            }
-
-            window.TSCrunch = {
-                compress: function (data, options = {}) {
-                    const {
-                        prg = true, sfx = true, sfxMode = 0,
-                        jumpAddress = 0x1000, blank = false, inplace = false
-                    } = options;
-
-                    const dataArray = Array.from(data);
-                    let sourceData = dataArray;
-                    let loadAddress = 0x0801;
-
-                    if (prg && dataArray.length >= 2) {
-                        loadAddress = dataArray[0] | (dataArray[1] << 8);
-                        sourceData = dataArray.slice(2);
-                    }
-
-                    const cruncher = new Cruncher(sourceData);
-                    cruncher.ocrunch({ inplace, verbose: false, sfxMode: sfx });
-
-                    let compressed = cruncher.crunched;
-                    if (sfx) {
-                        compressed = Array.from(createSFX(Buffer.from(compressed), {
-                            jumpAddress, decrunchAddress: loadAddress,
-                            optimalRun: cruncher.optimalRun, sfxMode, blank
-                        }));
-                    }
-
-                    return new Uint8Array(compressed);
-                }
-            };
-
-            window.dispatchEvent(new Event('tscrunch-ready'));
-        };
-    </script>
 
     <!-- HVSC Modal -->
     <div class="hvsc-modal" id="hvscModal" data-overlay>

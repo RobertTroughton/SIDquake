@@ -424,7 +424,12 @@ async function openStudioWithLogo(page) {
     r = await readInput(page, inputId);
     check(r.files === 1 && r.w === 320 && r.h === 200, 'a browsed gallery-quality logo still loads',
         r.w + 'x' + r.h);
-    check(r.note === '', 'and a logo that already fits is left alone', r.note);
+    // This player reserves its last character row for the raster split below the
+    // logo (artRows in its config), and this logo's artwork reaches 4px into it.
+    // So it is CUT to the rows it may use - never scaled to squeeze into them,
+    // which would resample the pixels - and the note says which.
+    check(/cut off below the top 10 rows/i.test(r.note) && !/scaled/i.test(r.note),
+        'artwork reaching the reserved row is cut, not scaled', r.note || 'no message');
 
     // An image that is no C64 size at all (the user's 360x194): 40 columns too
     // many and a height off the character grid, so there is no offset that
@@ -441,6 +446,56 @@ async function openStudioWithLogo(page) {
     check(/360×194/.test(r.note) && /320×200/.test(r.note) && /Adjust logo/i.test(r.note),
         'and the note names its size and points at the placement tool',
         r.note || 'no message');
+
+    // ─── Every shipped logo has to survive the trip to the converter ───
+    //
+    // The file the exporter reads is not the PNG the user picked: it is what
+    // placement rendered for THIS player's band. A player whose band is shorter
+    // than the artwork used to scale it to fit, and resampling a C64 logo lands
+    // colours in no palette slot - the same gallery logo converted on an 11-row
+    // player and came back "no C64 mode fits" on the 9-row one. So: every logo,
+    // every logo player, through the real path.
+    const survived = await page.evaluate(async () => {
+        await window.loadScript('charsetlab-core.js');
+        await window.loadScript('logo-fit.js');
+        if (!window.imagePreviewManager) {
+            await window.loadScript('image-preview-manager.js');
+            window.imagePreviewManager = new ImagePreviewManager();
+        }
+        const gallery = await (await fetch('prg/galleries/logos.json')).json();
+        const bad = [];
+        let tried = 0;
+        for (const cfgFile of ['prg/defaultwithlogo.json', 'prg/raistlinbarswithlogo.json',
+            'prg/musicalblobs.json']) {
+            const cfg = await (await fetch(cfgFile)).json();
+            const input = (cfg.inputs || []).find(i => i.convertType === 'logo');
+            for (const item of gallery) {
+                tried++;
+                const blob = await (await fetch(item.file)).blob();
+                const prepared = await window.imagePreviewManager.prepareLogoImage(
+                    input, new File([blob], 'logo.png', { type: 'image/png' }));
+                const url = URL.createObjectURL(prepared.file);
+                const img = await new Promise((ok, no) => {
+                    const im = new Image(); im.onload = () => ok(im); im.onerror = no; im.src = url;
+                });
+                const c = document.createElement('canvas');
+                c.width = img.naturalWidth; c.height = img.naturalHeight;
+                const x = c.getContext('2d', { willReadFrequently: true });
+                x.drawImage(img, 0, 0);
+                URL.revokeObjectURL(url);
+                const report = CharsetLabCore.analyse(
+                    x.getImageData(0, 0, c.width, c.height).data, c.width, c.height,
+                    { modes: input.charsetModes, rowLimit: input.charsetRows });
+                if (!report.chosen) {
+                    bad.push(cfgFile.replace(/^prg\/|\.json$/g, '') + ': ' + item.file.split('/').pop());
+                }
+            }
+        }
+        return { tried, bad };
+    });
+    check(survived.bad.length === 0,
+        'every shipped logo still converts once placed, on every logo player',
+        survived.bad.length ? survived.bad.join(', ') : `${survived.tried} placed and converted`);
 
     await ctx.close();
     await browser.close();

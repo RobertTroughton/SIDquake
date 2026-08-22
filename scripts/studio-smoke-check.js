@@ -115,7 +115,9 @@ async function loadSid(page, file) {
         await page.waitForFunction(() => !!window.uiController, null, { timeout: 20000 });
 
         // --- load a tune ------------------------------------------------------
-        await loadSid(page, 'JCH-Crystalline.sid');
+        // One tune in the file: the background scan only runs for an export that
+        // describes a single tune (see the multi-tune section below).
+        await loadSid(page, 'dane-copperbooze.sid');
         await page.waitForFunction(() => window.studioModal?.isOpen, null, { timeout: 60000 });
         check('Studio opens after a SID loads', true);
 
@@ -526,23 +528,30 @@ async function loadSid(page, file) {
             await ui.selectVisualizer(VISUALIZERS.find(v => v.id === 'RaistlinBarsWithLogo'));
             await new Promise(r => setTimeout(r, 900));
             const ids = window.studioModal.tabList().map(t => t.id);
-            const fold = document.getElementById('methodFold');
+            const panel = document.querySelector('.studio-panel[data-studio-tab="method"]');
+            // ...and one that offers no choice of bar data at all.
+            await ui.selectVisualizer(VISUALIZERS.find(v => v.id === 'SimpleRaster'));
+            await new Promise(r => setTimeout(r, 700));
+            const plainIds = window.studioModal.tabList().map(t => t.id);
+            await ui.selectVisualizer(VISUALIZERS.find(v => v.id === 'RaistlinBarsWithLogo'));
+            await new Promise(r => setTimeout(r, 900));
             return {
-                ids,
+                ids, plainIds,
                 hasMethodTab: ids.includes('method'),
                 splitStyleTabs: ids.includes('barstyle') || ids.includes('color'),
-                foldShown: fold && !fold.hidden,
-                foldSaysWhich: (document.getElementById('methodFoldCurrent') || {}).textContent || '',
+                methodPanel: !!panel,
                 methodCards: document.querySelectorAll('#methodMount .method-card').length,
+                status: window.studioModal.tabStatus('method').title,
             };
         });
-        check('The busiest player is six tabs, not eight',
-            tabs.ids.length <= 6 && !tabs.hasMethodTab && !tabs.splitStyleTabs,
-            tabs.ids.join(','));
-        check('How the bars are worked out folds under the grid instead',
-            tabs.foldShown && tabs.methodCards >= 2, JSON.stringify(tabs));
-        check('And the fold says which one is in use',
-            tabs.foldSaysWhich.trim().length > 0, tabs.foldSaysWhich);
+        check('The busiest player is seven tabs, not eight',
+            tabs.ids.length <= 7 && !tabs.splitStyleTabs, tabs.ids.join(','));
+        check('How the bars are worked out is a tab of its own, not a fold',
+            tabs.hasMethodTab && tabs.methodPanel && tabs.methodCards >= 2, JSON.stringify(tabs));
+        check('And the rail says which method is in use',
+            /vu meter|spectrometer/i.test(tabs.status), tabs.status);
+        check('A player with no choice of bar data does not carry the tab',
+            !tabs.plainIds.includes('method'), tabs.plainIds.join(','));
 
         // --- file naming ------------------------------------------------------
         const naming = await page.evaluate(() => {
@@ -825,6 +834,45 @@ async function loadSid(page, file) {
             hvsc.rows > 1 && hvsc.tabStops === 1, `${hvsc.rows} rows, ${hvsc.tabStops} tab stops`);
         check('Arrow keys move through it', hvsc.moved === true);
         check('The result count is announced', hvsc.countLive === 'polite', hvsc.countLive);
+
+        // --- the names on screen are a way into the collection ----------------
+        const names = await page.evaluate(async () => {
+            const read = (id) => {
+                const el = document.getElementById(id);
+                const btn = el.querySelector('button.browse-link');
+                return { text: el.textContent.trim(), link: btn ? btn.textContent : null };
+            };
+            const page1 = { title: read('songTitle'), author: read('songAuthor') };
+            const studio = { title: read('studioSongTitle'), author: read('studioSongAuthor') };
+            document.querySelector('#songAuthor button.browse-link').click();
+            const bar = () => document.getElementById('hvscSearchBar').value;
+            for (let i = 0; i < 100; i++) {
+                if (bar()) break;
+                await new Promise(r => setTimeout(r, 100));
+            }
+            // The results themselves need the index, which is the slow part.
+            const start = Date.now();
+            while (Date.now() - start < 60000
+                && !document.querySelector('#fileList .file-item')) {
+                await new Promise(r => setTimeout(r, 250));
+            }
+            const opened = document.getElementById('hvscModal').classList.contains('visible');
+            const query = bar();
+            const results = document.querySelectorAll('#fileList .file-item').length;
+            const searching = document.getElementById('itemCount').textContent;
+            document.getElementById('hvscModal').classList.remove('visible');
+            return { page1, studio, opened, query, results, searching };
+        });
+        check('The song and artist names are a way into the collection',
+            !!names.page1.title.link && !!names.page1.author.link
+            && !!names.studio.title.link && !!names.studio.author.link,
+            JSON.stringify(names.page1) + ' ' + JSON.stringify(names.studio));
+        check('Clicking one opens the browser searching for that name',
+            names.opened && names.query === names.page1.author.link,
+            `${names.opened} "${names.query}"`);
+        check('And the results stand, rather than the root folder landing on them',
+            names.results > 0 && /match/i.test(names.searching),
+            `${names.results} rows, "${names.searching}"`);
 
         // --- the tune selector belongs to the Song tab ------------------------
         const subtune = await page.evaluate(() => {
@@ -1268,62 +1316,6 @@ async function loadSid(page, file) {
                 fade.before !== fade.after, JSON.stringify({ values: fade.values }));
         }
 
-        // --- the text lines, as the C64 will draw them ------------------------
-        const textPreview = await page.evaluate(async () => {
-            const ui = window.uiController;
-            window.studioModal.activate('song');
-            const title = document.getElementById('sidTitle');
-            title.value = 'PREVIEW TEST';
-            title.dispatchEvent(new Event('input', { bubbles: true }));
-            await new Promise(r => setTimeout(r, 600));
-            await ui.renderTextPreview();
-
-            const row = document.getElementById('textPreviewRow');
-            const canvas = document.getElementById('textPreview');
-            const ctx = canvas.getContext('2d');
-            const px = ctx.getImageData(0, 0, canvas.width, canvas.height).data;
-            // Ink pixels per row of the title line, so "is anything drawn" and
-            // "is it centred" can both be answered.
-            let ink = 0, firstX = -1, lastX = -1;
-            const bg = [px[0], px[1], px[2]];
-            for (let y = 0; y < 8; y++) {
-                for (let x = 0; x < canvas.width; x++) {
-                    const o = (y * canvas.width + x) * 4;
-                    if (px[o] !== bg[0] || px[o + 1] !== bg[1] || px[o + 2] !== bg[2]) {
-                        ink++;
-                        if (firstX < 0 || x < firstX) firstX = x;
-                        if (x > lastX) lastX = x;
-                    }
-                }
-            }
-
-            // A title too long for 32 columns must say so.
-            title.value = 'A TITLE FAR TOO LONG FOR THIRTY TWO COLUMNS OF SCREEN';
-            title.dispatchEvent(new Event('input', { bubbles: true }));
-            await new Promise(r => setTimeout(r, 600));
-            await ui.renderTextPreview();
-            const warned = document.getElementById('textPreviewNote').textContent;
-
-            title.value = 'Lundiax';
-            title.dispatchEvent(new Event('input', { bubbles: true }));
-            return {
-                shown: !row.hidden,
-                size: `${canvas.width}x${canvas.height}`,
-                ink, firstX, lastX,
-                leftGap: firstX, rightGap: canvas.width - 1 - lastX,
-                warned,
-            };
-        });
-        check('The text lines are shown as the C64 will draw them',
-            textPreview.shown && textPreview.size === '256x24', JSON.stringify(textPreview));
-        check('With real glyphs on them', textPreview.ink > 50, `${textPreview.ink} ink pixels`);
-        // 32 columns, "PREVIEW TEST" is 12: centring leaves 10 columns each side.
-        check('And centred the way the export centres them',
-            Math.abs(textPreview.leftGap - textPreview.rightGap) <= 8,
-            `${textPreview.leftGap}px left, ${textPreview.rightGap}px right`);
-        check('A line too long for the screen says so, by the name on the field',
-            /^Title will not fit the 32 columns/i.test(textPreview.warned), textPreview.warned);
-
         // --- where it goes, before the export ---------------------------------
         const plan = await page.evaluate(async () => {
             const ui = window.uiController;
@@ -1463,7 +1455,9 @@ async function loadSid(page, file) {
             await ui.keepLooking();
             const widened = ui.scanWindowSeconds();
             // The scan runs in the background; wait for it to settle either way.
-            for (let i = 0; i < 240 && (ui.analysisRunning || !ui.tuneAnalysis); i++) {
+            // A doubled window is a whole fresh render of the tune, which on a
+            // loaded page takes minutes rather than seconds.
+            for (let i = 0; i < 900 && (ui.analysisRunning || !ui.tuneAnalysis); i++) {
                 await new Promise(r => setTimeout(r, 500));
             }
             const after = ui.scanWindowSeconds();
@@ -1542,6 +1536,109 @@ async function loadSid(page, file) {
                 polite === 'polite', String(polite));
         } finally {
             await slow.close();
+        }
+
+        // --- a file of several tunes, exported as one of them ------------------
+        // Everything that can only describe one tune - the song length, the forced
+        // loop, the Spectrometer - is off while the export still holds several,
+        // and comes back when the Song tab locks it to the tune chosen there.
+        const many = await browser.newPage({ viewport: { width: 1400, height: 900 } });
+        try {
+            const errs = [];
+            many.on('pageerror', (e) => errs.push(String(e)));
+            await many.goto(base, { waitUntil: 'load' });
+            await many.waitForFunction(() => !!window.uiController, null, { timeout: 20000 });
+            await loadSid(many, 'charlesdeenen-mrheli-multisong.sid');
+            await many.waitForFunction(() => window.studioModal?.isOpen, null, { timeout: 60000 });
+            await many.evaluate(() => window.studioModal.activate('song'));
+
+            const state = await many.evaluate(async () => {
+                const ui = window.uiController;
+                const fft = () => VISUALIZERS.find(v => v.id === 'RaistlinBarsFFT');
+                const read = () => ({
+                    several: ui.multiSongExport(),
+                    spectrometer: ui.dataSourceUsable(fft()),
+                    status: document.getElementById('songLoopStatus').textContent,
+                    lengthRow: !document.querySelector('.song-length-manual')?.hidden,
+                });
+                const sel = document.getElementById('songSelector');
+                const lock = document.getElementById('singleSongLock');
+                const before = read();
+                lock.checked = true;
+                lock.dispatchEvent(new Event('change', { bubbles: true }));
+                await new Promise(r => setTimeout(r, 300));
+                return {
+                    options: sel ? sel.options.length : 0,
+                    chosen: sel ? sel.value : '',
+                    lockedByDefault: lock.checked === false,
+                    before, after: read(),
+                };
+            });
+            check('A file of several tunes offers which one to use',
+                state.options === 5 && state.chosen === '5', JSON.stringify(state.options));
+            check('It is not locked to one of them by default', state.before.several === true);
+            check('So the song length is off, and says why',
+                !state.before.lengthRow && /several tunes|multi/i.test(state.before.status),
+                state.before.status.slice(0, 70));
+            check('And the Spectrometer says what it needs rather than failing at export',
+                state.before.spectrometer.ok === false
+                && /Export just this tune/i.test(state.before.spectrometer.reason || ''),
+                state.before.spectrometer.reason);
+            check('Locking it to one tune brings the length back',
+                state.after.several === false && state.after.lengthRow,
+                JSON.stringify(state.after.status.slice(0, 70)));
+            check('...and puts the Spectrometer back on offer',
+                state.after.spectrometer.ok === true);
+
+            // The picker and the transport are two views of one choice.
+            const sync = await many.evaluate(async () => {
+                const ui = window.uiController;
+                const sel = document.getElementById('songSelector');
+                sel.value = '2';
+                sel.dispatchEvent(new Event('change', { bubbles: true }));
+                await new Promise(r => setTimeout(r, 200));
+                const played = ui.mainPlayer ? ui.mainPlayer.currentSubtune : -1;
+                ui.mainPlayer.nextSubtune();
+                await new Promise(r => setTimeout(r, 200));
+                return { played, picked: sel.value, exports: ui.exportSubtuneIndex() };
+            });
+            check('Picking a tune plays that tune', sync.played === 1, JSON.stringify(sync));
+            check('And stepping the player picks it', sync.picked === '3' && sync.exports === 2,
+                JSON.stringify(sync));
+
+            // The program itself has to be told it holds one tune, or the C64's
+            // tune keys would step through tunes the export no longer describes.
+            const built = await many.evaluate(async () => {
+                const ui = window.uiController;
+                // A typed length keeps the export off the several-minute scan.
+                const manual = document.getElementById('songLengthManual');
+                manual.value = '1:00';
+                manual.dispatchEvent(new Event('input', { bubbles: true }));
+                const none = document.querySelector('input[name="compression-type"][value="none"]');
+                if (none) { none.checked = true; none.dispatchEvent(new Event('change', { bubbles: true })); }
+                await ui.selectVisualizer(VISUALIZERS.find(v => v.id === 'default'));
+                const seen = {};
+                const real = ui.prgExporter.generateDataBlock.bind(ui.prgExporter);
+                ui.prgExporter.generateDataBlock = (...args) => {
+                    const block = real(...args);
+                    seen.songs = args[2].songs;
+                    seen.numSongsByte = block[0xC8];
+                    seen.songNumberByte = block[0x0F];
+                    return block;
+                };
+                ui._fileSink = () => {};   // don't actually download it
+                try { await ui.exportPRGWithVisualizer(); } finally {
+                    ui.prgExporter.generateDataBlock = real;
+                    ui._fileSink = null;
+                }
+                return seen;
+            });
+            check('A locked export tells the program it holds one tune',
+                built.numSongsByte === 1, JSON.stringify(built));
+            check('And which one that is', built.songNumberByte === 2, JSON.stringify(built));
+            check('The multi-tune page raised no errors', errs.length === 0, errs.slice(0, 2).join(' | '));
+        } finally {
+            await many.close();
         }
 
         // --- the bake worker runs one job at a time ---------------------------

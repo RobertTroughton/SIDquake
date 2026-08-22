@@ -402,7 +402,10 @@ window.hvscBrowser = (function () {
             if (!res.ok) return false;
             const table = await res.json();
             if (!table[key]) return false;
-            deepLinkPlaying = path;
+            // The index can win the race on a warm cache, and it starts the tune
+            // itself. Loading it a second time here would take the autoplay the
+            // listing had already claimed and leave the arrival silent.
+            if (previewAsked === path) return true;
             autoplayNext = true;
             await previewSID({ path, name: path.split('/').pop(), isDirectory: false });
             return true;
@@ -439,12 +442,18 @@ window.hvscBrowser = (function () {
         // blocks the AudioContext (no gesture yet), sid-playback.js retries
         // on the first interaction.
         // Already playing from the share-meta shard: reloading it here would
-        // restart the tune from the beginning just as the index lands.
-        if (deepLinkPlaying === entry.path) {
-            deepLinkPlaying = null;
+        // restart the tune from the beginning just as the index lands. The
+        // listing that just replaced this folder cleared the info panel with it,
+        // so draw it again - and where the quick play is still downloading, its
+        // own load draws it. A quick play that started and never landed (no
+        // player yet, a refused fetch) leaves neither flag set and is loaded
+        // here, so a shard that leads nowhere can't leave the tune needing a
+        // click.
+        if (previewLoaded === entry.path) {
             updateInfoPanel(entry);
             return true;
         }
+        if (previewAsked === entry.path) return true;
         autoplayNext = true;
         previewSID(entry);
         return true;
@@ -478,6 +487,10 @@ window.hvscBrowser = (function () {
         loadSearchIndex()
             .then(async () => {
                 if (tuneParam && await openTuneByPath(tuneParam)) return;
+                // Opened on a name to look up (a song or artist clicked in the
+                // app): that search owns the listing, so don't drop the root
+                // folder on top of it when the index lands.
+                if (searchMode) return;
                 return fetchDirectory(startPath);
             })
             .catch((err) => {
@@ -938,12 +951,15 @@ window.hvscBrowser = (function () {
     }
 
     let autoplayNext = false;
-    // Path already started from the share-meta shard, so the index-driven
-    // deep-link path knows not to reload it.
-    let deepLinkPlaying = null;
+    // The tune the shared player is on: asked for (a preview under way) and
+    // arrived (loaded, info panel drawn). The deep-link path reads both, so a
+    // quick play that never landed is retried rather than assumed.
+    let previewAsked = null;
+    let previewLoaded = null;
 
     async function previewSID(entry) {
         updateShareUrl(entry.path);
+        previewAsked = entry.path;
         await ensureToken();
         await ensurePlayerReady();
         startVisualizer();
@@ -953,6 +969,7 @@ window.hvscBrowser = (function () {
             autoplayNext = false;
             const player = getSharedSIDPlayback();
             player.setLoadCallback(() => {
+                previewLoaded = entry.path;
                 hvscPlayer.onLoaded(entry.name);
                 updateInfoPanel(entry);
                 if (wasPlaying || startNow) {
@@ -962,11 +979,14 @@ window.hvscBrowser = (function () {
             hvscPlayer.stop();
             hvscPlayer.takeOwnership();
             player.loadFromUrl(sidUrl(entry.path)).catch((err) => {
+                if (previewAsked === entry.path) previewAsked = null;
                 console.error('HVSC preview load failed:', err);
                 if (window.showError) {
                     window.showError('Could not load tune', { details: hvscFetchHint(err.message) });
                 }
             });
+        } else {
+            previewAsked = null;   // nothing to play it with; don't claim otherwise
         }
     }
 
@@ -1183,6 +1203,10 @@ window.hvscBrowser = (function () {
             if (!cfg) {
                 window.postMessage({
                     type: 'sid-selected', name: base.name, path: base.path, url: base.url,
+                    // In a file of several tunes, the one being previewed is the
+                    // one the user means - the tool starts on it rather than on
+                    // the file's default song. 1-based, 0 when nothing played.
+                    subtune: hvscPlayer && hvscPlayer.loaded ? hvscPlayer.currentSubtune + 1 : 0,
                 }, '*');
                 return;
             }
@@ -1257,6 +1281,24 @@ window.hvscBrowser = (function () {
             if (searchDebounce) clearTimeout(searchDebounce);
             exitSearchMode();
         });
+    }
+
+    /**
+     * Search the collection for `query`, as if it had been typed into the search
+     * bar. The song and artist names elsewhere in the app use this to hand the
+     * browser a name to look up.
+     */
+    function searchFor(query) {
+        const q = (query || '').trim();
+        if (!q) return;
+        const input = document.getElementById('hvscSearchBar');
+        if (input) {
+            input.value = q;
+            const clearBtn = document.getElementById('hvscSearchClear');
+            if (clearBtn) clearBtn.style.display = 'inline-flex';
+        }
+        if (searchDebounce) clearTimeout(searchDebounce);
+        runSearch(q);
     }
 
     function exitSearchMode() {
@@ -1485,6 +1527,7 @@ window.hvscBrowser = (function () {
         downloadSID: downloadSID,
         initializeHVSC: initializeHVSC,
         openTuneByPath: openTuneByPath,
+        search: searchFor,
         shareTune: shareTune,
         clearShareUrl: clearShareUrl,
         chooseSong: selectSID,     // "Choose This Song" button (same as double-click)

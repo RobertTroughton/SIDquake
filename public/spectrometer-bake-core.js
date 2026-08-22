@@ -199,13 +199,18 @@ async function renderAndAnalyze(sidBytes, loadEngine, options = {}) {
             }
             session.feed(chunk.subarray(0, got));
             rendered += got;
+            // extra.news marks a progress event that says what the scan FOUND
+            // rather than where it has got to: 'maybe' for a candidate loop still
+            // being checked, 'found' for something settled. The UI keeps those on
+            // their own line instead of letting them flash through the counter.
             // Long-silence early exit (only after the tune has actually made sound).
             if (peak >= SILENCE_LEVEL) { sawSignal = true; silentRun = 0; }
             else if ((silentRun += got) >= (sawSignal ? SILENCE_STOP : NEVER_SOUNDED_STOP)) {
                 stoppedOnSilence = true;
                 onProgress(sawSignal ? 'Silence detected — the tune has ended'
                                      : 'No audio from this engine — rescanning', 1,
-                    { seconds: rendered / sampleRate, totalSeconds: maxSeconds, loopFound: sawSignal });
+                    { seconds: rendered / sampleRate, totalSeconds: maxSeconds,
+                      loopFound: sawSignal, news: 'found' });
                 break;
             }
             if ((sinceCheck += got) >= checkInterval(rendered)) {
@@ -230,11 +235,11 @@ async function renderAndAnalyze(sidBytes, loadEngine, options = {}) {
                         // no need to render the rest - one loop is all the visualization needs.
                         // loopFound lets the UI hold this message on screen for a beat.
                         onProgress('Loop found — no need to scan any further', 1,
-                            { seconds: secs, totalSeconds: maxSeconds, loopFound: true });
+                            { seconds: secs, totalSeconds: maxSeconds, loopFound: true, news: 'found' });
                         break;
                     }
                     onProgress('Possible loop found — checking it holds', rendered / total,
-                        { seconds: secs, totalSeconds: maxSeconds });
+                        { seconds: secs, totalSeconds: maxSeconds, news: 'maybe' });
                 }
             }
             if ((sinceYield += got) >= sampleRate * 4) {
@@ -251,7 +256,8 @@ async function renderAndAnalyze(sidBytes, loadEngine, options = {}) {
                 if (stopSignal && stopSignal.aborted) {
                     stoppedEarly = true;
                     onProgress('Stopped — using what has been scanned so far', 1,
-                        { seconds: rendered / sampleRate, totalSeconds: maxSeconds, loopFound: true });
+                        { seconds: rendered / sampleRate, totalSeconds: maxSeconds,
+                          loopFound: true, news: 'found' });
                     break;
                 }
             }

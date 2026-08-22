@@ -166,8 +166,12 @@ class StudioModal {
 
     refreshHeader() {
         const h = this.ui?.sidHeader;
-        document.getElementById('studioSongTitle').textContent = h ? (h.name || 'Untitled') : 'No SID loaded';
-        document.getElementById('studioSongAuthor').textContent = h?.author ? `— ${h.author}` : '';
+        // Both names are a way into the collection (ui.renderBrowseLink), so the
+        // artist of the tune in hand is one click from the rest of their work.
+        this.ui.renderBrowseLink(document.getElementById('studioSongTitle'),
+            h && h.name, h ? 'Untitled' : 'No SID loaded');
+        this.ui.renderBrowseLink(document.getElementById('studioSongAuthor'),
+            h && h.author, '', '— ');
     }
 
     // ---------------------------------------------------------------------
@@ -175,12 +179,16 @@ class StudioModal {
     // ---------------------------------------------------------------------
 
     tabList() {
-        // How the bars are worked out is no longer a tab: it lives under the
-        // visualizer grid, next to the card it modifies, for the players that
-        // offer a choice at all.
+        // How the bars are worked out is a tab again, straight after the card it
+        // modifies - but only for the players that offer the choice. Folded
+        // under the grid it read as gone, and people took the spectrometer with
+        // it.
+        const bars = this.ui?.hasMethodChoice?.()
+            ? [{ id: 'method', label: 'Bars', icon: 'fa-wave-square' }] : [];
         return [
             { id: 'song', label: 'Song', icon: 'fa-file-audio' },
             { id: 'visualizer', label: 'Visualizer', icon: 'fa-tv' },
+            ...bars,
             ...this.derivedGroups.map(g => ({ id: g.id, label: g.label, icon: g.icon })),
             { id: 'export', label: 'Export', icon: 'fa-download' },
         ];
@@ -365,6 +373,12 @@ class StudioModal {
 
     tabStatus(id) {
         if (id === 'export') return { glyph: '▸', cls: 'st-attn', title: 'Review & generate' };
+        // The bar method always has an answer, so the status says which one it
+        // is rather than whether the tab has been opened.
+        if (id === 'method') {
+            const label = this.dataSourceLabel(this.ui?.selectedVisualizer);
+            return { glyph: '✓', cls: 'st-done', title: label || 'Chosen' };
+        }
         if (id === 'scroller') {
             const ta = this.derivedGroups.find(g => g.id === 'scroller')
                 ?.options.find(o => o.type === 'textarea');
@@ -572,8 +586,11 @@ class StudioModal {
             'ok', 'inc', 'visualizer'));
 
         const songSel = document.getElementById('songSelector');
-        const tune = songSel ? `tune ${songSel.value} of ${header.songs}` :
+        let tune = songSel ? `tune ${songSel.value} of ${header.songs}` :
             (header.songs > 1 ? `tune ${header.startSong} of ${header.songs}` : null);
+        // A locked export carries that one tune and nothing else, which changes
+        // what the program does on the C64 - so the manifest says so.
+        if (tune && !this.ui.multiSongExport()) tune += ', on its own';
         rows.push(this.manifestRow('Music',
             `${header.name || 'Unknown'} — ${header.author || 'Unknown'}${tune ? ' (' + tune + ')' : ''}`,
             'ok', 'inc', 'song'));
@@ -660,12 +677,10 @@ class StudioModal {
         }
 
         if (viz.dataSource === 'fft' && config?.spectrometerBake) {
-            const multiSong = header.songs > 1;
-            const consent = document.getElementById('fftMultiSongConsent');
-            if (multiSong && !(consent && consent.checked)) {
+            if (ui.multiSongExport()) {
                 rows.push(this.manifestRow('FFT bake',
-                    'multi-song SID: confirm “default song only” on the Visualizer tab',
-                    'action needed', 'warn', 'visualizer'));
+                    'this file holds several tunes: tick “Export just this tune” on the Song tab',
+                    'action needed', 'warn', 'song'));
             } else {
                 const a = ui.tuneAnalysis;
                 const mmss = s => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`;

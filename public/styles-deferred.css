@@ -581,8 +581,9 @@
     transition: transform var(--transition-base);
     /* Fixed width so the box doesn't resize as the submessage text changes
        length (e.g. the bake progress going "1%" -> "10%" -> "100%"). Longer
-       messages wrap within this width instead of widening the dialog. */
-    width: 340px;
+       messages wrap within this width instead of widening the dialog. Wide
+       enough for the found-something line below to hold two lines of text. */
+    width: 420px;
     max-width: calc(100vw - 2 * var(--space-lg));
     box-sizing: border-box;
 }
@@ -629,6 +630,37 @@
     line-height: 1.4;
 }
 .busy-hint[hidden] { display: none; }
+
+/* What the job has found, above the buttons. The height is reserved (min-height,
+   not hidden) so an empty line still holds its space: news arriving must not
+   shove the dialog around, which is what made a passing "Possible loop found"
+   read as a flicker. Two lines' worth at this width. */
+.busy-note {
+    margin-top: var(--space-md);
+    min-height: 2.8em;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 6px 10px;
+    border-radius: var(--radius-sm);
+    background: var(--bg-elevated);
+    border: 1px solid var(--border);
+    font-size: 0.85em;
+    line-height: 1.4;
+    color: var(--text-secondary);
+}
+
+.busy-note:empty::after {
+    content: 'Listening for the tune\2019s loop\2026';
+    color: var(--text-muted);
+    font-style: italic;
+}
+
+/* A confirmed find, rather than a candidate still being checked. */
+.busy-note.is-found {
+    border-color: var(--accent);
+    color: var(--text-primary);
+}
 
 /* Optional Cancel button for long, interruptible tasks (song-length scan,
    spectrometer analysis). Hidden unless the task passes a cancel handler. */
@@ -5080,6 +5112,8 @@
 /* How the bars are worked out: a fold under the visualizer grid rather than a
    tab of its own. It only exists for the bar players, and it modifies the card
    directly above it. */
+/* DEAD: the method picker is a Studio tab again, not a fold under the grid
+   (see tabList in studio-modal.js). */
 .method-fold {
     margin-top: var(--space-md);
     padding-top: var(--space-sm);
@@ -5218,6 +5252,8 @@
 
 /* The three text lines as the machine will draw them: 32 columns of 8x8, shown
    at twice size so the glyphs are legible without smoothing them. */
+/* DEAD: the "On screen" row was removed from the File Information panel (see
+   renderTextPreview in ui.js). */
 .text-preview-row #textPreview {
     display: block;
     width: 512px;

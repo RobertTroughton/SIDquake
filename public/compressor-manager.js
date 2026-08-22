@@ -8,6 +8,18 @@
 // Neither dominates, so both are offered; Exomizer is the default (the smaller
 // file wins for most exports) and TSCrunch is there when depack speed matters.
 
+// The page and the compression worker both run this file, so every global goes
+// through G rather than `window` - see compressor-worker.js.
+const G = (typeof window !== 'undefined') ? window : self;
+const inWorker = (typeof importScripts === 'function');
+
+/** Load a classic script, wherever this is running. */
+async function loadCompressorScript(src) {
+    if (inWorker) { importScripts(src); return; }
+    if (!G.loadScript) throw new Error(`Cannot load ${src}: no script loader`);
+    await G.loadScript(src);
+}
+
 class CompressorManager {
     constructor() {
         this.compressors = {
@@ -23,11 +35,14 @@ class CompressorManager {
         if (this.initialized) return;
 
         // Lazy-load TSCrunch only when first needed
-        if (window.loadTSCrunch) {
-            await window.loadTSCrunch();
+        try {
+            if (!G.loadTSCrunch) await loadCompressorScript('tscrunch-load.js');
+            if (G.loadTSCrunch) await G.loadTSCrunch();
+        } catch (error) {
+            console.warn('TSCrunch loader failed:', error);
         }
 
-        if (window.TSCrunch) {
+        if (G.TSCrunch) {
             try {
                 this.compressors.tscrunch = new TSCrunchCompressor();
             } catch (error) {
@@ -57,8 +72,6 @@ class CompressorManager {
     }
 
     async compress(data, type, uncompressedStart, executeAddress) {
-        await this.waitForInit();
-
         if (type === 'none') {
             return {
                 data: data,
@@ -69,6 +82,19 @@ class CompressorManager {
             };
         }
 
+        // Crunching is one long synchronous call - ten seconds and more on a
+        // full-RAM export - so on the page it runs in a worker and the tab stays
+        // alive. Anything that stops the worker, from a browser without them to a
+        // job that dies inside one, falls through to the in-page path below,
+        // which is what this always did.
+        try {
+            const offThread = await this._compressOffThread(data, type, uncompressedStart, executeAddress);
+            if (offThread) return offThread;
+        } catch (error) {
+            console.warn('Compression worker failed, crunching on the page instead:', error);
+        }
+
+        await this.waitForInit();
         const compressor = this.compressors[type];
         if (!compressor) {
             throw new Error(`Compressor '${type}' not available`);
@@ -92,6 +118,56 @@ class CompressorManager {
             type: type,
             originalSize: result.originalSize || data.length,
             compressedSize: result.compressedSize || (result.data ? result.data.length : result.length)
+        };
+    }
+
+    /**
+     * Hand one compression to the worker. Resolves to the same shape compress()
+     * returns, or null when there is no worker to use - inside the worker
+     * itself, in a browser without them, or when one refuses to start. A worker
+     * that fails mid-job rejects, and the caller (the exporter) already treats a
+     * failed compression as "ship it uncompressed".
+     */
+    async _compressOffThread(data, type, uncompressedStart, executeAddress) {
+        if (inWorker || typeof Worker === 'undefined') return null;
+        if (this._workerBroken) return null;
+        try {
+            if (!this.worker) {
+                const cb = G.cacheBust || (s => s);
+                this.worker = new Worker(cb('compressor-worker.js'));
+                this._jobs = new Map();
+                this._nextJob = 1;
+                this.worker.onmessage = (e) => {
+                    const job = this._jobs.get(e.data.id);
+                    if (!job) return;
+                    this._jobs.delete(e.data.id);
+                    if (e.data.ok) job.resolve(e.data);
+                    else job.reject(new Error(e.data.error || 'compression failed'));
+                };
+                // A worker that dies takes every job with it; let them fail so
+                // the exporter can fall back rather than wait forever.
+                this.worker.onerror = () => {
+                    this._workerBroken = true;
+                    for (const job of this._jobs.values()) job.reject(new Error('compression worker failed'));
+                    this._jobs.clear();
+                };
+            }
+        } catch (error) {
+            this._workerBroken = true;
+            return null;
+        }
+        const id = this._nextJob++;
+        const copy = new Uint8Array(data);   // transferred, so never the caller's buffer
+        const answer = new Promise((resolve, reject) => this._jobs.set(id, { resolve, reject }));
+        this.worker.postMessage({
+            id, type, data: copy.buffer, uncompressedStart, executeAddress,
+        }, [copy.buffer]);
+        const done = await answer;
+        return {
+            data: new Uint8Array(done.data),
+            type,
+            originalSize: done.originalSize || data.length,
+            compressedSize: done.compressedSize || done.data.byteLength,
         };
     }
 }
@@ -170,8 +246,7 @@ class ExomizerCompressor {
      */
     async createModule() {
         if (typeof ExomizerModule !== 'function') {
-            if (!window.loadScript) throw new Error('Exomizer: script loader unavailable');
-            await window.loadScript('exomizer.js');
+            await loadCompressorScript('exomizer.js');
         }
         if (typeof ExomizerModule !== 'function') {
             throw new Error('Exomizer: exomizer.js did not define ExomizerModule');
@@ -225,4 +300,4 @@ class ExomizerCompressor {
     }
 }
 
-window.CompressorManager = CompressorManager;
+G.CompressorManager = CompressorManager;
