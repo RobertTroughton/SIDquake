@@ -586,8 +586,11 @@ class StudioModal {
             'ok', 'inc', 'visualizer'));
 
         const songSel = document.getElementById('songSelector');
-        const tune = songSel ? `tune ${songSel.value} of ${header.songs}` :
+        let tune = songSel ? `tune ${songSel.value} of ${header.songs}` :
             (header.songs > 1 ? `tune ${header.startSong} of ${header.songs}` : null);
+        // A locked export carries that one tune and nothing else, which changes
+        // what the program does on the C64 - so the manifest says so.
+        if (tune && !this.ui.multiSongExport()) tune += ', on its own';
         rows.push(this.manifestRow('Music',
             `${header.name || 'Unknown'} — ${header.author || 'Unknown'}${tune ? ' (' + tune + ')' : ''}`,
             'ok', 'inc', 'song'));
@@ -674,12 +677,10 @@ class StudioModal {
         }
 
         if (viz.dataSource === 'fft' && config?.spectrometerBake) {
-            const multiSong = header.songs > 1;
-            const consent = document.getElementById('fftMultiSongConsent');
-            if (multiSong && !(consent && consent.checked)) {
+            if (ui.multiSongExport()) {
                 rows.push(this.manifestRow('FFT bake',
-                    'multi-song SID: confirm “default song only” on the Visualizer tab',
-                    'action needed', 'warn', 'visualizer'));
+                    'this file holds several tunes: tick “Export just this tune” on the Song tab',
+                    'action needed', 'warn', 'song'));
             } else {
                 const a = ui.tuneAnalysis;
                 const mmss = s => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`;

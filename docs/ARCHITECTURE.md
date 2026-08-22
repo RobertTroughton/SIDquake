@@ -107,6 +107,14 @@ Compiled into `sidplayfp.wasm` (playback only, lazily loaded):
   A scan that resolves neither a loop nor an ending gives the C64 a running
   clock with no total, and offers "Keep looking" — the same search with the
   window doubled for that tune
+- Files holding several tunes (`multiSongExport`): everything that can only
+  describe one tune — the song length, the forced loop, the baked spectrometer
+  — is off while the export still holds all of them, and the scan does not run
+  at all. The Song tab's "Export just this tune" locks the export to the tune
+  chosen there: the data block reports one song, which takes the C64's tune
+  keys out (`INC/keyboard.asm` reads `NumSongs`), and the measurement,
+  the bake and the length all describe that tune. `exportSubtuneIndex()` is
+  the one place that says which tune that is
 - PRG export workflow with progress feedback
 - C64 color palette constants
 

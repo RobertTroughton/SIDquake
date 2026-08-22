@@ -115,7 +115,9 @@ async function loadSid(page, file) {
         await page.waitForFunction(() => !!window.uiController, null, { timeout: 20000 });
 
         // --- load a tune ------------------------------------------------------
-        await loadSid(page, 'JCH-Crystalline.sid');
+        // One tune in the file: the background scan only runs for an export that
+        // describes a single tune (see the multi-tune section below).
+        await loadSid(page, 'dane-copperbooze.sid');
         await page.waitForFunction(() => window.studioModal?.isOpen, null, { timeout: 60000 });
         check('Studio opens after a SID loads', true);
 
@@ -1534,6 +1536,93 @@ async function loadSid(page, file) {
                 polite === 'polite', String(polite));
         } finally {
             await slow.close();
+        }
+
+        // --- a file of several tunes, exported as one of them ------------------
+        // Everything that can only describe one tune - the song length, the forced
+        // loop, the Spectrometer - is off while the export still holds several,
+        // and comes back when the Song tab locks it to the tune chosen there.
+        const many = await browser.newPage({ viewport: { width: 1400, height: 900 } });
+        try {
+            const errs = [];
+            many.on('pageerror', (e) => errs.push(String(e)));
+            await many.goto(base, { waitUntil: 'load' });
+            await many.waitForFunction(() => !!window.uiController, null, { timeout: 20000 });
+            await loadSid(many, 'charlesdeenen-mrheli-multisong.sid');
+            await many.waitForFunction(() => window.studioModal?.isOpen, null, { timeout: 60000 });
+            await many.evaluate(() => window.studioModal.activate('song'));
+
+            const state = await many.evaluate(async () => {
+                const ui = window.uiController;
+                const fft = () => VISUALIZERS.find(v => v.id === 'RaistlinBarsFFT');
+                const read = () => ({
+                    several: ui.multiSongExport(),
+                    spectrometer: ui.dataSourceUsable(fft()),
+                    status: document.getElementById('songLoopStatus').textContent,
+                    lengthRow: !document.querySelector('.song-length-manual')?.hidden,
+                });
+                const sel = document.getElementById('songSelector');
+                const lock = document.getElementById('singleSongLock');
+                const before = read();
+                lock.checked = true;
+                lock.dispatchEvent(new Event('change', { bubbles: true }));
+                await new Promise(r => setTimeout(r, 300));
+                return {
+                    options: sel ? sel.options.length : 0,
+                    chosen: sel ? sel.value : '',
+                    lockedByDefault: lock.checked === false,
+                    before, after: read(),
+                };
+            });
+            check('A file of several tunes offers which one to use',
+                state.options === 5 && state.chosen === '5', JSON.stringify(state.options));
+            check('It is not locked to one of them by default', state.before.several === true);
+            check('So the song length is off, and says why',
+                !state.before.lengthRow && /several tunes|multi/i.test(state.before.status),
+                state.before.status.slice(0, 70));
+            check('And the Spectrometer says what it needs rather than failing at export',
+                state.before.spectrometer.ok === false
+                && /Export just this tune/i.test(state.before.spectrometer.reason || ''),
+                state.before.spectrometer.reason);
+            check('Locking it to one tune brings the length back',
+                state.after.several === false && state.after.lengthRow,
+                JSON.stringify(state.after.status.slice(0, 70)));
+            check('...and puts the Spectrometer back on offer',
+                state.after.spectrometer.ok === true);
+
+            // The program itself has to be told it holds one tune, or the C64's
+            // tune keys would step through tunes the export no longer describes.
+            const built = await many.evaluate(async () => {
+                const ui = window.uiController;
+                // A typed length keeps the export off the several-minute scan.
+                const manual = document.getElementById('songLengthManual');
+                manual.value = '1:00';
+                manual.dispatchEvent(new Event('input', { bubbles: true }));
+                const none = document.querySelector('input[name="compression-type"][value="none"]');
+                if (none) { none.checked = true; none.dispatchEvent(new Event('change', { bubbles: true })); }
+                await ui.selectVisualizer(VISUALIZERS.find(v => v.id === 'default'));
+                const seen = {};
+                const real = ui.prgExporter.generateDataBlock.bind(ui.prgExporter);
+                ui.prgExporter.generateDataBlock = (...args) => {
+                    const block = real(...args);
+                    seen.songs = args[2].songs;
+                    seen.numSongsByte = block[0xC8];
+                    seen.songNumberByte = block[0x0F];
+                    return block;
+                };
+                ui._fileSink = () => {};   // don't actually download it
+                try { await ui.exportPRGWithVisualizer(); } finally {
+                    ui.prgExporter.generateDataBlock = real;
+                    ui._fileSink = null;
+                }
+                return seen;
+            });
+            check('A locked export tells the program it holds one tune',
+                built.numSongsByte === 1, JSON.stringify(built));
+            check('And which one that is', built.songNumberByte === 4, JSON.stringify(built));
+            check('The multi-tune page raised no errors', errs.length === 0, errs.slice(0, 2).join(' | '));
+        } finally {
+            await many.close();
         }
 
         // --- the bake worker runs one job at a time ---------------------------

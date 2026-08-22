@@ -29,7 +29,7 @@ something this list cannot supply on its own:
   toolchain version is a deliberate decision about the shipped binaries rather
   than a side effect of a fix.
 - **A player rebuild** (`[asm]`) — the Default player's technical block, a
-  scroller on the bars-with-logo players, multi-song song length, a Group field,
+  scroller on the bars-with-logo players, a Group field,
   NTSC gating in `SetupStableRaster`. These are buildable here, and their effect
   is on what a C64 draws: `scripts/seam-check.js` and `scripts/seam-latency.js`
   will run an export in VICE and look at it, but only around the raster splits.
@@ -556,10 +556,6 @@ wish of both experienced musicians and the beginner alike.
 - **The Default player prints the full hardware block** (`Default.asm:104-141`)
   with no option to suppress it, so the only minimal player is a *technical*
   screen rather than a tasteful one.
-- **No song length for multi-song SIDs** (`prg-builder.js:2267`, `ui.js:3002`),
-  no analysis run, forced looping disabled — and the forfeit is spelled out only
-  inside the Spectrometer warning, which never appears for the players a
-  multi-song release would use.
 - Text is always centred (`prg-builder.js:555`); bar count, bar width and the
   ADSR feel are not exposed.
 

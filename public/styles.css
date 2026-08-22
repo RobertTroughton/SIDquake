@@ -740,6 +740,21 @@ details[open].panel > summary h2::after {
     box-shadow: 0 0 0 2px var(--accent-dim);
 }
 
+/* "Export just this tune": what turns a file of several tunes into a one-tune
+   program, and with it the song length, the forced loop and the Spectrometer. */
+.single-song-lock {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    cursor: pointer;
+    color: var(--text-primary);
+}
+
+.single-song-lock input[aria-invalid="true"] {
+    outline: 2px solid var(--warning);
+    outline-offset: 2px;
+}
+
 /* ==========================================================================
    Visualizer Grid
    ========================================================================== */

@@ -1610,15 +1610,16 @@ class SIDquakePRGExporter {
         // effect on a tune with a real loop: that stores exactly one cycle.
         const outputMaxSeconds = (bakeParams && bakeParams.outputMaxSeconds) || 480;
 
-        // Spectrometer always bakes the tune's DEFAULT song, never a hard-coded song 0
-        // and never a different pick from the multi-song selector: the baked stream is
-        // one subtune's, the on-load analysis used the default song, and a multi-song
-        // export is gated on the user accepting that only the default song is baked.
-        const defaultSong = Math.max(0, ((this.analyzer && this.analyzer.sidHeader && this.analyzer.sidHeader.startSong) || 1) - 1);
+        // The baked stream is one subtune's, and it must be the subtune the caller
+        // measured - bakeParams.subtune says which. Falling back to the file's own
+        // default song, never a hard-coded song 0.
+        const bakedSong = Number.isInteger(bakeParams && bakeParams.subtune)
+            ? bakeParams.subtune
+            : Math.max(0, ((this.analyzer && this.analyzer.sidHeader && this.analyzer.sidHeader.startSong) || 1) - 1);
 
         const { renderAndBakeSpectrometer } = await import((window.cacheBust || (s => s))('./spectrometer-bake-runner.js'));
         const baked = await renderAndBakeSpectrometer(sidBytes, {
-            subtune: defaultSong,
+            subtune: bakedSong,
             maxSeconds: analysisSeconds,   // render up to 2x the max loop length (stops early when a loop is found)
             outputMaxSeconds,       // if no loop is found, store at most this many seconds of bars, then fade off
             numBars: vizConfig.bakedNumBars,
@@ -1712,10 +1713,12 @@ class SIDquakePRGExporter {
         };
         const loopT = triple(baked.loopStart);
         const lenT = triple(baked.numKeyframes);
-        // Song length is only meaningful for a single-song SID: a multi-song tune can
-        // switch songs (live players) and the baked length would be wrong, so we never
-        // show it there - the player keeps the timer alone.
-        const multiSong = !!(this.analyzer && this.analyzer.sidHeader && this.analyzer.sidHeader.songs > 1);
+        // Song length is only meaningful when the export is one tune: a program the
+        // user can switch tunes in would show a length belonging to whichever one
+        // was baked, so it keeps the timer alone. A multi-tune file locked to one
+        // tune (bakeParams.singleSong) counts as one tune.
+        const multiSong = !!(this.analyzer && this.analyzer.sidHeader
+            && this.analyzer.sidHeader.songs > 1) && !(bakeParams && bakeParams.singleSong);
         // A forced loop gives the tune a real length too: the clock counts up to
         // the wrap (= the stream length) and snaps back to 0:00 as the music
         // restarts (loopStart is 0 for a forced loop, so loopT is all zeros).
@@ -2643,14 +2646,17 @@ class SIDquakePRGExporter {
             // The codebook+index stream is largest at 50 fps; placing it before the
             // inputs/intro page would let it overlap a component registered afterwards,
             // which the build() merger resolves silently by address order (corrupt PRG).
-            // Forced song loop (user option, fade-out tunes only): single-song SIDs
-            // only - on a multi-song export the detected length belongs to one song
-            // and the user can switch songs at runtime.
-            const multiSong = !!(header && header.songs > 1);
+            // Forced song loop (user option, fade-out tunes only): exports of one
+            // tune only - where the user can switch tunes at runtime the detected
+            // length belongs to just one of them. options.singleSong is a
+            // multi-tune file the user chose to export as a single tune, tune keys
+            // and all (see UIController.multiSongExport).
+            const singleSong = !!options.singleSong;
+            const multiSong = !!(header && header.songs > 1) && !singleSong;
             const wantForceLoop = !!forceSongLoop && !multiSong;
 
             if (vizConfig?.spectrometerBake) {
-                await this.processSpectrometerBake(vizConfig, layout, actualSidAddress, sidInfo.data.length, selectedSong, options.onProgress, [introScreenRange], bakeParams, wantForceLoop);
+                await this.processSpectrometerBake(vizConfig, layout, actualSidAddress, sidInfo.data.length, selectedSong, options.onProgress, [introScreenRange], { ...(bakeParams || {}), singleSong }, wantForceLoop);
             } else {
                 // Non-baked players: turn the analysis' fade-out point into a raster
                 // frame count. The shared player code counts frames and re-inits the
@@ -2728,7 +2734,11 @@ class SIDquakePRGExporter {
                     dataSize: sidInfo.dataSize
                 },
                 this.analyzer.analysisResults,
-                header,
+                // Locked to one tune: the player is told the file holds one, which
+                // is what takes its tune keys out (INC/keyboard.asm reads NumSongs).
+                // SongNumber still selects which one, so the chosen tune is the one
+                // that plays.
+                singleSong ? { ...header, songs: 1 } : header,
                 saveRoutineAddr,
                 restoreRoutineAddr,
                 numCallsPerFrame,
