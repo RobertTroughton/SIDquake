@@ -880,7 +880,14 @@ ApplyWaterSprites:
 	bcc !noClamp+
 	sbc #$06							//; 6,7 -> 0,1 (carry set by cmp)
 !noClamp:
-	ora #SPRITE_BASE_INDEX
+	//; ADD, not ORA. The base is $B9 here (the curtain took the slot above the six
+	//; water frames) and its low bit is already set, so ORA folded frames 0/1, 2/3
+	//; and 4/5 onto one pointer each: three of the six ever showed, each for twice
+	//; as long, and the shimmer jumped two rows at a time instead of drifting one -
+	//; the reflection blinked rather than moved. Carry is clear on the bcc path and
+	//; set after the sbc, so it has to be cleared here.
+	clc
+	adc #SPRITE_BASE_INDEX
 	.for (var i = 0; i < 7; i++) {
 		sta SPRITE_POINTERS_0 + i
 		sta SPRITE_POINTERS_1 + i

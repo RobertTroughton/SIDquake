@@ -27,6 +27,10 @@
  *   node scripts/seam-latency.js --method=realtime       # the bar data to export with
  *   node scripts/seam-latency.js --visualizer=RaistlinBarsWithLogo --watch=curtain
  *
+ * --watch=name measures MusicalBlobs' song-name window instead: with a bitmap
+ * logo that row is a character-mode island, and it flickers on any frame whose
+ * window was not open in time.
+ *
  * --watch=curtain measures the other half of the seam: not whether the mode
  * switch is hidden, but whether the curtain that hides it was there at all. It
  * breaks on the same write and reads sprite 0's Y, which says which duty the
@@ -125,6 +129,14 @@ const PAL_LINE_CYCLES = 63;
  */
 const SPLIT_WRITES = ['8d', '11', 'd0', '8e', '21', 'd0', '8c', '18', 'd0'];
 
+/**
+ * MusicalBlobs' song-name window: with a bitmap logo the name row is a
+ * character-mode island between two bitmap regions, opened by NameIRQ's
+ * `lda #$1b / sta $d011`. The window has to be open before the row starts
+ * (raster 51 + 11*8 = 139) or the row displays as bitmap for that frame.
+ */
+const NAME_WRITES = ['a9', '1b', '8d', '11', 'd0'];
+
 
 (async () => {
     const args = process.argv.slice(2);
@@ -144,6 +156,9 @@ const SPLIT_WRITES = ['8d', '11', 'd0', '8e', '21', 'd0', '8c', '18', 'd0'];
     // The curtain's own sprite Y, from the player source (CURTAIN_SPRITE_Y;
     // RaistlinBarsWithLogo's 11-row logo puts the split on 138, so 117).
     const curtainY = Number(arg('curtain-y', '117'));
+    // watch=name: the first raster line of the row the window has to be open
+    // for (MusicalBlobs' song-name row starts at 51 + 11*8).
+    const rowLine = Number(arg('row-line', '139'));
     const port = Number(arg('port', '6510'));
     const keep = arg('keep', '');
     const dir = keep || fs.mkdtempSync(path.join(os.tmpdir(), 'seam-'));
@@ -164,27 +179,31 @@ const SPLIT_WRITES = ['8d', '11', 'd0', '8e', '21', 'd0', '8c', '18', 'd0'];
         mon = await Monitor.connect(port);
         await mon.drain(4000);
 
-        const hunt = await mon.cmd('hunt 0400 cfff ' + SPLIT_WRITES.join(' '), 20000);
+        const hunt = await mon.cmd('hunt 0400 cfff ' +
+            (watch === 'name' ? NAME_WRITES : SPLIT_WRITES).join(' '), 20000);
         // Strip the monitor's own `(C:$xxxx)` prompts first - the PC they carry
         // looks exactly like a hunt result and sorts ahead of the real one.
         const hits = [...hunt.replace(/\(C:\$[0-9a-f]{4}\)/gi, ' ').matchAll(/\b([0-9a-f]{4})\b/gi)]
             .map(m => m[1].toLowerCase())
             .filter(a => a !== '0400' && a !== 'cfff');
         if (!hits.length) throw new Error('could not find the split handler in RAM:\n' + hunt);
-        const addr = hits[0];
-        console.log('  split handler writes $d011 at $' + addr.toUpperCase());
-
-        await mon.cmd('break $' + addr);
+        // The pattern can match more than once - a relocated player carries the
+        // same instruction sequence in more than one handler, and only one of
+        // them is the one that runs. Break on every candidate and let the hits
+        // say which; the others simply never fire.
+        console.log('  ' + (watch === 'name' ? 'the song-name window opens' : 'split handler writes $d011')
+            + ' at ' + hits.map(h => '$' + h.toUpperCase()).join(' or '));
+        for (const h of hits) await mon.cmd('break $' + h);
 
         // Each hit is one frame's split, and the monitor's break line already
         // carries the beam position - "LIN/$hex, CYC/$hex" - so the raster the
         // write landed on needs no further command.
-        const seen = [];
+        let seen = [];
         for (let i = 0; i < frames; i++) {
             const out = await mon.cmd('x', 15000);
-            const m = /exec [0-9a-f]{4}\)\s+(\d+)\/\$[0-9a-f]+,\s+(\d+)\//i.exec(out);
+            const m = /exec ([0-9a-f]{4})\)\s+(\d+)\/\$[0-9a-f]+,\s+(\d+)\//i.exec(out);
             if (!m) break;
-            const hit = { line: Number(m[1]), cycle: Number(m[2]) };
+            const hit = { addr: m[1].toLowerCase(), line: Number(m[2]), cycle: Number(m[3]) };
             if (watch === 'curtain') {
                 // Sprite 0's Y, as the VIC holds it at the instant of the switch:
                 // the curtain's own Y means the curtain is up, anything else means
@@ -196,10 +215,37 @@ const SPLIT_WRITES = ['8d', '11', 'd0', '8e', '21', 'd0', '8c', '18', 'd0'];
             seen.push(hit);
         }
         if (!seen.length) throw new Error('the breakpoint never reported a beam position');
+        // Keep the candidate that actually runs (see the hunt above).
+        if (hits.length > 1) {
+            const per = new Map();
+            for (const s of seen) per.set(s.addr, (per.get(s.addr) || 0) + 1);
+            const live = [...per.entries()].sort((a, b) => b[1] - a[1])[0][0];
+            console.log('  $' + live.toUpperCase() + ' is the one that runs (' +
+                per.get(live) + ' of ' + seen.length + ' hits)');
+            seen = seen.filter(s => s.addr === live);
+        }
 
         const counts = new Map();
         for (const s of seen) counts.set(s.line, (counts.get(s.line) || 0) + 1);
         const lines = [...counts.entries()].sort((a, b) => a[0] - b[0]);
+        if (watch === 'name') {
+            // Armed by the previous frame's bottom IRQ, behind its music call:
+            // an arming that misses its raster leaves the window shut until the
+            // NEXT frame, and the row displays in the mode around it instead.
+            const late = seen.filter(s => s.line >= rowLine);
+            const pct = (100 * late.length / seen.length).toFixed(2);
+            const lines = [...new Set(seen.map(s => s.line))].sort((a, b) => a - b);
+            console.log('\nthe window opened on line ' + lines.join('/') +
+                ', over ' + seen.length + ' frames; the row it is for starts on ' + rowLine);
+            check(late.length === 0, 'the window is open before the row it is for',
+                late.length + ' of ' + seen.length + ' frames (' + pct + '%) opened late' +
+                    (late.length ? ', worst line ' + Math.max(...late.map(s => s.line)) : ''));
+            if (mon) mon.close();
+            try { process.kill(-vice.pid, 'SIGKILL'); } catch (e) { /* already gone */ }
+            if (!keep) console.log('(working dir ' + dir + ')');
+            process.exit(failures ? 1 : 0);
+        }
+
         console.log('\nraster line the mode switch landed on, over ' + seen.length + ' frames:');
         for (const [line, n] of lines) {
             const cyc = seen.filter(s => s.line === line).map(s => s.cycle);
