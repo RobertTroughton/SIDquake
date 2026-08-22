@@ -220,7 +220,9 @@ export manifest, and the sticky visualizer choice) and
 horizontal scrolling, clipped content, tap target and text sizes, contrast, and
 how many HVSC rows fit) and `scripts/hvsc-deeplink-check.js` (a `?tune=` link
 arrives loaded and described, in either index/share-meta order and when the
-quick play fails; builds its own one-tune mirror); none are in `npm test`, all
+quick play fails; builds its own one-tune mirror) and
+`scripts/compression-check.js` (crunching an export keeps the page answering,
+and gives the same bytes in the worker and on the page); none are in `npm test`, all
 need Playwright, which isn't a dependency (`npm install --no-save playwright`).
 
 Nothing in `npm test` sees a VIC-II, so the players' raster splits are covered

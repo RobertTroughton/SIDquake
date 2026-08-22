@@ -1102,58 +1102,6 @@
         </div>
     </div>
 
-    <!-- TSCrunch lazy loader - only imports the heavy compression library on first use -->
-    <script>
-        window.loadTSCrunch = async function() {
-            if (window.TSCrunch) return;
-
-            const { Cruncher, createSFX } = await import('./lib/index.js');
-
-            if (typeof Buffer === 'undefined') {
-                window.Buffer = {
-                    from: function (data) {
-                        if (data instanceof Uint8Array) return data;
-                        if (Array.isArray(data)) return new Uint8Array(data);
-                        return new Uint8Array(0);
-                    }
-                };
-            }
-
-            window.TSCrunch = {
-                compress: function (data, options = {}) {
-                    const {
-                        prg = true, sfx = true, sfxMode = 0,
-                        jumpAddress = 0x1000, blank = false, inplace = false
-                    } = options;
-
-                    const dataArray = Array.from(data);
-                    let sourceData = dataArray;
-                    let loadAddress = 0x0801;
-
-                    if (prg && dataArray.length >= 2) {
-                        loadAddress = dataArray[0] | (dataArray[1] << 8);
-                        sourceData = dataArray.slice(2);
-                    }
-
-                    const cruncher = new Cruncher(sourceData);
-                    cruncher.ocrunch({ inplace, verbose: false, sfxMode: sfx });
-
-                    let compressed = cruncher.crunched;
-                    if (sfx) {
-                        compressed = Array.from(createSFX(Buffer.from(compressed), {
-                            jumpAddress, decrunchAddress: loadAddress,
-                            optimalRun: cruncher.optimalRun, sfxMode, blank
-                        }));
-                    }
-
-                    return new Uint8Array(compressed);
-                }
-            };
-
-            window.dispatchEvent(new Event('tscrunch-ready'));
-        };
-    </script>
-
     <!-- HVSC Modal -->
     <div class="hvsc-modal" id="hvscModal" data-overlay>
         <div class="hvsc-modal-content" role="dialog" aria-modal="true" aria-label="Browse C64 tunes">

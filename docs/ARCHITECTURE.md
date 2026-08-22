@@ -10,6 +10,7 @@
 │                  ├── sidquake-core.js ──► sidquake.wasm │
 │                  ├── prg-builder.js                       │
 │                  │    └── compressor-manager.js            │
+│                  │         ├── compressor-worker.js (crunch) │
 │                  │         ├── lib/ (TSCrunch, JS)          │
 │                  │         └── exomizer.js ──► exomizer.wasm │
 │                  ├── png-converter.js ──► sidquake.wasm  │
@@ -169,6 +170,13 @@ Compiled into `sidplayfp.wasm` (playback only, lazily loaded):
   export, TSCrunch roughly 4x faster to decrunch on the C64 (~33 vs ~129 cycles
   per byte)
 - Exomizer is the default; TSCrunch is the pick when depack speed matters
+- The crunch itself runs in `compressor-worker.js`, which imports this same file
+  (`G` is `window` or `self`; dependencies load through `importScripts` in the
+  worker). Either compressor is one synchronous call of ten seconds and more on
+  a full-RAM export, which on the page froze the tab mid-build. The in-page path
+  remains the fallback when a worker cannot start or a job dies in one.
+  `scripts/compression-check.js` holds a heartbeat against the main thread and
+  diffs the two paths' output
 
 **`png-converter.js`** (244 lines) - WASM bridge for image conversion
 - `PNGConverter` class wrapping PNG converter WASM functions
