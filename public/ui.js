@@ -440,7 +440,10 @@ class UIController {
             const blob = await response.blob();
             const file = new File([blob], data.name, { type: 'application/octet-stream' });
 
-            await this.processFile(file, { autoplay: true });
+            // Taking a tune out of the browser is not a request to hear it: the
+            // Studio opens over the page and the tune was already auditioned in
+            // the browser. Playing starts on the play button.
+            await this.processFile(file, { autoplay: false });
 
         } catch (error) {
             console.error('Error downloading HVSC file:', error);
@@ -1070,9 +1073,9 @@ class UIController {
         try { this.downloadFile(data, filename); } finally { this._fileSink = sink; }
     }
 
-    // opts.autoplay: the tune was chosen by an explicit click (Random SID, an
-    // HVSC pick), so start it playing rather than making the user hunt for the
-    // play button under whatever opened on top.
+    // opts.autoplay: the tune arrived unheard and unasked-for (Random SID), so
+    // start it playing rather than making the user hunt for the play button
+    // under whatever opened on top.
     async processFile(file, opts = {}) {
         if (!file.name.toLowerCase().endsWith('.sid')) {
             this.showModal('Please select a valid SID file', false);

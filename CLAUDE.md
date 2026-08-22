@@ -218,7 +218,9 @@ covers the browser UI — the exceptions are `scripts/mobile-layout-check.js`
 export manifest, and the sticky visualizer choice) and
 `scripts/device-check.js` (a device matrix from iPhone to 2560px desktop:
 horizontal scrolling, clipped content, tap target and text sizes, contrast, and
-how many HVSC rows fit); none are in `npm test`, all
+how many HVSC rows fit) and `scripts/hvsc-deeplink-check.js` (a `?tune=` link
+arrives loaded and described, in either index/share-meta order and when the
+quick play fails; builds its own one-tune mirror); none are in `npm test`, all
 need Playwright, which isn't a dependency (`npm install --no-save playwright`).
 
 Nothing in `npm test` sees a VIC-II, so the players' raster splits are covered
