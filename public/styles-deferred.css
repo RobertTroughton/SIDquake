@@ -5112,6 +5112,8 @@
 /* How the bars are worked out: a fold under the visualizer grid rather than a
    tab of its own. It only exists for the bar players, and it modifies the card
    directly above it. */
+/* DEAD: the method picker is a Studio tab again, not a fold under the grid
+   (see tabList in studio-modal.js). */
 .method-fold {
     margin-top: var(--space-md);
     padding-top: var(--space-sm);

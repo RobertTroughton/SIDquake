@@ -175,12 +175,16 @@ class StudioModal {
     // ---------------------------------------------------------------------
 
     tabList() {
-        // How the bars are worked out is no longer a tab: it lives under the
-        // visualizer grid, next to the card it modifies, for the players that
-        // offer a choice at all.
+        // How the bars are worked out is a tab again, straight after the card it
+        // modifies - but only for the players that offer the choice. Folded
+        // under the grid it read as gone, and people took the spectrometer with
+        // it.
+        const bars = this.ui?.hasMethodChoice?.()
+            ? [{ id: 'method', label: 'Bars', icon: 'fa-wave-square' }] : [];
         return [
             { id: 'song', label: 'Song', icon: 'fa-file-audio' },
             { id: 'visualizer', label: 'Visualizer', icon: 'fa-tv' },
+            ...bars,
             ...this.derivedGroups.map(g => ({ id: g.id, label: g.label, icon: g.icon })),
             { id: 'export', label: 'Export', icon: 'fa-download' },
         ];
@@ -365,6 +369,12 @@ class StudioModal {
 
     tabStatus(id) {
         if (id === 'export') return { glyph: '▸', cls: 'st-attn', title: 'Review & generate' };
+        // The bar method always has an answer, so the status says which one it
+        // is rather than whether the tab has been opened.
+        if (id === 'method') {
+            const label = this.dataSourceLabel(this.ui?.selectedVisualizer);
+            return { glyph: '✓', cls: 'st-done', title: label || 'Chosen' };
+        }
         if (id === 'scroller') {
             const ta = this.derivedGroups.find(g => g.id === 'scroller')
                 ?.options.find(o => o.type === 'textarea');

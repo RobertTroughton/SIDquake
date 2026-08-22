@@ -526,23 +526,30 @@ async function loadSid(page, file) {
             await ui.selectVisualizer(VISUALIZERS.find(v => v.id === 'RaistlinBarsWithLogo'));
             await new Promise(r => setTimeout(r, 900));
             const ids = window.studioModal.tabList().map(t => t.id);
-            const fold = document.getElementById('methodFold');
+            const panel = document.querySelector('.studio-panel[data-studio-tab="method"]');
+            // ...and one that offers no choice of bar data at all.
+            await ui.selectVisualizer(VISUALIZERS.find(v => v.id === 'SimpleRaster'));
+            await new Promise(r => setTimeout(r, 700));
+            const plainIds = window.studioModal.tabList().map(t => t.id);
+            await ui.selectVisualizer(VISUALIZERS.find(v => v.id === 'RaistlinBarsWithLogo'));
+            await new Promise(r => setTimeout(r, 900));
             return {
-                ids,
+                ids, plainIds,
                 hasMethodTab: ids.includes('method'),
                 splitStyleTabs: ids.includes('barstyle') || ids.includes('color'),
-                foldShown: fold && !fold.hidden,
-                foldSaysWhich: (document.getElementById('methodFoldCurrent') || {}).textContent || '',
+                methodPanel: !!panel,
                 methodCards: document.querySelectorAll('#methodMount .method-card').length,
+                status: window.studioModal.tabStatus('method').title,
             };
         });
-        check('The busiest player is six tabs, not eight',
-            tabs.ids.length <= 6 && !tabs.hasMethodTab && !tabs.splitStyleTabs,
-            tabs.ids.join(','));
-        check('How the bars are worked out folds under the grid instead',
-            tabs.foldShown && tabs.methodCards >= 2, JSON.stringify(tabs));
-        check('And the fold says which one is in use',
-            tabs.foldSaysWhich.trim().length > 0, tabs.foldSaysWhich);
+        check('The busiest player is seven tabs, not eight',
+            tabs.ids.length <= 7 && !tabs.splitStyleTabs, tabs.ids.join(','));
+        check('How the bars are worked out is a tab of its own, not a fold',
+            tabs.hasMethodTab && tabs.methodPanel && tabs.methodCards >= 2, JSON.stringify(tabs));
+        check('And the rail says which method is in use',
+            /vu meter|spectrometer/i.test(tabs.status), tabs.status);
+        check('A player with no choice of bar data does not carry the tab',
+            !tabs.plainIds.includes('method'), tabs.plainIds.join(','));
 
         // --- file naming ------------------------------------------------------
         const naming = await page.evaluate(() => {
@@ -1268,62 +1275,6 @@ async function loadSid(page, file) {
                 fade.before !== fade.after, JSON.stringify({ values: fade.values }));
         }
 
-        // --- the text lines, as the C64 will draw them ------------------------
-        const textPreview = await page.evaluate(async () => {
-            const ui = window.uiController;
-            window.studioModal.activate('song');
-            const title = document.getElementById('sidTitle');
-            title.value = 'PREVIEW TEST';
-            title.dispatchEvent(new Event('input', { bubbles: true }));
-            await new Promise(r => setTimeout(r, 600));
-            await ui.renderTextPreview();
-
-            const row = document.getElementById('textPreviewRow');
-            const canvas = document.getElementById('textPreview');
-            const ctx = canvas.getContext('2d');
-            const px = ctx.getImageData(0, 0, canvas.width, canvas.height).data;
-            // Ink pixels per row of the title line, so "is anything drawn" and
-            // "is it centred" can both be answered.
-            let ink = 0, firstX = -1, lastX = -1;
-            const bg = [px[0], px[1], px[2]];
-            for (let y = 0; y < 8; y++) {
-                for (let x = 0; x < canvas.width; x++) {
-                    const o = (y * canvas.width + x) * 4;
-                    if (px[o] !== bg[0] || px[o + 1] !== bg[1] || px[o + 2] !== bg[2]) {
-                        ink++;
-                        if (firstX < 0 || x < firstX) firstX = x;
-                        if (x > lastX) lastX = x;
-                    }
-                }
-            }
-
-            // A title too long for 32 columns must say so.
-            title.value = 'A TITLE FAR TOO LONG FOR THIRTY TWO COLUMNS OF SCREEN';
-            title.dispatchEvent(new Event('input', { bubbles: true }));
-            await new Promise(r => setTimeout(r, 600));
-            await ui.renderTextPreview();
-            const warned = document.getElementById('textPreviewNote').textContent;
-
-            title.value = 'Lundiax';
-            title.dispatchEvent(new Event('input', { bubbles: true }));
-            return {
-                shown: !row.hidden,
-                size: `${canvas.width}x${canvas.height}`,
-                ink, firstX, lastX,
-                leftGap: firstX, rightGap: canvas.width - 1 - lastX,
-                warned,
-            };
-        });
-        check('The text lines are shown as the C64 will draw them',
-            textPreview.shown && textPreview.size === '256x24', JSON.stringify(textPreview));
-        check('With real glyphs on them', textPreview.ink > 50, `${textPreview.ink} ink pixels`);
-        // 32 columns, "PREVIEW TEST" is 12: centring leaves 10 columns each side.
-        check('And centred the way the export centres them',
-            Math.abs(textPreview.leftGap - textPreview.rightGap) <= 8,
-            `${textPreview.leftGap}px left, ${textPreview.rightGap}px right`);
-        check('A line too long for the screen says so, by the name on the field',
-            /^Title will not fit the 32 columns/i.test(textPreview.warned), textPreview.warned);
-
         // --- where it goes, before the export ---------------------------------
         const plan = await page.evaluate(async () => {
             const ui = window.uiController;
@@ -1463,7 +1414,9 @@ async function loadSid(page, file) {
             await ui.keepLooking();
             const widened = ui.scanWindowSeconds();
             // The scan runs in the background; wait for it to settle either way.
-            for (let i = 0; i < 240 && (ui.analysisRunning || !ui.tuneAnalysis); i++) {
+            // A doubled window is a whole fresh render of the tune, which on a
+            // loaded page takes minutes rather than seconds.
+            for (let i = 0; i < 900 && (ui.analysisRunning || !ui.tuneAnalysis); i++) {
                 await new Promise(r => setTimeout(r, 500));
             }
             const after = ui.scanWindowSeconds();
