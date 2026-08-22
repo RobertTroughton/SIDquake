@@ -166,8 +166,12 @@ class StudioModal {
 
     refreshHeader() {
         const h = this.ui?.sidHeader;
-        document.getElementById('studioSongTitle').textContent = h ? (h.name || 'Untitled') : 'No SID loaded';
-        document.getElementById('studioSongAuthor').textContent = h?.author ? `— ${h.author}` : '';
+        // Both names are a way into the collection (ui.renderBrowseLink), so the
+        // artist of the tune in hand is one click from the rest of their work.
+        this.ui.renderBrowseLink(document.getElementById('studioSongTitle'),
+            h && h.name, h ? 'Untitled' : 'No SID loaded');
+        this.ui.renderBrowseLink(document.getElementById('studioSongAuthor'),
+            h && h.author, '', '— ');
     }
 
     // ---------------------------------------------------------------------

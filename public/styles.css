@@ -515,6 +515,34 @@ body.file-dragging::after {
     color: var(--text-secondary);
 }
 
+/* A song or artist name that searches the collection for itself. It has to read
+   as the name it replaced, so it takes the surrounding type and colour and only
+   marks itself as clickable on hover/focus. */
+.browse-link {
+    font: inherit;
+    color: inherit;
+    letter-spacing: inherit;
+    background: none;
+    border: 0;
+    padding: 0;
+    margin: 0;
+    cursor: pointer;
+    text-align: inherit;
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: inherit;
+    text-decoration: underline;
+    text-decoration-color: transparent;
+    text-underline-offset: 3px;
+    transition: text-decoration-color var(--transition-base);
+}
+
+.browse-link:hover,
+.browse-link:focus-visible {
+    text-decoration-color: currentColor;
+}
+
 /* ==========================================================================
    Info Section & Panels
    ========================================================================== */

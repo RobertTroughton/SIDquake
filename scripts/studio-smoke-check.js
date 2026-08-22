@@ -833,6 +833,45 @@ async function loadSid(page, file) {
         check('Arrow keys move through it', hvsc.moved === true);
         check('The result count is announced', hvsc.countLive === 'polite', hvsc.countLive);
 
+        // --- the names on screen are a way into the collection ----------------
+        const names = await page.evaluate(async () => {
+            const read = (id) => {
+                const el = document.getElementById(id);
+                const btn = el.querySelector('button.browse-link');
+                return { text: el.textContent.trim(), link: btn ? btn.textContent : null };
+            };
+            const page1 = { title: read('songTitle'), author: read('songAuthor') };
+            const studio = { title: read('studioSongTitle'), author: read('studioSongAuthor') };
+            document.querySelector('#songAuthor button.browse-link').click();
+            const bar = () => document.getElementById('hvscSearchBar').value;
+            for (let i = 0; i < 100; i++) {
+                if (bar()) break;
+                await new Promise(r => setTimeout(r, 100));
+            }
+            // The results themselves need the index, which is the slow part.
+            const start = Date.now();
+            while (Date.now() - start < 60000
+                && !document.querySelector('#fileList .file-item')) {
+                await new Promise(r => setTimeout(r, 250));
+            }
+            const opened = document.getElementById('hvscModal').classList.contains('visible');
+            const query = bar();
+            const results = document.querySelectorAll('#fileList .file-item').length;
+            const searching = document.getElementById('itemCount').textContent;
+            document.getElementById('hvscModal').classList.remove('visible');
+            return { page1, studio, opened, query, results, searching };
+        });
+        check('The song and artist names are a way into the collection',
+            !!names.page1.title.link && !!names.page1.author.link
+            && !!names.studio.title.link && !!names.studio.author.link,
+            JSON.stringify(names.page1) + ' ' + JSON.stringify(names.studio));
+        check('Clicking one opens the browser searching for that name',
+            names.opened && names.query === names.page1.author.link,
+            `${names.opened} "${names.query}"`);
+        check('And the results stand, rather than the root folder landing on them',
+            names.results > 0 && /match/i.test(names.searching),
+            `${names.results} rows, "${names.searching}"`);
+
         // --- the tune selector belongs to the Song tab ------------------------
         const subtune = await page.evaluate(() => {
             const sel = document.getElementById('songSelector');

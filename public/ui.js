@@ -4023,8 +4023,38 @@ class UIController {
     }
 
     updateSongTitle(header) {
-        this.elements.songTitle.textContent = header.name || 'Unknown Title';
-        this.elements.songAuthor.textContent = header.author || 'Unknown Author';
+        this.renderBrowseLink(this.elements.songTitle, header.name, 'Unknown Title');
+        this.renderBrowseLink(this.elements.songAuthor, header.author, 'Unknown Author');
+    }
+
+    /**
+     * Put a name on screen as a way into the collection: the song and artist of
+     * whatever is loaded are the two things people most often want to hear more
+     * of, and clicking one searches HVSC for it. A name we cannot search for
+     * (a hand-typed tune, a file with no metadata) stays plain text.
+     */
+    renderBrowseLink(el, text, fallback, prefix = '') {
+        if (!el) return;
+        const name = (text || '').trim();
+        el.textContent = '';
+        if (!name) {
+            el.textContent = fallback;
+            return;
+        }
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'browse-link';
+        btn.textContent = name;
+        btn.title = `Find "${name}" in the HVSC collection`;
+        btn.addEventListener('click', () => this.browseFor(name));
+        if (prefix) el.appendChild(document.createTextNode(prefix));
+        el.appendChild(btn);
+    }
+
+    /** Open the HVSC browser on a search for `query`. */
+    async browseFor(query) {
+        await this.openHVSCBrowser();
+        if (window.hvscBrowser && hvscBrowser.search) hvscBrowser.search(query);
     }
 
     updateZeroPageInfo(zpAddresses) {

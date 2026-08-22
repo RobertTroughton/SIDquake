@@ -487,6 +487,10 @@ window.hvscBrowser = (function () {
         loadSearchIndex()
             .then(async () => {
                 if (tuneParam && await openTuneByPath(tuneParam)) return;
+                // Opened on a name to look up (a song or artist clicked in the
+                // app): that search owns the listing, so don't drop the root
+                // folder on top of it when the index lands.
+                if (searchMode) return;
                 return fetchDirectory(startPath);
             })
             .catch((err) => {
@@ -1275,6 +1279,24 @@ window.hvscBrowser = (function () {
         });
     }
 
+    /**
+     * Search the collection for `query`, as if it had been typed into the search
+     * bar. The song and artist names elsewhere in the app use this to hand the
+     * browser a name to look up.
+     */
+    function searchFor(query) {
+        const q = (query || '').trim();
+        if (!q) return;
+        const input = document.getElementById('hvscSearchBar');
+        if (input) {
+            input.value = q;
+            const clearBtn = document.getElementById('hvscSearchClear');
+            if (clearBtn) clearBtn.style.display = 'inline-flex';
+        }
+        if (searchDebounce) clearTimeout(searchDebounce);
+        runSearch(q);
+    }
+
     function exitSearchMode() {
         if (!searchMode) return;
         searchMode = false;
@@ -1501,6 +1523,7 @@ window.hvscBrowser = (function () {
         downloadSID: downloadSID,
         initializeHVSC: initializeHVSC,
         openTuneByPath: openTuneByPath,
+        search: searchFor,
         shareTune: shareTune,
         clearShareUrl: clearShareUrl,
         chooseSong: selectSID,     // "Choose This Song" button (same as double-click)
