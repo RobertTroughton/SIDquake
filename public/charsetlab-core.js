@@ -9,9 +9,10 @@
 // Multicolour, ECM) and reports every mode that fits.
 //
 // Output per fitted mode: charset bytes, screen RAM, colour RAM and the
-// global colour registers ($d021-$d024 / $d022-$d023). buildLogoBlob() packs
+// global colour registers ($d021-$d024 / $d022-$d023). buildImageBlob() packs
 // a result into a fixed-layout blob that visualizer configs can slice into
-// memory regions (see LOGO_BLOB below).
+// memory regions (see IMAGE_BLOB below). The old logo names remain as aliases
+// for configs and callers written before full-screen images used this pipeline.
 //
 // Runs in the browser (window.CharsetLabCore) and in Node (module.exports)
 // so the conversion can be regression-tested outside the browser.
@@ -233,6 +234,26 @@ NTSCVICE,$000000,$ffffff,$8f4230,$80d1e6,$9446b8,$64b844,$422ead,$e6fe74,$956321
     function dominantColour(idx) {
         var freq = new Uint32Array(16);
         for (var i = 0; i < idx.length; i++) freq[idx[i]]++;
+        var best = 0;
+        for (var c = 1; c < 16; c++) if (freq[c] > freq[best]) best = c;
+        return best;
+    }
+
+    // Best C64 border-colour guess from the pixels which frame the picture. A
+    // 384x272 VICE grab has a real border surrounding its 320x200 screen, so use
+    // that whole area rather than trusting one corner pixel. A screen-only PNG
+    // has no explicit border; its outer edge is the least surprising proxy.
+    function inferredBorderColour(idx, w, h, is384) {
+        var freq = new Uint32Array(16);
+        for (var y = 0; y < h; y++) {
+            for (var x = 0; x < w; x++) {
+                var inFrame = is384
+                    ? (x < BORDER_LEFT || x >= BORDER_LEFT + INNER_W
+                        || y < BORDER_TOP || y >= BORDER_TOP + INNER_H)
+                    : (x === 0 || x === w - 1 || y === 0 || y === h - 1);
+                if (inFrame) freq[idx[y * w + x]]++;
+            }
+        }
         var best = 0;
         for (var c = 1; c < 16; c++) if (freq[c] > freq[best]) best = c;
         return best;
@@ -1024,7 +1045,7 @@ NTSCVICE,$000000,$ffffff,$8f4230,$80d1e6,$9446b8,$64b844,$422ead,$e6fe74,$956321
         var match = pickPalette(Object.keys(unique).map(Number));
         var srcIdx = new Uint8Array(w * h);
         for (p = 0; p < w * h; p++) { j = p * 4; srcIdx[p] = match.map[(rgba[j] << 16) | (rgba[j + 1] << 8) | rgba[j + 2]]; }
-        var border = is384 ? nearestWithDist((rgba[(4 * w + 4) * 4] << 16) | (rgba[(4 * w + 4) * 4 + 1] << 8) | rgba[(4 * w + 4) * 4 + 2], match.palette).idx : 0;
+        var border = inferredBorderColour(srcIdx, w, h, is384);
 
         var offX0 = is384 ? BORDER_LEFT : 0, offY0 = is384 ? BORDER_TOP : 0;
         var best = shiftOn ? shiftSearchSource(srcIdx, w, h, offX0, offY0, fns, ctx, rowLimit) : null;
@@ -1032,7 +1053,12 @@ NTSCVICE,$000000,$ffffff,$8f4230,$80d1e6,$9446b8,$64b844,$422ead,$e6fe74,$956321
             : applyRowLimit(cropWindow(srcIdx, w, h, offX0, offY0, dominantColour(srcIdx)), rowLimit, dominantColour(srcIdx));
         match.uniqueCount = countUnique(chosenIdx);
         var run = runModes(chosenIdx, fns, ctx);
-        for (var ai = 0; ai < run.attempts.length; ai++) if (run.attempts[ai].ok) optimiseBlanks(run.attempts[ai]);
+        for (var ai = 0; ai < run.attempts.length; ai++) {
+            // The border belongs to the source image, not to one conversion
+            // mode, so every viable fallback (including bitmap) carries it.
+            run.attempts[ai].border = border;
+            if (run.attempts[ai].ok) optimiseBlanks(run.attempts[ai]);
+        }
         return {
             w: w, h: h, is384: is384, match: match, border: border,
             attempts: run.attempts, chosen: run.chosen, idx: chosenIdx,
@@ -1061,9 +1087,9 @@ NTSCVICE,$000000,$ffffff,$8f4230,$80d1e6,$9446b8,$64b844,$422ead,$e6fe74,$956321
         return 'No supported charset mode fits this image.';
     }
 
-    // ─── Logo blob (the fixed container visualizer configs slice up) ───
+    // ─── Image blob (the fixed container visualizer configs slice up) ───
     //
-    // One container for EVERY logo type, charset or bitmap. Its first 10004
+    // One container for every converted image type, charset or bitmap. Its first 10004
     // bytes are exactly the WASM png-converter's C64 bitmap container (load
     // address + koala layout), so existing bitmap-logo memory maps keep
     // working; the extra register bytes follow it.
@@ -1080,27 +1106,28 @@ NTSCVICE,$000000,$ffffff,$8f4230,$80d1e6,$9446b8,$64b844,$422ead,$e6fe74,$956321
     //   0x2715  $d023 (multicolour 2 / ECM bg3)
     //   0x2716  $d024 (ECM bg4)
     //   0x2717  charCount lo, 0x2718 charCount hi (0 for bitmap results)
-    //   0x2719  total size
-    var LOGO_BLOB = { GFX: 0x0002, SCREEN: 0x1F42, COLOUR: 0x232A, BACKGROUND: 0x2712, MODE: 0x2713, D022: 0x2714, D023: 0x2715, D024: 0x2716, CHARCOUNT: 0x2717, SIZE: 0x2719 };
+    //   0x2719  inferred border colour ($d020)
+    //   0x271A  total size
+    var IMAGE_BLOB = { GFX: 0x0002, SCREEN: 0x1F42, COLOUR: 0x232A, BACKGROUND: 0x2712, MODE: 0x2713, D022: 0x2714, D023: 0x2715, D024: 0x2716, CHARCOUNT: 0x2717, BORDER: 0x2719, SIZE: 0x271A };
     // Values 0/1 are the WithLogo players' original BitmapMode byte; the text
     // modes extend it (player-side $d011/$d016 lookup tables index by this).
-    var LOGO_MODES = { BITMAP_MC: 0, BITMAP_HIRES: 1, HIRES: 2, MULTICOLOUR: 3, ECM: 4, PETSCII_UPPER: 5, PETSCII_LOWER: 6 };
+    var IMAGE_MODES = { BITMAP_MC: 0, BITMAP_HIRES: 1, HIRES: 2, MULTICOLOUR: 3, ECM: 4, PETSCII_UPPER: 5, PETSCII_LOWER: 6 };
 
-    function buildLogoBlob(r, romFonts) {
-        if (!r || !r.ok) throw new Error('buildLogoBlob needs a fitted analysis result');
-        var blob = new Uint8Array(LOGO_BLOB.SIZE);
+    function buildImageBlob(r, romFonts) {
+        if (!r || !r.ok) throw new Error('buildImageBlob needs a fitted analysis result');
+        var blob = new Uint8Array(IMAGE_BLOB.SIZE);
         blob[0] = 0x00; blob[1] = 0x60;
         var i, mode;
         var screen = new Uint8Array(1000);
         if (r.isBitmap) {
-            blob.set(r.bitmap, LOGO_BLOB.GFX);
+            blob.set(r.bitmap, IMAGE_BLOB.GFX);
             for (i = 0; i < 1000; i++) screen[i] = r.screen[i] & 0xff;
-            mode = r.bitmapMode === 'hires' ? LOGO_MODES.BITMAP_HIRES : LOGO_MODES.BITMAP_MC;
+            mode = r.bitmapMode === 'hires' ? IMAGE_MODES.BITMAP_HIRES : IMAGE_MODES.BITMAP_MC;
         } else if (r.petscii) {
             // Remap compact glyph indices back to ROM codes so the screen works
             // against the standard ROM font (no custom charset shipped).
             var rom = buildRom(romFonts || defaultRomFonts());
-            if (!rom) throw new Error('PETSCII logo blob needs the ROM font data (c64fonts)');
+            if (!rom) throw new Error('PETSCII image blob needs the ROM font data (c64fonts)');
             var map = (r.petscii === 'uppercase') ? rom.upMap : rom.loMap;
             var toRom = new Array(r.charCount);
             for (var k = 0; k < r.charCount; k++) {
@@ -1109,37 +1136,70 @@ NTSCVICE,$000000,$ffffff,$8f4230,$80d1e6,$9446b8,$64b844,$422ead,$e6fe74,$956321
                 toRom[k] = map[key];
             }
             for (i = 0; i < 1000; i++) screen[i] = toRom[r.screen[i]] & 0xff;
-            mode = r.petscii === 'uppercase' ? LOGO_MODES.PETSCII_UPPER : LOGO_MODES.PETSCII_LOWER;
+            mode = r.petscii === 'uppercase' ? IMAGE_MODES.PETSCII_UPPER : IMAGE_MODES.PETSCII_LOWER;
         } else {
-            blob.set(r.charset.subarray(0, Math.min(r.charset.length, 2048)), LOGO_BLOB.GFX);
+            blob.set(r.charset.subarray(0, Math.min(r.charset.length, 2048)), IMAGE_BLOB.GFX);
             for (i = 0; i < 1000; i++) screen[i] = r.screen[i] & 0xff;
-            mode = r.ecm ? LOGO_MODES.ECM : (r.mcm ? LOGO_MODES.MULTICOLOUR : LOGO_MODES.HIRES);
+            mode = r.ecm ? IMAGE_MODES.ECM : (r.mcm ? IMAGE_MODES.MULTICOLOUR : IMAGE_MODES.HIRES);
         }
-        blob.set(screen, LOGO_BLOB.SCREEN);
-        blob.set(r.colour.subarray(0, 1000), LOGO_BLOB.COLOUR);
+        blob.set(screen, IMAGE_BLOB.SCREEN);
+        blob.set(r.colour.subarray(0, 1000), IMAGE_BLOB.COLOUR);
 
         var cols = r.colours;
-        blob[LOGO_BLOB.BACKGROUND] = cols.bg & 0x0f;
-        blob[LOGO_BLOB.MODE] = mode;
+        blob[IMAGE_BLOB.BACKGROUND] = cols.bg & 0x0f;
+        blob[IMAGE_BLOB.MODE] = mode;
         if (r.ecm) {
-            blob[LOGO_BLOB.D022] = cols.bg2 & 0x0f;
-            blob[LOGO_BLOB.D023] = cols.bg3 & 0x0f;
-            blob[LOGO_BLOB.D024] = cols.bg4 & 0x0f;
+            blob[IMAGE_BLOB.D022] = cols.bg2 & 0x0f;
+            blob[IMAGE_BLOB.D023] = cols.bg3 & 0x0f;
+            blob[IMAGE_BLOB.D024] = cols.bg4 & 0x0f;
         } else if (r.mcm && !r.isBitmap) {
-            blob[LOGO_BLOB.D022] = cols.mc1 & 0x0f;
-            blob[LOGO_BLOB.D023] = cols.mc2 & 0x0f;
+            blob[IMAGE_BLOB.D022] = cols.mc1 & 0x0f;
+            blob[IMAGE_BLOB.D023] = cols.mc2 & 0x0f;
         }
         if (!r.isBitmap) {
-            blob[LOGO_BLOB.CHARCOUNT] = r.charCount & 0xff;
-            blob[LOGO_BLOB.CHARCOUNT + 1] = (r.charCount >> 8) & 0xff;
+            blob[IMAGE_BLOB.CHARCOUNT] = r.charCount & 0xff;
+            blob[IMAGE_BLOB.CHARCOUNT + 1] = (r.charCount >> 8) & 0xff;
         }
+        // Results produced before border inference existed still get a sensible
+        // frame: follow the image background rather than silently choosing black.
+        blob[IMAGE_BLOB.BORDER] = (r.border == null ? cols.bg : r.border) & 0x0f;
         return blob;
     }
+
+    // Decode the storage implications of a converted image. Config memory maps
+    // use this to avoid shipping an 8K bitmap-shaped block for a charset image:
+    // PETSCII needs no graphics bytes, custom text modes need charCount * 8, and
+    // the two bitmap modes need the full 8000 bytes.
+    function describeImageBlob(blob) {
+        if (!blob || blob.length <= IMAGE_BLOB.CHARCOUNT + 1) {
+            throw new Error('Not a complete converted image blob');
+        }
+        var mode = blob[IMAGE_BLOB.MODE];
+        if (mode < IMAGE_MODES.BITMAP_MC || mode > IMAGE_MODES.PETSCII_LOWER) {
+            throw new Error('Unknown converted image mode ' + mode);
+        }
+        var isBitmap = mode === IMAGE_MODES.BITMAP_MC || mode === IMAGE_MODES.BITMAP_HIRES;
+        var isPETSCII = mode === IMAGE_MODES.PETSCII_UPPER || mode === IMAGE_MODES.PETSCII_LOWER;
+        var charCount = blob[IMAGE_BLOB.CHARCOUNT] | (blob[IMAGE_BLOB.CHARCOUNT + 1] << 8);
+        return {
+            mode: mode,
+            isBitmap: isBitmap,
+            isPETSCII: isPETSCII,
+            charCount: isBitmap ? 0 : charCount,
+            graphicsBytes: isBitmap ? 8000 : (isPETSCII ? 0 : Math.min(2048, charCount * 8)),
+            border: blob.length > IMAGE_BLOB.BORDER ? blob[IMAGE_BLOB.BORDER] & 0x0f : 0
+        };
+    }
+
+    // Compatibility names for the original logo-only users of this container.
+    var LOGO_BLOB = IMAGE_BLOB;
+    var LOGO_MODES = IMAGE_MODES;
+    var buildLogoBlob = buildImageBlob;
 
     // ─── Rendering a result back to pixels ───
     //
     // What the C64 will actually put on screen, from the same fields
-    // buildLogoBlob ships to it - so a preview drawn from this cannot disagree
+    // buildImageBlob ships to it - so a preview drawn from this cannot disagree
     // with the export. The VIC rules, per mode:
     //
     //   Hires char   bit set -> colour RAM, clear -> $d021
@@ -1232,10 +1292,14 @@ NTSCVICE,$000000,$ffffff,$8f4230,$80d1e6,$9446b8,$64b844,$422ead,$e6fe74,$956321
         PALETTES: PALETTES,
         INNER_W: INNER_W,
         INNER_H: INNER_H,
+        IMAGE_BLOB: IMAGE_BLOB,
+        IMAGE_MODES: IMAGE_MODES,
         LOGO_BLOB: LOGO_BLOB,
         LOGO_MODES: LOGO_MODES,
         analyse: analyse,
         failureReason: failureReason,
+        buildImageBlob: buildImageBlob,
+        describeImageBlob: describeImageBlob,
         buildLogoBlob: buildLogoBlob,
         renderResult: renderResult
     };

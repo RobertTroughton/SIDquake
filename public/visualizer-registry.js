@@ -132,7 +132,10 @@ const VISUALIZERS = [
         sceneName: 'Simple Bitmap',
         description: 'One full-screen image, with an optional message scrolling across it.',
         preview: 'prg/simplebitmap.png',
-        config: 'prg/simplebitmapwithscroller.json'
+        config: 'prg/simplebitmapwithscroller.json',
+        // This player has no clock or song-end feature. Avoid rendering minutes
+        // of SID audio for a value which cannot appear in the exported PRG.
+        needsTuneAnalysis: false
     },
     {
         id: 'SimpleRaster',

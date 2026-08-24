@@ -130,6 +130,7 @@ class SIDquakePRGExporter {
         this.compressorManager = new CompressorManager();
         this.saveRoutineAddress = 0;
         this.restoreRoutineAddress = 0;
+        this.convertedImageInfo = new Map();
     }
 
     // Round up to the next page ($100) boundary. NOT `(address + 0xFF) & 0xFF00`:
@@ -844,6 +845,8 @@ class SIDquakePRGExporter {
             screen: 'screen', screenCodes: 'screen',
             color: 'colour', colorData: 'colour',
         };
+        const isConvertedImage = inputConfig => inputConfig &&
+            (inputConfig.convertType === 'image' || inputConfig.convertType === 'charset' || inputConfig.convertType === 'logo');
 
         for (const inputConfig of vizConfig.inputs) {
             // The one read that cannot come from a snapshot: this is a file
@@ -856,12 +859,12 @@ class SIDquakePRGExporter {
             if (inputElement && inputElement.files.length > 0) {
                 const file = inputElement.files[0];
 
-                // Check if this input uses logo conversion (CharSet Lab engine;
-                // 'charset' restricts to text modes via charsetModes, 'logo'
-                // conventionally allows the bitmap fallback too)
-                if ((inputConfig.convertType === 'charset' || inputConfig.convertType === 'logo') &&
+                // C64 image conversion is shared by full-screen pictures and
+                // logos. `charset`/`logo` are the original names; `image` is the
+                // neutral form for pictures that are not logos.
+                if (isConvertedImage(inputConfig) &&
                     (file.type === 'image/png' || file.name.toLowerCase().endsWith('.png'))) {
-                    fileData = await this.convertLogoPNG(file, inputConfig);
+                    fileData = await this.convertImagePNG(file, inputConfig);
                 }
                 // Check if this input uses PETSCII conversion
                 else if (inputConfig.convertType === 'petscii' && file.type === 'image/png') {
@@ -928,11 +931,11 @@ class SIDquakePRGExporter {
                 try {
                     const rawFileData = await config.loadDefaultFile(inputConfig.default);
 
-                    // Check if this input uses logo conversion for the default PNG
-                    if ((inputConfig.convertType === 'charset' || inputConfig.convertType === 'logo') && inputConfig.default.toLowerCase().endsWith('.png') && rawFileData && this.isPNGFile(rawFileData)) {
+                    // Check if this input uses shared C64 image conversion for the default PNG
+                    if (isConvertedImage(inputConfig) && inputConfig.default.toLowerCase().endsWith('.png') && rawFileData && this.isPNGFile(rawFileData)) {
                         const blob = new Blob([rawFileData], { type: 'image/png' });
                         const pngFile = new File([blob], inputConfig.default.split('/').pop(), { type: 'image/png' });
-                        fileData = await this.convertLogoPNG(pngFile, inputConfig);
+                        fileData = await this.convertImagePNG(pngFile, inputConfig);
                     }
                     // Check if this input uses PETSCII conversion for default PNG
                     else if (inputConfig.convertType === 'petscii' && inputConfig.default.toLowerCase().endsWith('.png') && rawFileData && this.isPNGFile(rawFileData)) {
@@ -999,6 +1002,12 @@ class SIDquakePRGExporter {
 
             if (fileData && inputConfig.memory && inputConfig.memory[layoutKey]) {
                 const memoryRegions = inputConfig.memory[layoutKey];
+                let imageInfo = null;
+                if (isConvertedImage(inputConfig) && typeof CharsetLabCore !== 'undefined'
+                    && typeof CharsetLabCore.describeImageBlob === 'function') {
+                    imageInfo = CharsetLabCore.describeImageBlob(fileData);
+                    this.convertedImageInfo.set(inputConfig.id, imageInfo);
+                }
 
                 for (const memConfig of memoryRegions) {
                     const sourceOffset = parseInt(memConfig.sourceOffset);
@@ -1007,7 +1016,15 @@ class SIDquakePRGExporter {
                     // like bitmapMode/background -> code page).
                     const rawTarget = parseInt(memConfig.targetAddress);
                     const targetAddress = relocXform ? relocXform(rawTarget) : rawTarget;
-                    const size = parseInt(memConfig.size);
+                    // A converted image blob has an 8K-compatible graphics slot,
+                    // but text modes do not need 8K in the PRG. Configs mark that
+                    // slot as imageRegion:gfx so it is clipped to the exact custom
+                    // charset length, or omitted altogether for PETSCII.
+                    let size = parseInt(memConfig.size);
+                    if (memConfig.imageRegion === 'gfx' && imageInfo) {
+                        size = Math.min(size, imageInfo.graphicsBytes);
+                        if (size === 0) continue;
+                    }
 
                     // Bounds checking
                     if (sourceOffset >= fileData.length) {
@@ -1045,10 +1062,10 @@ class SIDquakePRGExporter {
     }
 
     /**
-     * Convert a logo PNG into the canonical logo blob via charsetlab-core
+     * Convert a PNG into the canonical C64 image blob via charsetlab-core
      * (CharSet Lab's analysis engine). The engine tries the requested modes
      * simplest-first (charset modes, then bitmap when allowed) and the blob's
-     * fixed layout is CharsetLabCore.LOGO_BLOB; visualizer configs slice it
+     * fixed layout is CharsetLabCore.IMAGE_BLOB; visualizer configs slice it
      * with their "memory" regions like any other converted input.
      *
      * inputConfig knobs:
@@ -1061,7 +1078,7 @@ class SIDquakePRGExporter {
      *   charsetMaxChars - the player's charset budget (default 256; only
      *                     applies to charset-mode results)
      */
-    async convertLogoPNG(file, inputConfig) {
+    async convertImagePNG(file, inputConfig) {
         if (typeof CharsetLabCore === 'undefined') {
             throw new Error('Charset converter not loaded. Please refresh the page and try again.');
         }
@@ -1081,7 +1098,7 @@ class SIDquakePRGExporter {
                     reject(err);
                 }
             };
-            img.onerror = () => { URL.revokeObjectURL(url); reject(new Error('Could not read the logo PNG')); };
+            img.onerror = () => { URL.revokeObjectURL(url); reject(new Error('Could not read the image PNG')); };
             img.src = url;
         });
         const report = CharsetLabCore.analyse(imageData.data, imageData.width, imageData.height, {
@@ -1089,7 +1106,7 @@ class SIDquakePRGExporter {
             rowLimit: inputConfig.charsetRows
         });
         if (!report.chosen) {
-            throw new Error(`Logo conversion failed: ${CharsetLabCore.failureReason(report)}`);
+            throw new Error(`Image conversion failed: ${CharsetLabCore.failureReason(report)}`);
         }
         let r = report.chosen;
         if (!r.isBitmap) {
@@ -1106,15 +1123,23 @@ class SIDquakePRGExporter {
                 }
             }
         }
-        console.log(`Logo: ${r.label}${r.charCount != null ? `, ${r.charCount} chars` : ''}, ` +
+        console.log(`Image: ${r.label}${r.charCount != null ? `, ${r.charCount} chars` : ''}, ` +
             `$d021=${r.colours.bg}, $d022=${r.colours.mc1 ?? r.colours.bg2 ?? 0}, $d023=${r.colours.mc2 ?? r.colours.bg3 ?? 0}` +
             `${report.shift.dx || report.shift.dy ? `, shift (${report.shift.dx},${report.shift.dy})px` : ''}`);
         // Remembered for the font injection: a bitmap logo owns the charset
         // region its player's primary font copy would normally live in
         // (MusicalBlobs: $2500 in the bank is bitmap rows 4-6), so the font
         // handler must only write the alternate copy then.
-        this.lastLogoIsBitmap = !!r.isBitmap;
-        return CharsetLabCore.buildLogoBlob(r);
+        if (inputConfig.convertType === 'logo' || inputConfig.convertType === 'charset') {
+            this.lastLogoIsBitmap = !!r.isBitmap;
+        }
+        return CharsetLabCore.buildImageBlob(r);
+    }
+
+    // Compatibility for code outside the exporter that still calls the
+    // original logo-specific method directly.
+    async convertLogoPNG(file, inputConfig) {
+        return this.convertImagePNG(file, inputConfig);
     }
 
     /**
@@ -2495,6 +2520,7 @@ class SIDquakePRGExporter {
             this.lastBakeInfo = null;   // only set when a baked-spectrometer export runs
             this.lastMusicLoopFrames = 0;   // forced-song-loop restart (frames); 0 = off
             this.lastLogoIsBitmap = false;  // set by convertLogoPNG when a logo converts as bitmap
+            this.convertedImageInfo.clear();
 
             const sidInfo = this.extractSIDMusicData();
 
@@ -2536,6 +2562,7 @@ class SIDquakePRGExporter {
             const actualPlayAddress = (sidPlayAddress != null) ? sidPlayAddress : (actualSidAddress + 3);
 
             let layout, dataLoadAddress, visualizerLoadAddress, layoutKey = options.layoutKey;
+            let deferredVisualizerBinary = null;
             // relocLayout, when set, is a per-address-transformed layout that the
             // option-patching pass must use instead of the config's fixed one;
             // relocXform transforms any other absolute address (e.g. logo inputs).
@@ -2605,7 +2632,25 @@ class SIDquakePRGExporter {
                 if (layout.binary) {
                     const visualizerBytes = await this.loadBinaryFile(layout.binary);
                     const binaryLoadAddress = parseInt(layout.binaryDataStart || layout.baseAddress);
-                    this.builder.addComponent(visualizerBytes, binaryLoadAddress, 'Visualizer Binary');
+                    if (layout.binaryCoreEnd) {
+                        // Image players can keep their assembled bitmap placeholder
+                        // out of a text-mode export. Defer the core until the input
+                        // converter has emitted only the graphics bytes this mode
+                        // really uses (0 for PETSCII, charset bytes for text, 8K for
+                        // bitmap). The code/data/sprite core remains one normal base
+                        // component and input priority still layers over it.
+                        const coreEnd = parseInt(layout.binaryCoreEnd);
+                        const coreLength = coreEnd - binaryLoadAddress + 1;
+                        if (coreLength <= 0 || coreLength > visualizerBytes.length) {
+                            throw new Error(`Invalid binaryCoreEnd for ${layout.binary}`);
+                        }
+                        deferredVisualizerBinary = {
+                            data: visualizerBytes.slice(0, coreLength),
+                            loadAddress: binaryLoadAddress
+                        };
+                    } else {
+                        this.builder.addComponent(visualizerBytes, binaryLoadAddress, 'Visualizer Binary');
+                    }
                 }
             }
 
@@ -2622,6 +2667,10 @@ class SIDquakePRGExporter {
             const additionalComponents = await this.processVisualizerInputs(visualizerName, layoutKey, relocXform);
             for (const component of additionalComponents) {
                 this.builder.addComponent(component.data, component.loadAddress, component.name, 1, component.hidden);
+            }
+            if (deferredVisualizerBinary) {
+                this.builder.addComponent(deferredVisualizerBinary.data,
+                    deferredVisualizerBinary.loadAddress, 'Visualizer Binary');
             }
 
             // Process visualizer options BEFORE calculating save/restore addresses

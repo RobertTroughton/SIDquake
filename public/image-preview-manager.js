@@ -254,7 +254,7 @@ class GalleryModal {
     }
 
     close() {
-        // Stop any in-flight badge classification loop (annotateLogoTypes checks
+        // Stop any in-flight badge classification loop (annotateImageTypes checks
         // this generation) so it doesn't keep churning after the modal is gone.
         this.populateGeneration = (this.populateGeneration || 0) + 1;
         if (this.modal) {
@@ -327,18 +327,18 @@ class GalleryModal {
             itemCount.textContent = `${gallery.length} ${gallery.length === 1 ? 'item' : 'items'}`;
         }
 
-        // Logo inputs: classify each image with the CharSet Lab engine and
+        // Converted C64 image inputs: classify each image with the CharSet Lab engine and
         // badge its type (MC BMP / MIXED / ECM / ...); images this player
         // can't convert are dimmed with the reason in the tooltip.
-        this.annotateLogoTypes(gallery);
+        this.annotateImageTypes(gallery);
     }
 
-    // Sequentially badge the gallery cards with each logo's detected type.
-    // Runs only for logo-converted inputs; a reopen (new generation) or a
+    // Sequentially badge the gallery cards with each image's detected type.
+    // Runs only for C64-converted inputs; a reopen (new generation) or a
     // different input config stops a stale pass.
-    async annotateLogoTypes(gallery) {
+    async annotateImageTypes(gallery) {
         const config = this.currentConfig;
-        if (!config || !gallery || !window.imagePreviewManager.isLogoInput(config)) return;
+        if (!config || !gallery || !window.imagePreviewManager.isC64ImageInput(config)) return;
         const generation = this.populateGeneration;
         for (const item of gallery) {
             // Yield a macrotask before each image so the analysis (even at ~38ms
@@ -346,7 +346,7 @@ class GalleryModal {
             // close button stay responsive while the badges fill in progressively.
             await new Promise(r => setTimeout(r, 0));
             if (generation !== this.populateGeneration) return;
-            const info = await window.imagePreviewManager.classifyLogoFile(item.file, config);
+            const info = await window.imagePreviewManager.classifyImageFile(item.file, config);
             if (generation !== this.populateGeneration) return;
             if (!info) continue;
             const card = document.querySelector(`.gallery-item-card[data-file="${CSS.escape(item.file)}"]`);
@@ -384,37 +384,43 @@ class ImagePreviewManager {
         this.previewCache = new Map();
         this.galleryModal = null;
         this.selectorModal = null;
-        this.logoTypeCache = new Map();
+        this.imageTypeCache = new Map();
         // Per-input logo placement: the decoded source image plus where it sits
         // on the C64 screen (see logo-fit.js). Keyed by input id.
         this.logoFit = new Map();
         this.logoFitModal = null;
     }
 
-    // ─── Logo type classification (badges) ───
+    // ─── C64 image type classification (badges) ───
 
-    // Inputs converted by the CharSet Lab engine get type badges.
+    // Inputs converted by the CharSet Lab engine get type badges and a preview
+    // of the actual C64 result. Logo inputs additionally get the crop/fit tool.
+    isC64ImageInput(config) {
+        return !!config && (config.convertType === 'image' ||
+            config.convertType === 'logo' || config.convertType === 'charset');
+    }
+
     isLogoInput(config) {
         return !!config && (config.convertType === 'logo' || config.convertType === 'charset');
     }
 
-    // Classify a gallery/default logo by path (cached per path + input
+    // Classify a gallery/default image by path (cached per path + input
     // constraints). Resolves to { ok, label, title } or null on any failure.
-    classifyLogoFile(filepath, inputConfig) {
+    classifyImageFile(filepath, inputConfig) {
         const key = [filepath, (inputConfig.charsetModes || []).join(','),
             inputConfig.charsetRows || 25, inputConfig.charsetMaxChars || 256].join('|');
-        if (!this.logoTypeCache.has(key)) {
+        if (!this.imageTypeCache.has(key)) {
             const promise = this.loadDefaultFile(filepath)
-                .then(data => this.classifyLogoData(data, inputConfig))
+                .then(data => this.classifyImageData(data, inputConfig))
                 .catch(() => null);
-            this.logoTypeCache.set(key, promise);
+            this.imageTypeCache.set(key, promise);
         }
-        return this.logoTypeCache.get(key);
+        return this.imageTypeCache.get(key);
     }
 
     // Classify raw PNG bytes with the same analysis the export runs: the
     // badge shows exactly what this input would convert the image to.
-    async classifyLogoData(pngData, inputConfig) {
+    async classifyImageData(pngData, inputConfig) {
         if (typeof CharsetLabCore === 'undefined') {
             await window.loadScript('charsetlab-core.js');
         }
@@ -460,6 +466,7 @@ class ImagePreviewManager {
             ok: true,
             label: LABELS[r.label] || r.label,
             title: r.label + (r.charCount != null ? ` — ${r.charCount} chars` : '') + (r.isBitmap ? ' bitmap' : ''),
+            border: report.border,
             // The fitted result itself, so the preview can draw what the C64
             // will actually show rather than the PNG that went in.
             result: r,
@@ -488,15 +495,20 @@ class ImagePreviewManager {
     }
 
     // Update (or hide) the type badge in the corner of an input's preview.
-    // `classified` is a promise from classifyLogoFile/classifyLogoData.
+    // `classified` is a promise from classifyImageFile/classifyImageData.
     async updatePreviewBadge(config, classified) {
-        if (!this.isLogoInput(config)) return;
+        if (!this.isC64ImageInput(config)) return;
         const wrapper = document.querySelector(`[data-input-id="${config.id}"]`);
         if (!wrapper) return;
         const badgeEl = wrapper.querySelector('.logo-type-badge');
         if (!badgeEl) return;
+        // Several classifications can overlap while someone switches images.
+        // Only the latest one may update the badge, preview or inferred options.
+        const generation = (wrapper._imageClassificationGeneration || 0) + 1;
+        wrapper._imageClassificationGeneration = generation;
         badgeEl.classList.remove('show', 'unusable');
         const info = await classified.catch(() => null);
+        if (generation !== wrapper._imageClassificationGeneration) return;
         if (!info) return;
         badgeEl.textContent = info.label;
         badgeEl.title = info.title;
@@ -506,11 +518,30 @@ class ImagePreviewManager {
         // stops the export dead - spell the reason out next to the preview.
         this.setPreviewNote(config, 'warn', info.ok ? ''
             : `This image can't be used here: ${info.title.replace(/^Not usable here:\s*/i, '')}`);
+        this.applyInferredOptions(config, info);
         this.renderC64Preview(config, wrapper, info);
     }
 
+    // Image inputs can expose analysis values as option defaults without
+    // coupling the converter to one visualizer. The full-screen player maps its
+    // inferred border to borderColor; another input can reuse the same mechanism
+    // for any future value reported by classifyImageData.
+    applyInferredOptions(config, info) {
+        if (!info || !info.ok || !config || !config.inferredOptions) return;
+        for (const [optionId, infoField] of Object.entries(config.inferredOptions)) {
+            const el = document.getElementById(optionId);
+            const value = info[infoField];
+            // A restored or hand-picked value is an override. Auto values retain
+            // data-image-inferred, so the export knows to use the value carried in
+            // the converted image blob even if analysis is still finishing here.
+            if (!el || el.dataset.imageInferred !== 'true' || !Number.isFinite(value)) continue;
+            el.value = String(value);
+            el.dispatchEvent(new Event('input', { bubbles: true }));
+        }
+    }
+
     /**
-     * Draw the conversion, so what a logo will look like on the machine - the
+     * Draw the conversion, so what an image will look like on the machine - the
      * colour clash, the lost detail - is visible before the export rather than
      * after a round trip through an emulator. The preview otherwise shows the
      * source PNG, which is not what the C64 gets.
@@ -729,7 +760,7 @@ class ImagePreviewManager {
             const preview = await this.createPreviewFromPNGData(data);
             if (img) img.src = preview.dataUrl;
             this.setPreviewNote(config, 'fit', `Placed by hand: ${LogoFit.describe(state.place)}.`);
-            this.updatePreviewBadge(config, this.classifyLogoData(data, config));
+            this.updatePreviewBadge(config, this.classifyImageData(data, config));
         } catch (error) {
             this.showError(wrapper, `Could not apply the logo placement: ${error.message}`);
         } finally {
@@ -759,6 +790,7 @@ class ImagePreviewManager {
 
         const hasGallery = config.gallery && config.gallery.length > 0;
         const isLogo = this.isLogoInput(config);
+        const isConverted = this.isC64ImageInput(config);
         // A fresh preview means a fresh input: any placement remembered for this
         // id belongs to the visualizer that was on screen before, whose logo
         // band may be a different height.
@@ -788,7 +820,7 @@ class ImagePreviewManager {
                         <div class="logo-type-badge"></div>
                     </div>
                 </div>
-                ${isLogo ? '<button type="button" class="file-button preview-c64-toggle" '
+                ${isConverted ? '<button type="button" class="file-button preview-c64-toggle" '
                     + 'data-act="c64" aria-pressed="false" hidden>'
                     + '<i class="fas fa-tv"></i> Show it as the C64 will</button>' : ''}
                 <div class="image-preview-hint"><i class="fas fa-hand-pointer"></i> Drag &amp; drop an image here, or:</div>
@@ -796,7 +828,7 @@ class ImagePreviewManager {
                     <button type="button" class="file-button" data-act="browse"><i class="fas fa-folder-open"></i> Browse Files</button>
                     ${isLogo ? '<button type="button" class="file-button" data-act="adjust"><i class="fas fa-crop-alt"></i> Adjust logo</button>' : ''}
                 </div>
-                ${isLogo ? `<div class="image-preview-notice">
+                ${isConverted ? `<div class="image-preview-notice">
                     <div class="preview-note fit" hidden></div>
                     <div class="preview-note warn" hidden></div>
                 </div>` : ''}
@@ -935,14 +967,14 @@ class ImagePreviewManager {
         });
     }
 
-    // Badge each inline gallery card with its detected logo type (scoped to
+    // Badge each inline gallery card with its detected C64 image type (scoped to
     // this grid). Stops early if the grid is torn down by a re-render.
     async annotateInlineLogoTypes(gridEl, gallery, config) {
-        if (!this.isLogoInput(config)) return;
+        if (!this.isC64ImageInput(config)) return;
         for (const item of gallery) {
             await new Promise(r => setTimeout(r, 0));
             if (!gridEl.isConnected) return;
-            const info = await this.classifyLogoFile(item.file, config);
+            const info = await this.classifyImageFile(item.file, config);
             if (!gridEl.isConnected || !info) continue;
             const card = gridEl.querySelector(`.gallery-item-card[data-file="${CSS.escape(item.file)}"]`);
             if (!card) continue;
@@ -990,12 +1022,12 @@ class ImagePreviewManager {
                     const cached = this.previewCache.get(config.default);
                     img.src = cached.dataUrl;
                     loadingDiv.style.display = 'none';
-                    if (this.isLogoInput(config)) this.updatePreviewBadge(config, this.classifyLogoFile(config.default, config));
+                    if (this.isC64ImageInput(config)) this.updatePreviewBadge(config, this.classifyImageFile(config.default, config));
                     return;
                 }
 
                 const fileData = await this.loadDefaultFile(config.default);
-                if (this.isLogoInput(config)) this.updatePreviewBadge(config, this.classifyLogoFile(config.default, config));
+                if (this.isC64ImageInput(config)) this.updatePreviewBadge(config, this.classifyImageFile(config.default, config));
 
                 if (config.default.toLowerCase().endsWith('.png') && this.isPNGFile(fileData)) {
                     const preview = await this.createPreviewFromPNGData(fileData);
@@ -1024,7 +1056,7 @@ class ImagePreviewManager {
 
         try {
             loadingDiv.style.display = 'flex';
-            if (this.isLogoInput(config)) this.updatePreviewBadge(config, this.classifyLogoFile(filepath, config));
+            if (this.isC64ImageInput(config)) this.updatePreviewBadge(config, this.classifyImageFile(filepath, config));
 
             const response = await fetch(filepath);
             if (!response.ok) {
@@ -1129,7 +1161,7 @@ class ImagePreviewManager {
             this.setInputFile(config, useFile);
 
             const fileData = await this.readFileAsArrayBuffer(useFile);
-            if (this.isLogoInput(config)) this.updatePreviewBadge(config, this.classifyLogoData(fileData, config));
+            if (this.isC64ImageInput(config)) this.updatePreviewBadge(config, this.classifyImageData(fileData, config));
 
             if (useFile.name.toLowerCase().endsWith('.png') && this.isPNGFile(fileData)) {
                 const preview = await this.createPreviewFromPNGData(fileData);

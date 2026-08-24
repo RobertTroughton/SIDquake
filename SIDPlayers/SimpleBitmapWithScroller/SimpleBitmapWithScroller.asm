@@ -1,6 +1,6 @@
 // =============================================================================
-//                      SIMPLE BITMAP WITH SCROLLER PLAYER
-//                   Bitmap Graphics SID Music Player for C64
+//                       FULL-SCREEN IMAGE WITH SCROLLER
+//             PETSCII / Charset / Bitmap SID Music Player for C64
 // =============================================================================
 
 .var LOAD_ADDRESS                   = cmdLineVars.get("loadAddress").asNumber()
@@ -8,10 +8,18 @@
 .var DATA_ADDRESS                   = cmdLineVars.get("dataAddress").asNumber()
 
 * = DATA_ADDRESS "Data Block"
-    .fill $71, $00
+    .fill $70, $00
+imageMode:
+    .byte $00                           // shared image mode (INC/imagemodes.asm)
+imageD022:
+    .byte $00                           // multicolour 1 / ECM background 2
+imageD023:
+    .byte $00                           // multicolour 2 / ECM background 3
+imageD024:
+    .byte $00                           // ECM background 4
 fontMode:
     .byte $00                           // 0 = scroller reads C64 ROM, 1 = scroller reads injected RAM charset
-    .fill $100 - $72, $00
+    .fill $100 - $75, $00
 
 * = CODE_ADDRESS "Main Code"
 
@@ -58,6 +66,7 @@ fontMode:
 .const MUSIC_SYNC_LINE = 250
 
 .import source "../INC/common.asm"
+.import source "../INC/imagemodes.asm"
 .import source "../INC/keyboard.asm"
 .import source "../INC/musicplayback.asm"
 .import source "../INC/multicallirq.asm"
@@ -76,6 +85,11 @@ Initialize:
     jsr SetupCharset
 
     jsr RunLinkedWithEffect
+
+    // PETSCII images ship screen codes but no custom graphics. Copy the
+    // requested C64 ROM set into the same $2000 bank slot used by custom
+    // charsets and bitmaps. Other modes already have their graphics there.
+    jsr CopyImageRomCharset
 
     jsr VSync
 
@@ -96,16 +110,19 @@ Initialize:
     sta $d015                   // sprites off
 !hasScroll:
 
-    // Set $D016 based on bitmap mode (MC=$18, HI=$08)
-    lda #$08
+    // Apply the complete mode contract selected by charsetlab-core.
     ldx BitmapMode
-    bne !hiresBitmap+
-    lda #$18               // Multicolor mode
-!hiresBitmap:
+    lda ImageD016Table, x
     sta $d016
 
     lda BitmapScreenColour
     sta $d021
+    lda LogoD022
+    sta $d022
+    lda LogoD023
+    sta $d023
+    lda LogoD024
+    sta $d024
 
     jsr InitKeyboard
 
@@ -162,7 +179,8 @@ Initialize:
     lda BorderColour
     sta $d020
 
-    lda #$3b
+    ldx BitmapMode
+    lda ImageD011Table, x
     sta $d011
 
     cli
@@ -433,6 +451,56 @@ VICConfigEnd:
 // =============================================================================
 
 SetupCharset:
+    rts
+
+// =============================================================================
+// FULL-SCREEN IMAGE MODE SUPPORT
+// =============================================================================
+
+// $d011/$d016 by shared image mode: MC bitmap, hires bitmap, hires text,
+// mixed/multicolour text, ECM, PETSCII upper, PETSCII lower.
+ImageD011Table:
+    .byte $3b, $3b, $1b, $1b, $5b, $1b, $1b
+ImageD016Table:
+    .byte $18, $08, $08, $18, $08, $08, $08
+
+// PETSCII modes contain no graphics bytes in the exported PRG. Copy the
+// selected ROM charset into BITMAP_MAP_DATA, whose VIC $d018 encoding is the
+// same for a charset at bank+$2000 and a bitmap at bank+$2000. The source and
+// destination operands are reset on every call before the eight-page copy.
+CopyImageRomCharset:
+    ldy BitmapMode
+    cpy #IMAGE_MODE_PETSCII_UPPER
+    bcc !done+
+
+    lda #$d0
+    cpy #IMAGE_MODE_PETSCII_LOWER
+    bne !sourceReady+
+    lda #$d8
+!sourceReady:
+    sta CopyImageRomSource + 2
+    lda #>BITMAP_MAP_DATA
+    sta CopyImageRomDest + 2
+
+    lda #$33                           // character ROM visible, I/O hidden
+    sta $01
+    ldy #8
+!page:
+    ldx #0
+!byte:
+CopyImageRomSource:
+    lda.abs $0000, x
+CopyImageRomDest:
+    sta.abs $0000, x
+    inx
+    bne !byte-
+    inc CopyImageRomSource + 2
+    inc CopyImageRomDest + 2
+    dey
+    bne !page-
+    lda #$35
+    sta $01
+!done:
     rts
 
 // =============================================================================

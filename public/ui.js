@@ -1671,6 +1671,43 @@ class UIController {
         return { ok: true };
     }
 
+    /** Does this player consume loop/song-length analysis at export time? */
+    visualizerNeedsTuneAnalysis(visualizer = this.selectedVisualizer) {
+        return !!visualizer && visualizer.needsTuneAnalysis !== false;
+    }
+
+    /** Start, keep, or suspend the speculative scan for the selected player. */
+    syncTuneAnalysisForVisualizer() {
+        if (!this.visualizerNeedsTuneAnalysis()) {
+            // This is a suspension caused by the player choice, not the user's
+            // Cancel decision: do not set _analysisCancelled. Invalidating the
+            // token also prevents a result which wins the abort race from being
+            // published after the picture player was selected.
+            if (this._analysisJob && !this._analysisJob.ac.signal.aborted) {
+                this._analysisToken++;
+                this._analysisJob.ac.abort();
+            }
+            this._hideAnalysisChip();
+            this.updateSongLoopStatus();
+            if (window.studioModal) window.studioModal.queueRefresh();
+            return;
+        }
+
+        // An abort releases the shared render worker asynchronously. If a user
+        // switches straight back, restart once that old promise has let go.
+        const releasing = (this._analysisJob && this._analysisJob.ac.signal.aborted)
+            ? this._analysisJob : null;
+        if (releasing) {
+            releasing.promise.finally(() => {
+                if (this.visualizerNeedsTuneAnalysis()) this.startBackgroundAnalysis();
+            });
+        } else {
+            this.startBackgroundAnalysis();
+        }
+        this.updateSongLoopStatus();
+        if (window.studioModal) window.studioModal.queueRefresh();
+    }
+
     async selectVisualizer(visualizer, { remember = true } = {}) {
         const cards = document.querySelectorAll('.visualizer-card');
         cards.forEach(card => {
@@ -1704,6 +1741,12 @@ class UIController {
                 || byMethod('fft') || visualizer;
         }
         this.selectedVisualizer = target;
+
+        // Tune length/loop analysis is a player capability, not a cost every
+        // export must pay. A picture-only player neither displays nor consumes
+        // the result, so selecting it stops a speculative background scan; a
+        // later player selection starts one again if it can use the answer.
+        this.syncTuneAnalysisForVisualizer();
 
         if (remember) {
             this._lastVisualizerId = visualizer.id;
@@ -1757,7 +1800,7 @@ class UIController {
         // The length is a nice-to-have that is easy to skip by accident; offer it
         // back here rather than leaving the user to work out what they lost.
         const multiSong = this.multiSongExport();
-        const noLength = !multiSong && this.showSongLength()
+        const noLength = this.visualizerNeedsTuneAnalysis() && !multiSong && this.showSongLength()
             && !this.manualSongLengthSeconds()
             && !(this.tuneAnalysis && (this.tuneAnalysis.looped || this.tuneAnalysis.fadedOut));
         if (noLength) {
@@ -1965,7 +2008,11 @@ class UIController {
         if (!root) return values;
         for (const el of root.querySelectorAll('input[id], select[id], textarea[id]')) {
             if (el.type === 'file' || el.type === 'radio' || el.type === 'checkbox') continue;
-            values[el.id] = el.value;
+            // `undefined` means "use the value inferred from the converted
+            // image". It suppresses the ordinary option patch (which would
+            // otherwise replace the blob's guessed border with config default
+            // 0), and naturally disappears from saved JSON recipes.
+            values[el.id] = el.dataset.imageInferred === 'true' ? undefined : el.value;
         }
         const compression = document.querySelector('input[name="compression-type"]:checked');
         if (compression) values['__compression'] = compression.value;
@@ -1980,7 +2027,7 @@ class UIController {
     // is what a new tune should inherit.
     _rememberOptionValues(values, defaults = {}) {
         for (const [id, value] of Object.entries(values)) {
-            if (defaults[id] !== undefined && String(defaults[id]) === String(value)) {
+            if (value === undefined || (defaults[id] !== undefined && String(defaults[id]) === String(value))) {
                 delete this._optionMemory[id];
             } else {
                 this._optionMemory[id] = value;
@@ -2075,7 +2122,13 @@ class UIController {
             // must not override the new config's own default for that option.
             if (prevDefaults[id] !== undefined && String(prevDefaults[id]) === String(value)) continue;
             const el = document.getElementById(id);
-            if (!el || !root.contains(el) || el.value === value) continue;
+            if (!el || !root.contains(el)) continue;
+            // A restored value was chosen by the user in this session. It owns
+            // the option until changed again, rather than being replaced by a
+            // newly classified image's automatic suggestion.
+            delete el.dataset.imageInferred;
+            el.dataset.userSelected = 'true';
+            if (el.value === value) continue;
             // Grid-backed hidden inputs (font / bar style / effect / palette):
             // only restore a value the freshly rendered grid actually offers,
             // and move the selection highlight with it.
@@ -3563,6 +3616,16 @@ class UIController {
         // #fileInput) and stack duplicate listeners on them.
         const panel = document.getElementById('studioPanels') || document;
 
+        // Mark image-derived option defaults before image decoding begins. This
+        // makes an immediate export deterministic: the builder uses the value in
+        // the converted blob even if the visible classification is still busy.
+        for (const inputConfig of (config?.inputs || [])) {
+            for (const optionId of Object.keys(inputConfig.inferredOptions || {})) {
+                const el = document.getElementById(optionId);
+                if (el && el.dataset.userSelected !== 'true') el.dataset.imageInferred = 'true';
+            }
+        }
+
         // Lazy-load and initialize image preview manager if not already created
         if (!window.imagePreviewManager) {
             await window.loadScript('image-preview-manager.js');
@@ -3746,6 +3809,10 @@ class UIController {
         panel.querySelectorAll('.color-slider').forEach(slider => {
             // Handle slider input changes (for programmatic changes)
             slider.addEventListener('input', (e) => {
+                if (e.isTrusted) {
+                    delete e.target.dataset.imageInferred;
+                    e.target.dataset.userSelected = 'true';
+                }
                 this.updateColorDisplay(e.target);
             });
         });
@@ -3765,6 +3832,8 @@ class UIController {
                 const value = parseInt(e.target.dataset.value);
                 const slider = e.target.closest('.slider-wrapper').querySelector('.color-slider');
                 if (slider) {
+                    delete slider.dataset.imageInferred;
+                    slider.dataset.userSelected = 'true';
                     slider.value = value;
                     // Trigger the input event manually
                     const event = new Event('input', { bubbles: true });
@@ -4316,6 +4385,7 @@ class UIController {
         // and the song length - so send the user there rather than refusing flatly.
         const multiSong = this.multiSongExport();
         const isFFT = this.selectedVisualizer.dataSource === 'fft';
+        const needsTuneAnalysis = this.visualizerNeedsTuneAnalysis();
         if (multiSong && isFFT) {
             this.showExportStatus('This file holds several tunes, and the Spectrometer is worked out '
                 + 'for one. Tick "Export just this tune" on the Song tab, or pick a live method '
@@ -4392,7 +4462,7 @@ class UIController {
                 // export is a single tune, so it is the one that was measured.
                 subtune: this.exportSubtuneIndex(),
             };
-        } else if (!multiSong && !this.tuneAnalysis && !this._analysisCancelled
+        } else if (needsTuneAnalysis && !multiSong && !this.tuneAnalysis && !this._analysisCancelled
             && this.showSongLength() && !this.manualSongLengthSeconds()) {
             // Every visualizer benefits from knowing how the song ends: players with
             // a timer show the length, and a detected FADE-OUT is what unlocks the
@@ -4423,7 +4493,7 @@ class UIController {
         // stays visible and editable for every further export of this SID - e.g.
         // if the restart turns out not to reset the tune cleanly, untick and
         // re-export without re-answering prompts.
-        const forceSongLoop = await this._resolveForceLoopChoice();
+        const forceSongLoop = needsTuneAnalysis ? await this._resolveForceLoopChoice() : false;
 
         // Re-entry guard. A second trigger while an export is already running (a
         // double-click, or the button pressed again mid-bake) would start a second
@@ -4488,7 +4558,7 @@ class UIController {
                 // result, never a fresh render. The exporter only applies it to
                 // single-song tunes and skips it for spectrometer players (which derive
                 // the length from their own bake instead).
-                tuneAnalysis: this.tuneAnalysis || null,
+                tuneAnalysis: needsTuneAnalysis ? (this.tuneAnalysis || null) : null,
                 // Forced song loop (Song tab toggle): restart fade-out tunes when
                 // they end. The exporter applies it to single-song tunes only.
                 forceSongLoop: forceSongLoop,
@@ -4503,8 +4573,8 @@ class UIController {
                 reservedRanges: this.getAdvancedSettings().reservedRanges,
                 // Song length on the C64 (Song tab): whether to show one at all, and
                 // a length the user typed rather than one the scan measured.
-                showSongLength: this.showSongLength(),
-                manualLengthSeconds: this.manualSongLengthSeconds(),
+                showSongLength: needsTuneAnalysis && this.showSongLength(),
+                manualLengthSeconds: needsTuneAnalysis ? this.manualSongLengthSeconds() : 0,
                 // Frame rate + loop-search window chosen in the spectrometer export modal.
                 bakeParams: bakeParams,
                 // Progress for the visualisation build (the slow analysis is already
@@ -4819,6 +4889,18 @@ class UIController {
         // Length controls: measuring and typing are alternatives, and neither is
         // offered when a multi-song SID rules a length out entirely.
         const show = (id, on) => { const el = document.getElementById(id); if (el) el.hidden = !on; };
+        if (!this.visualizerNeedsTuneAnalysis()) {
+            show('songLengthMeasure', false);
+            show('songLengthStop', false);
+            show('songLengthKeepLooking', false);
+            const manualWrap = document.querySelector('.song-length-manual');
+            if (manualWrap) manualWrap.hidden = true;
+            const showToggleRow = document.getElementById('showSongLengthToggle')?.closest('.info-row');
+            if (showToggleRow) showToggleRow.hidden = true;
+            status.textContent = 'This player does not display a song length or use end/loop analysis, so there is nothing to measure.';
+            toggle.disabled = true;
+            return;
+        }
         const canMeasure = !!this.sidHeader && !multiSong && !a;
         show('songLengthMeasure', canMeasure && !scanning);
         show('songLengthStop', scanning);
@@ -5810,7 +5892,8 @@ class UIController {
     // button. Not started on the main-thread fallback path: there the render runs
     // on the page and would freeze the UI it exists to keep usable.
     async startBackgroundAnalysis() {
-        if (this.tuneAnalysis || this._analysisJob || !this.sidHeader) return;
+        if (!this.visualizerNeedsTuneAnalysis() || this._analysisCancelled
+            || this.tuneAnalysis || this._analysisJob || !this.sidHeader) return;
         // Only once the user is actually heading for an export. Someone who loaded
         // a tune to listen to it should not pay for the engine WASM and a
         // full-tune render they will never use; the Studio opening is the signal

@@ -599,6 +599,8 @@ class StudioModal {
         // will be added. Only shown once there is something to say - a natural
         // loop, a detected fade-out, or a pre-ticked loop request.
         const la = ui.tuneAnalysis;
+        const needsTuneAnalysis = ui.visualizerNeedsTuneAnalysis
+            ? ui.visualizerNeedsTuneAnalysis() : true;
         const loopToggle = document.getElementById('forceLoopToggle');
         const wantLoop = !!(loopToggle && loopToggle.checked);
         const lmmss = s => { const t = Math.round(s || 0), m = Math.floor(t / 60), sec = t % 60; return `${m}:${String(sec).padStart(2, '0')}`; };
@@ -606,7 +608,9 @@ class StudioModal {
         // typed, still being measured, or deliberately left off.
         if (header.songs <= 1) {
             const manual = ui.manualSongLengthSeconds ? ui.manualSongLengthSeconds() : 0;
-            if (!ui.showSongLength || !ui.showSongLength()) {
+            if (!needsTuneAnalysis) {
+                rows.push(this.manifestRow('Song length', 'not used by this player', 'off', 'skip', 'song'));
+            } else if (!ui.showSongLength || !ui.showSongLength()) {
                 rows.push(this.manifestRow('Song length', 'running clock only', 'off', 'skip', 'song'));
             } else if (la && (la.looped || la.fadedOut)) {
                 rows.push(this.manifestRow('Song length',
@@ -625,7 +629,7 @@ class StudioModal {
             }
         }
 
-        if (header.songs <= 1) {
+        if (header.songs <= 1 && needsTuneAnalysis) {
             if (la && la.looped) {
                 rows.push(this.manifestRow('Song loop', `loops naturally at ${lmmss(la.storedSeconds)}`, 'ok', 'inc', 'song'));
             } else if (la && la.fadedOut) {

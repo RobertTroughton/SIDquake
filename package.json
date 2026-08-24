@@ -2,7 +2,7 @@
   "name": "sidquake",
   "version": "2.0.0",
   "scripts": {
-    "test": "node scripts/test-baked-decoder.js && node scripts/test-shadow-replay.js && node scripts/test-logo-fit.js && node scripts/test-timer-layout.js && node scripts/test-bake-cache.js && node scripts/test-song-end.js && node scripts/test-zip-writer.js && node scripts/test-share-shards.js && node scripts/test-vu-visibility.js && node scripts/test-c64-render.js",
+    "test": "node scripts/test-baked-decoder.js && node scripts/test-shadow-replay.js && node scripts/test-logo-fit.js && node scripts/test-timer-layout.js && node scripts/test-bake-cache.js && node scripts/test-song-end.js && node scripts/test-zip-writer.js && node scripts/test-share-shards.js && node scripts/test-vu-visibility.js && node scripts/test-c64-render.js && node scripts/test-image-memory.js",
     "build-players": "scripts/build-players.sh",
     "extract-hvsc": "node scripts/extract-hvsc.js",
     "build-hvsc-index": "node tools/build-hvsc-index.js",

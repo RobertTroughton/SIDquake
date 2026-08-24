@@ -13,13 +13,14 @@
       "sysAddress": "0x5100",
       "binaryDataStart": "0x2800",
       "binaryDataEnd": "0x7FFF",
+      "binaryCoreEnd": "0x5FFF",
       "borderColor": "0x500D",
       "backgroundColor": "0x500E",
       "scrollTextAddr": "0x2800",
       "scrollColor": "0x5080",
       "charsetAddress": "0x4400",
       "charsetSize": "0x300",
-      "fontModeAddress": "0x5071"
+      "fontModeAddress": "0x5074"
     },
     "bank8000": {
       "binary": "prg/SimpleBitmapWithScroller-8000.bin",
@@ -29,24 +30,37 @@
       "sysAddress": "0x9100",
       "binaryDataStart": "0x6800",
       "binaryDataEnd": "0xBFFF",
+      "binaryCoreEnd": "0x9FFF",
       "borderColor": "0x900D",
       "backgroundColor": "0x900E",
       "scrollTextAddr": "0x6800",
       "scrollColor": "0x9080",
       "charsetAddress": "0x8400",
       "charsetSize": "0x300",
-      "fontModeAddress": "0x9071"
+      "fontModeAddress": "0x9074"
     }
   },
   "inputs": [
     {
       "id": "bitmap-input",
-      "label": "Bitmap Image",
+      "label": "Picture",
       "type": "file",
       "accept": ".png",
       "required": false,
       "default": "PNG/Bitmaps/0-default.png",
-      "description": "C64 format PNG image",
+      "description": "320x200 or 384x272 PNG. PETSCII, hires, mixed/multicolour and ECM images export as character graphics; other images fall back to hires or multicolour bitmap.",
+      "convertType": "image",
+      "charsetModes": [
+        "petscii",
+        "hires",
+        "mixed",
+        "ecm",
+        "bitmap"
+      ],
+      "charsetMaxChars": 256,
+      "inferredOptions": {
+        "borderColor": "border"
+      },
       "galleryFiles": [
         "prg/galleries/bitmaps.json"
       ],
@@ -59,25 +73,26 @@
       "memory": {
         "bank4000": [
           {
-            "name": "bitmap",
+            "name": "gfx",
             "sourceOffset": "0x0002",
             "targetAddress": "0x6000",
             "size": "0x1F40",
-            "mapLabel": "Graphics: bitmap (MAP)"
+            "imageRegion": "gfx",
+            "mapLabel": "Graphics: picture data"
           },
           {
             "name": "screen",
             "sourceOffset": "0x1F42",
             "targetAddress": "0x4800",
             "size": "0x03E8",
-            "mapLabel": "Graphics: bitmap (SCR)"
+            "mapLabel": "Graphics: picture screen"
           },
           {
             "name": "color",
             "sourceOffset": "0x232A",
             "targetAddress": "0x4C00",
             "size": "0x03E8",
-            "mapLabel": "Graphics: bitmap (COL)"
+            "mapLabel": "Graphics: picture colour"
           },
           {
             "name": "background",
@@ -86,33 +101,58 @@
             "size": "0x0001"
           },
           {
+            "name": "border",
+            "sourceOffset": "0x2719",
+            "targetAddress": "0x500D",
+            "size": "0x0001"
+          },
+          {
             "name": "bitmapMode",
             "sourceOffset": "0x2713",
             "targetAddress": "0x5070",
+            "size": "0x0001"
+          },
+          {
+            "name": "d022",
+            "sourceOffset": "0x2714",
+            "targetAddress": "0x5071",
+            "size": "0x0001"
+          },
+          {
+            "name": "d023",
+            "sourceOffset": "0x2715",
+            "targetAddress": "0x5072",
+            "size": "0x0001"
+          },
+          {
+            "name": "d024",
+            "sourceOffset": "0x2716",
+            "targetAddress": "0x5073",
             "size": "0x0001"
           }
         ],
         "bank8000": [
           {
-            "name": "bitmap",
+            "name": "gfx",
             "sourceOffset": "0x0002",
             "targetAddress": "0xA000",
             "size": "0x1F40",
-            "mapLabel": "Graphics: bitmap (MAP)"
+            "imageRegion": "gfx",
+            "mapLabel": "Graphics: picture data"
           },
           {
             "name": "screen",
             "sourceOffset": "0x1F42",
             "targetAddress": "0x8800",
             "size": "0x03E8",
-            "mapLabel": "Graphics: bitmap (SCR)"
+            "mapLabel": "Graphics: picture screen"
           },
           {
             "name": "color",
             "sourceOffset": "0x232A",
             "targetAddress": "0x8C00",
             "size": "0x03E8",
-            "mapLabel": "Graphics: bitmap (COL)"
+            "mapLabel": "Graphics: picture colour"
           },
           {
             "name": "background",
@@ -121,9 +161,33 @@
             "size": "0x0001"
           },
           {
+            "name": "border",
+            "sourceOffset": "0x2719",
+            "targetAddress": "0x900D",
+            "size": "0x0001"
+          },
+          {
             "name": "bitmapMode",
             "sourceOffset": "0x2713",
             "targetAddress": "0x9070",
+            "size": "0x0001"
+          },
+          {
+            "name": "d022",
+            "sourceOffset": "0x2714",
+            "targetAddress": "0x9071",
+            "size": "0x0001"
+          },
+          {
+            "name": "d023",
+            "sourceOffset": "0x2715",
+            "targetAddress": "0x9072",
+            "size": "0x0001"
+          },
+          {
+            "name": "d024",
+            "sourceOffset": "0x2716",
+            "targetAddress": "0x9073",
             "size": "0x0001"
           }
         ]
@@ -149,7 +213,7 @@
       "dataField": "scrollTextAddr",
       "mapLabel": "Scroll text",
       "prependSpaces": 8,
-      "description": "Optional. If set, it scrolls across the bottom of the bitmap. Leave blank for just the bitmap.",
+      "description": "Optional. If set, it scrolls across the bottom of the picture. Leave blank for just the picture.",
       "loadSave": true
     },
     {

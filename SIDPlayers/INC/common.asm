@@ -34,7 +34,7 @@
 .var NumSIDChips					= DATA_ADDRESS + $cd // 1 byte, 1-4 SID chips supported
 .var IntroScreenHi					= DATA_ADDRESS + $ce // 1 byte, high byte of the bank-0 intro screen page
 .var IntroD018						= DATA_ADDRESS + $cf // 1 byte, $d018 value for the intro screen + lowercase ROM
-.var BitmapMode						= DATA_ADDRESS + $70 // 1 byte, logo mode: 0=MC bitmap, 1=hires bitmap, 2=hires text, 3=MC/mixed text, 4=ECM
+.var BitmapMode						= DATA_ADDRESS + $70 // 1 byte, converted-image mode: see INC/imagemodes.asm (0..6 includes PETSCII)
 // Forced song loop (see INC/musicplayback.asm): 24-bit little-endian raster
 // frame count after which the tune is restarted from the top. 0 = disabled.
 // The exporter sets this for tunes that fade out and stop instead of looping.

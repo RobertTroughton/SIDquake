@@ -3,7 +3,7 @@
  * test-c64-render.js - the C64 preview draws what the C64 will draw.
  *
  * The Studio shows a converted logo as the machine will render it, from the
- * same fields buildLogoBlob ships. A preview that quietly disagrees with the
+ * same fields buildImageBlob ships. A preview that quietly disagrees with the
  * export is worse than none, so this converts images that are already valid C64
  * pictures and checks the render comes back identical to what went in: any
  * misreading of the VIC's rules - colour-RAM bit 3, the ECM background bits, a
@@ -16,6 +16,7 @@ const path = require('path');
 
 const ROOT = path.join(__dirname, '..');
 require(path.join(ROOT, 'public', 'c64-palette.js'));   // defines globalThis.C64_PALETTE_RGB
+const C64Fonts = require(path.join(ROOT, 'public', 'c64fonts.js'));
 const CharsetLabCore = require(path.join(ROOT, 'public', 'charsetlab-core.js'));
 
 const PAL = globalThis.C64_PALETTE_RGB;
@@ -28,9 +29,9 @@ function check(ok, what, detail) {
 }
 
 /** An RGBA image built from C64 colour indices, one index per pixel. */
-function toRGBA(indices) {
-    const out = new Uint8ClampedArray(W * H * 4);
-    for (let i = 0; i < W * H; i++) {
+function toRGBA(indices, width = W, height = H) {
+    const out = new Uint8ClampedArray(width * height * 4);
+    for (let i = 0; i < width * height; i++) {
         const c = PAL[indices[i] & 0x0f];
         out[i * 4] = c[0]; out[i * 4 + 1] = c[1]; out[i * 4 + 2] = c[2]; out[i * 4 + 3] = 255;
     }
@@ -57,7 +58,7 @@ function toIndices(rgba) {
  * A picture that obeys one mode's cell rules exactly, so a correct converter
  * reproduces it byte for byte and a correct renderer puts it back.
  *
- * @param {'hires'|'mc'|'ecm'|'mixed'} kind
+ * @param {'petscii'|'petscii-lower'|'hires'|'mc'|'ecm'|'mixed'} kind
  */
 function makePicture(kind) {
     const px = new Uint8Array(W * H).fill(0);
@@ -65,7 +66,21 @@ function makePicture(kind) {
     for (let cy = 0; cy < 25; cy++) {
         for (let cx = 0; cx < 40; cx++) {
             const cell = cy * 40 + cx;
-            if (kind === 'hires') {
+            if (kind === 'petscii' || kind === 'petscii-lower') {
+                // Exact ROM glyphs over one global grey
+                // background. Per-cell foreground colours remain free.
+                const lower = kind === 'petscii-lower';
+                const code = lower ? 1 + (cell % 26) : cell % 128;
+                const font = lower ? C64Fonts.LOWERCASE : C64Fonts.UPPERCASE;
+                const ink = (cell & 1) ? 0 : 5;
+                for (let ry = 0; ry < 8; ry++) {
+                    const bits = font[code * 8 + ry];
+                    for (let rx = 0; rx < 8; rx++) {
+                        px[(cy * 8 + ry) * W + cx * 8 + rx] =
+                            (bits & (0x80 >> rx)) ? ink : 12;
+                    }
+                }
+            } else if (kind === 'hires') {
                 // Two colours per 8x8 cell: background 0 plus one ink.
                 const ink = 1 + (cell % 15);
                 for (let ry = 0; ry < 8; ry++) {
@@ -125,9 +140,10 @@ function makePicture(kind) {
     return px;
 }
 
-function roundTrip(name, kind, modes) {
+function roundTrip(name, kind, modes, options = {}) {
     const source = makePicture(kind);
-    const report = CharsetLabCore.analyse(toRGBA(source), W, H, { shift: false, modes });
+    const report = CharsetLabCore.analyse(toRGBA(source), W, H,
+        { shift: false, modes, ...options });
     const r = report.chosen;
     if (!r) {
         check(false, `${name}: converts at all`, CharsetLabCore.failureReason(report));
@@ -146,9 +162,32 @@ function roundTrip(name, kind, modes) {
     check(wrong === 0, `${name}: comes back pixel for pixel (${r.mode})`,
         wrong ? `${wrong} of ${W * H} differ, first at ${firstAt % W},${Math.floor(firstAt / W)} `
             + `(wanted ${source[firstAt]}, got ${got[firstAt]})` : `${r.mode}`);
+    // The reusable export container must describe the mode's real graphics
+    // footprint. This is what prevents PETSCII/charset pictures from silently
+    // becoming 8K bitmap components in a full-screen PRG.
+    const blob = CharsetLabCore.buildImageBlob(r, C64Fonts);
+    const info = CharsetLabCore.describeImageBlob(blob);
+    const expectedMode = r.isBitmap
+        ? (r.bitmapMode === 'hires' ? CharsetLabCore.IMAGE_MODES.BITMAP_HIRES : CharsetLabCore.IMAGE_MODES.BITMAP_MC)
+        : (r.petscii
+            ? (r.petscii === 'uppercase' ? CharsetLabCore.IMAGE_MODES.PETSCII_UPPER : CharsetLabCore.IMAGE_MODES.PETSCII_LOWER)
+            : (r.ecm ? CharsetLabCore.IMAGE_MODES.ECM
+                : (r.mcm ? CharsetLabCore.IMAGE_MODES.MULTICOLOUR : CharsetLabCore.IMAGE_MODES.HIRES)));
+    const expectedBytes = r.isBitmap ? 8000 : (r.petscii ? 0 : r.charCount * 8);
+    check(info.mode === expectedMode, `${name}: image blob carries mode ${expectedMode}`, `got ${info.mode}`);
+    check(info.graphicsBytes === expectedBytes, `${name}: image blob carries only ${expectedBytes} graphics bytes`,
+        `got ${info.graphicsBytes}`);
+    check(info.border === report.border && blob[CharsetLabCore.IMAGE_BLOB.BORDER] === report.border,
+        `${name}: image blob carries inferred border $${report.border.toString(16)}`,
+        `got $${info.border.toString(16)}`);
     return r;
 }
 
+// PETSCII: screen codes + colours only; the player copies the selected ROM set.
+roundTrip('PETSCII', 'petscii', ['petscii'], { romFonts: C64Fonts });
+const lowerPETSCII = roundTrip('lowercase PETSCII', 'petscii-lower', ['petscii'], { romFonts: C64Fonts });
+check(lowerPETSCII && lowerPETSCII.petscii === 'lowercase', 'lowercase PETSCII selects ROM mode 6',
+    lowerPETSCII && lowerPETSCII.petscii);
 // Hires characters: bit set -> colour RAM, clear -> $d021.
 roundTrip('hires characters', 'hires', ['hires']);
 // Multicolour characters: pixel pairs, colour-RAM bit 3 marks the cell.
@@ -161,6 +200,23 @@ roundTrip('ECM', 'ecm', ['ecm']);
 // The bitmap modes carry their colours in the screen nibbles instead.
 roundTrip('hires bitmap', 'hires', ['bitmap-hires']);
 roundTrip('multicolour bitmap', 'mc', ['bitmap-mc']);
+
+// A standard 384x272 VICE capture contains the C64's visible border. Use the
+// whole surround (not one potentially noisy corner pixel) and carry the answer
+// into the same blob the visualizer consumes. $0c is the Leaf example's frame.
+const VICE_W = 384, VICE_H = 272, BORDER_X = 32, BORDER_Y = 35;
+const vice = new Uint8Array(VICE_W * VICE_H).fill(12);
+const viceScreen = makePicture('petscii');
+for (let y = 0; y < H; y++) {
+    vice.set(viceScreen.subarray(y * W, (y + 1) * W), (y + BORDER_Y) * VICE_W + BORDER_X);
+}
+const viceReport = CharsetLabCore.analyse(toRGBA(vice, VICE_W, VICE_H), VICE_W, VICE_H,
+    { shift: false, modes: ['petscii'], romFonts: C64Fonts });
+check(viceReport.border === 12, 'VICE surround infers light-grey border $0c',
+    `got $${viceReport.border.toString(16)}`);
+const viceBlob = CharsetLabCore.buildImageBlob(viceReport.chosen, C64Fonts);
+check(viceBlob[CharsetLabCore.IMAGE_BLOB.BORDER] === 12,
+    'and the converted image carries $0c to the full-screen player');
 
 // A result that did not fit renders as nothing rather than as garbage.
 check(CharsetLabCore.renderResult(null) === null, 'nothing to render gives nothing back');

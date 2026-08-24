@@ -28,6 +28,8 @@
 .var CODE_ADDRESS                   = cmdLineVars.get("sysAddress").asNumber()
 .var DATA_ADDRESS                   = cmdLineVars.get("dataAddress").asNumber()
 
+.import source "../INC/imagemodes.asm"
+
 // =============================================================================
 // CONFIGURATION
 // =============================================================================
@@ -89,10 +91,6 @@
 // The logo region uses ONE $d018 value for every mode: charset slot 4 encodes
 // as bits 3-1 = %0100 = 8, and bitmap base $2000 encodes as bit 3 = 8.
 .errorif (D018_LOGO != (ScreenD018Nibble * 16) + 8), "Logo charset/bitmap $d018 values must match"
-
-// Logo mode byte (data block $70, from charsetlab-core's LOGO_MODES):
-.const LOGO_MODE_PETSCII_UPPER      = 5
-.const LOGO_MODE_PETSCII_LOWER      = 6
 
 // Raster line where the split occurs: the last line of the logo's final
 // character row. With the standard YSCROLL of 3 the first badline is 51, so
@@ -1087,12 +1085,12 @@ CopyInfoRomCharset:
 
 CopyLogoRomCharset:
     ldy logoMode
-    cpy #LOGO_MODE_PETSCII_UPPER
+    cpy #IMAGE_MODE_PETSCII_UPPER
     bcc !done+                  // modes 0-4: charset/bitmap injected at export
     lda #$33
     sta $01
     lda #$d0                    // mode 5: uppercase ROM ($D000)
-    cpy #LOGO_MODE_PETSCII_LOWER
+    cpy #IMAGE_MODE_PETSCII_LOWER
     bne !upper+
     lda #$d8                    // mode 6: lowercase ROM ($D800)
 !upper:
