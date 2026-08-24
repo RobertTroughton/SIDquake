@@ -20,7 +20,8 @@
       "scrollColor": "0x5080",
       "charsetAddress": "0x4400",
       "charsetSize": "0x300",
-      "fontModeAddress": "0x5074"
+      "fontModeAddress": "0x5074",
+      "scrollSpeed": "0x5075"
     },
     "bank8000": {
       "binary": "prg/SimpleBitmapWithScroller-8000.bin",
@@ -37,7 +38,8 @@
       "scrollColor": "0x9080",
       "charsetAddress": "0x8400",
       "charsetSize": "0x300",
-      "fontModeAddress": "0x9074"
+      "fontModeAddress": "0x9074",
+      "scrollSpeed": "0x9075"
     }
   },
   "inputs": [
@@ -224,6 +226,26 @@
       "min": 0,
       "max": 15,
       "dataField": "scrollColor",
+      "showWhen": {
+        "scrollText": "nonempty"
+      }
+    },
+    {
+      "id": "scrollSpeed",
+      "label": "Scroll Speed",
+      "type": "select",
+      "default": 2,
+      "values": [
+        {
+          "value": 2,
+          "label": "2 pixels/frame (default)"
+        },
+        {
+          "value": 1,
+          "label": "1 pixel/frame (slower)"
+        }
+      ],
+      "dataField": "scrollSpeed",
       "showWhen": {
         "scrollText": "nonempty"
       }

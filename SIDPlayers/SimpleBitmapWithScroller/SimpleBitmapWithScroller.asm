@@ -19,7 +19,9 @@ imageD024:
     .byte $00                           // ECM background 4
 fontMode:
     .byte $00                           // 0 = scroller reads C64 ROM, 1 = scroller reads injected RAM charset
-    .fill $100 - $75, $00
+scrollSpeed:
+    .byte $02                           // sprite pixels per frame; exporter offers 1 or 2
+    .fill $100 - $76, $00
 
 * = CODE_ADDRESS "Main Code"
 
@@ -239,8 +241,10 @@ scrollEnabled:  .byte $00
 SpriteScroller:
 
     ldx #$0e
-    dex
-    dex
+    txa
+    sec
+    sbc scrollSpeed
+    tax
     bpl !skip+
 
     jsr ScrollSprites

@@ -58,6 +58,11 @@ async function mappedGraphicsBytes(mode, charCount, layoutKey) {
 
 (async () => {
     const M = CharsetLabCore.IMAGE_MODES;
+    const speedOption = sourceConfig.options.find(o => o.id === 'scrollSpeed');
+    check(speedOption && speedOption.default === 2,
+        'scroller speed keeps 2 pixels/frame as its default');
+    check(speedOption && speedOption.values.map(v => v.value).sort().join(',') === '1,2',
+        'scroller speed offers exactly 1 or 2 pixels/frame');
     for (const layoutKey of Object.keys(sourceConfig.layouts)) {
         check(await mappedGraphicsBytes(M.PETSCII_UPPER, 20, layoutKey) === 0,
             `${layoutKey}: PETSCII ships no graphics bytes`);
@@ -91,6 +96,19 @@ async function mappedGraphicsBytes(mode, charCount, layoutKey) {
         const borderPatch = overridden.find(c => c.name === 'option_borderColor');
         check(borderPatch && borderPatch.data[0] === 3,
             `${layoutKey}: a chosen border still overrides the inferred value`);
+
+        exporter._optionValues = { scrollSpeed: '1' };
+        const slowOptions = await exporter.processVisualizerOptions(
+            'SimpleBitmapWithScroller', layoutKey);
+        const speedPatch = slowOptions.find(c => c.name === 'option_scrollSpeed');
+        check(speedPatch && speedPatch.data[0] === 1
+            && speedPatch.loadAddress === parseInt(layout.scrollSpeed),
+            `${layoutKey}: speed 1 patches the runtime scroller byte`);
+
+        const binary = fs.readFileSync(path.join(ROOT, 'public', layout.binary));
+        const speedOffset = parseInt(layout.dataAddress) - start + 0x75;
+        check(binary[speedOffset] === 2,
+            `${layoutKey}: assembled runtime default is speed 2`);
     }
 
     console.log(failures ? `\n${failures} check(s) failed` : '\nall checks passed');
