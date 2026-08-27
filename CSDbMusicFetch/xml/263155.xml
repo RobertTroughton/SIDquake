@@ -28,7 +28,7 @@ Current (2024) G*P WHQ: &amp;lt;bbs id=103&amp;gt;, EHQ: &amp;lt;bbs id=1139&amp
 G*P were the organizer of successful parties such as &amp;lt;event id=445&amp;gt;, &amp;lt;event id=128&amp;gt;, &amp;lt;event id=1846&amp;gt;, &amp;lt;event id=2316&amp;gt;, &amp;lt;event id=2879&amp;gt; and &amp;lt;event id=2756&amp;gt;.</Trivia>
 <FoundYear>1986</FoundYear>
 <Website>https://www.facebook.com/Genesis.Project.C64/</Website>
-<Rating>9.12</Rating>
+<Rating>9.1</Rating>
 <Grouptypes><Grouptype>Cracker Group</Grouptype>
 <Grouptype>Demo Group</Grouptype>
 <Grouptype>Fixing Group</Grouptype>
@@ -253,12 +253,12 @@ Beside that, 8580 was my first and true love. I've been loyal until now, and I'
 </Credits>
 <DownloadLinks><DownloadLink><Link>https://csdb.dk/getinternalfile.php/281768/psych858o-parasites.prg</Link>
 <CounterLink>https://csdb.dk/release/download.php?id=323831</CounterLink>
-<Downloads>184</Downloads>
+<Downloads>198</Downloads>
 <Status>Ok</Status>
 </DownloadLink>
 <DownloadLink><Link>https://csdb.dk/getinternalfile.php/281769/Parasites.sid</Link>
 <CounterLink>https://csdb.dk/release/download.php?id=323832</CounterLink>
-<Downloads>96</Downloads>
+<Downloads>107</Downloads>
 <Status>Ok</Status>
 </DownloadLink>
 </DownloadLinks>
@@ -273,6 +273,56 @@ Beside that, 8580 was my first and true love. I've been loyal until now, and I'
 <Date>20.07.2026</Date>
 <Text>SIDquake.c64demo.com will be updating really soon to include new methods of rendering the visualiser, as well as lots of general improvements. Psych858o's tune here nicely shows the new Spectrometer visualiser.</Text>
 </ProductionNote>
+<UserComment><CSDbUser><ID>2043</ID>
+<Login>Flotsam</Login>
+<Handle>Flotsam</Handle>
+<RegisteredDate>1970-01-01T01:00:00+01:00</RegisteredDate>
+<CSDbEntry><Handle><ID>7279</ID>
+<Handle>Flotsam</Handle>
+<CurrentlyUsedHandle>true</CurrentlyUsedHandle>
+<HandleStory>Ripped from the band "Flotsam &amp; Jetsam".</HandleStory>
+<Scener><ID>6684</ID>
+<Country>Finland</Country>
+<Handles><Handle><ID>33339</ID>
+<Handle>Somefun</Handle>
+<CurrentlyUsedHandle>false</CurrentlyUsedHandle>
+<HandleStory>My original handle inspired by a song called "Some Fun" by the finnish band Smack. Should have sticked to it, some of the later ones are really stupid. :)</HandleStory>
+<Scener><ID>6684</ID>
+</Scener>
+</Handle>
+<Handle><ID>7279</ID>
+</Handle>
+<Handle><ID>7899</ID>
+<Handle>Technica</Handle>
+<CurrentlyUsedHandle>false</CurrentlyUsedHandle>
+<Scener><ID>6684</ID>
+</Scener>
+<FreelanceFunctions><Function>Musician</Function>
+</FreelanceFunctions>
+</Handle>
+<Handle><ID>7900</ID>
+<Handle>Stardance</Handle>
+<CurrentlyUsedHandle>false</CurrentlyUsedHandle>
+<HandleStory>Only did one intro(music,code) for a Victims crack under this handle and possibly an intro music for an Extasy crack intro.</HandleStory>
+<Scener><ID>6684</ID>
+</Scener>
+<FreelanceFunctions><Function>Coder</Function>
+<Function>Musician</Function>
+</FreelanceFunctions>
+</Handle>
+</Handles>
+</Scener>
+<FreelanceFunctions><Function>Coder</Function>
+<Function>Graphician</Function>
+<Function>Musician</Function>
+<Function>Organizer</Function>
+</FreelanceFunctions>
+</Handle>
+</CSDbEntry>
+</CSDbUser>
+<Date>19.08.2026</Date>
+<Text>Always a pleasure to listen to what crazy sounds you've come up with. Absolute mastery.</Text>
+</UserComment>
 <UserComment><CSDbUser><ID>2680</ID>
 <Login>psycho</Login>
 <Handle>psych</Handle>
@@ -280,6 +330,46 @@ Beside that, 8580 was my first and true love. I've been loyal until now, and I'
 <CSDbEntry><Handle><ID>12931</ID>
 </Handle>
 </CSDbEntry>
+</CSDbUser>
+<Date>19.08.2026</Date>
+<Text>@DKT - clean your ears, sir ;)</Text>
+</UserComment>
+<UserComment><CSDbUser><ID>2674</ID>
+<Login>DKT</Login>
+<Handle>DKT</Handle>
+<RegisteredDate>1970-01-01T01:00:00+01:00</RegisteredDate>
+<CSDbEntry><Handle><ID>9132</ID>
+<Handle>Don Kichote</Handle>
+<AKA>Don Quixote (EN), Don Quijote (ES), Don Kiszot (PL)</AKA>
+<CurrentlyUsedHandle>true</CurrentlyUsedHandle>
+<HandleStory>Stolen from Don Kichot / Katharsis (Amiga) :)</HandleStory>
+<Scener><ID>8266</ID>
+<Country>Poland</Country>
+<Trivia>[url=https://sidcloud.net]sidcloud.net[/url]</Trivia>
+<Handles><Handle><ID>9132</ID>
+</Handle>
+<Handle><ID>33221</ID>
+<Handle>Prozessor</Handle>
+<CurrentlyUsedHandle>false</CurrentlyUsedHandle>
+<Scener><ID>8266</ID>
+</Scener>
+<FreelanceFunctions><Function>Coder</Function>
+</FreelanceFunctions>
+</Handle>
+</Handles>
+</Scener>
+<FreelanceFunctions><Function>Co-Organizer</Function>
+<Function>Coder</Function>
+<Function>Diskmag Editor</Function>
+</FreelanceFunctions>
+</Handle>
+</CSDbEntry>
+</CSDbUser>
+<Date>19.08.2026</Date>
+<Text>Isn't this tune from one of the demos you participated in? ;)
+Great logo.</Text>
+</UserComment>
+<UserComment><CSDbUser><ID>2680</ID>
 </CSDbUser>
 <Date>28.07.2026</Date>
 <Text>Thank you for the comments. To be honest, it was a bit of a quick-and-dirty effort, so I certainly didn’t expect such positive feedback.</Text>
