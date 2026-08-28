@@ -2977,13 +2977,15 @@
     border-left: 1px solid var(--border);
 }
 
-.sid-player-quality {
+.sid-player-quality,
+.sid-player-model {
     margin-left: 2px;
     padding-left: var(--space-xs);
     border-left: 1px solid var(--border);
 }
 
-.sid-player-quality-select {
+.sid-player-quality-select,
+.sid-player-model-select {
     font-size: 0.65em;
     font-family: var(--font-mono);
     color: var(--text-secondary);
@@ -2994,17 +2996,20 @@
     cursor: pointer;
 }
 
-.sid-player-quality-select option {
+.sid-player-quality-select option,
+.sid-player-model-select option {
     background: var(--bg-elevated);
     color: var(--text-primary);
 }
 
-.sid-player-quality-select:hover {
+.sid-player-quality-select:hover,
+.sid-player-model-select:hover {
     border-color: var(--accent);
     color: var(--text-primary);
 }
 
-.sid-player-quality-select:focus {
+.sid-player-quality-select:focus,
+.sid-player-model-select:focus {
     border-color: var(--accent);
 }
 
@@ -3161,9 +3166,16 @@
     }
 
     /* Resampling quality is a technical nicety that costs the pill a whole
-       wrapped row on a phone; playback keeps the default (Interpolate). */
+       wrapped row on a phone; playback keeps the default (Interpolate). The
+       chip override stays - 6581 and 8580 are audibly different, which earns
+       the row it costs. */
     .sid-player-quality {
         display: none;
+    }
+
+    .sid-player-model-select {
+        font-size: 0.8em;
+        padding: 8px 6px;
     }
 
     .sid-player-speed-btn {

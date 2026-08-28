@@ -42,6 +42,7 @@ class SIDPlayback {
         this._subtunes = 0;
         this._startSong = 0;
         this._sidModel = 6581;
+        this._headerModel = 6581;
         this._sidCount = 1;
         this._isNTSC = false;
 
@@ -136,6 +137,15 @@ class SIDPlayback {
         }
 
         this._bindAPI();
+
+        // iOS treats Web Audio as an 'ambient' session, which the ring/silent
+        // switch mutes - unlike <audio>/<video>. Asking for 'playback' gets a
+        // tune the same treatment as media playback, so the switch no longer
+        // silences it. Safari-only so far; elsewhere navigator.audioSession is
+        // absent and playback is unaffected.
+        try {
+            if (navigator.audioSession) navigator.audioSession.type = 'playback';
+        } catch (e) { /* ok */ }
 
         // Create audio context
         const AC = window.AudioContext || window.webkitAudioContext;
@@ -442,11 +452,15 @@ class SIDPlayback {
 
     getSpeed() { return this.speed; }
 
+    // 6581 or 8580 forces that chip; anything else (0) follows the tune header.
     setModel(model) {
-        if (this.api) {
-            this.api.audio_set_model(model);
-            this._sidModel = model;
-        }
+        if (!this.api) return;
+        const forced = (model === 6581 || model === 8580) ? model : 0;
+        // For the header selection the fp engine takes 0 and consults the tune
+        // itself, per chip on a multi-SID tune. The legacy reSID engine has no
+        // header to consult, so hand it the model parsed from the file.
+        this.api.audio_set_model(forced || (SIDPlayback.engineName() === 'fp' ? 0 : this._headerModel));
+        this._sidModel = forced || this._headerModel;
     }
 
     setSamplingMethod(method) {
@@ -461,6 +475,7 @@ class SIDPlayback {
     }
 
     _parseSIDHeader(data) {
+        this._headerModel = 6581;
         if (data.length < 0x76) return;
         const be16 = (hi, lo) => (data[hi] << 8) | data[lo];
         const dataOffset = be16(0x06, 0x07);
@@ -476,6 +491,15 @@ class SIDPlayback {
         this._loadAddress = loadAddr;
         if (this._initAddress === 0) this._initAddress = loadAddr;
         this._dataSize = musicLen;
+
+        // v2+ flags word: bits 4-5 are the first chip's model (00 unknown,
+        // 01 6581, 10 8580, 11 either). Same mapping the engines use - only an
+        // explicit 8580 is one; unknown and "either" play as a 6581.
+        const version = be16(0x04, 0x05);
+        if (version >= 2 && data.length >= 0x78) {
+            const flags = be16(0x76, 0x77);
+            if (((flags >> 4) & 3) === 2) this._headerModel = 8580;
+        }
     }
 
     // ---- Metadata getters ----
@@ -485,6 +509,7 @@ class SIDPlayback {
     getSubtuneCount() { return this._subtunes; }
     getStartSong()    { return this._startSong; }
     getSIDModel()     { return this._sidModel; }
+    getHeaderModel()  { return this._headerModel; }
     getSIDCount()     { return this._sidCount; }
     isNTSC()          { return this._isNTSC; }
     getLoadAddress()  { return this._loadAddress; }

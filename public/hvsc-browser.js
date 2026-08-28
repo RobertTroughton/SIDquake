@@ -902,8 +902,12 @@ window.hvscBrowser = (function () {
         const playAddr = player.getPlayAddress();
         const dataSize = player.getDataSize();
 
-        const modelNames = { 0: 'Unknown', 1: 'MOS 6581', 2: 'MOS 8580', 3: '6581 + 8580' };
-        const modelStr = modelNames[sidModel] || 'Unknown';
+        // The engines report the chip actually playing, as 6581 or 8580. Say so
+        // when that isn't the one the tune's header asked for (the player's
+        // chip override).
+        const headerModel = player.getHeaderModel ? player.getHeaderModel() : sidModel;
+        const modelStr = (sidModel === 8580 ? 'MOS 8580' : 'MOS 6581')
+            + (sidModel !== headerModel ? ' (forced)' : '');
         const clockStr = isNTSC ? 'NTSC' : 'PAL';
         const hex = (v) => '$' + v.toString(16).toUpperCase().padStart(4, '0');
         const endAddr = loadAddr + dataSize;
@@ -1565,6 +1569,11 @@ window.hvscBrowser = (function () {
         shareTune: shareTune,
         clearShareUrl: clearShareUrl,
         chooseSong: selectSID,     // "Choose This Song" button (same as double-click)
+        // Redraw the details for the selected tune (the player calls this when
+        // the chip override changes what is playing)
+        refreshInfoPanel: () => {
+            if (currentSelection && !currentSelection.isDirectory) updateInfoPanel(currentSelection);
+        },
         cancel: cancel,
         // Share the (large) parsed index with other modules (hvsc-random.js)
         // so they don't fetch and parse a second multi-MB copy.

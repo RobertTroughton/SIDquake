@@ -255,6 +255,25 @@ Compiled into `sidplayfp.wasm` (playback only, lazily loaded):
 - Merges external gallery definitions
 - Provides option schemas for the UI
 
+**`sid-playback.js`** - Playback engine wrapper
+- `SIDPlayback`: one shared AudioContext + AudioWorklet for the whole page,
+  fed from whichever WASM engine `SIDPlayback.engineName()` selects
+- Asks iOS for the `playback` audio session type, so the ring/silent switch
+  doesn't mute a tune the way it mutes Web Audio by default
+- `setModel(6581|8580)` forces a chip; anything else follows the tune's header
+  (the fp engine does that per chip, so a 2SID/3SID tune keeps a mixed set).
+  `getHeaderModel()` reports what the header asked for, parsed from the file
+
+**`sid-player.js`** - Playback UI
+- `SIDPlayer`: the transport pill (play/stop/subtunes/time/quality/chip/speed/
+  volume), built into whatever container it is given; several may exist, and
+  the one that plays owns the shared `SIDPlayback`
+- Sampling quality, volume and chip model are page-wide preferences kept in
+  localStorage (`sidquake-sampling`, `sidquake-volume`, `sidquake-sid-model`)
+  and mirrored across every pill on the page. Chip model defaults to `auto`,
+  i.e. each tune's own header decides; changing quality or chip reloads the
+  tune in the engine, so playback restarts
+
 ### HVSC Integration (self-hosted)
 
 HVSC is hosted directly by the site. The raw `.sid` files live under

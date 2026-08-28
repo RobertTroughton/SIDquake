@@ -49,6 +49,13 @@ class SIDPlayer {
                         <option value="2">Resample</option>
                     </select>
                 </div>
+                <div class="sid-player-model">
+                    <select class="sid-player-model-select" title="SID chip model" aria-label="SID chip model">
+                        <option value="auto">Tune's chip</option>
+                        <option value="6581">MOS 6581</option>
+                        <option value="8580">MOS 8580</option>
+                    </select>
+                </div>
                 <div class="sid-player-speed" role="group" aria-label="Playback speed">
                     <button class="sid-player-speed-btn active" data-speed="1">1x</button>
                     <button class="sid-player-speed-btn" data-speed="2">2x</button>
@@ -77,6 +84,7 @@ class SIDPlayer {
             subtuneDisplay: this.container.querySelector('.sid-player-subtune-display'),
             time: this.container.querySelector('.sid-player-time'),
             qualitySelect: this.container.querySelector('.sid-player-quality-select'),
+            modelSelect: this.container.querySelector('.sid-player-model-select'),
             speedGroup: this.container.querySelector('.sid-player-speed'),
             volumeSlider: this.container.querySelector('.sid-player-volume-slider'),
         };
@@ -101,6 +109,24 @@ class SIDPlayer {
             document.querySelectorAll('.sid-player-quality-select').forEach(sel => {
                 if (sel !== this.els.qualitySelect) sel.value = method;
             });
+        });
+
+        // Chip model: a page-wide preference rather than a per-tune one, so a
+        // listener who prefers one chip keeps it across tunes. 'auto' hands the
+        // choice back to each tune's own header.
+        this.els.modelSelect.value = SIDPlayer.getSavedModel();
+
+        this.els.modelSelect.addEventListener('change', () => {
+            const choice = this.els.modelSelect.value;
+            try { localStorage.setItem('sidquake-sid-model', choice); } catch (e) { /* ok */ }
+            const player = getSharedSIDPlayback();
+            player.setModel(parseInt(choice, 10) || 0);
+            document.querySelectorAll('.sid-player-model-select').forEach(sel => {
+                if (sel !== this.els.modelSelect) sel.value = choice;
+            });
+            if (window.hvscBrowser && window.hvscBrowser.refreshInfoPanel) {
+                window.hvscBrowser.refreshInfoPanel();
+            }
         });
 
         // Volume: restore the saved level and keep all sliders in sync.
@@ -132,6 +158,15 @@ class SIDPlayer {
                 });
             });
         });
+    }
+
+    /** 'auto' (follow the tune header), '6581' or '8580'. */
+    static getSavedModel() {
+        try {
+            const v = localStorage.getItem('sidquake-sid-model');
+            if (v === '6581' || v === '8580') return v;
+        } catch (e) { /* ok */ }
+        return 'auto';
     }
 
     static getSavedQuality() {
@@ -226,11 +261,8 @@ class SIDPlayer {
 
         this.updateSubtuneDisplay();
 
-        // Auto-set SID model based on file preference
-        const prefModel = player.getSIDModel();
-        if (prefModel) {
-            player.setModel(prefModel);
-        }
+        // Apply the saved chip choice; 'auto' leaves it to the tune's header
+        player.setModel(parseInt(SIDPlayer.getSavedModel(), 10) || 0);
 
         // Apply saved sampling quality
         const savedQuality = SIDPlayer.getSavedQuality();
