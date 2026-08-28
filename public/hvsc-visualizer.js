@@ -38,6 +38,18 @@ window.hvscVisualizer = (function () {
     let rafId = null, running = false;
     let bassAvg = 0, flash = 0;
     let isActive = null;    // () => bool: is audio currently playing?
+    // Hue ramp across the bars, lowest band to highest: amber (on-brand) to
+    // cyan. An embed repaints it by setting --hvsc-viz-hue-start/-end (see
+    // hvsc-embed-config.js), so the strip can match the host's palette.
+    let hueStart = 35, hueEnd = 195;
+
+    /** A numeric custom property from the canvas, or the built-in default. */
+    function hueVar(name, dflt) {
+        try {
+            const v = parseFloat(getComputedStyle(canvas).getPropertyValue(name));
+            return isFinite(v) ? v : dflt;
+        } catch (_) { return dflt; }
+    }
 
     function init(canvasEl, analyserNode, isActiveFn) {
         canvas = canvasEl;
@@ -53,6 +65,8 @@ window.hvscVisualizer = (function () {
             analyser.maxDecibels = MAX_DB;
         } catch (_) { /* keep defaults if the node rejects it */ }
         ctx = canvas.getContext('2d');
+        hueStart = hueVar('--hvsc-viz-hue-start', 35);
+        hueEnd = hueVar('--hvsc-viz-hue-end', 195);
         freq = new Uint8Array(analyser.frequencyBinCount);
         levels = new Float32Array(BARS);
         peaks = new Float32Array(BARS);
@@ -208,8 +222,8 @@ window.hvscVisualizer = (function () {
             const bh = Math.max(MIN_BAR, lvl * usableH);
             const top = baseY - bh;
 
-            // Amber (low freq, on-brand) -> cyan (high freq); brighten with level + beat.
-            const hue = 35 + (b / BARS) * 160;
+            // Low freq -> high freq along the hue ramp; brighten with level + beat.
+            const hue = hueStart + (b / BARS) * (hueEnd - hueStart);
             const light = 44 + lvl * 26 + flash * 22;
 
             const grad = ctx.createLinearGradient(0, baseY, 0, top);

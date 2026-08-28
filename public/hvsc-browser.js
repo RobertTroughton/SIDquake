@@ -7,7 +7,21 @@ window.hvscBrowser = (function () {
 
     const ROOT = 'C64Music';
 
-    let currentPath = ROOT;
+    // Embed configuration (window.HVSC_EMBED, settled by hvsc-embed-config.js
+    // before this file loads). Only the options that change behaviour are read
+    // here; the chrome and palette ones are applied to the page by that script.
+    const embedCfg = (typeof window !== 'undefined' && window.HVSC_EMBED) || null;
+
+    // An embed can confine the widget to one part of the collection (?root=):
+    // Home lands there, Up stops there, and a search only matches inside it.
+    const browseRoot = (embedCfg && embedCfg.root) || ROOT;
+
+    /** Is a path inside the browsable subtree? */
+    function withinRoot(p) {
+        return browseRoot === ROOT || p === browseRoot || p.startsWith(browseRoot + '/');
+    }
+
+    let currentPath = browseRoot;
     let currentSelection = null;
     let entries = [];
     const scrollByPath = new Map();  // remembers file-list scroll per directory
@@ -54,6 +68,16 @@ window.hvscBrowser = (function () {
             searchSortDir = saved.searchDir === 'asc' ? 'asc' : 'desc';
         }
     } catch (e) { /* no saved sort */ }
+    // An embed's ?sort=/?dir= describe how that particular embed should read,
+    // so they win over whatever order this browser last left behind.
+    if (embedCfg && embedCfg.sort) {
+        if (embedCfg.sort !== 'match') {
+            sortKey = embedCfg.sort;
+            sortDir = embedCfg.sortDir || (embedCfg.sort === 'year' ? 'desc' : 'asc');
+        }
+        searchSortKey = embedCfg.sort;
+        searchSortDir = embedCfg.sortDir || (embedCfg.sort === 'name' ? 'asc' : 'desc');
+    }
 
     /** The key/direction in force for whichever list is showing. */
     const activeKey = () => (searchMode ? searchSortKey : sortKey);
@@ -420,7 +444,7 @@ window.hvscBrowser = (function () {
      */
     async function openTuneByPath(rawPath) {
         const path = normalizeTunePath(rawPath);
-        if (!path) return false;
+        if (!path || !withinRoot(path)) return false;
         try { await loadSearchIndex(); } catch (_) { return false; }
         if (!metaByPath || !metaByPath.get(path)) return false;
         const slash = path.lastIndexOf('/');
@@ -480,10 +504,14 @@ window.hvscBrowser = (function () {
         // Deep links: ?tune=<path> selects and loads a specific tune (all
         // hosts); embedders can also deep-link into a folder via ?start=...
         // (window.HVSC_EMBED_START).
-        const startPath = (typeof window !== 'undefined' && window.HVSC_EMBED_START) || ROOT;
+        const startPath = (typeof window !== 'undefined' && window.HVSC_EMBED_START) || browseRoot;
         const tuneParam = (typeof window !== 'undefined' && window.HVSC_EMBED_TUNE) || getTuneParamFromUrl();
         // Sound first, listing second: don't make a shared link wait for the index.
         if (tuneParam) quickPlayFromShard(tuneParam);
+        // An embed can open straight onto a query (?q=). searchFor() puts the
+        // browser in search mode synchronously, which is what stops the listing
+        // below from painting the start folder over the results.
+        else if (embedCfg && embedCfg.query) searchFor(embedCfg.query);
         loadSearchIndex()
             .then(async () => {
                 if (tuneParam && await openTuneByPath(tuneParam)) return;
@@ -805,6 +833,7 @@ window.hvscBrowser = (function () {
         }
 
         if (path.endsWith('/')) path = path.slice(0, -1);
+        if (!withinRoot(path)) path = browseRoot;
 
         try {
             await loadSearchIndex();
@@ -905,7 +934,7 @@ window.hvscBrowser = (function () {
         html += `<div class="sid-info-row"><span class="sid-info-label">File</span><span class="sid-info-value">${escapeHtml(entry.name)}</span></div>`;
         if (stil) html += `<div class="sid-info-stil"><span class="sid-info-label">STIL</span><span class="sid-info-value">${escapeHtml(stil)}</span></div>`;
         html += `<div class="sid-info-download">`
-            + `<button class="btn" onclick="hvscBrowser.downloadSID()"><i class="fas fa-download"></i> Download SID</button> `
+            + `<button class="btn" id="hvscDownloadBtn" onclick="hvscBrowser.downloadSID()"><i class="fas fa-download"></i> Download SID</button> `
             + `<button class="btn" id="hvscShareBtn" onclick="hvscBrowser.shareTune()" title="Copy a link that opens this tune"><i class="fas fa-share-alt"></i> Share Link</button>`
             + `</div>`;
 
@@ -965,7 +994,9 @@ window.hvscBrowser = (function () {
         startVisualizer();
         if (hvscPlayer) {
             const wasPlaying = hvscPlayer.isPlaying;
-            const startNow = autoplayNext;
+            // ?autoplay= makes every selection start playing, not just the
+            // deep-linked first one.
+            const startNow = autoplayNext || !!(embedCfg && embedCfg.autoplay);
             autoplayNext = false;
             const player = getSharedSIDPlayback();
             player.setLoadCallback(() => {
@@ -1098,7 +1129,7 @@ window.hvscBrowser = (function () {
     }
 
     function navigateUp() {
-        if (!currentPath || currentPath === '' || currentPath === ROOT) {
+        if (!currentPath || currentPath === '' || currentPath === browseRoot) {
             return;
         }
 
@@ -1111,11 +1142,11 @@ window.hvscBrowser = (function () {
         parts.pop();
 
         const parentPath = parts.join('/');
-        fetchDirectory(parentPath || ROOT);
+        fetchDirectory(withinRoot(parentPath) ? (parentPath || ROOT) : browseRoot);
     }
 
     function navigateHome() {
-        fetchDirectory(ROOT);
+        fetchDirectory(browseRoot);
     }
 
     function updatePathBar() {
@@ -1127,7 +1158,7 @@ window.hvscBrowser = (function () {
             else bar.textContent = pathDisplay;
         }
         const up = document.getElementById('upBtn');
-        if (up) up.disabled = !currentPath || currentPath === '' || currentPath === ROOT;
+        if (up) up.disabled = !currentPath || currentPath === '' || currentPath === browseRoot;
     }
 
     // The Select button is the main way out of the browser, so it has to say
@@ -1414,6 +1445,9 @@ window.hvscBrowser = (function () {
         // not whichever entries happened to come first in index/path order.
         for (let i = 0; i < all.length; i++) {
             const e = all[i];
+            // A confined embed (?root=) searches its own subtree only, so its
+            // results can't lead anywhere its Up button won't go.
+            if (!withinRoot(e.p)) continue;
             // Search across title, author, path AND folded STIL text. The
             // haystack is built lazily and cached on the entry (the index is
             // immutable after load), lowercased and diacritic-folded so an

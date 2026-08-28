@@ -937,8 +937,79 @@
             <section class="about-section">
                 <div class="about-section-header">
                     <span class="about-section-number">02</span>
-                    <h2>Options &amp; modes</h2>
+                    <h2>Examples</h2>
                 </div>
+                <p class="embed-lead">Every example below is a real widget, running right here from the current build. Pick one to load it into the frame, watch what it posts back to this page, and copy the iframe it came from.</p>
+
+                <div class="embed-examples" id="embedExamples" role="tablist" aria-label="Embed examples">
+                    <button type="button" class="embed-example" role="tab" aria-selected="true" data-embed="mode=file">
+                        <span class="embed-example-name">Everything on</span>
+                        <span class="embed-example-desc">The defaults: browse, search, preview, SID details, and the raw <code>.sid</code> bytes handed back on select.</span>
+                    </button>
+                    <button type="button" class="embed-example" role="tab" aria-selected="false" data-embed="mode=link&amp;info=0&amp;viz=0&amp;player=0&amp;title=Pick a tune&amp;selectlabel=Use this">
+                        <span class="embed-example-name">Compact picker</span>
+                        <span class="embed-example-desc">List and search only &mdash; no details panel, transport or spectrum. Fits a 320px-tall frame.</span>
+                    </button>
+                    <button type="button" class="embed-example" role="tab" aria-selected="false" data-embed="mode=play&amp;autoplay=1&amp;select=0&amp;info=0&amp;title=SID Jukebox&amp;start=C64Music/DEMOS/0-9">
+                        <span class="embed-example-name">Jukebox</span>
+                        <span class="embed-example-desc">Click a tune and it plays. Nothing is handed over, so there is no Select button.</span>
+                    </button>
+                    <button type="button" class="embed-example" role="tab" aria-selected="false" data-embed="mode=play&amp;root=MUSICIANS/H/Hubbard_Rob&amp;nav=0&amp;path=0&amp;title=Rob Hubbard&amp;autoplay=1">
+                        <span class="embed-example-name">One musician</span>
+                        <span class="embed-example-desc">Confined to a single folder with <code>root</code>: Up stops there and searches only match inside it.</span>
+                    </button>
+                    <button type="button" class="embed-example" role="tab" aria-selected="false" data-embed="mode=link&amp;q=hubbard&amp;sort=year&amp;dir=asc&amp;info=0&amp;title=Search the collection&amp;placeholder=Who are you after?">
+                        <span class="embed-example-name">Opens on a search</span>
+                        <span class="embed-example-desc">Starts with <code>q</code> already run and the results ordered oldest-first.</span>
+                    </button>
+                    <button type="button" class="embed-example" role="tab" aria-selected="false" data-embed="mode=play&amp;theme=light&amp;autoplay=1&amp;title=HVSC">
+                        <span class="embed-example-name">Light theme</span>
+                        <span class="embed-example-desc">One option repaints the whole widget for a light host page.</span>
+                    </button>
+                    <button type="button" class="embed-example" role="tab" aria-selected="false" data-embed="mode=play&amp;autoplay=1&amp;bg=40318d&amp;panel=473aa4&amp;surface=52429f&amp;bar=372c80&amp;hover=5b4bb5&amp;text=eae8ff&amp;text2=bfb6ff&amp;muted=bfb6ff&amp;border=6c5eb5&amp;accent=ffd07a&amp;infobg=372c80&amp;viz1=b0a4ff&amp;viz2=ffd07a&amp;title=C64 blue">
+                        <span class="embed-example-name">C64 blue</span>
+                        <span class="embed-example-desc">Every surface, text and border colour set by hand, spectrum ramp included.</span>
+                    </button>
+                    <button type="button" class="embed-example" role="tab" aria-selected="false" data-embed="mode=play&amp;autoplay=1&amp;bg=00160c&amp;panel=001f11&amp;surface=002a17&amp;bar=001a0e&amp;hover=00381f&amp;text=b8ffd8&amp;text2=6fd6a0&amp;muted=6fd6a0&amp;border=0a4d2c&amp;accent=3fe07f&amp;infobg=001a0e&amp;viz1=3fe07f&amp;viz2=aaffcc&amp;font=Space Mono,monospace&amp;radius=0&amp;title=&gt; hvsc">
+                        <span class="embed-example-name">Green terminal</span>
+                        <span class="embed-example-desc">Palette plus <code>font</code> and square corners via <code>radius=0</code>.</span>
+                    </button>
+                    <button type="button" class="embed-example" role="tab" aria-selected="false" data-embed="mode=play&amp;autoplay=1&amp;header=0&amp;status=0&amp;info=0&amp;credit=0&amp;nav=0&amp;sortui=0&amp;root=MUSICIANS/G/Galway_Martin">
+                        <span class="embed-example-name">Chromeless</span>
+                        <span class="embed-example-desc">Header, status bar, list header and details all off: a bare list, a transport and the spectrum.</span>
+                    </button>
+                    <button type="button" class="embed-example" role="tab" aria-selected="false" data-embed="mode=play&amp;theme=light&amp;radius=14&amp;font=Georgia,serif&amp;accent=b4453b&amp;viz1=b4453b&amp;viz2=e0a33f&amp;autoplay=1&amp;title=Listening room">
+                        <span class="embed-example-name">Soft &amp; serif</span>
+                        <span class="embed-example-desc">Light theme, a warm accent, rounded corners and the host page's own font.</span>
+                    </button>
+                </div>
+
+                <div class="embed-demo">
+                    <iframe class="embed-demo-frame" id="embedDemoFrame" data-src="hvsc-embed.html?mode=file" title="Live HVSC browser preview" loading="lazy"></iframe>
+                </div>
+
+                <div class="embed-log" id="embedLog">
+                    <div class="embed-log-head"><i class="fas fa-satellite-dish" aria-hidden="true"></i> Messages this page has received from the frame</div>
+                    <ul class="embed-log-list" id="embedLogList" aria-live="polite"><li class="embed-log-empty">Nothing yet &mdash; pick a tune in the frame above.</li></ul>
+                </div>
+
+                <div class="embed-code">
+                    <div class="embed-code-head">
+                        <span class="embed-code-title"><i class="fas fa-code" aria-hidden="true"></i> The example above, as an iframe</span>
+                        <button type="button" class="embed-copy-btn" id="embedExampleCopyBtn">Copy</button>
+                    </div>
+                    <pre><code id="embedExampleCode"></code></pre>
+                </div>
+            </section>
+
+            <section class="about-section">
+                <div class="about-section-header">
+                    <span class="about-section-number">03</span>
+                    <h2>Every option</h2>
+                </div>
+                <p class="embed-lead">All options are query parameters on the <code>hvsc-embed.html</code> URL. Anything you leave out keeps its default, so the shortest useful embed is just <code>?mode=file&amp;origin=…</code>. Switches take <code>1</code>/<code>0</code> (or <code>on</code>/<code>off</code>); a bare <code>?viz</code> counts as on.</p>
+
+                <h3 class="embed-params-title">What the widget hands back</h3>
                 <div class="embed-params">
                     <div class="embed-param">
                         <code>mode</code>
@@ -946,25 +1017,218 @@
                     </div>
                     <div class="embed-param">
                         <code>origin</code>
-                        <span>Your site's origin, e.g. <code>https://your-site.example</code>. Set it: without a resolvable origin the widget won't hand tune data to an unknown parent.</span>
-                    </div>
-                    <div class="embed-param">
-                        <code>start</code>
-                        <span>Open the browser at a specific HVSC folder, e.g. <code>C64Music/MUSICIANS/D/Drax</code>.</span>
+                        <span>Your site's origin, e.g. <code>https://your-site.example</code>. Set it: without a resolvable origin the widget won't hand tune data to an unknown parent. Defaults to the referrer's origin.</span>
                     </div>
                 </div>
-                <p class="embed-note"><i class="fas fa-shield-halved" aria-hidden="true"></i> The widget posts <code>hvsc:ready</code>, <code>hvsc:selected</code>, <code>hvsc:playing</code> and <code>hvsc:error</code> messages &mdash; always check <code>event.origin</code> before trusting one. Please keep the attribution visible and don't use the embed to bulk-download the collection (it's a free download at <a href="https://hvsc.c64.org/" target="_blank" rel="noopener">hvsc.c64.org</a>).</p>
+
+                <h3 class="embed-params-title">What it shows and does</h3>
+                <div class="embed-params">
+                    <div class="embed-param">
+                        <code>start</code>
+                        <span>Open at a folder, e.g. <code>MUSICIANS/D/Drax</code>. The <code>C64Music/</code> prefix is optional.</span>
+                    </div>
+                    <div class="embed-param">
+                        <code>root</code>
+                        <span>Confine the widget to one folder and everything under it. Home lands there, Up stops there, and searches only match inside it. Default: the whole collection.</span>
+                    </div>
+                    <div class="embed-param">
+                        <code>tune</code>
+                        <span>Open on one specific tune, e.g. <code>MUSICIANS/H/Hubbard_Rob/Commando.sid</code>. It is selected, described and started on arrival.</span>
+                    </div>
+                    <div class="embed-param">
+                        <code>q</code>
+                        <span>Open with a search already run, e.g. <code>q=galway</code>.</span>
+                    </div>
+                    <div class="embed-param">
+                        <code>sort</code>
+                        <span><code>name</code>, <code>year</code> or <code>match</code> (relevance, searches only). Default: whatever the visitor last chose, else name.</span>
+                    </div>
+                    <div class="embed-param">
+                        <code>dir</code>
+                        <span><code>asc</code> or <code>desc</code>. Default depends on <code>sort</code>: names A&ndash;Z, years and relevance strongest first.</span>
+                    </div>
+                    <div class="embed-param">
+                        <code>autoplay</code>
+                        <span>Start playing as soon as a tune is picked, rather than waiting for Play. Default <code>0</code>.</span>
+                    </div>
+                </div>
+
+                <h3 class="embed-params-title">Chrome</h3>
+                <div class="embed-params">
+                    <div class="embed-param">
+                        <code>header</code>
+                        <span>The title row and the search box. <code>0</code> removes both.</span>
+                    </div>
+                    <div class="embed-param">
+                        <code>title</code>
+                        <span>The heading text. Default <code>HVSC Browser</code>; <code>title=</code> (empty) drops it.</span>
+                    </div>
+                    <div class="embed-param">
+                        <code>badge</code>
+                        <span>The <code>HVSC #NN</code> pill saying which release the mirror is current with.</span>
+                    </div>
+                    <div class="embed-param">
+                        <code>search</code>
+                        <span>The search box.</span>
+                    </div>
+                    <div class="embed-param">
+                        <code>placeholder</code>
+                        <span>Its placeholder text.</span>
+                    </div>
+                    <div class="embed-param">
+                        <code>nav</code>
+                        <span>The Home and Up buttons above the list.</span>
+                    </div>
+                    <div class="embed-param">
+                        <code>sortui</code>
+                        <span>The clickable Name / Year / Best&nbsp;match column headers. Off leaves the order fixed at <code>sort</code>.</span>
+                    </div>
+                    <div class="embed-param">
+                        <code>year</code>
+                        <span>The release-year column.</span>
+                    </div>
+                    <div class="embed-param">
+                        <code>info</code>
+                        <span>The SID details panel down the right-hand side.</span>
+                    </div>
+                    <div class="embed-param">
+                        <code>infotitle</code>
+                        <span>Its heading, default <code>SID Info</code>.</span>
+                    </div>
+                    <div class="embed-param">
+                        <code>stil</code>
+                        <span>The STIL commentary inside that panel.</span>
+                    </div>
+                    <div class="embed-param">
+                        <code>download</code>
+                        <span>Its Download SID button.</span>
+                    </div>
+                    <div class="embed-param">
+                        <code>share</code>
+                        <span>Its Share Link button.</span>
+                    </div>
+                    <div class="embed-param">
+                        <code>player</code>
+                        <span>The transport (play, stop, restart, subtunes, elapsed time).</span>
+                    </div>
+                    <div class="embed-param">
+                        <code>credit</code>
+                        <span>The &ldquo;Playback by libsidplayfp&rdquo; line under the transport.</span>
+                    </div>
+                    <div class="embed-param">
+                        <code>viz</code>
+                        <span>The spectrum strip along the bottom.</span>
+                    </div>
+                    <div class="embed-param">
+                        <code>status</code>
+                        <span>The whole status bar. <code>count</code>, <code>path</code> and <code>select</code> switch its three parts individually.</span>
+                    </div>
+                    <div class="embed-param">
+                        <code>selectlabel</code>
+                        <span>The Select button's wording, e.g. <code>selectlabel=Use this tune</code>.</span>
+                    </div>
+                </div>
+                <p class="embed-note">The attribution footer is not switchable &mdash; keeping it visible is part of the <a href="embed-terms.html">embed terms</a>.</p>
+
+                <h3 class="embed-params-title">Colours &amp; type</h3>
+                <p class="embed-lead">Colours take a hex value with or without the <code>#</code> (<code>accent=3fe07f</code>, or <code>accent=%233fe07f</code>) or a CSS colour keyword (<code>accent=tomato</code>). Anything else is ignored, so a typo leaves the default rather than breaking the page.</p>
+                <div class="embed-params">
+                    <div class="embed-param">
+                        <code>theme</code>
+                        <span><code>dark</code> (default) or <code>light</code>. A preset for everything below, so you can set a theme and still override single colours.</span>
+                    </div>
+                    <div class="embed-param">
+                        <code>bg</code>
+                        <span>The page behind the widget.</span>
+                    </div>
+                    <div class="embed-param">
+                        <code>panel</code>
+                        <span>The widget's own background &mdash; the file list sits on this.</span>
+                    </div>
+                    <div class="embed-param">
+                        <code>surface</code>
+                        <span>Raised blocks: buttons, the transport, the search field.</span>
+                    </div>
+                    <div class="embed-param">
+                        <code>bar</code>
+                        <span>The header, status bar and footer.</span>
+                    </div>
+                    <div class="embed-param">
+                        <code>hover</code>
+                        <span>The row and button hover tint.</span>
+                    </div>
+                    <div class="embed-param">
+                        <code>accent</code>
+                        <span>The highlight colour: selected row, Select button, version badge, focus ring. Its lighter and translucent variants are derived from it.</span>
+                    </div>
+                    <div class="embed-param">
+                        <code>accent2</code>
+                        <span>The secondary accent (used on a few links and controls).</span>
+                    </div>
+                    <div class="embed-param">
+                        <code>text</code>
+                        <span>Primary text.</span>
+                    </div>
+                    <div class="embed-param">
+                        <code>text2</code>
+                        <span>Secondary text.</span>
+                    </div>
+                    <div class="embed-param">
+                        <code>muted</code>
+                        <span>Muted text: the status bar, the footer, placeholders.</span>
+                    </div>
+                    <div class="embed-param">
+                        <code>border</code>
+                        <span>Separators. The higher-contrast outline used around controls is derived from it.</span>
+                    </div>
+                    <div class="embed-param">
+                        <code>infobg</code>
+                        <span>The SID details panel, which is deliberately darker than the rest.</span>
+                    </div>
+                    <div class="embed-param">
+                        <code>viz1</code>
+                        <span>Colour of the lowest spectrum bar. Only its hue is taken &mdash; brightness follows the music.</span>
+                    </div>
+                    <div class="embed-param">
+                        <code>viz2</code>
+                        <span>Colour of the highest spectrum bar, same again. The bars ramp between the two.</span>
+                    </div>
+                    <div class="embed-param">
+                        <code>radius</code>
+                        <span>Corner roundness in pixels, 0&ndash;24, for every control in the widget.</span>
+                    </div>
+                    <div class="embed-param">
+                        <code>font</code>
+                        <span>A font-family list, e.g. <code>font=Georgia,serif</code>. Only families already on the visitor's machine &mdash; the frame loads no webfonts of yours.</span>
+                    </div>
+                </div>
             </section>
 
             <section class="about-section">
                 <div class="about-section-header">
-                    <span class="about-section-number">03</span>
-                    <h2>Live preview</h2>
+                    <span class="about-section-number">04</span>
+                    <h2>Messages back to your page</h2>
                 </div>
-                <p class="embed-lead">This is the real widget, running right here in <code>mode=play</code> so you can browse and preview tunes. It's the exact thing you'd embed &mdash; so it always reflects the current build, no screenshots to go stale.</p>
-                <div class="embed-demo">
-                    <iframe class="embed-demo-frame" data-src="hvsc-embed.html?mode=play&amp;start=C64Music/MUSICIANS" title="Live HVSC browser preview" loading="lazy"></iframe>
+                <div class="embed-params">
+                    <div class="embed-param">
+                        <code>hvsc:ready</code>
+                        <span>The widget has loaded. Carries the resolved <code>mode</code>.</span>
+                    </div>
+                    <div class="embed-param">
+                        <code>hvsc:selected</code>
+                        <span>A tune was chosen in <code>link</code> or <code>file</code> mode. In <code>file</code> mode it also carries <code>bytes</code>, an <code>ArrayBuffer</code> of the <code>.sid</code>.</span>
+                    </div>
+                    <div class="embed-param">
+                        <code>hvsc:playing</code>
+                        <span>A tune was chosen in <code>play</code> mode. Announcement only; nothing is handed over.</span>
+                    </div>
+                    <div class="embed-param">
+                        <code>hvsc:error</code>
+                        <span>A selection couldn't be delivered. Carries a <code>message</code>.</span>
+                    </div>
                 </div>
+                <p class="embed-note">Every payload carries <code>name</code>, <code>path</code>, <code>url</code>, <code>title</code>, <code>author</code>, <code>released</code> and <code>stil</code>. The <code>url</code> is short-lived (about ten minutes) and carries an access token, so treat it as ephemeral rather than a permanent hotlink.</p>
+                <p class="embed-note"><i class="fas fa-shield-halved" aria-hidden="true"></i> Always check <code>event.origin === 'https://sidquake.c64demo.com'</code> before trusting a message. Please keep the attribution visible and don't use the embed to bulk-download the collection (it's a free download at <a href="https://hvsc.c64.org/" target="_blank" rel="noopener">hvsc.c64.org</a>).</p>
             </section>
         </div>
 
@@ -1343,6 +1607,96 @@
                 embed: document.getElementById('tabEmbed')
             };
 
+            // ---- Embed examples ----------------------------------------
+            // One frame shared by every example: each is a query string, and
+            // picking one reloads the frame with it and rewrites the iframe
+            // snippet underneath. The frame is only ever loaded once the Embed
+            // tab is open, because it pulls the multi-MB HVSC index.
+            var EMBED_BASE = 'https://sidquake.c64demo.com/hvsc-embed.html';
+            var embedFrame = document.getElementById('embedDemoFrame');
+            var embedExampleCode = document.getElementById('embedExampleCode');
+            var embedExamples = document.querySelectorAll('.embed-example');
+            var embedTabOpen = false;
+
+            function embedSnippet(query) {
+                return '<iframe\n  src="' + EMBED_BASE + '?' + query
+                    + '&origin=https://your-site.example"\n'
+                    + '  width="900" height="600" style="border:0" title="HVSC Browser"></iframe>';
+            }
+
+            function showEmbedExample(btn) {
+                if (btn) {
+                    embedExamples.forEach(function (b) {
+                        b.setAttribute('aria-selected', b === btn ? 'true' : 'false');
+                    });
+                } else {
+                    if (embedTabOpen) return;   // already showing something
+                    btn = document.querySelector('.embed-example[aria-selected="true"]')
+                        || embedExamples[0];
+                }
+                embedTabOpen = true;
+                if (!btn || !embedFrame) return;
+                var query = btn.getAttribute('data-embed');
+                // The live frame gets this page's own origin, so link/file
+                // selections really are delivered and show up in the log below.
+                embedFrame.src = 'hvsc-embed.html?' + query
+                    + '&origin=' + encodeURIComponent(window.location.origin);
+                embedFrame.removeAttribute('data-src');
+                if (embedExampleCode) embedExampleCode.textContent = embedSnippet(query);
+                embedLogReset();
+            }
+
+            embedExamples.forEach(function (btn) {
+                btn.addEventListener('click', function () { showEmbedExample(btn); });
+            });
+            if (embedExampleCode && embedExamples.length) {
+                embedExampleCode.textContent =
+                    embedSnippet(embedExamples[0].getAttribute('data-embed'));
+            }
+
+            // Show what the frame posts back, so the message contract is
+            // visible rather than described.
+            var embedLogList = document.getElementById('embedLogList');
+            function embedLogReset() {
+                if (embedLogList) {
+                    embedLogList.innerHTML =
+                        '<li class="embed-log-empty">Nothing yet \u2014 pick a tune in the frame above.</li>';
+                }
+            }
+            window.addEventListener('message', function (e) {
+                if (e.origin !== window.location.origin || !embedLogList) return;
+                var msg = e.data || {};
+                if (typeof msg.type !== 'string' || msg.type.indexOf('hvsc:') !== 0) return;
+                var detail = msg.type === 'hvsc:ready'
+                    ? 'mode=' + (msg.mode || '?')
+                    : (msg.title || msg.name || msg.message || '');
+                if (msg.bytes) detail += ' (' + msg.bytes.byteLength + ' bytes)';
+                var empty = embedLogList.querySelector('.embed-log-empty');
+                if (empty) empty.remove();
+                var li = document.createElement('li');
+                var type = document.createElement('code');
+                type.textContent = msg.type;
+                li.appendChild(type);
+                li.appendChild(document.createTextNode(' ' + detail));
+                embedLogList.insertBefore(li, embedLogList.firstChild);
+                while (embedLogList.children.length > 6) embedLogList.lastChild.remove();
+            });
+
+            var embedExampleCopyBtn = document.getElementById('embedExampleCopyBtn');
+            if (embedExampleCopyBtn) {
+                embedExampleCopyBtn.addEventListener('click', function () {
+                    if (!embedExampleCode || !navigator.clipboard) return;
+                    navigator.clipboard.writeText(embedExampleCode.textContent).then(function () {
+                        embedExampleCopyBtn.textContent = 'Copied!';
+                        embedExampleCopyBtn.classList.add('copied');
+                        setTimeout(function () {
+                            embedExampleCopyBtn.textContent = 'Copy';
+                            embedExampleCopyBtn.classList.remove('copied');
+                        }, 1500);
+                    }).catch(function () {});
+                });
+            }
+
             var embedCopyBtn = document.getElementById('embedCopyBtn');
             if (embedCopyBtn) {
                 embedCopyBtn.addEventListener('click', function() {
@@ -1371,13 +1725,7 @@
                 });
                 // Load the live embed demo only once the Embed tab is opened, so
                 // casual visitors don't pull the multi-MB HVSC index up front.
-                if (target === 'embed') {
-                    var demo = document.querySelector('.embed-demo-frame[data-src]');
-                    if (demo) {
-                        demo.src = demo.getAttribute('data-src');
-                        demo.removeAttribute('data-src');
-                    }
-                }
+                if (target === 'embed') showEmbedExample(null);
             }
 
             tabs.forEach(function(tab) {

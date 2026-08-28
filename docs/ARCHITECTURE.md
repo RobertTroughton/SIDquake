@@ -275,6 +275,18 @@ version is whatever we ship.
 - Under 720px the modal goes fullscreen, the SID info panel moves below the
   listing and hides until it has details to show
 
+**`hvsc-embed.html` + `hvsc-embed-config.js`** - The same browser as a widget
+- One iframe page, configured entirely by its query string; the host gets
+  selections over `postMessage`. Every option is documented in
+  [`EMBED.md`](EMBED.md) and on the site's Embed HVSC tab
+- `hvsc-embed-config.js` runs before `hvsc-browser.js` and splits the options
+  three ways: behaviour onto `window.HVSC_EMBED`, chrome into `hvsc-no-*`
+  classes on `<html>` that the page's own CSS acts on, and the palette into
+  custom properties overriding the `:root` block in `styles.css`
+- Colours are validated (hex or a keyword the browser actually knows) before
+  they are set, so nothing an embedder passes reaches the page as raw CSS
+- `scripts/embed-options-check.js` drives every option in a real browser
+
 **`hvsc-random.js`** - Random SID picker
 - `window.hvscRandom`: Picks a random tune from the index
 - Optional `hvsc-random.json` (path prefixes) biases the pick to curated areas

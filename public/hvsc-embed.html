@@ -10,12 +10,24 @@
     <link rel="stylesheet" href="styles.css">
     <link rel="stylesheet" href="styles-deferred.css">
     <link rel="stylesheet" href="hvsc-browser.css">
+    <!-- Reads the ?query into window.HVSC_EMBED, the palette custom properties
+         and the hvsc-no-* chrome classes the rules below act on. Must run
+         before hvsc-browser.js, and before first paint so the configured
+         palette is the only one ever shown. -->
+    <script src="hvsc-embed-config.js"></script>
     <style>
         html, body { height: 100%; margin: 0; }
         /* align-items:stretch overrides the shared styles.css body rule (which
            centers the main app's .container); without it .embed-root shrinks to
            its content and the browser appears to resize between folders. */
-        body { display: flex; flex-direction: column; align-items: stretch; background: var(--bg-primary); }
+        /* The font stack is hvsc-browser.css's; named here so ?font= can
+           replace it without the default becoming the app's webfont, which
+           this page never loads. */
+        body {
+            display: flex; flex-direction: column; align-items: stretch;
+            background: var(--bg-primary);
+            font-family: var(--hvsc-font, -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif);
+        }
         .embed-root { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; }
         .embed-root .browser-container { height: 100%; }
         /* Footer: subtle attribution + backlink to SIDquake */
@@ -37,13 +49,50 @@
         .hvsc-embed-terms { flex: 1 1 auto; min-width: 200px; }
         .hvsc-embed-brand { font-weight: 700; white-space: nowrap; }
         .hvsc-embed-brand a { color: var(--accent); }
+
+        /* ------------------------------------------------------------------
+           Chrome options. hvsc-embed-config.js puts an hvsc-no-* class on
+           <html> for each part the embedder turned off; doing it in CSS rather
+           than by hand means it applies to controls the browser builds later
+           (the list header, the info panel's buttons) without any ordering
+           dance. The attribution footer is deliberately not switchable — the
+           embed terms require it.
+           ------------------------------------------------------------------ */
+        .hvsc-no-title .browser-title { display: none; }
+        .hvsc-no-badge #hvscVersionBadge { display: none !important; }
+        .hvsc-no-search .browser-search { display: none; }
+        .hvsc-no-header .browser-header,
+        .hvsc-no-title.hvsc-no-search .browser-header { display: none; }
+
+        .hvsc-no-nav #homeBtn,
+        .hvsc-no-nav #upBtn { display: none; }
+        .hvsc-no-sortui .hvsc-col { display: none; }
+        .hvsc-no-year .hvsc-col-year,
+        .hvsc-no-year .file-year { display: none; }
+        .hvsc-no-nav.hvsc-no-sortui #hvscListHeader { display: none; }
+
+        .hvsc-no-info .sid-info-panel { display: none !important; }
+        .hvsc-no-stil .sid-info-stil { display: none; }
+        .hvsc-no-download #hvscDownloadBtn { display: none; }
+        .hvsc-no-share #hvscShareBtn { display: none; }
+        .hvsc-no-download.hvsc-no-share .sid-info-download { display: none; }
+
+        .hvsc-no-player .hvsc-player-container { display: none !important; }
+        .hvsc-no-credit .sid-player-credit { display: none; }
+        .hvsc-no-viz .hvsc-visualizer { display: none !important; }
+
+        .hvsc-no-count #itemCount { display: none; }
+        .hvsc-no-path #pathBar { display: none; }
+        .hvsc-no-select .hvsc-choose-btn { display: none; }
+        .hvsc-no-status .status-bar,
+        .hvsc-no-count.hvsc-no-path.hvsc-no-select .status-bar { display: none; }
     </style>
 </head>
 <body>
     <div class="embed-root">
         <div class="browser-container">
             <div class="browser-header">
-                <div class="browser-title">HVSC Browser<span class="hvsc-version-badge" id="hvscVersionBadge" hidden></span></div>
+                <div class="browser-title"><span class="browser-title-text">HVSC Browser</span><span class="hvsc-version-badge" id="hvscVersionBadge" hidden></span></div>
                 <div class="browser-search">
                     <i class="fas fa-search search-icon"></i>
                     <input type="text" class="search-bar" id="hvscSearchBar" placeholder="Search HVSC by title, author, or comment..." autocomplete="off" spellcheck="false">
@@ -68,7 +117,7 @@
             <div class="status-bar">
                 <span id="itemCount">0 items</span>
                 <span class="hvsc-path-text" id="pathBar" title="Current HVSC folder"></span>
-                <button class="btn hvsc-choose-btn" onclick="hvscBrowser.chooseSong()" title="Choose the selected tune"><i class="fas fa-check"></i> Select</button>
+                <button class="btn hvsc-choose-btn" onclick="hvscBrowser.chooseSong()" title="Choose the selected tune"><i class="fas fa-check"></i> <span class="hvsc-choose-label">Select</span></button>
             </div>
 
             <div class="hvsc-player-container" id="hvscPlayerContainer">
@@ -102,23 +151,6 @@
     </div>
 
     <script>
-        // Configure the embed BEFORE hvsc-browser.js loads.
-        (function () {
-            var params = new URLSearchParams(location.search);
-            var mode = params.get('mode');
-            if (['link', 'file', 'play'].indexOf(mode) === -1) mode = 'link';
-            // Embedders should pass ?origin=<their site> so results are posted
-            // only to them; default to referrer origin, else '*'.
-            var targetOrigin = params.get('origin');
-            if (!targetOrigin && document.referrer) {
-                try { targetOrigin = new URL(document.referrer).origin; } catch (e) {}
-            }
-            window.HVSC_EMBED = { mode: mode, targetOrigin: targetOrigin || '*' };
-            window.HVSC_EMBED_START = params.get('start') || null;
-            // Deep link to a specific tune (?tune=<path>), like the main site.
-            window.HVSC_EMBED_TUNE = params.get('tune') || null;
-        })();
-
         // Minimal lazy script loader (hvsc-browser.js expects window.loadScript).
         window.lazyScripts = {};
         window.loadScript = function (src) {
@@ -138,7 +170,7 @@
             hvscBrowser.initializeHVSC();
             // Tell the host we're ready (handy for auto-sizing / wiring up).
             try {
-                window.parent.postMessage({ type: 'hvsc:ready' },
+                window.parent.postMessage({ type: 'hvsc:ready', mode: window.HVSC_EMBED.mode },
                     (window.HVSC_EMBED && window.HVSC_EMBED.targetOrigin) || '*');
             } catch (e) {}
             // Deep-link (?start=...) is honoured inside initializeHVSC via
