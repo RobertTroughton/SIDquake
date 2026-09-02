@@ -76,6 +76,39 @@ export function tuneKey(bytes, subtune, sampleRate, maxSeconds, minLoopSeconds, 
     return (h >>> 0).toString(16);
 }
 
+// When a proposed loop may be believed, in seconds of audio rendered. A candidate
+// is never taken the moment it appears: detectLoop needs only TWO passes of a
+// period to propose it, and two passes is a repeat, not a loop. An A-A-B tune
+// (plays a phrase twice, then develops) looks exactly like a loop until B arrives,
+// and stopping the render on first sight freezes that mistake, because the detector
+// never gets to see the audio that would refute it - Blending_Mode.sid proposes a
+// 7.2 s loop at the 15 s poll and correctly reports "no loop" at every poll from
+// 20 s on.
+//
+// Two requirements, whichever lands later:
+//
+//   CYCLES passes of the period plus detectLoop's own ~4 s tail window, so the
+//   stream holds more of the loop than the detector needed to propose it. Bounded
+//   by CAP_SECONDS: a tune that repeats a multi-minute phrase is taken near enough
+//   on sight rather than rendering three more passes of it.
+//
+//   The candidate has to OUTLIVE the audio it took to appear - half as much again,
+//   between PERSIST_MIN and PERSIST_MAX. The cycles rule alone is satisfied on
+//   first sight for any short period, so nothing actually held a short candidate
+//   up to a later poll: Masoka_Tango (Merman) proposed a 7.7 s loop at its 45 s
+//   poll, was believed on the spot, and a 177 s tune was measured as 7.7 s long.
+//   A riff that only surfaces deep into a tune is exactly the one that needs more
+//   music before it can be trusted, so the wait scales with when it turned up.
+export function loopConfirmSeconds(loopStartSeconds, period, firstSeen) {
+    const CYCLES = 3;
+    const TAIL = 4;                 // seconds; matches detectLoop's confirm window
+    const CAP_SECONDS = 60;         // most extra audio the cycles rule may ask for
+    const PERSIST_MIN = 15, PERSIST_MAX = 90;
+    const cycles = Math.min(loopStartSeconds + CYCLES * period + TAIL, firstSeen + CAP_SECONDS);
+    const persist = firstSeen + Math.min(PERSIST_MAX, Math.max(PERSIST_MIN, firstSeen * 0.5));
+    return Math.max(cycles, persist);
+}
+
 // Shortest render we'll accept before calling an engine's attempt at a tune a
 // failure. The silence stop needs 10 s of quiet on top of whatever played, so a
 // render that ends this early made essentially no music at all.
@@ -136,23 +169,6 @@ async function renderAndAnalyze(sidBytes, loadEngine, options = {}) {
     const CHECK_MAX = Math.floor(sampleRate * 60);
     const checkInterval = (renderedSamples) =>
         Math.min(CHECK_MAX, Math.max(CHECK_MIN, Math.floor(renderedSamples / 8)));
-    // A proposed loop is not accepted the moment it appears. detectLoop needs only
-    // TWO passes of a period to propose it, and two passes is a repeat, not a loop:
-    // an A-A-B tune (plays a phrase twice, then develops) looks exactly like a loop
-    // until B arrives. Stopping the render on first sight then freezes that mistake,
-    // because the detector never gets to see the audio that would refute it -
-    // Blending_Mode.sid proposes a 7.2 s loop at the 15 s poll and correctly reports
-    // "no loop" at every poll from 20 s on.
-    //
-    // So a candidate must survive until the stream holds CONFIRM_CYCLES passes plus
-    // detectLoop's own ~4 s tail window, and must still be the same period at a later
-    // poll. Confirming is only worth what it costs: CONFIRM_CAP_SECONDS bounds the
-    // extra audio rendered, so short loops (where the false-positive risk lives, and
-    // where confirming is cheap) get the full check, while a tune that repeats a
-    // multi-minute phrase is taken near enough on first sight.
-    const CONFIRM_CYCLES = 3;
-    const CONFIRM_TAIL = 4;             // seconds; matches detectLoop's confirm window
-    const CONFIRM_CAP_SECONDS = 60;     // most extra audio we'll render to confirm
     let pending = null;                 // { period, firstSeen } of the standing candidate
     // A tune that runs into ~10 s of unbroken digital silence has ended - stop the
     // render there (the fade-off path then trims the dead tail and wraps the timer
@@ -226,9 +242,7 @@ async function renderAndAnalyze(sidBytes, loadEngine, options = {}) {
                     if (!pending || Math.abs(period - pending.period) > Math.max(0.1, period * 0.02)) {
                         pending = { period, firstSeen: secs };
                     }
-                    const confirmedAt = Math.min(
-                        (loop.loopStart / frameHz) + CONFIRM_CYCLES * period + CONFIRM_TAIL,
-                        pending.firstSeen + CONFIRM_CAP_SECONDS);
+                    const confirmedAt = loopConfirmSeconds(loop.loopStart / frameHz, period, pending.firstSeen);
                     if (secs >= confirmedAt) {
                         foundLoop = true;
                         // Explain the early exit: we found the tune's repeat point, so there's

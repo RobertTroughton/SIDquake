@@ -546,8 +546,8 @@ async function kmeans(data, numRows, dim, K, iters, seed, onTick, snap) {
 // modes have to be avoided: (1) locking a SUB-HARMONIC - a riff shorter than the
 // full loop that recurs on its own; (2) accepting a MARGINAL near-threshold
 // match that only holds for a few seconds. Confirming a candidate against just
-// the tail (the old approach) let both through, so we validate against the whole
-// stream and pick the fundamental of the harmonic series.
+// the tail (the old approach) let both through, so we validate every candidate
+// lag against the whole stream and take the fundamental of the deepest.
 // `kf` is a quantized column matrix on ANY uniform time grid with `keyframeHz`
 // rows per second; callers now pass the full FRAME-rate grid (see resolveKeyframes:
 // SID loop periods are integral in frames, not keyframes) and map the result back.
@@ -592,47 +592,50 @@ function detectLoop(kf, nk, numBars, maxHeight, keyframeHz = 25, minLoopSeconds 
     for (let x = 0; x < W; x++) for (let b = 0; b < numBars; b++) energy += kf[(tail + x) * numBars + b];
     if (energy / (W * numBars) < maxHeight * 0.06) return null;
 
-    // Cheap candidate: smallest period whose last ~4 s recur one period earlier.
-    // This is often the true loop, but on tunes with a repeating accompaniment it
-    // can be a sub-harmonic - the checks below promote it to the fundamental.
-    let P0 = -1;
-    for (let cand = Pmin; cand <= tail - 1; cand++) {
-        if (winDiff(tail, tail - cand) <= MATCH) { P0 = cand; break; }
-    }
-    if (P0 < 0) return null;
-
     // Full-stream self-similarity at lag P: mean per-bar diff over the WHOLE
     // stream. A long render holds many loops, so the intro barely dents the mean
     // and the true period sits at the deepest minimum. A sub-harmonic is elevated
     // because its melody advances across the shorter period even where the
     // accompaniment repeats. `refine` re-locks a period to its exact local
     // minimum, undoing the off-by-one that held-note plateaus give the tail scan.
+    // Ranking candidates and re-locking one only need the SHAPE of that curve, so
+    // both sample it every STRIDE columns; the accept test below is always exact.
     const Pmax = Math.floor(nk / 2);                  // need >=2 periods to confirm
-    if (P0 > Pmax) return null;
-    const residual = (P) => { let s = 0, n = 0; for (let i = P; i < nk; i++) { s += colDiff(i, i - P); n++; } return s / n; };
+    const STRIDE = Math.max(1, Math.min(4, Math.round(nk / 4000)));
+    const residual = (P, stride = 1) => { let s = 0, n = 0; for (let i = P; i < nk; i += stride) { s += colDiff(i, i - P); n++; } return s / n; };
     const refine = (P) => {
-        let bp = P, bv = residual(P);
+        let bp = P, bv = residual(P, STRIDE);
         for (let d = -(NOTE - 1); d <= NOTE - 1; d++) {
             const q = P + d; if (q < Pmin || q >= nk) continue;
-            const v = residual(q); if (v < bv) { bv = v; bp = q; }
+            const v = residual(q, STRIDE); if (v < bv) { bv = v; bp = q; }
         }
         return bp;
     };
 
-    // Walk P0's harmonic series and pick the fundamental: the smallest harmonic
-    // whose full-stream residual is near the deepest one found. (Refine P0 first
-    // so k*P0 lands on the true multiples.) When P0 is already the fundamental,
-    // every harmonic matches and we keep the smallest - P0 itself.
-    P0 = refine(P0);
-    const harm = [];
-    for (let k = 1; k * P0 <= Pmax; k++) harm.push(k * P0);
-    if (!harm.length) return null;
-    const rr = harm.map(residual);
+    // Candidate periods: EVERY lag whose last ~4 s recur one period earlier, not
+    // just the first one found. Taking the first (the old approach) assumed it was
+    // either the loop or a sub-harmonic of it, so walking its harmonic series would
+    // reach the truth. A decoy lag breaks that assumption outright: Miranda
+    // (Mitch & Dane) repeats a phrase 38.3 s before its tail, and 38.3 s neither
+    // divides nor is divided by its real 71.8 s loop, so the walk had nowhere to go
+    // and a 20-minute scan reported no loop at all. Matching lags come in blocks, so
+    // skip a note's width past each hit rather than logging the same period twice.
+    const CAND_MAX = 48;
+    const cands = [];
+    for (let c = Pmin; c <= Pmax && cands.length < CAND_MAX; c++) {
+        if (winDiff(tail, tail - c) <= MATCH) { cands.push(c); c += NOTE; }
+    }
+    if (!cands.length) return null;
+
+    // The deepest residual among them is the tune's period; among near-ties take
+    // the smallest, which is the fundamental of the series rather than a multiple
+    // of it (storing a multiple would hold minutes of duplicate stream).
+    const rr = cands.map((c) => residual(c, STRIDE));
     let deepest = Infinity;
     for (const r of rr) if (r < deepest) deepest = r;
     const band = deepest + Math.max(0.6, maxHeight * 0.008);   // "near the deepest"
-    let P = harm[harm.length - 1];
-    for (let k = 0; k < harm.length; k++) { if (rr[k] <= band) { P = harm[k]; break; } }
+    let P = cands[cands.length - 1];
+    for (let k = 0; k < cands.length; k++) { if (rr[k] <= band) { P = cands[k]; break; } }
     P = refine(P);
 
     // Confirm the chosen period against the whole stream, not just the tail: a
