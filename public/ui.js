@@ -4843,7 +4843,7 @@ class UIController {
         on('songLengthMeasure', 'click', () => {
             // An explicit "measure" overrides an earlier decision to stop.
             this._analysisCancelled = false;
-            this.startBackgroundAnalysis();
+            this.startBackgroundAnalysis({ userAsked: true });
             this.updateSongLoopStatus();
         });
         on('songLengthStop', 'click', () => {
@@ -5647,6 +5647,7 @@ class UIController {
             this.elements.busyMessage.textContent = message;
             this.elements.busySubmessage.textContent = submessage;
             this.setBusyNote('');          // a new job has found nothing yet
+            this.setBusyListening(false);  // ...and most jobs never listen for one
             this._wireBusyCancel(onCancel);
             this.elements.busyOverlay.classList.add('visible');
             // The page behind is covered by an opaque blur, and the Studio stops
@@ -5753,6 +5754,18 @@ class UIController {
         el.classList.toggle('is-found', !!text && kind === 'found');
     }
 
+    /**
+     * Is the job under the overlay one that will report loop news? Only then does
+     * the note line hold its space and read "Listening for the tune's loop…" while
+     * it waits. Everything else the overlay covers - loading a SID, building the
+     * PRG - has no loop to listen for, and the placeholder claimed otherwise.
+     * @param {boolean} on
+     */
+    setBusyListening(on) {
+        const el = this.elements.busyNote;
+        if (el) el.classList.toggle('is-listening', !!on);
+    }
+
     updateBusy(message, submessage = '', hint = '') {
         if (this.elements.busyOverlay && this.elements.busyOverlay.classList.contains('visible')) {
             this.elements.busyMessage.textContent = message;
@@ -5796,6 +5809,10 @@ class UIController {
     // or null (cancelled / failed / superseded).
     _ensureAnalysis({ onProgress = null, holdOnLoopFound = false } = {}) {
         if (this.tuneAnalysis) return Promise.resolve(this.tuneAnalysis);
+        // Past here a scan really is running, so an overlay covering the wait has
+        // somewhere for loop news to arrive. A cached answer never gets here, so an
+        // export that only had to read one does not claim to be listening.
+        this.setBusyListening(true);
         if (this._analysisJob) {
             const job = this._analysisJob;
             if (onProgress) {
@@ -5884,21 +5901,26 @@ class UIController {
         this._analysisCancelled = false;
         this.updateSongLoopStatus();
         if (window.studioModal) window.studioModal.queueRefresh();
-        this.startBackgroundAnalysis();
+        this.startBackgroundAnalysis({ userAsked: true });
     }
 
     // Start the scan when the SID loads and report it in the corner chip, so the
     // wait overlaps with choosing a visualizer instead of landing on the Generate
     // button. Not started on the main-thread fallback path: there the render runs
     // on the page and would freeze the UI it exists to keep usable.
-    async startBackgroundAnalysis() {
+    async startBackgroundAnalysis({ userAsked = false } = {}) {
         if (!this.visualizerNeedsTuneAnalysis() || this._analysisCancelled
             || this.tuneAnalysis || this._analysisJob || !this.sidHeader) return;
         // Only once the user is actually heading for an export. Someone who loaded
         // a tune to listen to it should not pay for the engine WASM and a
         // full-tune render they will never use; the Studio opening is the signal
         // that they will. studio-modal.js calls this again from open().
-        if (!window.studioModal || !window.studioModal.isOpen) return;
+        //
+        // Asking for the measurement outright says the same thing, and says it
+        // from wherever the button was: the corner chip's restart is only ever
+        // reachable with the Studio shut (the chip sits below the modals), so
+        // gating it on the Studio being open made it do nothing at all.
+        if (!userAsked && (!window.studioModal || !window.studioModal.isOpen)) return;
         // Nothing an export of several tunes can do with a measurement of one of
         // them: the length, the loop and the spectrometer are all off until the
         // file is locked to a single tune, which restarts this.
@@ -5951,9 +5973,23 @@ class UIController {
         if (!this._analysisChipWired) {
             this._analysisChipWired = true;
             const cancel = document.getElementById('analysisChipCancel');
+            // The chip is not dismissed here: letting the aborted job settle brings
+            // up its stopped state, which is where the way back in lives. Hiding it
+            // on the click left the only restart buried in the Studio's Song tab,
+            // nowhere near where the scan had been running.
             if (cancel) cancel.addEventListener('click', () => {
-                this.cancelAnalysis();
+                if (this.analysisRunning) this.cancelAnalysis();
+                else this._hideAnalysisChip();   // already stopped: this is a dismiss
+            });
+            // A cancel is easy to change your mind about, and the render cannot be
+            // resumed - the engine goes with it - so this starts the scan over.
+            const restart = document.getElementById('analysisChipRestart');
+            if (restart) restart.addEventListener('click', () => {
                 this._hideAnalysisChip();
+                this._analysisCancelled = false;
+                this.startBackgroundAnalysis({ userAsked: true });
+                this.updateSongLoopStatus();
+                if (window.studioModal) window.studioModal.queueRefresh();
             });
             // Stop searching, but keep the answer: the scan runs to a cap of
             // several minutes on a tune whose loop is a long way out, and
@@ -5969,6 +6005,9 @@ class UIController {
         if (stopBtn && !stopBtn.disabled) {
             stopBtn.hidden = !(this._analysisScanned > UIController.STOP_OFFER_SECONDS);
         }
+        // A scan is running, so there is nothing to restart.
+        const restartBtn = document.getElementById('analysisChipRestart');
+        if (restartBtn) restartBtn.hidden = true;
     }
 
     // The counter moves several times a second; feeding every tick to a live
@@ -6003,14 +6042,23 @@ class UIController {
         }
         if (label) label.textContent = msg;
         this._announceAnalysis(msg, true);
-        // The outcome also lands on the Song tab, so the chip gets out of the way.
+        const stop = document.getElementById('analysisChipStop');
+        if (stop) stop.hidden = true;
+        // A scan the user stopped is the one outcome they may want to take back, so
+        // the chip stays until it is dismissed or the offer is taken. Every other
+        // outcome also lands on the Song tab, so the chip gets out of the way.
+        const restart = document.getElementById('analysisChipRestart');
+        const undoable = !a && this._analysisCancelled;
+        if (restart) restart.hidden = !undoable;
         clearTimeout(this._analysisChipTimer);
-        this._analysisChipTimer = setTimeout(() => this._hideAnalysisChip(), 8000);
+        if (!undoable) this._analysisChipTimer = setTimeout(() => this._hideAnalysisChip(), 8000);
     }
 
     _resetAnalysisChipStop() {
         const stop = document.getElementById('analysisChipStop');
         if (stop) { stop.disabled = false; stop.hidden = true; }
+        const restart = document.getElementById('analysisChipRestart');
+        if (restart) restart.hidden = true;
         this._analysisScanned = 0;
     }
 

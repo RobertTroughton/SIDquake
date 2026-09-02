@@ -631,10 +631,11 @@
 }
 .busy-hint[hidden] { display: none; }
 
-/* What the job has found, above the buttons. The height is reserved (min-height,
-   not hidden) so an empty line still holds its space: news arriving must not
-   shove the dialog around, which is what made a passing "Possible loop found"
-   read as a flicker. Two lines' worth at this width. */
+/* What the job has found, above the buttons. On a job that reports news the
+   height is reserved (min-height, not hidden) so an empty line still holds its
+   space: news arriving must not shove the dialog around, which is what made a
+   passing "Possible loop found" read as a flicker. Two lines' worth at this
+   width. */
 .busy-note {
     margin-top: var(--space-md);
     min-height: 2.8em;
@@ -650,7 +651,15 @@
     color: var(--text-secondary);
 }
 
-.busy-note:empty::after {
+/* Only a job that is actually listening for the loop gets the line. Loading a
+   SID and building a PRG use the same overlay, and on those an empty grey box
+   saying "Listening for the tune's loop" describes something that is not
+   happening. */
+.busy-note:empty:not(.is-listening) {
+    display: none;
+}
+
+.busy-note.is-listening:empty::after {
     content: 'Listening for the tune\2019s loop\2026';
     color: var(--text-muted);
     font-style: italic;
