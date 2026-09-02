@@ -82,8 +82,8 @@ export function tuneKey(bytes, subtune, sampleRate, maxSeconds, minLoopSeconds, 
 // (plays a phrase twice, then develops) looks exactly like a loop until B arrives,
 // and stopping the render on first sight freezes that mistake, because the detector
 // never gets to see the audio that would refute it - Blending_Mode.sid proposes a
-// 7.2 s loop at the 15 s poll and correctly reports "no loop" at every poll from
-// 20 s on.
+// 7.2 s loop at the 15 s poll, has nothing to offer from 20 s on, and turns out to
+// repeat every 3 m 31 s once the render has heard two passes of that.
 //
 // Two requirements, whichever lands later:
 //
