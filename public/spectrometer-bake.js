@@ -652,6 +652,18 @@ function detectLoop(kf, nk, numBars, maxHeight, keyframeHz = 25, minLoopSeconds 
         let HP = Math.round(hint.period);
         const HI = Math.max(0, Math.round(hint.intro));
         if (HP < Pmin || nk - HI - HP < W) return null;
+        // A player that has finished often idles in a short cycle that is not
+        // quite silent (Elder_Scrollers ticks over every 2 s after 5 minutes of
+        // music). That is a state loop, but not the tune's: a loop far quieter
+        // than everything before it is an ending, and the fade path's business.
+        if (HI >= W) {
+            const mean = (from, to) => {
+                let s = 0;
+                for (let i = from * numBars; i < to * numBars; i++) s += kf[i];
+                return s / ((to - from) * numBars);
+            };
+            if (mean(HI, HI + HP) < mean(0, HI) * 0.25) return null;
+        }
         // Mean per-bar diff at lag P over the stretch the state loop covers,
         // [HI, nk) - the only part of the stream that can be expected to repeat.
         const span = (P) => {

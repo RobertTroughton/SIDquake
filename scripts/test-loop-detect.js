@@ -221,6 +221,18 @@ async function main() {
         silent.fill(0, (silent.length / NUM_BARS - W - 20) * NUM_BARS);
         const got2 = detectLoop(silent, silent.length / NUM_BARS, NUM_BARS, MAX_HEIGHT, FRAME_HZ, 2, { intro: 0, period: 2000 });
         check(got2 === null, 'a silent confirm window proves nothing', got2 ? 'claimed a loop' : '');
+
+        // Five minutes of music, then the player ticks over in a faint 2 s cycle
+        // for ever: a state loop, but the tune has ended.
+        const music = Math.round(300 * FRAME_HZ), tick = 100;
+        const idle = makeGrid(music + tick * 4 + W);
+        fillPattern(idle, 0, music, 13);
+        const one = makeGrid(tick);
+        // Loud enough to pass the tail's own energy floor, far below the music.
+        for (let f = 0; f < tick; f++) for (let b = 0; b < NUM_BARS; b++) one[f * NUM_BARS + b] = 10 + (f + b) % 5;
+        for (let c = 0; c * tick < tick * 4 + W; c++) idle.set(one.subarray(0, Math.min(tick, idle.length / NUM_BARS - music - c * tick) * NUM_BARS), (music + c * tick) * NUM_BARS);
+        const got3 = detectLoop(idle, idle.length / NUM_BARS, NUM_BARS, MAX_HEIGHT, FRAME_HZ, 2, { intro: music, period: tick });
+        check(got3 === null, 'a faint idle cycle after the music is an ending, not the loop', got3 ? 'claimed a loop' : '');
     }
 
     console.log('findStatePeriod: where a fingerprint stream first repeats');
