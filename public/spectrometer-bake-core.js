@@ -165,6 +165,7 @@ async function renderAndAnalyze(sidBytes, loadEngine, options = {}) {
     // without one, or if the audio disagrees at the target, nothing changes. The
     // analyser CPU lives in the resid module, whichever engine renders the audio.
     const HINT_TAIL = 6;      // seconds past intro+period: detectLoop's 4 s window plus slack
+    const HINT_SILENCE_MAX = 60;   // longest quiet stretch a pending state loop may excuse
     let hint = null;
     try {
         const pre = findStateLoop(await loadEngine('resid'), sidBytes, {
@@ -257,9 +258,11 @@ async function renderAndAnalyze(sidBytes, loadEngine, options = {}) {
             // Long-silence early exit (only after the tune has actually made sound).
             // While a state loop is pending, silence shorter than its period is
             // part of the tune - a loop can hold a quiet tail before it comes
-            // round - so only silence outlasting a whole period ends the render.
+            // round - so only silence outlasting the period ends the render.
+            // Bounded, so a player that idles through a long silent cycle after
+            // the music has stopped cannot hold the render for that whole cycle.
             const silenceStop = (sawSignal ? SILENCE_STOP : NEVER_SOUNDED_STOP)
-                + (hint ? Math.ceil(hint.period / frameHz * sampleRate) : 0);
+                + (hint ? Math.ceil(Math.min(HINT_SILENCE_MAX, hint.period / frameHz) * sampleRate) : 0);
             if (peak >= SILENCE_LEVEL) { sawSignal = true; silentRun = 0; }
             else if ((silentRun += got) >= silenceStop) {
                 stoppedOnSilence = true;

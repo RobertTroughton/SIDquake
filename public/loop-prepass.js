@@ -151,7 +151,14 @@ export function fingerprintTune(module, sidBytes, { subtune = 0, maxFrames, isNt
         for (let i = 0; i < len; i++) {
             const addr = api.seqItem(i);
             x ^= addr; x = Math.imul(x, 0x01000193);
-            x ^= api.rd(addr); x = Math.imul(x, 0x01000193);
+            // The master volume nibble is left out: a player that fades at the
+            // end of its loop tends to carry the fade counter into the next
+            // pass, so $D418 comes round one step different every time and the
+            // state never repeats at all (Blue_Earth_Turned_into_Grey, Elysoun)
+            // although the music does. A level that genuinely differs between
+            // passes still fails the audio check, which is what decides.
+            const mask = (addr & 0x1f) === 0x18 ? 0xf0 : 0xff;
+            x ^= api.rd(addr) & mask; x = Math.imul(x, 0x01000193);
         }
         hashes[calls] = x >>> 0;
     }
