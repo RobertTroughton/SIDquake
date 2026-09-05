@@ -210,6 +210,8 @@ byte-for-byte: `scripts/test-baked-decoder.js` (baked FFT stream) and
 `scripts/test-shadow-replay.js` (shadow-register replay order).
 `scripts/test-timer-layout.js` also drives assembled players, calling each one's
 timer routines and diffing memory to check where the play-time clock lands;
+`scripts/test-loop-prepass.js` steps real tunes from `SID/` on the 6510 analyser
+and checks the register pre-pass finds HVSC's loop period to the frame;
 `scripts/test-logo-fit.js` covers the logo placement maths. Almost nothing
 covers the browser UI — the exceptions are `scripts/mobile-layout-check.js`
 (HVSC and Studio modals at phone widths) and `scripts/logo-drop-check.js`

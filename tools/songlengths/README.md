@@ -211,14 +211,19 @@ Two things dominate:
   verified not to leak state between them (same results shared vs fresh, and in
   reverse order), but it is worth re-checking if the engine is ever rebuilt.
 
-### A faster measurement is possible
+### The register pre-pass
 
-This tool detects loops from the *rendered audio*, reusing the same analysis the
-spectrometer bake uses — proven code, but it pays for full SID synthesis on every
-tune. The SID **register writes** are also exactly periodic when a tune loops, and
-getting them needs only the 6510 emulation (`wasm/cpu6510_wasm.cpp` already has
-SID write tracking), skipping audio synthesis entirely. That would likely be
-several times faster and more precise. It is a second detector with its own
-failure modes, and nothing to validate it against until this run exists — so it
-is deliberately not what this tool does. The results here would be the thing to
-validate it against.
+Loops are confirmed from the *rendered audio*, reusing the same analysis the
+spectrometer bake uses, but the render no longer searches blind. The scan first
+steps the tune's player on the 6510 analyser (`public/loop-prepass.js`) for the
+whole budget — about a second of work — and reads off the frame its SID writes
+start repeating from and the exact period they repeat with. The audible loop is
+a divisor of that period starting no later than that intro, so the audio render
+stops after intro + one period + a confirm window, roughly a third of what the
+two-pass search rendered, and a loop that holds a long silent tail is no longer
+cut short as an ending. The state loop is never trusted alone: a period the
+audio does not repeat at is dropped and the full search runs as before, and a
+tune the analyser cannot drive (an init that never returns, a BASIC tune) gets
+no pre-pass at all. Where the two differ on a looping tune, the audio wins —
+the player's first pass often differs from later ones in something inaudible
+(a pulse width carried over from the loop's end), and HVSC counts what is heard.

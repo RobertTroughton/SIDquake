@@ -35,6 +35,7 @@
 // of the analysis the UI shows.
 
 import * as bake from './spectrometer-bake.js';
+import { findStateLoop } from './loop-prepass.js';
 
 export const DEFAULT_ENGINE = 'fp';
 export const ENGINES = ['resid', 'fp'];
@@ -145,7 +146,10 @@ async function renderAndAnalyze(sidBytes, loadEngine, options = {}) {
     const loaded = api.load(sidPtr, sidBytes.length);
     if (module._free) module._free(sidPtr);
     if (loaded < 0) throw new Error(`spectrometer bake: audio_load_sid failed (${loaded})`);
-    if (subtune) api.setSubtune(subtune);
+    // Always select: `subtune` is a 0-based index, and skipping the call for 0
+    // left the engine on the file's own start song, so song 1 of a tune that
+    // starts on song 3 was rendered as song 3.
+    api.setSubtune(subtune || 0);
     // PAL vs NTSC decides the raster grid the bars are baked on (the C64 replays
     // one keyframe per 2 raster frames): PAL 50.1245 Hz, NTSC 59.826 Hz - not a
     // round 50, or the bars drift ~0.2 s per loop.
@@ -153,6 +157,37 @@ async function renderAndAnalyze(sidBytes, loadEngine, options = {}) {
     const frameHz = isNtsc ? 59.826 : 50.1245;
 
     const session = bake.createBakeSession(sampleRate, { numBars, maxHeight, frameHz, maxSeconds, minLoopSeconds });
+
+    // Register pre-pass (loop-prepass.js): step the tune's player on the 6510
+    // analyser for the whole window - about a second - and ask where its state
+    // repeats. With an answer the render needs only intro + one period + a
+    // confirm window, and detectLoop checks that one lag instead of every lag;
+    // without one, or if the audio disagrees at the target, nothing changes. The
+    // analyser CPU lives in the resid module, whichever engine renders the audio.
+    const HINT_TAIL = 6;      // seconds past intro+period: detectLoop's 4 s window plus slack
+    let hint = null;
+    try {
+        const pre = findStateLoop(await loadEngine('resid'), sidBytes, {
+            subtune: subtune || 0, isNtsc: !!isNtsc,
+            maxFrames: Math.floor(maxSeconds * frameHz),
+            minLoopFrames: Math.round(minLoopSeconds * frameHz),
+            confirmFrames: Math.round(HINT_TAIL * frameHz),
+        });
+        if (pre) hint = { intro: pre.introFrames, period: pre.periodFrames };
+    } catch (e) {
+        hint = null;          // the analyser could not drive this tune; search the audio as before
+    }
+    if (hint) {
+        onProgress('Possible loop found — checking it holds', 0,
+            { seconds: 0, totalSeconds: maxSeconds, news: 'maybe' });
+    }
+    // Where the hinted render is first checked against the audio, and how far it
+    // may run on while the stretch it would check is silent: a loop can hold a
+    // quiet passage before it comes round, and a whole second pass settles it.
+    const hintSamples = (frames) => Math.floor(Math.min(maxSeconds, (hint.intro + frames) / frameHz + HINT_TAIL) * sampleRate);
+    const hintTarget = hint ? hintSamples(hint.period) : 0;
+    const hintLimit = hint ? hintSamples(2 * hint.period) : 0;
+    let nextHintTry = hintTarget;
 
     const CHUNK = 8192;
     const bufPtr = module._malloc(CHUNK * 2);   // int16 samples
@@ -220,8 +255,13 @@ async function renderAndAnalyze(sidBytes, loadEngine, options = {}) {
             // being checked, 'found' for something settled. The UI keeps those on
             // their own line instead of letting them flash through the counter.
             // Long-silence early exit (only after the tune has actually made sound).
+            // While a state loop is pending, silence shorter than its period is
+            // part of the tune - a loop can hold a quiet tail before it comes
+            // round - so only silence outlasting a whole period ends the render.
+            const silenceStop = (sawSignal ? SILENCE_STOP : NEVER_SOUNDED_STOP)
+                + (hint ? Math.ceil(hint.period / frameHz * sampleRate) : 0);
             if (peak >= SILENCE_LEVEL) { sawSignal = true; silentRun = 0; }
-            else if ((silentRun += got) >= (sawSignal ? SILENCE_STOP : NEVER_SOUNDED_STOP)) {
+            else if ((silentRun += got) >= silenceStop) {
                 stoppedOnSilence = true;
                 onProgress(sawSignal ? 'Silence detected — the tune has ended'
                                      : 'No audio from this engine — rescanning', 1,
@@ -229,7 +269,35 @@ async function renderAndAnalyze(sidBytes, loadEngine, options = {}) {
                       loopFound: sawSignal, news: 'found' });
                 break;
             }
-            if ((sinceCheck += got) >= checkInterval(rendered)) {
+            if (hint) {
+                // Nothing to poll for until the hinted stretch has been rendered.
+                if (rendered >= nextHintTry) {
+                    nextHintTry = rendered + sampleRate * 2;
+                    const loop = session.tryLoop(hint);
+                    const secs = rendered / sampleRate;
+                    if (loop) {
+                        foundLoop = true;
+                        onProgress('Loop found — no need to scan any further', 1,
+                            { seconds: secs, totalSeconds: maxSeconds, loopFound: true, news: 'found' });
+                        break;
+                    }
+                    // A silent tail says nothing either way (the confirm window
+                    // needs signal): let the render run on, to at most a second
+                    // full pass. Anything else means the audio does not repeat
+                    // where the player's state does - a timer the analyser does
+                    // not model, say - so forget the hint and search the audio
+                    // from here on as if there had never been one.
+                    const tailSilent = silentRun >= sampleRate * 4;
+                    if (!tailSilent || rendered >= hintLimit) {
+                        // The audio search that follows may still land on much
+                        // the same period at a nearby lag; count that candidate
+                        // as standing from here rather than from its next poll.
+                        pending = { period: hint.period / frameHz, firstSeen: secs };
+                        hint = null;
+                        sinceCheck = 0;
+                    }
+                }
+            } else if ((sinceCheck += got) >= checkInterval(rendered)) {
                 sinceCheck = 0;
                 const loop = session.tryLoop();
                 const secs = rendered / sampleRate;
@@ -285,6 +353,10 @@ async function renderAndAnalyze(sidBytes, loadEngine, options = {}) {
         numBars, frameHz, isNtsc, engine,
         rows: session.rows(),
         renderedSeconds: session.fedSeconds(),
+        // The state loop the render was stopped on, for the detection that runs
+        // over these rows later: they hold one pass of it, not the two the
+        // unhinted search would need. Null whenever the render ended any other way.
+        loopHint: foundLoop && hint ? hint : null,
         hitCap: !foundLoop && !stoppedEarly && rendered >= total,
         // The user stopped the scan and asked for what was found so far, so
         // nothing downstream should treat this as "we searched everything".
@@ -392,6 +464,7 @@ export function createBakeCore(loadEngine) {
                 // resolveKeyframes. Callers pricing a bake leave this off.
                 measureOnly: options.measureOnly,
                 analyzedSeconds: cache.rows.renderedSeconds, hitCap: cache.rows.hitCap,
+                loopHint: cache.rows.loopHint,
             });
             return {
                 looped: r.looped,
@@ -448,6 +521,7 @@ export function createBakeCore(loadEngine) {
                 forceLoop: !!options.forceLoop,
                 analyzedSeconds: cache.rows.renderedSeconds,
                 hitCap: cache.rows.hitCap,
+                loopHint: cache.rows.loopHint,
                 onProgress,
             });
             result.engine = cache.rows.engine;

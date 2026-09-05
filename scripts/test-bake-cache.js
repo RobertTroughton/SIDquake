@@ -50,8 +50,8 @@ function stubEngine(counter) {
     let pos = 0;
     const api = {
         audio_init: () => { pos = 0; },
-        audio_load_sid: () => { counter.renders++; return 0; },
-        audio_set_subtune: () => {},
+        audio_load_sid: () => { counter.renders++; counter.subtune = null; return 0; },
+        audio_set_subtune: (n) => { counter.subtune = n; },
         audio_set_sampling_method: () => {},
         audio_get_is_ntsc: () => 0,
         audio_cleanup: () => {},
@@ -90,6 +90,10 @@ function stubEngine(counter) {
     const afterFirst = counter.renders;
     check(afterFirst > 0, 'a tune is rendered the first time it is analysed',
         `${afterFirst} render(s)`);
+    // subtune is a 0-based index. Leaving the engine on its own start song for
+    // song 1 rendered song 3 of a tune that starts on song 3.
+    check(counter.subtune === 0, 'song 1 is selected explicitly, not left to the file\'s start song',
+        `set_subtune(${counter.subtune})`);
 
     await run(a);
     check(counter.renders === afterFirst, 'analysing it again reuses the render',

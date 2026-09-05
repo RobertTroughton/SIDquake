@@ -108,6 +108,18 @@ Compiled into `sidplayfp.wasm` (playback only, lazily loaded):
   A scan that resolves neither a loop nor an ending gives the C64 a running
   clock with no total, and offers "Keep looking" — the same search with the
   window doubled for that tune
+- The scan itself (`spectrometer-bake-core.js` `renderAndAnalyze`) runs a
+  register pre-pass first (`loop-prepass.js`): the tune's player is stepped on
+  the 6510 analyser for the whole window, about a second's work, and the frame
+  its SID writes start repeating from and the exact period they repeat with
+  come out. The audible loop can only be a divisor of that period, starting no
+  later than that intro, so the audio render stops after intro + one period +
+  a confirm window and `detectLoop` checks that one lag (its `hint`) instead of
+  polling every lag for two passes. Silence shorter than the period is part of
+  the tune while a hint stands, which is what lets a loop with a long quiet
+  tail (Crystalline, JCH) be found rather than reported as an ending. A hint
+  the audio does not confirm is dropped and the old search carries on from
+  where the render is; a tune the analyser cannot drive gets no hint at all
 - Files holding several tunes (`multiSongExport`): everything that can only
   describe one tune — the song length, the forced loop, the baked spectrometer
   — is off while the export still holds all of them, and the scan does not run

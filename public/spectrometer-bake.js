@@ -187,6 +187,12 @@ export const yieldToEventLoop = (() => {
     if (typeof MessageChannel === 'undefined') {
         return () => new Promise(r => setTimeout(r, 0));
     }
+    // Node has no background tabs to be throttled in, and an open MessagePort
+    // there keeps the process alive after the last render has finished, so
+    // every script that imports this module has to process.exit() by hand.
+    if (typeof window === 'undefined' && typeof setImmediate === 'function') {
+        return () => new Promise(r => setImmediate(r));
+    }
     const channel = new MessageChannel();
     const queue = [];
     channel.port1.onmessage = () => { const resolve = queue.shift(); if (resolve) resolve(); };
@@ -551,7 +557,17 @@ async function kmeans(data, numRows, dim, K, iters, seed, onTick, snap) {
 // `kf` is a quantized column matrix on ANY uniform time grid with `keyframeHz`
 // rows per second; callers now pass the full FRAME-rate grid (see resolveKeyframes:
 // SID loop periods are integral in frames, not keyframes) and map the result back.
-function detectLoop(kf, nk, numBars, maxHeight, keyframeHz = 25, minLoopSeconds = 2) {
+//
+// `hint`, when given, is the STATE loop the register pre-pass found for this tune
+// (loop-prepass.js): { intro, period } in rows of this grid, exact. The player's
+// writes repeat from `intro` every `period`, so the audible loop can only be a
+// divisor of that period starting no later than that intro, and the search
+// collapses to: does the audio agree at that one lag, which divisor is the
+// fundamental to the ear, and where does the audible intro end. This needs only
+// intro + period + the confirm window of audio rather than two full passes, which
+// is what lets the render stop that much sooner. A hint the audio does not bear
+// out returns null, and the caller falls back to the full search.
+function detectLoop(kf, nk, numBars, maxHeight, keyframeHz = 25, minLoopSeconds = 2, hint = null) {
     // Windows are wall-clock spans, scaled to the grid rate so the detector
     // behaves the same at any rows-per-second (at 25 Hz these are the original 100/50/12).
     const W = Math.max(8, Math.round(4.0 * keyframeHz));    // tail confirm window (~4 s)
@@ -560,7 +576,7 @@ function detectLoop(kf, nk, numBars, maxHeight, keyframeHz = 25, minLoopSeconds 
     // musical phrase before we call the tune repeated.
     const Pmin = Math.max(4, Math.round(minLoopSeconds * keyframeHz));
     const NOTE = Math.max(2, Math.round(0.48 * keyframeHz));// ~held-note span; plateau off-by-one refine
-    if (nk < 2 * W + Pmin + 10) return null;
+    if (!hint && nk < 2 * W + Pmin + 10) return null;
 
     // Tolerant match: SID's noise LFSR means audio isn't byte-identical across
     // loops even though the tune is deterministic, so compare on average
@@ -591,6 +607,82 @@ function detectLoop(kf, nk, numBars, maxHeight, keyframeHz = 25, minLoopSeconds 
     let energy = 0;
     for (let x = 0; x < W; x++) for (let b = 0; b < numBars; b++) energy += kf[(tail + x) * numBars + b];
     if (energy / (W * numBars) < maxHeight * 0.06) return null;
+
+    // Loop start = the end of the intro, i.e. the last point where the stream
+    // genuinely differs from itself one period later.
+    //
+    // Judged over a WINDOW rather than a single column. Taking the last lone
+    // column above REJECT made the whole intro hostage to one transient: on
+    // The_Mighty_Bulldozer/Wonderful_Tunes_and_Graphics_tune_7, exactly 4 columns
+    // of 15,180 crossed the threshold - two of them adjacent, everything either
+    // side reading ~0 - and that one blip reported a 220 s intro on a tune that
+    // loops from the very first frame, doubling its measured length.
+    //
+    // What separates the two cases is the DENSITY of mismatch nearby, not how many
+    // columns in a row cross the line. Measured over the same ~4 s window used to
+    // confirm the period, of the 200 columns below the decision point:
+    //   the spurious 220 s intro above had 1 mismatching  (0.5%)
+    //   a genuine 4 s intro (6r6-selfiesfromtheex) had 43 (21.5%)
+    // so a 10% floor separates them by an order of magnitude either way. Requiring
+    // a consecutive RUN instead would fail that real intro, whose columns hover
+    // either side of REJECT rather than all clearing it.
+    const introNeed = Math.max(4, Math.round(W * 0.10));
+    const introFor = (P) => {
+        const nDiff = nk - P;
+        if (nDiff <= 0) return 0;
+        const over = new Uint8Array(nDiff);           // 1 = this column clearly differs
+        for (let i = 0; i < nDiff; i++) over[i] = colDiff(i, i + P) > REJECT ? 1 : 0;
+        let run = 0;                                  // columns over REJECT in [i, i+W)
+        for (let i = nDiff - 1; i >= 0; i--) {
+            run += over[i];
+            if (i + W < nDiff) run -= over[i + W];
+            if (run >= introNeed) {
+                // The intro ends at the LAST column that actually differs, not at
+                // the window edge - otherwise every intro would be reported up to
+                // 4 s long.
+                const hi = Math.min(nDiff, i + W);
+                for (let j = hi - 1; j >= i; j--) if (over[j]) return j + 1;
+                return 0;
+            }
+        }
+        return 0;
+    };
+
+    if (hint) {
+        let HP = Math.round(hint.period);
+        const HI = Math.max(0, Math.round(hint.intro));
+        if (HP < Pmin || nk - HI - HP < W) return null;
+        // Mean per-bar diff at lag P over the stretch the state loop covers,
+        // [HI, nk) - the only part of the stream that can be expected to repeat.
+        const span = (P) => {
+            let s = 0, n = 0;
+            for (let i = HI + P; i < nk; i++) { s += colDiff(i, i - P); n++; }
+            return n ? s / n : Infinity;
+        };
+        // A frame either side: a multispeed period is converted through the CIA
+        // timer and can land a frame off the audio grid. The hinted lag keeps
+        // ties, so an exact vsync period is never nudged by noise.
+        let best = span(HP);
+        for (const d of [-1, 1, -2, 2]) {
+            const q = HP + d;
+            if (q < Pmin || nk - HI - q < W) continue;
+            const v = span(q);
+            if (v < best) { best = v; HP = q; }
+        }
+        if (best > MATCH) return null;
+        // The fundamental to the ear: the smallest divisor of the state period
+        // the audio repeats at too. Something inaudible alternating between
+        // passes doubles the state period without doubling the music.
+        let P = HP;
+        for (let d = Pmin; d < HP; d++) {
+            if (HP % d === 0 && span(d) <= MATCH) { P = d; break; }
+        }
+        // The audible intro can end before the state one (a first pass that
+        // differs only in something the ear does not follow), never after it.
+        const I = Math.min(HI, introFor(P));
+        if (nk - P - I < W) return null;
+        return { loopStart: I, loopEnd: I + P };
+    }
 
     // Full-stream self-similarity at lag P: mean per-bar diff over the WHOLE
     // stream. A long render holds many loops, so the intro barely dents the mean
@@ -644,44 +736,7 @@ function detectLoop(kf, nk, numBars, maxHeight, keyframeHz = 25, minLoopSeconds 
     // loop" (store the full stream) than a wrong period the C64 wraps out of sync.
     if (residual(P) > MATCH) return null;
 
-    // Loop start = the end of the intro, i.e. the last point where the stream
-    // genuinely differs from itself one period later.
-    //
-    // Judged over a WINDOW rather than a single column. Taking the last lone
-    // column above REJECT made the whole intro hostage to one transient: on
-    // The_Mighty_Bulldozer/Wonderful_Tunes_and_Graphics_tune_7, exactly 4 columns
-    // of 15,180 crossed the threshold - two of them adjacent, everything either
-    // side reading ~0 - and that one blip reported a 220 s intro on a tune that
-    // loops from the very first frame, doubling its measured length.
-    //
-    // What separates the two cases is the DENSITY of mismatch nearby, not how many
-    // columns in a row cross the line. Measured over the same ~4 s window used to
-    // confirm the period, of the 200 columns below the decision point:
-    //   the spurious 220 s intro above had 1 mismatching  (0.5%)
-    //   a genuine 4 s intro (6r6-selfiesfromtheex) had 43 (21.5%)
-    // so a 10% floor separates them by an order of magnitude either way. Requiring
-    // a consecutive RUN instead would fail that real intro, whose columns hover
-    // either side of REJECT rather than all clearing it.
-    const nDiff = nk - P;
-    const introNeed = Math.max(4, Math.round(W * 0.10));
-    let I = 0;
-    if (nDiff > 0) {
-        const over = new Uint8Array(nDiff);           // 1 = this column clearly differs
-        for (let i = 0; i < nDiff; i++) over[i] = colDiff(i, i + P) > REJECT ? 1 : 0;
-        let run = 0;                                  // columns over REJECT in [i, i+W)
-        for (let i = nDiff - 1; i >= 0; i--) {
-            run += over[i];
-            if (i + W < nDiff) run -= over[i + W];
-            if (run >= introNeed) {
-                // The intro ends at the LAST column that actually differs, not at
-                // the window edge - otherwise every intro would be reported up to
-                // 4 s long.
-                const hi = Math.min(nDiff, i + W);
-                for (let j = hi - 1; j >= i; j--) if (over[j]) { I = j + 1; break; }
-                break;
-            }
-        }
-    }
+    const I = introFor(P);
     if (nk - P - I < W) return null;                  // need a full confirmed cycle
     return { loopStart: I, loopEnd: I + P };
 }
@@ -728,11 +783,12 @@ export function createBakeSession(sampleRate, options = {}) {
         // Detection runs at frame resolution (loop period in FRAMES) for the same
         // reason as resolveKeyframes: an odd-frame loop is invisible on the
         // keyframe grid. The caller only uses the truthiness to stop the render.
-        tryLoop() {
+        // `hint` is the register pre-pass's state loop in frames, if it found one.
+        tryLoop(hint = null) {
             const nframes = an.rows.count;
             if (nframes < 8) return null;
             pollGrid = whitenQuantize(an.rows, o.maxHeight, 1, nframes, pollGrid);
-            return detectLoop(pollGrid, nframes, o.numBars, o.maxHeight, o.frameHz, o.minLoopSeconds);
+            return detectLoop(pollGrid, nframes, o.numBars, o.maxHeight, o.frameHz, o.minLoopSeconds, hint);
         },
     };
 }
@@ -778,7 +834,10 @@ function resolveKeyframes(store, o) {
     // half-keyframe wrap drift per cycle is imperceptible next to "no loop found".
     const kfF = step === 1 ? kf : whitenQuantize(store, o.maxHeight, 1, nframes);
     const nkF = step === 1 ? nk : nframes;
-    const loop = detectLoop(kfF, nkF, o.numBars, o.maxHeight, o.frameHz, o.minLoopSeconds);
+    // o.loopHint: the state loop the register pre-pass found for these rows, in
+    // frames. The render was stopped on it, so the rows hold intro + one period
+    // + a confirm window rather than the two passes the unhinted search needs.
+    const loop = detectLoop(kfF, nkF, o.numBars, o.maxHeight, o.frameHz, o.minLoopSeconds, o.loopHint || null);
     // Frame-exact loop bounds, kept alongside the keyframe-rounded ones. The C64
     // stream only needs the keyframe grid, but the song-length tool
     // (tools/songlengths) wants the raster-frame counts the detector actually found,

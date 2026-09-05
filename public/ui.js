@@ -6179,9 +6179,12 @@ class UIController {
             const base = tuneKey(sidBytes, o.subtune, 44100, o.maxSeconds, o.minLoopSeconds, o.engine);
             // v2 distinguishes a tune that faded out from one still playing where
             // the analysis stopped; v3 measures to where the music really ends
-            // rather than to the spectrometer's stored-length cap. Older entries
-            // answer a different question, so they must not be read back.
-            return `${base}|${o.numBars}x${o.maxHeight}|${o.outputMaxSeconds || 0}|v3`;
+            // rather than to the spectrometer's stored-length cap; v4 renders the
+            // selected song rather than the file's start song when song 1 is
+            // picked, and no longer mistakes a long silence inside a loop for the
+            // tune's end. Older entries answer a different question, so they
+            // must not be read back.
+            return `${base}|${o.numBars}x${o.maxHeight}|${o.outputMaxSeconds || 0}|v4`;
         } catch (e) {
             return null;   // no key, no cache - the scan still runs
         }

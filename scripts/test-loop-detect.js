@@ -17,6 +17,14 @@
  *   is a repeat, not a loop, so a candidate that appears late has to survive
  *   proportionally more music before the render stops on it.
  *
+ *   With a HINT from the register pre-pass (public/loop-prepass.js: the frame the
+ *   player's state repeats from and its exact period), detectLoop has one pass of
+ *   audio and one lag to work with. It must still find the audible fundamental
+ *   (a divisor of the state period), the audible intro (never later than the
+ *   state one), and reject a hint the audio does not bear out. findStatePeriod
+ *   is the pure half of that pre-pass, checked here on synthetic fingerprints;
+ *   scripts/test-loop-prepass.js runs the real thing on real tunes.
+ *
  * Run with `node scripts/test-loop-detect.js`.
  */
 
@@ -157,6 +165,103 @@ async function main() {
         const frames = grid.length / NUM_BARS;
         grid.fill(0, (frames - Math.round(6 * FRAME_HZ)) * NUM_BARS);
         check(detectSeconds(detectLoop, grid) === null, 'a silent tail is an ending, not a loop');
+    }
+
+    console.log('detectLoop with a state-loop hint: one pass of audio is enough');
+    {
+        // The register pre-pass proved the state repeats from I every P; the
+        // render holds intro + one period + the confirm window, nothing like the
+        // two passes the unhinted search needs, and the answer must still come out.
+        const P = 3600, I = 900, W = Math.round(4.0 * FRAME_HZ);
+        const grid = makeLooping(P, 5, I);
+        const short = grid.subarray(0, (I + P + W + 100) * NUM_BARS);
+        const hint = { intro: I, period: P };
+        const noHint = detectSeconds(detectLoop, short);
+        check(noHint === null, 'without the hint, one pass is not enough to claim a loop');
+        const got = detectLoop(short, short.length / NUM_BARS, NUM_BARS, MAX_HEIGHT, FRAME_HZ, 2, hint);
+        check(got && got.loopEnd - got.loopStart === P, 'with it, the period is the hinted one',
+            got ? `${got.loopEnd - got.loopStart} frames` : 'no loop');
+        check(got && Math.abs(got.loopStart - I) <= 5, 'and the intro is measured where the music repeats',
+            got ? `${got.loopStart} vs ${I}` : '-');
+    }
+
+    console.log('detectLoop with a hint: the audible loop can be shorter than the state loop');
+    {
+        // Something inaudible alternates between passes, so the player's state
+        // takes two passes to come round while the bars repeat every pass. The
+        // hint says 2P; the answer has to be P.
+        const P = 2000, W = Math.round(4.0 * FRAME_HZ);
+        const grid = makeLooping(P, 4);
+        const short = grid.subarray(0, (2 * P + W + 100) * NUM_BARS);
+        const got = detectLoop(short, short.length / NUM_BARS, NUM_BARS, MAX_HEIGHT, FRAME_HZ, 2, { intro: 0, period: 2 * P });
+        check(got && got.loopEnd - got.loopStart === P, 'the fundamental divisor of the hinted period wins',
+            got ? `${got.loopEnd - got.loopStart} frames` : 'no loop');
+    }
+
+    console.log('detectLoop with a hint: the audible intro can end before the state intro');
+    {
+        // A first pass that differs only in something the ear does not follow
+        // shows up as a long state intro. The audio repeats from the top.
+        const P = 2500, W = Math.round(4.0 * FRAME_HZ), HI = 900;
+        const grid = makeLooping(P, 4);
+        const short = grid.subarray(0, (HI + P + W + 100) * NUM_BARS);
+        const got = detectLoop(short, short.length / NUM_BARS, NUM_BARS, MAX_HEIGHT, FRAME_HZ, 2, { intro: HI, period: P });
+        check(got && got.loopStart === 0, 'the intro is where the bars repeat from, not where the state does',
+            got ? `${got.loopStart}` : 'no loop');
+    }
+
+    console.log('detectLoop with a hint the audio does not bear out');
+    {
+        const W = Math.round(4.0 * FRAME_HZ);
+        const grid = makeGrid(Math.round(120 * FRAME_HZ));
+        fillPattern(grid, 0, grid.length / NUM_BARS, 9);
+        const got = detectLoop(grid, grid.length / NUM_BARS, NUM_BARS, MAX_HEIGHT, FRAME_HZ, 2, { intro: 0, period: 2000 });
+        check(got === null, 'a wrong hint is rejected, not believed', got ? 'claimed a loop' : '');
+        const silent = makeLooping(2000, 3);
+        silent.fill(0, (silent.length / NUM_BARS - W - 20) * NUM_BARS);
+        const got2 = detectLoop(silent, silent.length / NUM_BARS, NUM_BARS, MAX_HEIGHT, FRAME_HZ, 2, { intro: 0, period: 2000 });
+        check(got2 === null, 'a silent confirm window proves nothing', got2 ? 'claimed a loop' : '');
+    }
+
+    console.log('findStatePeriod: where a fingerprint stream first repeats');
+    {
+        const { findStatePeriod } = await import('../public/loop-prepass.js');
+        const rng = makeRng(77);
+        const seq = (n) => { const h = new Uint32Array(n); for (let i = 0; i < n; i++) h[i] = (rng() * 0x100000000) >>> 0; return h; };
+        const tile = (intro, one, cycles) => {
+            const h = new Uint32Array(intro.length + one.length * cycles);
+            h.set(intro, 0);
+            for (let c = 0; c < cycles; c++) h.set(one, intro.length + c * one.length);
+            return h;
+        };
+        const P = 3000, I = 700;
+        const h = tile(seq(I), seq(P), 4);
+        const r = findStatePeriod(h, h.length, 100, 200);
+        check(r && r.period === P && r.intro === I, 'intro and period are exact',
+            r ? `intro ${r.intro} period ${r.period}` : 'nothing');
+
+        // A phrase played four times in a row at the END of the scanned span is
+        // a repeat, not the loop: the true period explains the stream from the
+        // intro on, the riff only its own last passes.
+        const riff = seq(150);
+        const loopWithRiff = new Uint32Array(P);
+        loopWithRiff.set(seq(P - 4 * 150), 0);
+        for (let k = 0; k < 4; k++) loopWithRiff.set(riff, P - 4 * 150 + k * 150);
+        const h2 = tile(seq(I), loopWithRiff, 3);
+        const r2 = findStatePeriod(h2, h2.length, 100, 200);
+        check(r2 && r2.period === P, 'a riff repeated at the end of the span does not pass for the loop',
+            r2 ? `period ${r2.period}` : 'nothing');
+
+        const h3 = seq(20000);
+        check(findStatePeriod(h3, h3.length, 100, 200) === null, 'a stream that never repeats reports nothing');
+
+        // Two passes plus the confirm entries have to be seen: one and a bit is a repeat.
+        const h4 = tile(seq(0), seq(P), 2);
+        check(findStatePeriod(h4, h4.length, 100, 200) === null, 'two bare passes are not enough');
+        const h5 = tile(seq(0), seq(P), 2);
+        const h5x = new Uint32Array(h5.length + 200); h5x.set(h5); h5x.set(h5.subarray(0, 200), h5.length);
+        const r5 = findStatePeriod(h5x, h5x.length, 100, 200);
+        check(r5 && r5.period === P && r5.intro === 0, 'two passes plus the confirm entries are', r5 ? `period ${r5.period}` : 'nothing');
     }
 
     console.log('loopConfirmSeconds: how long a candidate must hold up');
