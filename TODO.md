@@ -147,6 +147,29 @@ Related and already scoped further down: "Stop searching / use what we have", an
 prompting at the cap instead of surrendering silently. Both matter more once the
 scan is something the user watches rather than waits on.
 
+**The register pre-pass** (`public/loop-prepass.js`, see `docs/ARCHITECTURE.md`)
+now finds the player's state loop before any audio is rendered, so a looping
+tune costs intro + one period + a confirm window of render rather than two or
+three passes. What it leaves open:
+
+- **It runs synchronously**: 0.1-3 s for a 20-minute window (the top end is
+  multispeed at 6-8 calls a frame). Invisible on the Worker path; a hitch on the
+  main-thread fallback. Chunk it with yields if that fallback ever matters.
+- **Tunes the analyser cannot drive get the old audio search**, which still has
+  the two weaknesses the pre-pass sidesteps: a silence longer than 10 s inside
+  the loop is taken for the end of the tune, and a candidate is dropped when a
+  poll's 4 s tail window lands in a quiet passage (Blending_Mode, unhinted:
+  proposed at 459 s, refuted at 519 s, accepted at 669 s), which resets the
+  persistence clock. Both are fixable in `detectLoop` alone if they turn out to
+  matter for RSID.
+- **A state period longer than the audible one is resolved by the audio**, so a
+  first pass that differs from later ones only in something inaudible (a pulse
+  width carried over from the loop's end, a fade counter) costs nothing. What is
+  not covered is the reverse: a register the fingerprint leaves out (the master
+  volume nibble) genuinely differing between passes is caught by the audio check
+  and falls back to the full search, so it can only cost time, never a wrong
+  answer.
+
 ## Progressive disclosure — what to show, hide, and restore
 
 The personas split cleanly into two populations, and today the app serves
