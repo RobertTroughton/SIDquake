@@ -212,7 +212,9 @@ byte-for-byte: `scripts/test-baked-decoder.js` (baked FFT stream) and
 timer routines and diffing memory to check where the play-time clock lands;
 `scripts/test-loop-prepass.js` steps real tunes from `SID/` on the 6510 analyser
 and checks the register pre-pass finds HVSC's loop period to the frame;
-`scripts/test-logo-fit.js` covers the logo placement maths. Almost nothing
+`scripts/test-range-fit.js` feeds the bake synthetic tones and checks the
+per-song frequency span it fits; `scripts/test-logo-fit.js` covers the logo
+placement maths. Almost nothing
 covers the browser UI — the exceptions are `scripts/mobile-layout-check.js`
 (HVSC and Studio modals at phone widths) and `scripts/logo-drop-check.js`
 (picking a logo lands in the input the exporter reads) and

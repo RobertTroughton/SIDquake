@@ -12,9 +12,9 @@
 //;                 -define SPECTROMETER_BAKED -binfile -o <out>.bin
 //; The .bin loads at $0800. Fixed entry points (see the runner):
 //;   $0800  jmp InitBaked          - operand = InitBaked's real address
-//;   $0803  jmp DecodeBakedFrame   - operand = DecodeBakedFrame's real address
-//;   $0806  .word targetBarHeights - where the decoded column lands
-//;   $0808  .word bakedJustLooped  - set to 1 on the frame the stream wraps
+//;   $0803  jmp TickBakedFrame     - operand = TickBakedFrame's real address
+//;   $0806  .word targetBarHeights - the column on show after each tick
+//;   $0808  .word bakedJustLooped  - set to 1 on the frame the last keyframe shows
 //;   $080A.. the config block the exporter patches (same order as the players)
 //; =============================================================================
 
@@ -29,7 +29,7 @@
 * = $0800 "test entry"
 
     jmp InitBaked                       //; $0800
-    jmp DecodeBakedFrame                //; $0803
+    jmp TickBakedFrame                  //; $0803
     .word targetBarHeights              //; $0806
     .word bakedJustLooped               //; $0808
 

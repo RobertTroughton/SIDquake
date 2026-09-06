@@ -1763,6 +1763,7 @@ class SIDquakePRGExporter {
         const bakedFps = (baked.keyframeHz || 25).toFixed(1);
         console.log(`Spectrometer bake: ${baked.segments}x${baked.segmentWidth} split, ${baked.numKeyframes} keyframes @${bakedFps}Hz` +
             `${baked.loopStart ? `, loop@${baked.loopStart}` : ''}, ` +
+            `${Math.round(baked.fMin)}-${Math.round(baked.fMax)}Hz${baked.rangeFitted ? ' (fitted)' : ''}, ` +
             `codebook@$${cbAddr.toString(16)} (${baked.codebook.length}B), ` +
             `index@$${idxAddr.toString(16)} (${baked.indices.length}B), ` +
             `total ${(baked.totalBytes / 1024).toFixed(1)}KB`);
@@ -1787,6 +1788,10 @@ class SIDquakePRGExporter {
             // 1x40 is the "everything freezes together" case.
             segments: baked.segments,
             segmentWidth: baked.segmentWidth,
+            // The span the bars cover, fitted to the tune's own spectrum.
+            fMin: baked.fMin,
+            fMax: baked.fMax,
+            rangeFitted: baked.rangeFitted,
             codebookBytes: baked.codebook.length,
             indexBytes: baked.indices.length,
             totalBytes: baked.totalBytes,

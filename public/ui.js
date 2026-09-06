@@ -2322,12 +2322,12 @@ class UIController {
                 <label class="option-label" for="advFps">Spectrometer frame rate</label>
                 <div class="option-control">
                     <select id="advFps" class="number-input">
-                        <option value="best"${bestSel}>Best (fits memory)</option>
+                        <option value="best"${bestSel}>Best (most detail that fits)</option>
                         ${fpk(1, '50 fps')}${fpk(2, '25 fps')}${fpk(3, '16.66 fps')}
                     </select>
                 </div>
             </div>
-            <p class="flow-note">Higher rates animate more smoothly; an export drops to the highest rate that fits C64 memory if the chosen one is too big.</p>
+            <p class="flow-note">The C64 interpolates between keyframes, so 25 fps already animates smoothly. A lower rate stores fewer keyframes, which buys the bars more slices (spectral detail) on a long tune; Best takes the most slices that fit C64 memory, at the highest rate that keeps them. A fixed rate that does not fit drops to the best one that does.</p>
             <div class="option-row">
                 <label class="option-label" for="advStoredLen">Max stored bars (no-loop tunes)</label>
                 <div class="option-control">
@@ -2362,14 +2362,15 @@ class UIController {
     }
 
     // Stored-length choices for a non-looping tune, labelled with the spectral
-    // detail each one buys. The thresholds are where chooseSegments() (see
-    // spectrometer-bake.js) drops a level: the index budget is budgetBytes minus
-    // the fixed 10 KB codebook, spent at segments x 50 bytes per second.
+    // detail each one buys at 25 fps. The thresholds are where chooseSegments()
+    // (see spectrometer-bake.js) drops a level: the index budget is budgetBytes
+    // minus the fixed 10 KB codebook, spent at segments x 25 bytes per second.
+    // 50 fps halves these lengths, 16.66 fps stretches them by half again.
     static STORED_LENGTH_CHOICES = [
-        { secs: 70,  label: '1:10 \u2014 5 slices (finest)' },
-        { secs: 90,  label: '1:30 \u2014 4 slices' },
-        { secs: 180, label: '3:00 \u2014 2 slices' },
-        { secs: 480, label: '8:00 \u2014 1 slice (longest, the default)' },
+        { secs: 140, label: '2:20 \u2014 5 slices at 25 fps (finest)' },
+        { secs: 180, label: '3:00 \u2014 4 slices at 25 fps' },
+        { secs: 360, label: '6:00 \u2014 2 slices at 25 fps' },
+        { secs: 480, label: '8:00 \u2014 1 slice at 25 fps (longest, the default)' },
     ];
 
     // Persist the frame-rate + stored-length controls; called after the options
@@ -5243,6 +5244,11 @@ class UIController {
         this._wireTimelineCopy(el);
     }
 
+    // 4300 -> "4.3 kHz", 40 -> "40 Hz".
+    _hzLabel(hz) {
+        return hz >= 1000 ? `${(hz / 1000).toFixed(1)} kHz` : `${Math.round(hz)} Hz`;
+    }
+
     // Draw the baked FFT stream's loop/timing timeline from the last export.
     // info is prgExporter.lastBakeInfo (null for non-FFT exports -> hidden).
     renderBakeTimeline(info) {
@@ -5282,7 +5288,11 @@ class UIController {
             title: 'Spectrometer timeline',
             // Segment count is the spectral detail: 5 slices animate independently,
             // 1 means all 40 bars share an index and move (or freeze) together.
-            subtitle: `${hz} fps · ${info.segments || 1}\u00d7${info.segmentWidth || 40} bars · ${kb(info.totalBytes)}`,
+            // The span is the part of the spectrum the bars cover, fitted to
+            // the tune, so the reader can tell a bass-heavy tune's bars from a
+            // bright one's.
+            subtitle: `${hz} fps · ${info.segments || 1}\u00d7${info.segmentWidth || 40} bars` +
+                `${info.fMax ? ` · ${this._hzLabel(info.fMin)}\u2013${this._hzLabel(info.fMax)}` : ''} · ${kb(info.totalBytes)}`,
             analyzedSeconds: info.analyzedSeconds,
             cappedAtMaxSeconds: info.cappedAtMaxSeconds,
         });
@@ -6208,11 +6218,16 @@ class UIController {
     }
 
     // Resolve the Advanced frame-rate MODE ('best' | 1 | 2 | 3) against the
-    // fitting rates. 'best' picks the highest fps that fits; a fixed rate is
-    // used if it fits, else we drop to the best that does (fellBack = true).
-    // Returns { rate, fellBack } or null when nothing fits even at 16.66 fps.
+    // fitting rates. 'best' picks the most spectral detail (slices) that fits,
+    // and the highest fps among the rates that give it - the C64 interpolates
+    // between keyframes, so a lower rate costs far less to the eye than losing
+    // slices does. A fixed rate is used if it fits, else we drop to the best
+    // that does (fellBack = true). Returns { rate, fellBack } or null when
+    // nothing fits even at 16.66 fps.
     resolveAdvancedRate(rates, mode) {
-        const best = rates.find(r => r.est.fits) || null;   // rates ordered 50→25→16.66
+        const fitting = rates.filter(r => r.est.fits);       // rates ordered 50→25→16.66
+        const mostSlices = fitting.reduce((m, r) => Math.max(m, r.est.segments), 0);
+        const best = fitting.find(r => r.est.segments === mostSlices) || null;
         if (mode === 'best') return best ? { rate: best, fellBack: false } : null;
         const wanted = rates.find(r => r.fpk === mode);
         if (wanted && wanted.est.fits) return { rate: wanted, fellBack: false };

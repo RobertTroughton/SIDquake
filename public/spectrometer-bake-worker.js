@@ -144,6 +144,7 @@ self.onmessage = (ev) => {
                     codebook: r.codebook.slice(), indices: r.indices.slice(),
                     numBars: r.numBars, maxHeight: r.maxHeight, K: r.K,
                     segments: r.segments, segmentWidth: r.segmentWidth,
+                    fMin: r.fMin, fMax: r.fMax, rangeFitted: r.rangeFitted,
                     keyframeHz: r.keyframeHz, numKeyframes: r.numKeyframes,
                     loopStart: r.loopStart, framesPerKeyframe: r.framesPerKeyframe,
                     looped: r.looped, fadedOut: r.fadedOut, truncated: r.truncated, forcedLoop: r.forcedLoop,

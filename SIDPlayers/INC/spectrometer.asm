@@ -713,11 +713,10 @@ UpdateBars:
     lda #$00
 #if !SPECTROMETER_BAKED
     //; Live/shadow: targetBarHeights is a per-frame accumulator the analysis refills
-    //; every frame, so consume (clear) it here. BAKED keyframes arrive at 25 Hz (every
-    //; 2nd frame): clearing would leave the in-between "tween" frame with no target, so
-    //; every bar took the decay path and dropped - a 25 Hz rise/fall sawtooth (the
-    //; flicker). Keeping the target latched lets the tween frame keep easing toward the
-    //; held keyframe; DecodeBakedFrame overwrites it when the next keyframe arrives.
+    //; every frame, so consume (clear) it here. BAKED: TickBakedFrame writes every
+    //; bar's target every frame (the interpolated column), so there is nothing to
+    //; consume and clearing it would only send a bar down the decay path for no
+    //; reason.
     sta targetBarHeights, x
 #endif
     beq !next+                  //; (always; A=0)
@@ -859,10 +858,10 @@ InitializeBarArrays:
 //; (256 * 40).
 //;
 //; The exporter chooses the segment count PER TUNE: 5 (x8 bars, best detail) when
-//; the index fits RAM - which is almost always, since a looped tune stores just one
-//; cycle - dropping to 4/2/1 for a long non-looping tune so it animates the whole
-//; way through instead of stopping at a memory cap. So the decoder reads the count
-//; and width from the data block rather than baking them in.
+//; the index fits RAM at the chosen keyframe rate - which is most tunes, since a
+//; looped tune stores just one cycle - dropping to 4/2/1 for a long one so it
+//; animates the whole way through instead of stopping at a memory cap. So the
+//; decoder reads the count and width from the data block rather than baking them in.
 //;
 //;   bakedCodebookPtr   ($50/$51)  page-aligned base of the codebook. It is stored
 //;                                 TRANSPOSED - one 256-byte page per bar - so bar b's
@@ -879,13 +878,29 @@ InitializeBarArrays:
 //;                                 can find matches in - worth ~9% of the index
 //;                                 stream. The decoder keeps one pointer per
 //;                                 segment instead of one striding pointer.)
-//;   bakedNumKeyframes  ($54/$55)  number of 25 Hz keyframes
+//;   bakedNumKeyframes  ($54/$55)  number of keyframes
 //;   bakedLoopStart     ($56/$57)  keyframe to wrap to at end of stream
 //;   bakedNumSegments   ($58)      segment count (1,2,4,5)
 //;   bakedSegWidth      ($59)      bars per segment (= 40 / bakedNumSegments)
 //;
 //; The bars of a segment all share that segment's index; the page just steps by one
-//; per bar. UpdateBars' attack/decay does the 25->50 Hz interpolation and release.
+//; per bar.
+//;
+//; Keyframes arrive every bakedFrameDivisor raster frames (1/2/3 = 50/25/16.66
+//; Hz). Rather than holding each one until the next lands, the decoder runs one
+//; keyframe AHEAD of the display and interpolates: bakedNext holds the keyframe
+//; just decoded, the target column walks from the current keyframe to it in
+//; equal steps over the frames in between, and lands on it exactly as it
+//; becomes current. Held keyframes gave every bar a 25 Hz sawtooth (a jump,
+//; then UpdateBars easing toward it for a frame); interpolated ones halve the
+//; error against the 50 Hz analysis, and make 16.66 Hz keyframes smoother than
+//; held 25 Hz ones - which is what lets a long tune trade frame rate for
+//; spectral detail. The walk is 8.8 fixed point per bar, seeded with a half so
+//; the shown height rounds to nearest: step = (next - cur) * (65536 / divisor)
+//; >> 8, read from a 256-entry signed table built at init (tweenMult, 24-bit
+//; accumulate so 1/3 carries its fraction). spectrometer-bake.js tweenColumn()
+//; models this bit-exactly and scripts/test-baked-decoder.js diffs the two.
+//;
 //; No zero page used (self-modifying operands), so it is safe alongside the music.
 //; =============================================================================
 
@@ -898,7 +913,8 @@ bakedLoopBaseHi:  .byte $00
 bakedSegCtr:      .byte $00              //; current segment (0..segments-1) during decode
 bakedBarsLeft:    .byte $00              //; bars remaining in the current segment
 bakedFrameCtr:    .byte $00              //; frames until the next keyframe (see TickBakedFrame)
-bakedJustLooped:  .byte $00              //; set to 1 when the stream wraps; player consumes it
+bakedJustLooped:  .byte $00              //; set to 1 on the frame the last keyframe shows; player consumes it
+bakedWrapPending: .byte $00              //; the decode ran ahead over the wrap; promoted to bakedJustLooped next keyframe
 segIdx:           .fill BAKED_MAX_SEGMENTS, $00
 //; One read pointer per segment, each walking its own planar stream one byte per
 //; keyframe. Rebuilt by SetIndexPointers at init and on every wrap.
@@ -907,16 +923,93 @@ bakedIdxPtrHi:    .fill BAKED_MAX_SEGMENTS, $00
 bakedPtrBaseLo:   .byte $00              //; SetIndexPointers argument (segment 0's address)
 bakedPtrBaseHi:   .byte $00
 
-//; Call once per frame. Decodes the next keyframe every bakedFrameDivisor frames
-//; (1/2/3 = 50/25/16.66 Hz) and holds between; UpdateBars interpolates the rest.
+//; Interpolation state. bakedNext is the keyframe decoded ahead; bakedAcc is the
+//; column on show in 8.8 (its high byte is targetBarHeights); bakedStep is the
+//; signed 8.8 change per frame toward bakedNext.
+bakedNext:        .fill NUM_FREQUENCY_BARS, $00
+bakedAccLo:       .fill NUM_FREQUENCY_BARS, $00
+bakedAccHi:       .fill NUM_FREQUENCY_BARS, $00
+bakedStepLo:      .fill NUM_FREQUENCY_BARS, $00
+bakedStepHi:      .fill NUM_FREQUENCY_BARS, $00
+//; delta (signed byte, two's complement index) -> per-frame step in 8.8
+bakedTweenLo:     .fill 256, $00
+bakedTweenHi:     .fill 256, $00
+//; 256 / divisor - the 8.8 step for a delta of one - with a fraction byte
+//; below it (frac, lo, hi), indexed by divisor 0..3: one frame per keyframe
+//; needs no steps at all.
+tweenMultLo:      .byte $00, $00, $00, $55
+tweenMultMid:     .byte $00, $00, $80, $55
+tweenMultHi:      .byte $00, $00, $00, $00
+tweenAcc:         .byte $00, $00, $00
+
+//; Call once per frame. Every bakedFrameDivisor frames the keyframe decoded
+//; ahead becomes the target and the next one is decoded; the frames between
+//; step the target toward that next keyframe.
 TickBakedFrame:
     lda bakedFrameCtr
-    bne !hold+
-    jsr DecodeBakedFrame
+    bne !tween+
+    jsr AdvanceBakedKeyframe
     lda bakedFrameDivisor
     sta bakedFrameCtr
-!hold:
     dec bakedFrameCtr
+    rts
+!tween:
+    dec bakedFrameCtr
+    ldx #NUM_FREQUENCY_BARS - 1
+!loop:
+    clc
+    lda bakedAccLo, x
+    adc bakedStepLo, x
+    sta bakedAccLo, x
+    lda bakedAccHi, x
+    adc bakedStepHi, x
+    sta bakedAccHi, x
+    sta targetBarHeights, x
+    dex
+    bpl !loop-
+    rts
+
+//; The keyframe in bakedNext becomes the column on show; decode the one after
+//; it and work out the per-frame step toward it.
+AdvanceBakedKeyframe:
+    ldx #NUM_FREQUENCY_BARS - 1
+!show:
+    lda bakedNext, x
+    sta bakedAccHi, x
+    sta targetBarHeights, x
+    dex
+    bpl !show-
+
+    //; The wrap the decode ran into last time lands now, with the last keyframe
+    //; on show - the same frame the held decoder flagged it on.
+    lda bakedWrapPending
+    beq !noWrap+
+    lda #$00
+    sta bakedWrapPending
+    lda #$01
+    sta bakedJustLooped
+!noWrap:
+
+    jsr DecodeBakedFrame
+
+    lda bakedFrameDivisor
+    cmp #$02
+    bcc !done+                           //; 50 fps: every frame is a keyframe, nothing to step
+    ldx #NUM_FREQUENCY_BARS - 1
+!step:
+    lda bakedNext, x
+    sec
+    sbc bakedAccHi, x
+    tay                                  //; Y = delta as a two's-complement byte
+    lda bakedTweenLo, y
+    sta bakedStepLo, x
+    lda bakedTweenHi, y
+    sta bakedStepHi, x
+    lda #$80                             //; round to nearest on the way
+    sta bakedAccLo, x
+    dex
+    bpl !step-
+!done:
     rts
 
 //; Point every segment at keyframe 0 of its own stream, given segment 0's address
@@ -941,11 +1034,96 @@ SetIndexPointers:
     bne !loop-
     rts
 
+//; Build the delta -> step table for this export's divisor: entry i is
+//; i * 65536 / divisor as 8.8, accumulated in 24 bits so the fraction of a
+//; third is carried; the negative half (i >= 128, i.e. delta = i - 256) is
+//; accumulated downward from zero so it is exactly the negated positive half.
+BuildTweenTable:
+    ldx bakedFrameDivisor
+    txa
+    and #$03
+    tax
+    lda tweenMultLo, x
+    sta !mult0+ + 1
+    sta !nmult0+ + 1
+    lda tweenMultMid, x
+    sta !mult1+ + 1
+    sta !nmult1+ + 1
+    lda tweenMultHi, x
+    sta !mult2+ + 1
+    sta !nmult2+ + 1
+
+    lda #$00
+    sta tweenAcc
+    sta tweenAcc + 1
+    sta tweenAcc + 2
+    ldx #$00
+!pos:
+    lda tweenAcc + 1
+    sta bakedTweenLo, x
+    lda tweenAcc + 2
+    sta bakedTweenHi, x
+    clc
+    lda tweenAcc
+!mult0:
+    adc #$00
+    sta tweenAcc
+    lda tweenAcc + 1
+!mult1:
+    adc #$00
+    sta tweenAcc + 1
+    lda tweenAcc + 2
+!mult2:
+    adc #$00
+    sta tweenAcc + 2
+    inx
+    bpl !pos-                            //; 0..127
+
+    lda #$00
+    sta tweenAcc
+    sta tweenAcc + 1
+    sta tweenAcc + 2
+    ldx #$ff
+!neg:
+    sec
+    lda tweenAcc
+!nmult0:
+    sbc #$00
+    sta tweenAcc
+    lda tweenAcc + 1
+!nmult1:
+    sbc #$00
+    sta tweenAcc + 1
+    lda tweenAcc + 2
+!nmult2:
+    sbc #$00
+    sta tweenAcc + 2
+    lda tweenAcc + 1
+    sta bakedTweenLo, x
+    lda tweenAcc + 2
+    sta bakedTweenHi, x
+    dex
+    bmi !neg-                            //; 255 down to 128
+    rts
+
 InitBaked:
     lda #$00
     sta bakedKfCountLo
     sta bakedKfCountHi
-    sta bakedFrameCtr                    //; 0 -> decode on the very first frame
+    sta bakedFrameCtr                    //; 0 -> the first frame shows keyframe 0
+    sta bakedWrapPending
+    sta bakedJustLooped
+    ldx #NUM_FREQUENCY_BARS - 1
+!clear:
+    sta bakedNext, x
+    sta bakedAccLo, x
+    sta bakedAccHi, x
+    sta bakedStepLo, x
+    sta bakedStepHi, x
+    dex
+    bpl !clear-
+
+    jsr BuildTweenTable
 
     //; Segment 0's loop point. Every other segment's is one stream length further
     //; on, which is exactly what SetIndexPointers walks - so the wrap costs one
@@ -962,8 +1140,12 @@ InitBaked:
     sta bakedPtrBaseLo
     lda bakedIndexStart + 1
     sta bakedPtrBaseHi
-    jmp SetIndexPointers                 //; tail call: its rts returns to our caller
+    jsr SetIndexPointers
+    //; Decode keyframe 0 ahead, so the first TickBakedFrame has it to show.
+    jmp DecodeBakedFrame                 //; tail call: its rts returns to our caller
 
+//; Decode the next keyframe of the stream into bakedNext and step the stream on,
+//; wrapping to the loop point at its end (flagged in bakedWrapPending).
 DecodeBakedFrame:
     //; read this keyframe's index byte from each segment's own planar stream,
     //; then step that segment's pointer on by one keyframe
@@ -1003,7 +1185,7 @@ DecodeBakedFrame:
 !barLoop:
 bakedRead:
     lda $ffff, x                    //; codebook[bar page + index]  (operand hi = current bar page)
-    sta targetBarHeights, y
+    sta bakedNext, y
     inc bakedRead + 2               //; next bar -> next 256-byte page
     iny
     dec bakedBarsLeft
@@ -1032,8 +1214,8 @@ bakedRead:
     sta bakedKfCountLo
     lda bakedLoopStart + 1
     sta bakedKfCountHi
-    lda #$01                        //; flag the wrap so the player can re-sync its timer
-    sta bakedJustLooped
+    lda #$01                        //; flag the wrap; it reaches the player when this keyframe shows
+    sta bakedWrapPending
     lda bakedLoopBaseLo             //; re-point every segment at its loop keyframe
     sta bakedPtrBaseLo
     lda bakedLoopBaseHi
