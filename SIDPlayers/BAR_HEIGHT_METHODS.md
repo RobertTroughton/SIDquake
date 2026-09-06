@@ -28,14 +28,81 @@ with **split (product) VQ**: the column is cut into segments (bars/segment) that
 are quantized independently, so segments animate on their own instead of the
 whole column freezing on one shared codebook shape. It ships a fixed-size
 codebook (256 columns × 40 bars, however split) plus one index byte per segment
-per 25 Hz keyframe, loop-trimmed. The exporter picks the segment count per tune —
-5×8 for best detail whenever the index fits RAM (nearly always, since looped
-tunes store one short cycle), dropping to 4/2/1 for long non-looping tunes so
-they animate all the way through. The player replays it (`DecodeBakedFrame`,
-reading the segment count/width from the data block) and drops the whole
-analysis subsystem (freqtable, `AnalyzeSIDRegisters`, ADSR sim, register
-mirror, `barVoiceMap`, `voiceRelease`). One play call, no bar maths, but needs
-the data in RAM and can fail to find a clean loop on very long tunes.
+per keyframe, loop-trimmed. The exporter picks the segment count per tune —
+5×8 for best detail whenever the index fits RAM at the chosen keyframe rate,
+dropping to 4/2/1 for long tunes so they animate all the way through. The
+player replays it (`DecodeBakedFrame`, reading the segment count/width from the
+data block) and drops the whole analysis subsystem (freqtable,
+`AnalyzeSIDRegisters`, ADSR sim, register mirror, `barVoiceMap`,
+`voiceRelease`). One play call, no bar maths, but needs the data in RAM and can
+fail to find a clean loop on very long tunes.
+
+### Which part of the spectrum the bars cover
+
+The span is fitted per tune (`fitRange` in `public/spectrometer-bake.js`). The
+analyser keeps every frame's spectrum on a fine semitone grid (30 Hz–12 kHz,
+peak and mean byte per band) next to the fixed 40 bars, and the bake takes the
+lowest and highest bands that are alive by the whitening's own rule — busy
+level (the 96th percentile over the tune) at least 18% of the busiest band's —
+as the span, widened to at least four octaves. Loop detection and the length
+measurement always run on the fixed 40–5500 Hz grid, so fitting the span never
+moves a loop or a length. Measured over `SID/`, the bass end is 30–60 Hz on
+every tune while the top runs from ~3 kHz (filtered leads) to ~6.5 kHz (noise
+drums), so the old fixed 5.5 kHz ceiling was leaving up to ten bars dead on
+some tunes and clipping others. The fitted span is shown in the Studio's
+spectrometer timeline and in the export log. `scripts/test-range-fit.js`
+covers it with synthetic audio.
+
+### Resolution at the bass end
+
+40 log-spaced bars from 30 Hz are about two semitones wide, and the 4096-point
+window at 44.1 kHz (10.8 Hz bins, a ±32 Hz main lobe) cannot tell them apart
+below ~540 Hz, so a bass note used to light four to six adjacent bars. The fine
+grid therefore reads its low bands from longer windows: 186 ms and 371 ms, cut
+from the audio decimated 8× (a two-stage boxcar, then every eighth sample), so
+a 2048-point FFT on the decimated stream gives a 16384-point window's bins.
+Each band takes the shortest window whose main lobe fits inside a bar at its
+pitch — the 4k window from ~540 Hz up, 186 ms from ~270 Hz, 371 ms below that
+— so the time smearing of a long window (a note fading in and out over its
+length) only reaches the register nothing shorter can resolve. All three
+windows are centred on the same instant, which is why a frame is computed
+only once the audio reaches ~190 ms past its centre (`FRAME_NEED`). Through
+the real pipeline over six `SID/` tunes, bars within 85% of the local peak
+among the bottom twelve go from 4.1–6.4 to 2.4–3.9, the decimated windows
+match true long FFTs to ~0.1 on the 0–111 scale, and the analysis costs about
+half a second more per 45 s of audio (~6% of a bake). The fixed grid the loop
+detection measures on stays on the 4k window alone.
+
+### Keyframes and interpolation
+
+Keyframes are stored at 50, 25 or 16.66 Hz (one per 1/2/3 raster frames,
+`bakedFrameDivisor`). The player runs one keyframe **ahead** of the display:
+`TickBakedFrame` decodes the next keyframe into `bakedNext` as the previous one
+becomes the target, and walks each bar from the current keyframe to the next
+in equal 8.8 fixed-point steps over the frames in between, landing exactly as
+the keyframe becomes current. The step table (delta → step) is built at init
+for the export's divisor. Holding a keyframe until the next arrived gave every
+bar a sawtooth at the keyframe rate; measured against the 50 Hz analysis over
+the `SID/` fixtures, interpolating halves the error at 25 Hz (RMS ~5.5 → ~2.8
+on the 0–111 scale) and makes 16.66 Hz keyframes (~4.4) smoother than held
+25 Hz ones. `UpdateBars` still eases toward the moving target, so the look of
+the rise and the release is unchanged.
+
+That is what makes the segment policy work: the split is chosen from the
+keyframe count at the chosen rate, so a two-minute loop that only fits 2×20 at
+50 fps gets the full 5×8 split at 25 fps. The Advanced frame-rate setting's
+"Best" takes the most slices that fit, at the highest rate that keeps them.
+`spectrometer-bake.js` `tweenColumn()` models the walk bit-exactly and
+`scripts/test-baked-decoder.js` drives the assembled player frame by frame
+against it.
+
+Things measured and not done, for the record: consecutive keyframes take a
+different index on 78–94% of keyframes at 25 Hz, so a changed-segment bitmask
+would cost more than it saves; a single 256×8 codebook shared by all five
+segments (2 KB instead of 10 KB) lands between the 4×10 and 2×20 splits in
+error, and a shared 256×4 book with ten segments (1 KB + 10 bytes/keyframe)
+matches 5×8 almost exactly but only wins RAM on loops under ~75 s, where RAM
+is not the constraint.
 
 ## (b) Shadow-register — `SPECTROMETER_SHADOW`
 

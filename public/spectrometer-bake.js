@@ -12,10 +12,11 @@
 //                            stored PLANAR (all of segment 0's indices, then all
 //                            of segment 1's, ...) - see bakeFromStore
 //
-// On the C64, every other frame reads one index byte per segment, points at that
-// segment's codebook entries, and copies them into targetBarHeights; the player's
-// existing UpdateBars attack/decay animates toward that held target (which also
-// serves as the 25->50 Hz interpolation).
+// On the C64, every keyframe reads one index byte per segment, points at that
+// segment's codebook entries, and copies them into the "next" column; the
+// player interpolates linearly from the current column to it over the raster
+// frames in between (TickBakedFrame), and its UpdateBars attack/decay follows
+// that moving target.
 //
 // Pure JS, no DOM/Node dependencies: bakeSpectrometer() takes mono PCM and
 // returns the packed bytes, so it runs identically in the browser export path
@@ -26,11 +27,41 @@
 // release smoothing - that raw target is what we hand to the C64) ----
 const N = 4096;                 // fftSize (matches AnalyserNode)
 const BINS = N / 2;             // frequencyBinCount
-// Frequency span the bars cover. The browser visualizer uses 40..11000, but
-// SID synthesis has almost no energy above ~5-6 kHz, so with only 40 bars the
-// top ~8 (3.5-11 kHz) sit near-dead and the display looks left-heavy. A lower
+// Frequency span the bars cover when no per-song range is fitted (loop
+// detection always measures on this fixed grid, so a tune's loop and length
+// never depend on its range). The browser visualizer uses 40..11000, but SID
+// synthesis has almost no energy above ~5-6 kHz, so with only 40 bars the top
+// ~8 (3.5-11 kHz) sit near-dead and the display looks left-heavy. A lower
 // ceiling spreads the usable spectrum across all bars. Overridable per bake.
 const F_MIN = 40, F_MAX = 5500;
+// Per-song range (fitRange): the bars an export stores span only the part of
+// the spectrum the tune actually uses. The analyser keeps a fine semitone grid
+// of every frame alongside the fixed 40 bars, and the bake takes the lowest and
+// highest fine bands that are alive by the whitening's own rule (busy level at
+// least NORM_DEAD_FRAC of the busiest band's) as the range. Measured over the
+// SID/ fixtures, SID bass reaches down to 30-60 Hz on every tune while the top
+// of the live range runs from ~3 kHz (a filtered lead) to ~6.5 kHz (noise
+// drums), so a fixed 5.5 kHz ceiling was leaving up to ten bars dead on some
+// tunes and clipping others. The fitted range is clamped to FIT_MIN..FIT_MAX
+// and widened to at least FIT_MIN_OCTAVES so a narrow tune does not get bars
+// finer than the FFT can resolve.
+const FIT_MIN = 30, FIT_MAX = 12000, FIT_MIN_OCTAVES = 4;
+// Bass resolution. A 4096-point window at 44.1 kHz has 10.8 Hz bins and a
+// Blackman main lobe of +/-32 Hz, which is wider than a two-semitone bar below
+// ~540 Hz and wider than a whole octave below 65 Hz: a bass note lit four to
+// six adjacent bars. So the fine grid takes its low bands from longer windows
+// - 186 ms and 371 ms - cut from the audio decimated DEC times (a two-stage
+// boxcar, then every DEC-th sample), which gives a 16384-point window's bins
+// for the cost of a 2048-point FFT. Each band uses the SHORTEST window whose
+// main lobe (LOBE_BINS bins each side) fits inside a bar at that pitch, so the
+// time smearing a long window brings (a note fades in and out over its
+// length) only reaches the register nothing shorter can resolve. Measured
+// over the SID/ fixtures the decimated windows match true long FFTs to ~0.1
+// on the 0..111 scale, and bars within 85% of the local peak among the bottom
+// twelve go from 4.8-6.4 to 2.5-4.2.
+const DEC = 8, LONG_N = 2048, MID_N = 1024;
+const LOBE_BINS = 3;                   // Blackman main lobe half-width, in bins
+const BAR_FRACTION = 0.12;             // a two-semitone bar's width as a fraction of its pitch
 const FLOOR = 0.07, SLOPE = 0.6, GAMMA = 1.5, AVG_WEIGHT = 0.65;
 // MAX_DB is the level that maps to full bar height. At -12 dB, sustained SID bass
 // bins clamp to the ceiling and lose all variation - the low/mid bars then pin to
@@ -74,8 +105,9 @@ const HIST_BUCKETS = 4096;
 const DEFAULTS = {
     numBars: 40,          // RaistlinBars NUM_FREQUENCY_BARS
     maxHeight: 111,       // RaistlinBars MAX_BAR_HEIGHT (0..111, one byte, no runtime scaling)
-    fMin: F_MIN, fMax: F_MAX,  // bar frequency span (Hz)
-    keyframeHz: 25,       // bake keyframe rate; C64 holds/animates between keyframes
+    fMin: F_MIN, fMax: F_MAX,  // bar frequency span (Hz) of the fixed grid
+    fitRange: true,       // fit the stored bars' span to the tune (see FIT_MIN)
+    keyframeHz: 25,       // bake keyframe rate; the C64 interpolates between keyframes
     framesPerKeyframe: 2, // 1/2/3 raster frames per keyframe -> 50/25/16.66 Hz; keyframeHz = frameHz/this
     frameHz: 50,          // PAL analysis rate
     maxSeconds: 1200,     // analysis cap (~20 min): supports 10 min tunes (loop needs 2 passes); render stops early on a loop or long silence
@@ -100,17 +132,19 @@ const DEFAULTS = {
     codebookStep: 2,
 };
 
-// Choose the split-VQ segment count from the keyframe count AT THE MAXIMUM RATE
-// (50 fps / one raster frame per keyframe), NOT at the selected rate. The segment
-// count then depends only on the tune's real length, so it is identical across all
-// three fps options: lowering the fps only removes keyframes, never adds segments.
-// That keeps the memory readout monotonic (50 > 25 > 16.66 fps) and makes the figure
-// shown for an fps match exactly what an export at that fps produces. refKeyframes is
-// the keyframe count at 50 fps (= keyframes-at-fps * framesPerKeyframe).
-function chooseSegments(o, refKeyframes) {
+// Choose the split-VQ segment count from the keyframe count the stream will
+// actually hold at the chosen rate: the most segments whose index fits the RAM
+// budget next to the fixed codebook. A lower frame rate stores fewer keyframes,
+// so it buys back spectral detail - a two-minute loop that only fits 2x20 at
+// 50 fps gets the full 5x8 split at 25 fps. (The split used to be chosen from
+// the 50 fps count at every rate, so the memory readout was monotonic in fps;
+// that spent the bytes a lower rate saved on nothing. Now that the C64
+// interpolates between keyframes, 25 fps already animates smoothly, and the
+// detail is worth more than a monotonic readout.)
+function chooseSegments(o, keyframes) {
     const codebookBytes = 256 * o.numBars;         // fixed regardless of segment count
     for (const cand of o.segmentChoices) {
-        if (o.numBars % cand === 0 && codebookBytes + cand * refKeyframes <= o.budgetBytes) return cand;
+        if (o.numBars % cand === 0 && codebookBytes + cand * keyframes <= o.budgetBytes) return cand;
     }
     return 1;
 }
@@ -168,6 +202,192 @@ function computeBands(numBars, sampleRate, fMin = F_MIN, fMaxHz = F_MAX) {
         lo[b] = l; hi[b] = h;
     }
     return { lo, hi };
+}
+
+// One bar's raw value from the peak and mean byte level of its bins: the
+// AVG_WEIGHT blend, the noise floor, the treble tilt (`tilt` = 0 at the lowest
+// bar .. 1 at the highest) and the gamma, exactly as hvsc-visualizer.js step()
+// does it. Shared by the fixed grid (computeRow) and the fine-grid derivation
+// (deriveBars) so both produce the same bars.
+function barValue(peak, avg, tilt) {
+    let t = ((1 - AVG_WEIGHT) * peak + AVG_WEIGHT * avg) / 255;
+    t = (t - FLOOR) / (1 - FLOOR);
+    if (t < 0) t = 0;
+    t *= 1 + SLOPE * tilt;
+    if (t > 1) t = 1;
+    return Math.pow(t, GAMMA);
+}
+
+// ---------------------------------------------------------------------------
+// Fine analysis grid. Alongside the fixed 40 bars, the analyser keeps every
+// frame's spectrum on a semitone grid from FIT_MIN to FIT_MAX, as disjoint bin
+// ranges (a semitone narrower than a bin, below ~190 Hz, merges into the next
+// so every band holds at least one bin). Each band stores its peak and mean byte
+// level, which is all the bar formula needs, so any 40-bar span over the grid
+// can be derived after the render without the PCM - that is what lets the range
+// be fitted to the whole tune on a streaming analysis that never keeps audio.
+
+// The three spectra a frame is analysed into: the 4096-point window on the
+// audio itself, and the mid/long windows on the decimated audio. `resolvesFrom`
+// is the pitch above which the window's main lobe fits inside a bar.
+function analysisSources(sampleRate) {
+    const srDec = sampleRate / DEC;
+    return [
+        { n: N, decimated: false, binHz: sampleRate / N },
+        { n: MID_N, decimated: true, binHz: srDec / MID_N },
+        { n: LONG_N, decimated: true, binHz: srDec / LONG_N },
+    ].map(src => ({ ...src, bins: src.n / 2, resolvesFrom: LOBE_BINS * src.binHz / BAR_FRACTION }));
+}
+
+// Every band records which source it reads (`src`) and its bin range in that
+// source's grid. Where the source changes, the next band starts at the bin
+// holding the previous band's top edge, so coverage stays continuous.
+function computeFineBands(sampleRate) {
+    const sources = analysisSources(sampleRate);
+    const pick = (hz) => { for (let i = 0; i < sources.length; i++) if (hz >= sources[i].resolvesFrom) return i; return sources.length - 1; };
+    const top = Math.min(FIT_MAX, sampleRate / 2);
+    const src = [], lo = [], hi = [], f0 = [], f1 = [];
+    let cur = pick(FIT_MIN);
+    let start = Math.floor(FIT_MIN / sources[cur].binHz);
+    for (let f = FIT_MIN * Math.pow(2, 1 / 12); ; f *= Math.pow(2, 1 / 12)) {
+        const last = f >= top;
+        const edge = last ? top : f;
+        const want = pick(f / Math.pow(2, 1 / 12));
+        if (want !== cur) {
+            start = Math.floor(start * sources[cur].binHz / sources[want].binHz);
+            cur = want;
+        }
+        const binHz = sources[cur].binHz, bins = sources[cur].bins;
+        const end = last ? Math.min(bins, Math.ceil(edge / binHz)) : Math.floor(edge / binHz);
+        if (end > start) {
+            // A band's span is what its bins cover, not the nominal semitone: at
+            // the bass end a bin is wider than a semitone, and the bar that
+            // takes the band needs to know where its energy really came from.
+            src.push(cur); lo.push(start); hi.push(end); f0.push(start * binHz); f1.push(end * binHz);
+            start = end;
+        }
+        if (last) break;
+    }
+    return {
+        sources, src: Int8Array.from(src), lo: Int32Array.from(lo), hi: Int32Array.from(hi),
+        f0: Float64Array.from(f0), f1: Float64Array.from(f1), count: lo.length,
+    };
+}
+
+// Per-frame peak/mean bytes for every fine band, plus a per-band histogram of
+// the band's own bar-formula value (no tilt), which is what fitRange reads its
+// busy levels from. Two bytes per band per frame: ~6 MB for a 12-minute tune.
+const FINE_HIST_BUCKETS = 1024;
+function createFineStore(bands) {
+    return {
+        bands,
+        count: 0,
+        data: new Uint8Array(bands.count * 2 * 1024),
+        hist: new Int32Array(bands.count * FINE_HIST_BUCKETS),
+        // `spectra` holds one byte spectrum per analysis source (see analysisSources).
+        push(spectra) {
+            const nb = this.bands.count, { src, lo, hi } = this.bands;
+            if ((this.count + 1) * nb * 2 > this.data.length) {
+                const grown = new Uint8Array(this.data.length * 2);
+                grown.set(this.data);
+                this.data = grown;
+            }
+            const off = this.count * nb * 2;
+            for (let s = 0; s < nb; s++) {
+                const byteBin = spectra[src[s]];
+                let m = 0, sum = 0;
+                for (let i = lo[s]; i < hi[s]; i++) { const v = byteBin[i]; if (v > m) m = v; sum += v; }
+                const avg = sum / (hi[s] - lo[s]);
+                this.data[off + s * 2] = Math.round(m);
+                this.data[off + s * 2 + 1] = Math.round(avg);
+                let bucket = (barValue(m, avg, 0) * FINE_HIST_BUCKETS) | 0;
+                if (bucket >= FINE_HIST_BUCKETS) bucket = FINE_HIST_BUCKETS - 1;
+                this.hist[s * FINE_HIST_BUCKETS + bucket]++;
+            }
+            this.count++;
+        },
+    };
+}
+
+// The span of the spectrum this tune actually uses: from the lowest to the
+// highest fine band whose busy level (the NORM_PCTL percentile of its values
+// over the whole tune, off the histogram) is at least NORM_DEAD_FRAC of the
+// busiest band's - the same rule whitenQuantize uses to decide which bands
+// are dead. Returns { fMin, fMax, fitted }; a tune with no live band at all
+// (silence) keeps the fixed span.
+function fitRange(fine, fallbackMin = F_MIN, fallbackMax = F_MAX) {
+    const nb = fine.bands.count, n = fine.count;
+    if (!n) return { fMin: fallbackMin, fMax: fallbackMax, fitted: false };
+    const busy = new Float64Array(nb);
+    let top = 0;
+    for (let s = 0; s < nb; s++) {
+        const rank = Math.min(n - 1, Math.floor(n * NORM_PCTL));
+        const base = s * FINE_HIST_BUCKETS;
+        let cum = 0, bucket = FINE_HIST_BUCKETS - 1;
+        for (let k = 0; k < FINE_HIST_BUCKETS; k++) {
+            cum += fine.hist[base + k];
+            if (cum > rank) { bucket = k; break; }
+        }
+        busy[s] = (bucket + 0.5) / FINE_HIST_BUCKETS;
+        if (busy[s] > top) top = busy[s];
+    }
+    let first = -1, last = -1;
+    for (let s = 0; s < nb; s++) {
+        if (busy[s] >= top * NORM_DEAD_FRAC && busy[s] > 1 / FINE_HIST_BUCKETS) { if (first < 0) first = s; last = s; }
+    }
+    if (first < 0) return { fMin: fallbackMin, fMax: fallbackMax, fitted: false };
+    let fMin = Math.max(FIT_MIN, fine.bands.f0[first]), fMax = Math.min(FIT_MAX, fine.bands.f1[last]);
+    // Widen a narrow tune to FIT_MIN_OCTAVES, upward first (the bass end is
+    // where the FFT is coarsest), then downward if the top is already reached.
+    const span = Math.pow(2, FIT_MIN_OCTAVES);
+    if (fMax < fMin * span) fMax = Math.min(FIT_MAX, fMin * span);
+    if (fMax < fMin * span) fMin = Math.max(FIT_MIN, fMax / span);
+    return { fMin, fMax, fitted: true };
+}
+
+// A 40-bar row store over [fMin, fMax) derived from the fine grid: every bar
+// takes the fine bands whose centre falls inside it (or, for a bar narrower
+// than a band, the band that holds the bar's centre) and combines their peaks
+// and width-weighted means through the same barValue formula as the fixed grid.
+function deriveBars(fine, numBars, fMin, fMax) {
+    const { f0, f1, count: nb } = fine.bands;
+    const members = [];
+    for (let b = 0; b < numBars; b++) {
+        const e0 = fMin * Math.pow(fMax / fMin, b / numBars);
+        const e1 = fMin * Math.pow(fMax / fMin, (b + 1) / numBars);
+        const list = [];
+        for (let s = 0; s < nb; s++) {
+            const centre = Math.sqrt(f0[s] * f1[s]);
+            if (centre >= e0 && centre < e1) list.push(s);
+        }
+        if (!list.length) {
+            const centre = Math.sqrt(e0 * e1);
+            let best = 0;
+            for (let s = 0; s < nb; s++) if (centre >= f0[s]) best = s;
+            list.push(best);
+        }
+        members.push(Int32Array.from(list));
+    }
+    const store = createRowStore(numBars);
+    const row = new Float64Array(numBars);
+    const src = fine.data;
+    for (let k = 0; k < fine.count; k++) {
+        const off = k * nb * 2;
+        for (let b = 0; b < numBars; b++) {
+            const list = members[b];
+            let peak = 0, sum = 0, width = 0;
+            for (let j = 0; j < list.length; j++) {
+                const s = list[j], w = f1[s] - f0[s];
+                const m = src[off + s * 2];
+                if (m > peak) peak = m;
+                sum += src[off + s * 2 + 1] * w;
+                width += w;
+            }
+            row[b] = barValue(peak, sum / width, b / (numBars - 1));
+        }
+        store.push(row);
+    }
+    return store;
 }
 
 // Yield to the event loop so a progress bar can repaint mid-bake (the bake runs
@@ -287,14 +507,29 @@ function bandRefs(store) {
 // keyframe every 2 raster frames, so the grid must sit on the true raster rate
 // (PAL 50.1245 / NTSC 59.826), not a round 50 - a round-50 hop is ~0.25% slow and
 // drifts the bars ~0.2 s per loop.
+// A frame's windows are all centred on the same instant, the middle of its
+// 4096-point window; the long decimated window reaches (LONG_N / 2) * DEC
+// samples past that, so a frame can only be computed once this many samples
+// past its start have arrived.
+const FRAME_NEED = N / 2 + (LONG_N / 2) * DEC + DEC;
+
 function createFftAnalyzer(sampleRate, numBars, frameHz, fMin, fMax) {
     const hop = sampleRate / frameHz;
     const { lo, hi } = computeBands(numBars, sampleRate, fMin, fMax);
-    const win = blackmanWindow(N);
-    const re = new Float64Array(N), im = new Float64Array(N);
-    const smoothed = new Float64Array(BINS);
-    const byteBin = new Float64Array(BINS);
+    const bands = computeFineBands(sampleRate);
+    // One window, FFT scratch, smoothing state and byte spectrum per source.
+    const srcs = bands.sources.map(src => ({
+        ...src,
+        win: blackmanWindow(src.n),
+        re: new Float64Array(src.n), im: new Float64Array(src.n),
+        smoothed: new Float64Array(src.bins),
+        byteBin: new Float64Array(src.bins),
+    }));
+    const spectra = srcs.map(src => src.byteBin);
     const rows = createRowStore(numBars);   // raw per-frame values (pre-whitening)
+    // The fine grid rides along on the same store, so everything that caches
+    // or hands on the rows carries it too (see fitRange / deriveBars).
+    rows.fine = createFineStore(bands);
     const row = new Float64Array(numBars);  // scratch, copied into the store per frame
     let next = 0;             // index of the next frame to compute
     // PCM tail not yet consumed, held in a fixed buffer that is compacted in place.
@@ -304,36 +539,71 @@ function createFftAnalyzer(sampleRate, numBars, frameHz, fMin, fMax) {
     let buf = new Float32Array(N * 2);
     let len = 0;              // valid samples in buf
     let base = 0;             // global sample index of buf[0]
+    // The decimated audio, kept the same way: a two-stage boxcar of DEC samples
+    // (a triangular low-pass whose nulls sit on the multiples of the decimated
+    // rate, so what aliases into the bass bands is 40-odd dB down) sampled once
+    // every DEC input samples. Decimated sample k stands for input sample k*DEC.
+    let dbuf = new Float32Array(LONG_N * 2);
+    let dlen = 0, dbase = 0;
+    const ring1 = new Float64Array(DEC), ring2 = new Float64Array(DEC);
+    let sum1 = 0, sum2 = 0, phase = 0, ringPos = 0;
 
-    const computeRow = (off) => {     // off = start of the window within buf
-        for (let i = 0; i < N; i++) { re[i] = buf[off + i] * win[i]; im[i] = 0; }
+    const decimate = (chunk) => {
+        for (let i = 0; i < chunk.length; i++) {
+            const x = chunk[i];
+            sum1 += x - ring1[ringPos]; ring1[ringPos] = x;
+            const y = sum1 / DEC;
+            sum2 += y - ring2[ringPos]; ring2[ringPos] = y;
+            ringPos = (ringPos + 1) % DEC;
+            if (++phase === DEC) {
+                phase = 0;
+                if (dlen === dbuf.length) {
+                    const grown = new Float32Array(dbuf.length * 2);
+                    grown.set(dbuf);
+                    dbuf = grown;
+                }
+                dbuf[dlen++] = sum2 / DEC;
+            }
+        }
+    };
+
+    // Window `src` over the samples starting at global index `from` of either
+    // stream (samples before the start of the tune read as zero).
+    const analyse = (src, from) => {
+        const { n, re, im, win, smoothed, byteBin, bins } = src;
+        const data = src.decimated ? dbuf : buf, off = from - (src.decimated ? dbase : base);
+        for (let i = 0; i < n; i++) { const k = off + i; re[i] = (k >= 0 ? data[k] : 0) * win[i]; im[i] = 0; }
         fft(re, im);
-        for (let i = 0; i < BINS; i++) {
-            const mag = Math.sqrt(re[i] * re[i] + im[i] * im[i]) / N;   // faster than hypot; no overflow risk here
+        for (let i = 0; i < bins; i++) {
+            const mag = Math.sqrt(re[i] * re[i] + im[i] * im[i]) / n;   // faster than hypot; no overflow risk here
             smoothed[i] = SMOOTH * smoothed[i] + (1 - SMOOTH) * mag;   // AnalyserNode temporal smoothing
             const db = 20 * Math.log10(smoothed[i] + 1e-12);
             const byte = (db - MIN_DB) / (MAX_DB - MIN_DB);
             byteBin[i] = byte < 0 ? 0 : byte > 1 ? 255 : byte * 255;   // getByteFrequencyData
         }
+    };
+
+    const computeRow = (start) => {   // start = global index of the frame's 4096-point window
+        const centre = start + N / 2;
+        for (const src of srcs) {
+            analyse(src, src.decimated ? Math.round(centre / DEC) - src.n / 2 : start);
+        }
+        const byteBin = srcs[0].byteBin;
         for (let b = 0; b < numBars; b++) {
             let m = 0, sum = 0;
             for (let i = lo[b]; i < hi[b]; i++) { const v = byteBin[i]; if (v > m) m = v; sum += v; }
-            const avg = sum / (hi[b] - lo[b]);
-            let t = ((1 - AVG_WEIGHT) * m + AVG_WEIGHT * avg) / 255;
-            t = (t - FLOOR) / (1 - FLOOR);
-            if (t < 0) t = 0;
-            t *= 1 + SLOPE * (b / (numBars - 1));
-            if (t > 1) t = 1;
-            row[b] = Math.pow(t, GAMMA);
+            row[b] = barValue(m, sum / (hi[b] - lo[b]), b / (numBars - 1));
         }
         rows.push(row);
+        rows.fine.push(spectra);
     };
 
     return {
         rows,
         // Append a PCM chunk and compute every frame now fully available. The frame
-        // count for `avail` samples is floor((avail-N)/hop) - identical to the
-        // single-shot pass - so accumulating chunks yields exactly the same frames.
+        // count for `avail` samples is floor((avail - FRAME_NEED) / hop) - identical
+        // to the single-shot pass - so accumulating chunks yields exactly the same
+        // frames.
         feed(chunk) {
             if (chunk && chunk.length) {
                 if (len + chunk.length > buf.length) {
@@ -345,18 +615,27 @@ function createFftAnalyzer(sampleRate, numBars, frameHz, fMin, fMax) {
                 }
                 buf.set(chunk, len);
                 len += chunk.length;
+                decimate(chunk);
             }
             const avail = base + len;                     // global samples in [base, avail)
-            const limit = Math.floor((avail - N) / hop);  // frames whose window fits
-            while (next < limit) { computeRow(Math.round(next * hop) - base); next++; }
+            const limit = Math.floor((avail - FRAME_NEED) / hop);  // frames whose windows all fit
+            while (next < limit) { computeRow(Math.round(next * hop)); next++; }
             // Drop PCM below the next unprocessed frame's window start, compacting in
-            // place (copyWithin) rather than allocating a fresh view each chunk.
+            // place (copyWithin) rather than allocating a fresh view each chunk; the
+            // decimated stream keeps back to the start of that frame's long window.
             const keep = Math.min(Math.round(next * hop), avail - N);
             if (keep > base) {
                 const drop = keep - base;
                 buf.copyWithin(0, drop, len);
                 len -= drop;
                 base = keep;
+            }
+            const dkeep = Math.max(0, Math.round((Math.round(next * hop) + N / 2) / DEC) - LONG_N / 2);
+            if (dkeep > dbase) {
+                const drop = Math.min(dlen, dkeep - dbase);
+                dbuf.copyWithin(0, drop, dlen);
+                dlen -= drop;
+                dbase += drop;
             }
         },
     };
@@ -442,7 +721,7 @@ function whitenRows(rows, numBars) {
 async function computeRowStore(pcm, sampleRate, numBars, frameHz, onTick, fMin, fMax) {
     const an = createFftAnalyzer(sampleRate, numBars, frameHz, fMin, fMax);
     const hop = sampleRate / frameHz;
-    const total = Math.max(0, Math.floor((pcm.length - N) / hop));
+    const total = Math.max(0, Math.floor((pcm.length - FRAME_NEED) / hop));
     const CHUNK = Math.max(1, Math.ceil(256 * hop));   // ~256 frames per slice for progress
     for (let s = 0; s < pcm.length; s += CHUNK) {
         const end = Math.min(pcm.length, s + CHUNK);
@@ -822,12 +1101,20 @@ export async function bakeRows(rows, options = {}) {
 // Both the full bake and the lightweight analysis (analyzeRows) run this - the loop /
 // length figures the UI shows must match what an export actually stores. Returns
 // { kf, nk, step, loopStart, looped, fadedOut, truncated, analyzedKeyframes }.
-function resolveKeyframes(store, o) {
+//
+// `out`, when given, is the row store the STORED bars come from (the per-song
+// range derived by outputStore); every decision - the loop, where the music
+// ends, whether it was cut - is still made on `store`, the fixed grid the
+// analysis measured on, so fitting the range can never move a tune's loop or
+// length away from what the UI showed. Both stores hold the same frames.
+function resolveKeyframes(store, o, out = store) {
     const nframes = store.count;
     // decimate frameHz -> keyframeHz, whiten and quantize to 0..maxHeight
     const step = Math.max(1, Math.round(o.frameHz / o.keyframeHz));
     let nk = Math.floor(nframes / step);
-    let kf = whitenQuantize(store, o.maxHeight, step, nk);
+    let kf = whitenQuantize(out, o.maxHeight, step, nk);
+    // The fixed grid at keyframe rate, for the fade decisions below.
+    const kfD = out === store ? kf : whitenQuantize(store, o.maxHeight, step, nk);
 
     // Trim redundant loop repeats: store intro + one cycle, wrap to loopStart.
     const analyzedKeyframes = nk;   // keyframes analysed before any loop trim
@@ -877,7 +1164,7 @@ function resolveKeyframes(store, o) {
         let musicEnd = lastKf;
         while (musicEnd > 0) {
             let e = 0; const off = (musicEnd - 1) * NB;
-            for (let b = 0; b < NB; b++) e += kf[off + b];
+            for (let b = 0; b < NB; b++) e += kfD[off + b];
             if (e > silent) break;
             musicEnd--;
         }
@@ -944,13 +1231,25 @@ export function analyzeRows(rows, options = {}) {
     };
 }
 
+// The row store the stored bars are taken from: the fixed grid itself, or -
+// when the analyser kept the fine grid and the bake asks for it - a 40-bar
+// grid over the span the tune actually uses. Returns { out, fMin, fMax, fitted }.
+function outputStore(store, o) {
+    if (o.fitRange && store.fine) {
+        const r = fitRange(store.fine, o.fMin, o.fMax);
+        return { out: deriveBars(store.fine, o.numBars, r.fMin, r.fMax), fMin: r.fMin, fMax: r.fMax, fitted: r.fitted };
+    }
+    return { out: store, fMin: o.fMin, fMax: o.fMax, fitted: false };
+}
+
 // Back half of the bake: quantize the per-frame targets to keyframes, resolve the
 // loop (or fade-off), vector-quantize, and pack. Returns { codebook, indices,
 // numBars, maxHeight, K, keyframeHz, numKeyframes, loopStart, looped, fadedOut,
 // truncated, totalBytes, reconstruct() }.
 async function bakeFromStore(store, o, analyzedSeconds, hitCap, prog) {
+    const range = outputStore(store, o);
     const { kf, nk, step, loopStart, looped, fadedOut, truncated, forcedLoop, analyzedKeyframes } =
-        resolveKeyframes(store, o);
+        resolveKeyframes(store, o, range.out);
 
     // --- Split (product) vector quantization -------------------------------
     // Split the numBars-wide column into `SEG` groups of `segW` bars and quantize
@@ -972,9 +1271,7 @@ async function bakeFromStore(store, o, analyzedSeconds, hitCap, prog) {
     // land on the full 5-way split; a long non-looping tune drops to 4/2/1 segments so
     // it animates the whole way through instead of freezing at the cap.
     const codebookBytes = 256 * o.numBars;         // fixed regardless of segment count
-    // Segment count keys off the 50 fps keyframe count (nk * step) so the same tune
-    // gets the same split at every fps - only the index length shrinks at lower rates.
-    const SEG = chooseSegments(o, nk * step);
+    const SEG = chooseSegments(o, nk);
     const segW = o.numBars / SEG;
     const SEGK = 256;                              // entries per segment (= one page per bar)
     const codebook = new Uint8Array(o.numBars * SEGK);   // numBars bar-pages of 256
@@ -1007,6 +1304,9 @@ async function bakeFromStore(store, o, analyzedSeconds, hitCap, prog) {
     return {
         codebook, indices,
         numBars: o.numBars, maxHeight: o.maxHeight, K: SEGK, segments: SEG, segmentWidth: segW,
+        // The span the stored bars cover (Hz), fitted to the tune unless the
+        // analysis had no fine grid to fit it from.
+        fMin: range.fMin, fMax: range.fMax, rangeFitted: range.fitted,
         keyframeHz: o.keyframeHz, numKeyframes: nk, loopStart,
         // raster frames per keyframe (1/2/3): the C64 cadence divisor the exporter patches
         framesPerKeyframe: Math.max(1, Math.round(o.frameHz / o.keyframeHz)),
@@ -1055,18 +1355,33 @@ export function estimateBakeBytes(durationSeconds, options = {}) {
     const keyframeHz = o.frameHz / fpk;
     const keyframes = Math.max(1, Math.round(durationSeconds * keyframeHz));
     const codebookBytes = 256 * o.numBars;             // fixed regardless of segment count
-    // Segments are chosen from the 50 fps keyframe count so the split is the same at
-    // every rate: index bytes then scale purely with keyframes, so memory is monotonic
-    // in fps (50 > 25 > 16.66) and matches an actual export at the chosen fps.
-    const segments = chooseSegments(o, keyframes * fpk);
+    const segments = chooseSegments(o, keyframes);
     const indexBytes = segments * keyframes;
     const bytes = codebookBytes + indexBytes;
     const ceiling = options.freeBytes != null ? Math.min(o.budgetBytes, options.freeBytes) : o.budgetBytes;
     return { framesPerKeyframe: fpk, keyframeHz, keyframes, segments, codebookBytes, indexBytes, bytes, fits: bytes <= ceiling };
 }
 
+// The C64's keyframe interpolation (TickBakedFrame in INC/spectrometer.asm),
+// modelled bit-exactly so a test can diff the assembled player against it.
+// Between keyframe columns `cur` and `next`, raster frame f (1..d-1) of a
+// d-frame keyframe shows cur + f * step, in 8.8 fixed point seeded with a half
+// for rounding, where step is (next - cur) * (65536 / d) >> 8 from the table
+// the player builds at init (an exact multiple, so the two's-complement
+// arithmetic shift is what the 6502's 24-bit accumulate produces).
+export function tweenColumn(cur, next, d, f) {
+    const mult = d === 2 ? 0x8000 : d === 3 ? 0x5555 : 0;
+    const out = new Uint8Array(cur.length);
+    for (let b = 0; b < cur.length; b++) {
+        const step = ((next[b] - cur[b]) * mult) >> 8;
+        out[b] = (((cur[b] << 8) + 0x80 + f * step) >> 8) & 0xFF;
+    }
+    return out;
+}
+
 export const _internals = {
     fft, computeBands, computeTargets, computeRowStore, kmeans, DEFAULTS,
     whitenRows, whitenQuantize, createRowStore, asRowStore, bandRefs,
-    detectLoop, resolveKeyframes,
+    detectLoop, resolveKeyframes, computeFineBands, createFineStore, fitRange, deriveBars,
+    outputStore, barValue, analysisSources, FIT_MIN, FIT_MAX, FIT_MIN_OCTAVES,
 };
