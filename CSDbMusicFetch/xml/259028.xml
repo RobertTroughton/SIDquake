@@ -125,12 +125,12 @@ https://dirquake.c64demo.com : a tool - mostly for C64GFX.com - to quickly grab 
 </UsedSIDs>
 <DownloadLinks><DownloadLink><Link>https://csdb.dk/getinternalfile.php/276831/ein geschenk.prg</Link>
 <CounterLink>https://csdb.dk/release/download.php?id=318688</CounterLink>
-<Downloads>309</Downloads>
+<Downloads>312</Downloads>
 <Status>Ok</Status>
 </DownloadLink>
 <DownloadLink><Link>https://csdb.dk/getinternalfile.php/276832/ein_geschenk.sid</Link>
 <CounterLink>https://csdb.dk/release/download.php?id=318689</CounterLink>
-<Downloads>159</Downloads>
+<Downloads>164</Downloads>
 <Status>Ok</Status>
 </DownloadLink>
 </DownloadLinks>
@@ -252,7 +252,9 @@ Beside that, 8580 was my first and true love. I've been loyal until now, and I'
 <CurrentlyUsedHandle>true</CurrentlyUsedHandle>
 <Scener><ID>2902</ID>
 <Country>Poland</Country>
-<Trivia>Brother of http://noname.c64.org/csdb/scener/?id=8457</Trivia>
+<Trivia>Brother of http://noname.c64.org/csdb/scener/?id=8457
+
+He started his work in the demo scene at the age of 12. At first, it was experiments with graphics (inspired by his brother Lotus's activities), and later he got into making music. He returned to the demo scene in 2025 after a 24-year break.</Trivia>
 <Handles><Handle><ID>2912</ID>
 </Handle>
 <Handle><ID>15866</ID>
@@ -266,8 +268,7 @@ Beside that, 8580 was my first and true love. I've been loyal until now, and I'
 </Handle>
 </Handles>
 </Scener>
-<FreelanceFunctions><Function>Co-Organizer</Function>
-<Function>Musician</Function>
+<FreelanceFunctions><Function>Musician</Function>
 </FreelanceFunctions>
 </Handle>
 </CSDbEntry>
