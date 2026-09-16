@@ -26,7 +26,11 @@
 	border-bottom: 1px solid rgba(255, 255, 255, 0.08);
 	padding: 0;
 	margin: 0;
-	font-family: 'Montserrat', -apple-system, system-ui, sans-serif;
+	/* The system UI font, not the host site's. Only C64GFX loads Montserrat, so
+	   naming it here rendered the strip in a different typeface on that site
+	   than on the other four. The strip sets its own family rather than
+	   inheriting one, so this is the strip's font and nothing else's. */
+	font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
 	/* Pinned, not inherited. Each host site sets its own body line-height
 	   (1.5 on DIRquake, 1.55 on gp-64.com, `normal` elsewhere), which made the
 	   strip four pixels taller on some sites than others for no reason anyone
