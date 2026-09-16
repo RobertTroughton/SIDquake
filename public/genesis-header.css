@@ -151,60 +151,89 @@
 	display: none;
 }
 
+/* Below 780px the strip stays one row — the same single line it is on a
+   desktop. It used to wrap: five links plus the label needed about 465px, so a
+   430px phone dropped GFXquake onto a second row and the strip went from ~45px
+   tall to ~119px. The wrap point sitting inside the range of common phone
+   widths is also why the strip looked different from one site to the next on
+   the same handset. Everything below is sized so the five links and the way
+   home fit on one line down to 320px. */
 @media (max-width: 779px) {
 	.genesis-header-inner {
-		padding: 0.3rem 0.75rem;
-		gap: 0;
+		padding: 0 0.5rem;
+		width: 100%;
 	}
 
 	.genesis-nav {
-		flex-wrap: wrap;
+		flex-wrap: nowrap;
 		justify-content: center;
-		gap: 0.25rem 0.5rem;
+		gap: 0.4rem;
 		width: 100%;
+		min-width: 0;
 	}
 
 	.genesis-nav-label {
 		margin-right: 0;
+		flex: 0 0 auto;
+		white-space: nowrap;
 	}
 
 	.genesis-nav-links {
-		gap: 0.25rem;
-		flex-wrap: wrap;
+		flex: 0 1 auto;
+		flex-wrap: nowrap;
 		justify-content: center;
+		gap: 0;
+		min-width: 0;
 	}
 
 	.genesis-header .genesis-nav-links a[href],
 	.genesis-header .genesis-nav-links a[href]:link,
 	.genesis-header .genesis-nav-links a[href]:visited {
-		font-size: 0.68rem;
-		letter-spacing: 0.03em;
-		padding: 0.2rem 0.45rem;
-		min-height: 32px;
+		font-size: 0.62rem;
+		letter-spacing: 0.02em;
+		padding: 0 0.3rem;
+		min-height: 40px;
+		white-space: nowrap;
 		box-sizing: border-box;
 		display: inline-flex;
 		align-items: center;
 	}
 }
 
-@media (max-width: 480px) {
-	/* Only "Sites" goes. The Genesis Project link in front of it is the way
-	   home from any of these sites, so it stays on a phone. */
+@media (max-width: 600px) {
+	/* "Sites" is the tail of the label, not a destination; it goes first when
+	   the row needs the room. */
 	.genesis-nav-label-suffix {
 		display: none;
 	}
+}
 
-	.genesis-nav-links {
-		width: 100%;
-		flex-wrap: wrap;
+/* At 480px and below the words "Genesis Project" cost more room than the five
+   links have to spare, so the way home shrinks to the group's own
+   abbreviation. The anchor keeps its text in the DOM — a screen reader still
+   reads "Genesis Project" — and only the rendering changes. */
+@media (max-width: 480px) {
+	.genesis-header .genesis-nav-label {
+		font-size: 0;
+		letter-spacing: normal;
 	}
 
+	.genesis-header .genesis-nav-label .genesis-nav-home::before {
+		content: 'G*P';
+		font-size: 0.62rem;
+		letter-spacing: 0.08em;
+	}
+}
+
+/* The narrowest phones still in use are 320px wide. The five links only fit
+   there once the pills give up their letter-spacing and most of their padding. */
+@media (max-width: 359px) {
 	.genesis-header .genesis-nav-links a[href],
 	.genesis-header .genesis-nav-links a[href]:link,
 	.genesis-header .genesis-nav-links a[href]:visited {
-		flex: 0 1 auto;
-		justify-content: center;
-		min-width: 0;
+		font-size: 0.58rem;
+		letter-spacing: 0;
+		padding: 0 0.2rem;
 	}
 }
 
@@ -214,6 +243,15 @@
 	.genesis-header .genesis-nav-links a[href]:link,
 	.genesis-header .genesis-nav-links a[href]:visited {
 		min-height: 44px;
+	}
+}
+
+/* The wider tap target is horizontal room the strip only has above 780px;
+   below that the five links need every pixel to stay on one line. */
+@media (pointer: coarse) and (min-width: 780px) {
+	.genesis-header .genesis-nav-links a[href],
+	.genesis-header .genesis-nav-links a[href]:link,
+	.genesis-header .genesis-nav-links a[href]:visited {
 		padding-left: 0.75rem;
 		padding-right: 0.75rem;
 	}
