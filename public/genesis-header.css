@@ -36,6 +36,14 @@
 	   strip four pixels taller on some sites than others for no reason anyone
 	   could see in this file. */
 	line-height: 1.2;
+	/* Mobile browsers inflate text in a block they judge too wide for the
+	   screen (font boosting), by a factor they recompute as the page's layout
+	   settles. On SIDquake that showed as the strip's text shrinking part-way
+	   through load, and it is why the strip could measure a different size on
+	   one Genesis site than another on the same handset. Inherited by the
+	   strip's contents, and it stops at the strip. */
+	-webkit-text-size-adjust: 100%;
+	text-size-adjust: 100%;
 	position: relative;
 	z-index: 1000;
 	display: flex;
