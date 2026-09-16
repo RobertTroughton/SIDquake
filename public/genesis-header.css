@@ -162,3 +162,22 @@
 		padding-right: 0.75rem;
 	}
 }
+
+/* "Genesis Project" in the label is a link home to the group's own site; the
+   "Sites" after it is just the tail of the label. Styled as part of the label
+   rather than as another pill, so the strip still reads as one caption. */
+.genesis-header .genesis-nav-label a.genesis-nav-home,
+.genesis-header .genesis-nav-label a.genesis-nav-home:link,
+.genesis-header .genesis-nav-label a.genesis-nav-home:visited {
+	color: #b8b8b8;
+	text-decoration: none;
+	font-weight: 700;
+	border-bottom: 1px solid rgba(184, 184, 184, 0.35);
+	transition: color 0.2s ease, border-color 0.2s ease;
+}
+
+	.genesis-header .genesis-nav-label a.genesis-nav-home:hover,
+	.genesis-header .genesis-nav-label a.genesis-nav-home:active {
+		color: #e0e0e0;
+		border-bottom-color: currentColor;
+	}
