@@ -1,4 +1,25 @@
-/* Genesis Project common header — shared across Genesis Project sites */
+/* Genesis Project common header — the cross-site strip along the top edge of
+   every Genesis Project site (gp-64.com, C64GFX, C64Demo, SIDquake, DIRquake,
+   GFXquake).
+   ===========================================================================
+   THIS FILE IS SHARED VERBATIM. Every site holds a byte-identical copy:
+
+     genesis-project/assets/css/genesis-header.css
+     C64GFX/CPPTool/merge/HTML/genesis-header.css
+     RaistlinPapers/public/css/genesis-header.css
+     SIDquake/public/genesis-header.css
+     DIRQuake/public/genesis-header.css
+
+   The strip is one object that happens to be served from five places, so it
+   must not drift. It had: SIDquake's label a fifth larger than everyone
+   else's (shifting the links right and the bar taller), DIRquake's active
+   underline rendering blue because it read that site's --color-accent, and
+   three different tablet breakpoints. Hence: no host-site custom properties
+   in here at all, and every value spelled out. A site that wants the strip to
+   follow its own theme overrides these rules from its own stylesheet, so the
+   deviation is visible and deliberate rather than inherited by accident.
+
+   If you change this file, copy it to all five. */
 
 .genesis-header {
 	background-color: #161616;
@@ -6,6 +27,11 @@
 	padding: 0;
 	margin: 0;
 	font-family: 'Montserrat', -apple-system, system-ui, sans-serif;
+	/* Pinned, not inherited. Each host site sets its own body line-height
+	   (1.5 on DIRquake, 1.55 on gp-64.com, `normal` elsewhere), which made the
+	   strip four pixels taller on some sites than others for no reason anyone
+	   could see in this file. */
+	line-height: 1.2;
 	position: relative;
 	z-index: 1000;
 	display: flex;
@@ -32,12 +58,36 @@
 
 .genesis-nav-label {
 	color: #858585;
-	font-size: 0.78rem;
+	font-size: 0.65rem;
 	text-transform: uppercase;
 	letter-spacing: 0.2em;
 	margin-right: -0.5rem;
 	font-weight: 600;
 }
+
+/* "Genesis Project" in the label is the way home to gp-64.com; the "Sites"
+   after it is just the tail of the label. Styled as part of the label rather
+   than as another pill, so the strip still reads as one caption. On gp-64.com
+   itself it renders as a <span>, not an <a> — there is nowhere for it to go —
+   and these rules apply to either. */
+.genesis-header .genesis-nav-label .genesis-nav-home {
+	color: #b8b8b8;
+	font-weight: 700;
+}
+
+.genesis-header .genesis-nav-label a.genesis-nav-home,
+.genesis-header .genesis-nav-label a.genesis-nav-home:link,
+.genesis-header .genesis-nav-label a.genesis-nav-home:visited {
+	text-decoration: none;
+	border-bottom: 1px solid rgba(184, 184, 184, 0.35);
+	transition: color 0.2s ease, border-color 0.2s ease;
+}
+
+	.genesis-header .genesis-nav-label a.genesis-nav-home:hover,
+	.genesis-header .genesis-nav-label a.genesis-nav-home:active {
+		color: #e0e0e0;
+		border-bottom-color: currentColor;
+	}
 
 .genesis-nav-links {
 	display: flex;
@@ -63,8 +113,7 @@
 	transition: color 0.2s ease, background-color 0.2s ease;
 	padding: 0.3rem 0.65rem;
 	border-radius: 6px;
-	display: flex;
-	align-items: center;
+	display: block;
 	position: relative;
 }
 
@@ -82,6 +131,9 @@
 		background-color: rgba(255, 255, 255, 0.1);
 	}
 
+/* The amber underline marking "you are on this one". Deliberately not the host
+   site's accent token: this is family livery, and reading --color-accent is
+   what turned DIRquake's marker blue. */
 .genesis-nav-links a.active::after {
 	content: '';
 	position: absolute;
@@ -94,22 +146,26 @@
 	border-radius: 1px;
 }
 
-@media (max-width: 768px) {
+/* Icons some sites drop into their own nav links have no business here. */
+.genesis-nav-links .fa-arrow-up-right-from-square {
+	display: none;
+}
+
+@media (max-width: 779px) {
 	.genesis-header-inner {
-		flex-direction: column;
-		padding: 0.6rem 1rem;
-		gap: 0.4rem;
+		padding: 0.3rem 0.75rem;
+		gap: 0;
 	}
 
 	.genesis-nav {
-		flex-direction: column;
-		gap: 0.25rem;
+		flex-wrap: wrap;
+		justify-content: center;
+		gap: 0.25rem 0.5rem;
 		width: 100%;
 	}
 
 	.genesis-nav-label {
 		margin-right: 0;
-		margin-bottom: 0.15rem;
 	}
 
 	.genesis-nav-links {
@@ -121,38 +177,38 @@
 	.genesis-header .genesis-nav-links a[href],
 	.genesis-header .genesis-nav-links a[href]:link,
 	.genesis-header .genesis-nav-links a[href]:visited {
-		font-size: 0.75rem;
-		padding: 0.3rem 0.5rem;
-	}
-
-	/* The label reads as a heading for the row of site links, and at 0.65rem
-	   it was the smallest text on the page. */
-	.genesis-nav-label {
-		font-size: 0.78rem;
-		letter-spacing: 0.14em;
-	}
-
-	.genesis-nav-links a.active::after {
-		display: none;
+		font-size: 0.68rem;
+		letter-spacing: 0.03em;
+		padding: 0.2rem 0.45rem;
+		min-height: 32px;
+		box-sizing: border-box;
+		display: inline-flex;
+		align-items: center;
 	}
 }
 
 @media (max-width: 480px) {
+	/* Only "Sites" goes. The Genesis Project link in front of it is the way
+	   home from any of these sites, so it stays on a phone. */
+	.genesis-nav-label-suffix {
+		display: none;
+	}
+
 	.genesis-nav-links {
 		width: 100%;
+		flex-wrap: wrap;
 	}
 
 	.genesis-header .genesis-nav-links a[href],
 	.genesis-header .genesis-nav-links a[href]:link,
 	.genesis-header .genesis-nav-links a[href]:visited {
-		flex: 1;
-		text-align: center;
-		min-width: 72px;
+		flex: 0 1 auto;
+		justify-content: center;
+		min-width: 0;
 	}
 }
 
-/* The cross-site links are four small pills in a row: fine under a mouse,
-   under 44px for a fingertip. */
+/* Five small pills in a row: fine under a mouse, under 44px for a fingertip. */
 @media (pointer: coarse) {
 	.genesis-header .genesis-nav-links a[href],
 	.genesis-header .genesis-nav-links a[href]:link,
@@ -162,22 +218,3 @@
 		padding-right: 0.75rem;
 	}
 }
-
-/* "Genesis Project" in the label is a link home to the group's own site; the
-   "Sites" after it is just the tail of the label. Styled as part of the label
-   rather than as another pill, so the strip still reads as one caption. */
-.genesis-header .genesis-nav-label a.genesis-nav-home,
-.genesis-header .genesis-nav-label a.genesis-nav-home:link,
-.genesis-header .genesis-nav-label a.genesis-nav-home:visited {
-	color: #b8b8b8;
-	text-decoration: none;
-	font-weight: 700;
-	border-bottom: 1px solid rgba(184, 184, 184, 0.35);
-	transition: color 0.2s ease, border-color 0.2s ease;
-}
-
-	.genesis-header .genesis-nav-label a.genesis-nav-home:hover,
-	.genesis-header .genesis-nav-label a.genesis-nav-home:active {
-		color: #e0e0e0;
-		border-bottom-color: currentColor;
-	}
