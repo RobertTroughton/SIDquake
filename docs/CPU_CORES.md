@@ -8,7 +8,7 @@ jobs:
 | | source | job |
 |---|---|---|
 | **analysis core** | `wasm/cpu6510_wasm.cpp` | runs init/play offline for `sid_analyze`, the spectrometer bar-data methods and `npm test`. Tracks per-address read/write/execute flags, SID and zero-page write counts, and the per-frame cycle count the exporter budgets against (`sid_get_max_cycles`). |
-| **audio core** | `wasm/sid_audio.cpp` | runs init/play in real time to drive reSID. Cycle counts clock the SID chips, so they set when each register write lands within a frame. |
+| **audio core** | `wasm/sid_audio.cpp` | runs init/play to drive reSID for the song-length scan's fast option and the VU warning. Each play call runs to completion before the frame's SID cycles are clocked, so every write in a frame lands at its start; cycle counts only bound the call to its frame. |
 
 `wasm/sidplayfp_audio.cpp` is a third playback path but uses libsidplayfp's own
 CPU, not either of these.

@@ -19,7 +19,10 @@ same `audio_*` API. It no longer plays tunes to the listener. It renders audio
 for the song-length scan when the Studio's "reSID (about twice as fast)" scan
 engine is picked, and for the VU-visibility warning's audio check. It has no
 real C64 environment: a playback bus over `cpu6510_core.h`, a minimal KERNAL,
-init once and play once per frame.
+init once and play once per frame (entered as an interrupt for play address 0).
+Selecting a subtune reloads the tune and powers the SID chips on afresh, so
+nothing carries over from the previous tune; `scripts/test-resid-engine.js`
+covers it.
 
 Timing is PAL-only throughout.
 

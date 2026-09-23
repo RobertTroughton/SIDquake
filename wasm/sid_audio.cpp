@@ -35,7 +35,7 @@ static struct {
     // SID file metadata
     uint16_t loadAddress;
     uint16_t initAddress;
-    uint16_t playAddress;
+    uint16_t playAddress;      // header value; 0 = handler installed by init
     uint16_t songs;
     uint16_t startSong;
     uint32_t speed;        // bit per subtune: 0=VBI, 1=CIA
@@ -57,9 +57,41 @@ static struct {
     // Frame-level playback
     int      remainingCycles;  // cycles left in current frame
     bool     playRoutineActive;
-    uint64_t totalCycles;      // total cycles since play started
+    uint64_t totalCycles;      // SID cycles rendered since play started
     int      chipModel;        // 6581 or 8580
+
+    // The play routine audio_set_subtune resolved: the header's address, or
+    // with play address 0 the interrupt handler init installed.
+    uint16_t playRoutine;
+    bool     playIsIrq;
+    bool     playViaKernal;
+
+    // reSID with SAMPLE_FAST on an 8580 pipelines a register write until the
+    // next cycle; flushed cycles are counted so the frame stays its length.
+    int      samplingMethod;
+    int      flushedCycles[MAX_SID_CHIPS];
+
+    // Memory as audio_load_sid left it (stubs + tune), restored before each
+    // init so a subtune never starts from what the previous one left behind.
+    uint8_t  loadedMemory[65536];
 } S;
+
+// Put a chip in its power-on state. reSID's reset() leaves the envelope
+// counters where the last tune left them (as the RES line does on hardware),
+// and a gate opened on a counter at $FF flips it to 0 and freezes it there, so
+// a tune that followed one ending in a sustained note played silent. Each tune
+// here starts on a freshly powered chip instead.
+static void sid_power_on(reSID::SID& sid) {
+    sid.reset();
+    reSID::SID::State st = sid.read_state();
+    for (int v = 0; v < 3; v++) st.envelope_counter[v] = 0;
+    sid.write_state(st);
+}
+
+// A write is only pipelined (and so needs flushing) with SAMPLE_FAST on an 8580.
+static inline bool writesPipelined() {
+    return S.samplingMethod == 0 && S.chipModel == 8580;
+}
 
 // ---- Memory access with SID register interception ----
 
@@ -85,15 +117,16 @@ static inline void mem_write(uint16_t addr, uint8_t val) {
         S.sid[0].write(addr & 0x1F, val);
         // Flush MOS8580 write pipeline: with SAMPLE_FAST + MOS8580, reSID
         // defers writes to a single-slot pipeline (only the LAST write is
-        // stored). Clock 1 cycle to apply each write immediately.
-        S.sid[0].clock();
+        // stored). Clock 1 cycle to apply each write immediately, and count it
+        // against the frame.
+        if (writesPipelined()) { S.sid[0].clock(); S.flushedCycles[0]++; }
         return;
     }
     // Multi-SID chips
     for (int i = 1; i < S.sidCount; i++) {
         if (addr >= S.sidAddress[i] && addr < S.sidAddress[i] + 0x20) {
             S.sid[i].write(addr & 0x1F, val);
-            S.sid[i].clock();
+            if (writesPipelined()) { S.sid[i].clock(); S.flushedCycles[i]++; }
             return;
         }
     }
@@ -101,10 +134,11 @@ static inline void mem_write(uint16_t addr, uint8_t val) {
     if (addr >= 0xD420 && addr < 0xD800) {
         S.memory[0xD400 | (addr & 0x1F)] = val;
         S.sid[0].write(addr & 0x1F, val);
+        if (writesPipelined()) { S.sid[0].clock(); S.flushedCycles[0]++; }
     }
 }
 
-// ---- Stack helper (used by cpu_jsr to plant a sentinel return address) ----
+// ---- Stack helper (used by cpu_call to plant a sentinel return address) ----
 static inline void push8(uint8_t val) {
     S.memory[0x100 + S.sp] = val;
     S.sp--;
@@ -152,22 +186,40 @@ static void cpu_init(uint16_t pc) {
 // Run a subroutine to completion or until maxCycles is exceeded.
 // A sentinel return address is pushed so the matching RTS lands on a known PC
 // and an SP-comparison can detect it without scanning the call graph.
-static void cpu_jsr(uint16_t addr, uint32_t maxCycles) {
-    push16(0xFFFF);
+//
+// With `irq` the routine is an interrupt handler instead: entered the way the
+// hardware does (PC and P pushed, I set) and done at the RTI that pops them.
+// `viaKernal` adds the A/X/Y push of the KERNAL's $FF48 entry, which the
+// $EA31/$EA81 exits pull back.
+//
+// SP is compared as a signed distance, so a return that wraps SP past $FF still
+// counts, and a call that does not return (overrun, JAM, a jump to $0000) has
+// its stack put back, so the next call does not start lower.
+static void cpu_call(uint16_t addr, uint32_t maxCycles, bool irq = false, bool viaKernal = false) {
+    uint8_t initialSP = S.sp;
+    if (irq) {
+        push16(0x0000);
+        push8((S.st & ~cpu6510::FLAG_B) | cpu6510::FLAG_U);
+        if (viaKernal) { push8(S.a); push8(S.x); push8(S.y); }
+        S.st |= cpu6510::FLAG_I;
+    } else {
+        push16(0xFFFF);
+    }
     S.pc = addr;
     uint32_t cyclesRun = 0;
-    uint8_t initialSP = S.sp + 2;  // SP before the sentinel push
     cpuJammed = false;
 
     while (cyclesRun < maxCycles) {
-        int cyc = cpu_step();
-        cyclesRun += cyc;
-        S.totalCycles += cyc;
+        uint8_t opcode = S.memory[S.pc];
+        cyclesRun += cpu_step();
 
         if (cpuJammed) break;  // KIL opcode; the CPU would never come back
-        if (S.sp >= initialSP) break;  // matching RTS executed
+        if ((int8_t)(S.sp - initialSP) >= 0 && (!irq || opcode == 0x40)) {
+            return;  // matching RTS / RTI executed
+        }
         if (S.pc == 0 || S.pc == 0xFFFF) break;  // BRK or sentinel landing
     }
+    S.sp = initialSP;
 }
 
 // ---- SID file header (PSID/RSID v1-v4) ----
@@ -221,6 +273,10 @@ void audio_init(double sampleRate) {
     S.playRoutineActive = false;
     S.totalCycles = 0;
     S.chipModel = 6581;
+    S.playRoutine = 0;
+    S.playIsIrq = S.playViaKernal = false;
+    S.samplingMethod = 1;
+    for (int i = 0; i < MAX_SID_CHIPS; i++) S.flushedCycles[i] = 0;
 }
 
 EMSCRIPTEN_KEEPALIVE
@@ -305,16 +361,12 @@ int audio_load_sid(const uint8_t* data, int length) {
     // wins and is never corrupted by a stub. Writing stubs after the tune with
     // an "== 0" guard would clobber legitimate zero bytes inside such tunes.
 
-    // Kernal IRQ exit at $EA31: PLA / TAY / PLA / TAX / PLA / RTI.
-    if (S.memory[0xEA31] == 0) {
-        static const uint8_t ea31[] = {0x68,0xA8,0x68,0xAA,0x68,0x40};
-        memcpy(&S.memory[0xEA31], ea31, sizeof(ea31));
-    }
-
-    // $EA81: alternate Kernal IRQ exit (bare RTI).
-    if (S.memory[0xEA81] == 0) {
-        S.memory[0xEA81] = 0x40;
-    }
+    // Kernal IRQ exits at $EA31, $EA7E (acknowledge CIA 1 first) and $EA81:
+    // PLA / TAY / PLA / TAX / PLA / RTI, undoing the $FF48 entry below.
+    static const uint8_t exitTail[] = {0x68,0xA8,0x68,0xAA,0x68,0x40};
+    memcpy(&S.memory[0xEA31], exitTail, sizeof(exitTail));
+    S.memory[0xEA7E] = 0xAD; S.memory[0xEA7F] = 0x0D; S.memory[0xEA80] = 0xDC;
+    memcpy(&S.memory[0xEA81], exitTail, sizeof(exitTail));
 
     // Stub the Kernal jump table ($FF81-$FFF3, every 3 bytes) with RTS so any
     // SCINIT/IOINIT/etc. calls return cleanly instead of running garbage.
@@ -324,17 +376,20 @@ int audio_load_sid(const uint8_t* data, int length) {
         }
     }
 
-    if (S.memory[0xFF48] == 0) {
-        S.memory[0xFF48] = 0x40;  // RTI at standard Kernal IRQ entry
-    }
+    // $FF48, the Kernal IRQ entry: save A/X/Y, then JMP ($0314), or ($0316)
+    // for a BRK.
+    static const uint8_t irqEntry[] = {
+        0x48, 0x8A, 0x48, 0x98, 0x48, 0xBA, 0xBD, 0x04, 0x01, 0x29, 0x10,
+        0xF0, 0x03, 0x6C, 0x16, 0x03, 0x6C, 0x14, 0x03 };
+    memcpy(&S.memory[0xFF48], irqEntry, sizeof(irqEntry));
 
-    // Hardware IRQ vector -> $FF48 (RTI)
+    // Hardware IRQ vector -> $FF48
     if (S.memory[0xFFFE] == 0 && S.memory[0xFFFF] == 0) {
         S.memory[0xFFFE] = 0x48;
         S.memory[0xFFFF] = 0xFF;
     }
 
-    // Hardware NMI vector -> $FF48 (RTI)
+    // Hardware NMI vector -> $FF48
     if (S.memory[0xFFFA] == 0 && S.memory[0xFFFB] == 0) {
         S.memory[0xFFFA] = 0x48;
         S.memory[0xFFFB] = 0xFF;
@@ -358,9 +413,12 @@ int audio_load_sid(const uint8_t* data, int length) {
         memcpy(&S.memory[S.loadAddress], musicData, musicLen);
     }
 
+    memcpy(S.loadedMemory, S.memory, sizeof(S.memory));
+
     reSID::chip_model model = (S.chipModel == 8580) ? reSID::MOS8580 : reSID::MOS6581;
+    S.samplingMethod = 1;
     for (int i = 0; i < S.sidCount; i++) {
-        S.sid[i].reset();
+        sid_power_on(S.sid[i]);
         S.sid[i].set_chip_model(model);
         S.sid[i].set_sampling_parameters(S.clockFreq, reSID::SAMPLE_INTERPOLATE, S.sampleRate);
     }
@@ -385,10 +443,13 @@ void audio_set_subtune(int subtune) {
     S.currentSubtune = subtune;
 
     for (int i = 0; i < S.sidCount; i++) {
-        S.sid[i].reset();
+        sid_power_on(S.sid[i]);
+        S.flushedCycles[i] = 0;
     }
 
+    memcpy(S.memory, S.loadedMemory, sizeof(S.memory));
     S.memory[0x01] = 0x37;
+    S.cyclesPerFrame = S.isNTSC ? NTSC_CYCLES_PER_FRAME : PAL_CYCLES_PER_FRAME;
 
     // PSID convention: the subtune index (0-based) is passed in A — and also in
     // X and Y. Some tunes read the song number from X or Y (e.g. an init doing
@@ -405,22 +466,29 @@ void audio_set_subtune(int subtune) {
     // and a truncated init leaves the tune half-built so playback comes out silent
     // or garbled. Emulating 2 M cycles costs ~14 ms, so the budget is only a
     // backstop against a tune that never returns at all.
-    cpu_jsr(S.initAddress, 20000000);
+    cpu_call(S.initAddress, 20000000);
+    for (int i = 0; i < S.sidCount; i++) S.flushedCycles[i] = 0;
 
     // CIA-driven tunes (speed bit set) latch the play period in $DC04/$DC05.
-    if (S.speed & (1 << (subtune & 31))) {
+    // Subtunes past 32 share bit 31.
+    if (S.speed & (1u << (subtune < 31 ? subtune : 31))) {
         uint16_t timerVal = S.memory[0xDC04] | (S.memory[0xDC05] << 8);
         if (timerVal > 0) {
             S.cyclesPerFrame = timerVal;
         }
     }
 
-    // Implicit play address: derive from the IRQ vectors the init routine set.
+    // Implicit play address: the handler this subtune's init installed - the
+    // RAM vector at $FFFE with the Kernal banked out, else the Kernal's $0314.
+    S.playRoutine = S.playAddress;
+    S.playIsIrq = S.playViaKernal = false;
     if (S.playAddress == 0) {
+        S.playIsIrq = true;
         if ((S.memory[0x01] & 3) < 2) {
-            S.playAddress = S.memory[0xFFFE] | (S.memory[0xFFFF] << 8);
+            S.playRoutine = S.memory[0xFFFE] | (S.memory[0xFFFF] << 8);
         } else {
-            S.playAddress = S.memory[0x0314] | (S.memory[0x0315] << 8);
+            S.playRoutine = S.memory[0x0314] | (S.memory[0x0315] << 8);
+            S.playViaKernal = true;
         }
     }
 
@@ -440,9 +508,12 @@ int audio_generate(int16_t* buffer, int numSamples) {
     while (totalGenerated < numSamples && loopGuard++ < maxLoops) {
         // Run the play routine once per emulated frame.
         if (S.remainingCycles <= 0) {
-            if (S.playAddress == 0) break;
-            cpu_jsr(S.playAddress, (uint32_t)S.cyclesPerFrame);
-            S.remainingCycles += S.cyclesPerFrame;
+            if (S.playRoutine == 0) break;
+            cpu_call(S.playRoutine, (uint32_t)S.cyclesPerFrame, S.playIsIrq, S.playViaKernal);
+            // Cycles a write flush already clocked chip 0 through are part of
+            // this frame, not extra time.
+            S.remainingCycles += S.cyclesPerFrame - S.flushedCycles[0];
+            S.flushedCycles[0] = 0;
         }
 
         int remaining = numSamples - totalGenerated;
@@ -459,7 +530,9 @@ int audio_generate(int16_t* buffer, int numSamples) {
 
         // Mix any additional SID chips into the same output buffer with saturation.
         for (int chip = 1; chip < S.sidCount; chip++) {
-            reSID::cycle_count delta2 = cyclesConsumed;
+            int owed = cyclesConsumed - S.flushedCycles[chip];
+            S.flushedCycles[chip] = owed < 0 ? -owed : 0;
+            reSID::cycle_count delta2 = owed > 0 ? owed : 0;
             int gen2 = S.sid[chip].clock(delta2, mixBuf, generated);
             for (int s = 0; s < gen2; s++) {
                 int mixed = (int)buffer[totalGenerated + s] + mixBuf[s];
@@ -499,6 +572,7 @@ void audio_set_sampling_method(int method) {
         case 2:  m = reSID::SAMPLE_RESAMPLE; break;
         default: m = reSID::SAMPLE_FAST; break;
     }
+    S.samplingMethod = method == 1 || method == 2 ? method : 0;
     for (int i = 0; i < S.sidCount; i++) {
         S.sid[i].set_sampling_parameters(S.clockFreq, m, S.sampleRate);
     }
@@ -534,6 +608,10 @@ double audio_get_play_time() {
 
 EMSCRIPTEN_KEEPALIVE
 int audio_get_is_ntsc() { return S.isNTSC ? 1 : 0; }
+
+// Engine RAM, for scripts/test-resid-engine.js.
+EMSCRIPTEN_KEEPALIVE
+int audio_peek(uint16_t addr) { return S.memory[addr]; }
 
 EMSCRIPTEN_KEEPALIVE
 void audio_cleanup() {
