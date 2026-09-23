@@ -126,13 +126,18 @@ core-vs-core diff, the opcode-table check and the store vectors.
 The analysis core records `MEM_READ`, `MEM_WRITE`, `MEM_EXECUTE`,
 `MEM_OPCODE` and `MEM_JUMP_TARGET` per address, plus the PC of the last write.
 Every read an instruction performs is recorded, including operand reads,
-indirect pointer fetches and stack pulls; the only unrecorded fetches are the
-instruction stream itself, which is covered by `MEM_EXECUTE`/`MEM_OPCODE`.
+indirect pointer fetches and stack pulls. The instruction stream itself is
+covered by `MEM_EXECUTE` on every byte of an executed instruction, with
+`MEM_OPCODE` on its first byte only. Reads the host makes through
+`cpu_read_memory` are not recorded.
 
 `lastWritePC` records the address of the instruction that made the store, not
 the PC as it stood mid-instruction.
 
 Consumers: `sid_processor.cpp` uses `MEM_WRITE` (modified addresses, zero-page
 use) and `MEM_EXECUTE` (code/data split); `spectrometer-shadow-detect.js` uses
-the whole flag byte to ask whether a page was touched at all before parking the
-shadow-register buffer there.
+`MEM_OPCODE` to find store instructions, and the whole flag byte to ask whether
+a page was touched at all before parking the shadow-register buffer there.
+
+The CIA 1 timer latch the analyser reports is taken from writes to `$DC04/$DC05`
+or any of their 16-byte mirrors, and read as firing every latch + 1 cycles.

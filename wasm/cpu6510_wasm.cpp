@@ -130,12 +130,11 @@ extern "C" {
         }
     }
 
-    // Read memory (for internal use and tracking)
+    // Host-side read (JS inspecting RAM or a SID register). Leaves no access
+    // flag: MEM_READ records what the tune's own instructions read, and a host
+    // look would otherwise make an untouched page look used.
     EMSCRIPTEN_KEEPALIVE
         uint8_t cpu_read_memory(uint16_t address) {
-        if (cpu.trackingEnabled) {
-            cpu.memoryAccess[address] |= MEM_READ;
-        }
         return cpu.memory[address];
     }
 
@@ -175,12 +174,13 @@ extern "C" {
                 }
             }
 
-			// Track CIA timer writes
-            if (address == 0xDC04) {
+			// Track CIA 1 timer A writes, through the register mirrors too: CIA 1
+            // repeats every 16 bytes across $DC00-$DCFF.
+            if ((address & 0xFF0F) == 0xDC04) {
                 cpu.ciaTimerLo = value;
                 cpu.ciaTimerWritten = true;
             }
-            else if (address == 0xDC05) {
+            else if ((address & 0xFF0F) == 0xDC05) {
                 cpu.ciaTimerHi = value;
                 cpu.ciaTimerWritten = true;
             }
@@ -221,7 +221,11 @@ extern "C" {
     EMSCRIPTEN_KEEPALIVE
         void cpu_step() {
         if (cpu.trackingEnabled) {
+            // The whole instruction is code; MEM_OPCODE marks where it starts.
             cpu.memoryAccess[cpu.pc] |= MEM_EXECUTE | MEM_OPCODE;
+            for (uint8_t i = 1; i < opcodeTable[cpu.memory[cpu.pc]].size; i++) {
+                cpu.memoryAccess[(uint16_t)(cpu.pc + i)] |= MEM_EXECUTE;
+            }
         }
         // Writes are attributed to the instruction that made them, not to
         // wherever the PC has reached by the time the store happens.
@@ -235,6 +239,7 @@ extern "C" {
     // Execute a subroutine until its matching RTS, or maxCycles is exceeded.
     EMSCRIPTEN_KEEPALIVE
         int cpu_execute_function(uint16_t address, uint32_t maxCycles) {
+        cpu.lastExecutionCycles = 0;   // stays 0 unless the call returns
         uint16_t returnAddr = cpu.pc - 1;
         push(returnAddr >> 8);
         push(returnAddr & 0xFF);
@@ -277,6 +282,7 @@ extern "C" {
     // with the stack balanced.
     EMSCRIPTEN_KEEPALIVE
         int cpu_execute_interrupt(uint16_t address, uint32_t maxCycles, bool kernalEntry) {
+        cpu.lastExecutionCycles = 0;
         uint8_t startSP = cpu.sp;
         push(0x00);
         push(0x00);
@@ -568,6 +574,7 @@ extern "C" {
         cpu.recordWrites = false;
         cpu.halted = false;
         cpu.instructionPC = 0;
+        cpu.lastExecutionCycles = 0;
 
         memset(cpu.memoryAccess, 0, sizeof(cpu.memoryAccess));
         memset(cpu.sidWrites, 0, sizeof(cpu.sidWrites));

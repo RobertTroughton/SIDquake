@@ -12,6 +12,8 @@
  *     before play is driven, or the scan sees a half-built tune.
  *   - A play address of 0 is the interrupt handler init installed.
  *   - The audio check behind the warning runs init for subtune 0 too.
+ *   - Only executed opcodes are store sites: operand bytes that happen to read
+ *     8D xx D4 are not.
  *
  * Needs public/sidquake.wasm; no browser. Run with
  * `node scripts/test-shadow-detect.js`.
@@ -79,6 +81,16 @@ async function main() {
         const r = analyzeShadow(M, bytes, { initAddress: 0x1000, playAddress: 0, loadAddress: 0x1000, subtune: 0, numChips: 1, frames: 100 });
         check(r.storeSites.length === 1 && r.storeSites[0] === 0x0d, 'the handler\'s store is found',
             JSON.stringify(r.storeSites));
+    }
+
+    console.log('operand bytes that look like a store');
+    {
+        // play: LDX #$8D / LDY #$D4 / STA $D400 / RTS - the first two operands
+        // read 8D A0 D4, the shape of STA $D4A0.
+        const code = Uint8Array.from([0x60, 0xa2, 0x8d, 0xa0, 0xd4, 0x8d, 0x00, 0xd4, 0x60]);
+        const bytes = psid({ play: 0x1001, code });
+        const r = analyzeShadow(M, bytes, { initAddress: 0x1000, playAddress: 0x1001, loadAddress: 0x1000, subtune: 0, numChips: 1, frames: 50 });
+        check(r.storeSites.length === 1 && r.storeSites[0] === 7, 'only the real store is a site', JSON.stringify(r.storeSites));
     }
 
     console.log('the audio check runs init for subtune 0');

@@ -767,16 +767,6 @@ The review's bugs and main optimisations are fixed (see `docs/ANALYSIS.md`,
 - **Worklet allocation.** `_generateAndPost` allocates a `Float32Array` per
   4096-sample chunk; transferring spent buffers back from the worklet as a pool
   would stop the garbage.
-- **Smaller analyser points.** Operand bytes get no access flag (only the
-  opcode byte gets `MEM_EXECUTE`), so `sid_get_code_bytes` undercounts code and
-  `pickShadowPage` could pick a page holding only an operand tail;
-  `cpu_read_memory` marks host reads `MEM_READ`; CIA timer detection sees only
-  `$DC04/$DC05`, not their mirrors or CIA 2; `sid_analyze` divides the frame by
-  the CIA latch rather than latch + 1 (no difference on any tune in `SID/`);
-  `lastExecutionCycles` is stale after a timeout; the core's unreachable
-  `default:` pulls `printf`/`std::set` into the wasm.
-- **reSID engine multi-SID.** A second 8580 chip is set to `SAMPLE_FAST` while
-  chip 0 interpolates.
 - **Play clock.** The pill's time comes from the engine, which runs ahead of
   what is heard by the worklet's queue (up to ~0.7 s).
 - **Build flags.** `sidplayfp.wasm` uses `-sDISABLE_EXCEPTION_CATCHING=0` (JS

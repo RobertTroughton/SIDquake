@@ -25,8 +25,6 @@
 #pragma once
 
 #include <cstdint>
-#include <cstdio>
-#include <set>
 #include "opcodes.h"
 
 namespace cpu6510 {
@@ -642,15 +640,9 @@ int Core<Bus>::step() {
         b.read(ea_absx()); return rd_cycles(4);                      // abs,X
 
     default: {
-        // All 256 opcodes are handled above, so this is unreachable in
-        // practice. Kept as a defensive fallback: log each opcode at most once
-        // (never per-execution, which would cripple the analysis loop) and skip
-        // past it using the opcode-size table.
-        static std::set<uint8_t> unimplementedOpcodes;
-        if (unimplementedOpcodes.find(op) == unimplementedOpcodes.end()) {
-            unimplementedOpcodes.insert(op);
-            printf("ERROR: Unimplemented opcode $%02X at PC=$%04X\n", op, b.pc - 1);
-        }
+        // Unreachable: all 256 opcodes are handled above (the cross-check
+        // confirms it). Kept as a defensive fallback that skips past the
+        // opcode using the size table.
         if (opcodeTable[op].size > 0) {
             b.pc = uint16_t(b.pc + opcodeTable[op].size - 1);
             return opcodeTable[op].cycles;

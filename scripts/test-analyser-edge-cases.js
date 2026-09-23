@@ -13,7 +13,13 @@
  *     ending in JMP $EA31 or RTI counts as having returned;
  *   - a rejected load leaves the previously loaded tune in place;
  *   - the SID chip count covers every subtune, not the last one analysed;
- *   - a header claiming 0 songs still analyses the one it has.
+ *   - a header claiming 0 songs still analyses the one it has;
+ *   - operand bytes count as code, not just opcodes;
+ *   - reading memory from the host leaves no access flag behind;
+ *   - the CIA 1 timer is seen through its mirrors ($DC14 is $DC04), and fires
+ *     every latch + 1 cycles, which decides the rounding of calls per frame;
+ *   - a call that does not return reports no execution cycles, rather than the
+ *     previous call's.
  *
  * Needs public/sidquake.wasm; no browser. Run with
  * `node scripts/test-analyser-edge-cases.js`.
@@ -50,6 +56,17 @@ async function main() {
         chips: cw('sid_get_sid_chip_count', 'number', []),
         maxCycles: cw('sid_get_max_cycles', 'number', []),
         timeouts: cw('sid_get_init_timeouts', 'number', []),
+        codeBytes: cw('sid_get_code_bytes', 'number', []),
+        callsPerFrame: cw('sid_get_num_calls_per_frame', 'number', []),
+    };
+    const cpu = {
+        init: cw('cpu_init', null, []),
+        track: cw('cpu_set_tracking', null, ['number']),
+        wr: cw('cpu_write_memory', null, ['number', 'number']),
+        rd: cw('cpu_read_memory', 'number', ['number']),
+        access: cw('cpu_get_memory_access', 'number', ['number']),
+        exec: cw('cpu_execute_function', 'number', ['number', 'number']),
+        lastCycles: cw('cpu_get_last_execution_cycles', 'number', []),
     };
     const hasPlayResolved = typeof M._sid_get_resolved_play_address === 'function';
     const resolvedPlay = hasPlayResolved ? cw('sid_get_resolved_play_address', 'number', []) : () => -1;
@@ -149,6 +166,51 @@ async function main() {
         check(load(psid({ play: 0x1004, songs: 0, code })) === 0, 'loads');
         const a = analyze();
         check(a.mod.has(0x1100), 'init ran', `${a.mod.size} modified`);
+    }
+
+    console.log('operand bytes count as code');
+    {
+        // init: LDA #$01 / STA $1100 / RTS (6 bytes); play: RTS
+        const code = Uint8Array.from([0xa9, 0x01, 0x8d, 0x00, 0x11, 0x60, 0x60]);
+        check(load(psid({ play: 0x1006, code })) === 0, 'loads');
+        analyze();
+        check(sid.codeBytes() === 7, 'all seven bytes are code', `${sid.codeBytes()}`);
+    }
+
+    console.log('a host read leaves no access flag');
+    {
+        cpu.init();
+        cpu.track(1);
+        cpu.rd(0x5000);
+        check(cpu.access(0x5000) === 0, 'nothing is recorded at the address read', `${cpu.access(0x5000)}`);
+        cpu.track(0);
+    }
+
+    console.log('the CIA 1 timer through a mirror, and its latch + 1 period');
+    for (const [base, latch, calls] of [[0xdc14, 9827, 2], [0xdc04, 7862, 2]]) {
+        // init programs the timer; the speed bit puts song 1 on it.
+        const code = Uint8Array.from([
+            0xa9, latch & 0xff, 0x8d, base & 0xff, base >> 8,
+            0xa9, latch >> 8, 0x8d, (base + 1) & 0xff, base >> 8,
+            0x60, 0x60,
+        ]);
+        const bytes = psid({ play: 0x100b, code });
+        bytes[0x15] = 0x01;
+        check(load(bytes) === 0, 'loads');
+        analyze();
+        check(sid.callsPerFrame() === calls, `latch ${latch} at $${base.toString(16).toUpperCase()} gives ${calls} calls a frame`,
+            `${sid.callsPerFrame()}`);
+    }
+
+    console.log('a call that does not return reports no cycles');
+    {
+        cpu.init();
+        cpu.wr(0x2000, 0x60);                            // RTS
+        cpu.wr(0x2100, 0x4c); cpu.wr(0x2101, 0x00); cpu.wr(0x2102, 0x21);   // JMP $2100
+        check(cpu.exec(0x2000, 1000) === 1 && cpu.lastCycles() > 0, 'a returning call reports its cycles',
+            `${cpu.lastCycles()}`);
+        check(cpu.exec(0x2100, 1000) === 0 && cpu.lastCycles() === 0, 'a timed-out one reports none',
+            `${cpu.lastCycles()}`);
     }
 
     console.log(failures ? `\n${failures} check(s) FAILED` : '\nall checks passed');

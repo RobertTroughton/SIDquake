@@ -529,7 +529,9 @@ extern "C" {
                             }
                         }
 
-                        double freq = cyclesPerFrame / timerValue;
+                        // The timer counts its latch down to 0 and reloads, so
+                        // it fires every latch + 1 cycles.
+                        double freq = cyclesPerFrame / (timerValue + 1.0);
                         sidState.analysis.numCallsPerFrame = (uint8_t)std::min(16, std::max(1, (int)(freq + 0.5)));
                         sidState.analysis.ciaTimerValue = timerValue;
                         sidState.analysis.ciaTimerDetected = true;

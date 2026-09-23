@@ -427,8 +427,8 @@ int audio_load_sid(const uint8_t* data, int length) {
     if (version >= 2) {
         uint8_t model2bits = (S.flags >> 6) & 0x03;
         if (S.sidCount > 1 && model2bits >= 2) {
+            // Only the model differs; the sampling set above applies to every chip.
             S.sid[1].set_chip_model(reSID::MOS8580);
-            S.sid[1].set_sampling_parameters(S.clockFreq, reSID::SAMPLE_FAST, S.sampleRate);
         }
     }
 

@@ -12,8 +12,8 @@
 //      repointing them at the shadow page captures 100% of the writes. This is
 //      the only check that can disqualify a tune.
 
-const MEM_EXECUTE = 1 << 0;
 const MEM_WRITE = 1 << 2;
+const MEM_OPCODE = 1 << 4;   // the first byte of an executed instruction
 
 function makeApi(module) {
     const cw = (n, r, a) => module.cwrap(n, r, a);
@@ -193,13 +193,14 @@ export function analyzeShadow(module, sidBytes, opts) {
     const fullOrder = buildFullOrder(ord.order, ord.consistency, numChips);
 
     // Find STA $D4xx store sites among EXECUTED opcodes (8D abs / 9D abs,X /
-    // 99 abs,Y with high byte $D4). Executed-only avoids matching data.
+    // 99 abs,Y with high byte $D4). Opcode bytes only, so neither data nor an
+    // operand that happens to read like a store matches.
     const storeSites = [];   // offset within the music image of the operand high byte
     // Absolute stores whose high operand byte can be repointed at the shadow:
     // STA abs $8D, STA abs,X $9D, STA abs,Y $99, STX abs $8E, STY abs $8C.
     const STORE_OPS = new Set([0x8D, 0x9D, 0x99, 0x8E, 0x8C]);
     for (let a = loadAddress; a < loadAddress + musicLen - 2; a++) {
-        if (!(api.access(a) & MEM_EXECUTE)) continue;
+        if (!(api.access(a) & MEM_OPCODE)) continue;
         if (!STORE_OPS.has(api.rd(a))) continue;
         if (api.rd(a + 2) === 0xD4) storeSites.push((a + 2 - loadAddress));
     }
