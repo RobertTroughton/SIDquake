@@ -587,7 +587,6 @@ wish of both experienced musicians and the beginner alike.
 # Part 2 — Engineering
 
 ## Playback / engine
-- **Remove the legacy reSID fallback** — libsidplayfp is the default engine; remove `sid_audio.cpp` and the `?engine=resid` path a release after the switch, and update `public/tests/engine-test.html`.
 - **SID register mirror writes** (`sid_audio.cpp` `$D420-$D7FF`) can be lost under MOS8580 + SAMPLE_FAST. Legacy reSID engine only — low priority given the removal above.
 - **`playAddress == 0` tunes** analyse as almost-nothing but `sid_analyze` still returns success. [WASM]
 - **`png_converter` output accessors** trust caller buffer sizes (no length params) — an under-allocated JS buffer is a WASM heap overflow. [WASM]

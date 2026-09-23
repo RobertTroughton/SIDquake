@@ -22,7 +22,7 @@ GPL, so:
 |-----------|---------|---------|-----------|--------|
 | libsidplayfp | 2.16.1 | GPL v2-or-later | Simon White, Antti Lankila, Leandro Nini and contributors | https://github.com/libsidplayfp/libsidplayfp |
 | reSIDfp (bundled in libsidplayfp) | — | GPL v2-or-later | Dag Lem; reSIDfp fork by Antti Lankila, ported by Leandro Nini | https://github.com/libsidplayfp/libsidplayfp |
-| reSID (classic; legacy `?engine=resid` path) | 0.16 | GPL v2-or-later | Dag Lem | https://github.com/daglem/reSID |
+| reSID (classic; the song-length scan's fast engine and the VU warning's audio check) | 0.16 | GPL v2-or-later | Dag Lem | https://github.com/daglem/reSID |
 | TSCrunch (JavaScript port) | — | Apache-2.0 (upstream); port credits Antonio Savona | Original algorithm © Antonio Savona | https://github.com/tonysavon/TSCrunch |
 | Exomizer | 3.1.3b0 (hg/git ba91318) | zlib | Magnus Lind | https://bitbucket.org/magli143/exomizer |
 | C64 KERNAL / BASIC / CHARGEN ROMs | VICE 3.10 | Proprietary (Commodore; rights held by Cloanto) — **not** covered by SIDquake's licence | Commodore International / Cloanto | see `roms/README.md` |
