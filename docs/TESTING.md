@@ -84,3 +84,6 @@ band and hides anything that goes wrong at its bottom edge.
   optimisation in `spectrometer-bake.js`: times the per-frame analysis and
   hashes its output, so a copy of the old module passed as `bake-module` shows
   whether the output stayed byte-identical.
+- `scripts/measure-bass-resolution.mjs [bake-module] [seconds]` after changing
+  the bake's bass windows: pitch spread and time smearing of the bottom bars
+  over every tune in `SID/`.

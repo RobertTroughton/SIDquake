@@ -761,11 +761,6 @@ recommendation, and the warning says so. **The underlying bug is still open.**
 The review's bugs and main optimisations are fixed (see `docs/ANALYSIS.md`,
 `docs/CPU_CORES.md`, `docs/PLAYBACK.md`). Still open:
 
-- **Bake window crossover.** Each fine band takes the shortest window whose
-  main-lobe *half*-width fits in a bar, so near each crossover (~270 Hz for the
-  4k window) the whole lobe spans about three bars. Requiring the whole lobe to
-  fit moves the crossovers an octave up (`resolvesFrom` in
-  `spectrometer-bake.js`); worth a measured before/after on `SID/` first.
 - **Playback engine re-inits.** A real chip or quality change still
   initialises the C64 twice (`engine->config()`, then `reloadTune`), and the
   first Play after a load re-inits once more through `setSubtune`.

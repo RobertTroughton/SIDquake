@@ -57,8 +57,10 @@ const FIT_MIN = 30, FIT_MAX = 12000, FIT_MIN_OCTAVES = 4;
 // the 4k window from ~270 Hz, 186 ms from ~135 Hz, 371 ms below - so the time
 // smearing a long window brings (a note fades in and out over its length) only
 // reaches the register nothing shorter can resolve. Near each crossover the
-// whole lobe still spans about three bars; requiring it to fit inside one would
-// move the crossovers an octave up. Measured
+// whole lobe still spans about three bars, but requiring it to fit inside one
+// (crossovers an octave up) measured no better over SID/ - pitch spread 2.48
+// bars against 2.45, with more smearing in time
+// (scripts/measure-bass-resolution.mjs). Measured
 // over the SID/ fixtures the decimated windows match true long FFTs to ~0.1
 // on the 0..111 scale, and bars within 85% of the local peak among the bottom
 // twelve go from 4.8-6.4 to 2.5-4.2.

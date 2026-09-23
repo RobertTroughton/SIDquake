@@ -63,8 +63,11 @@ from the audio decimated 8× (a two-stage boxcar, then every eighth sample), so
 a 2048-point FFT on the decimated stream gives a 16384-point window's bins.
 Each band takes the shortest window whose main-lobe half-width is no wider
 than a bar at its pitch — the 4k window from ~270 Hz up, 186 ms from ~135 Hz,
-371 ms below that — so the time smearing of a long window (a note fading in and out over its
-length) only reaches the register nothing shorter can resolve. All three
+371 ms below that. Requiring the whole lobe to fit instead (crossovers an
+octave up) measured no better over `SID/` with
+`scripts/measure-bass-resolution.mjs`: pitch spread 2.48 bars against 2.45,
+and more smearing in time. The time smearing of a long window (a note
+fading in and out over its length) only reaches the register nothing shorter can resolve. All three
 windows are centred on the same instant, which is why a frame is computed
 only once the audio reaches ~190 ms past its centre (`FRAME_NEED`). Through
 the real pipeline over six `SID/` tunes, bars within 85% of the local peak
