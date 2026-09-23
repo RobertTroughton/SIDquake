@@ -33,6 +33,9 @@ class UIController {
         // the new tune's state.
         this._analysisToken = 0;
         this._analysisCancelled = false;   // last scan ended because the user stopped it
+        // The analysis token of a tune exported while its scan was still running,
+        // so the scan landing can say the next export will carry the length.
+        this._exportedBeforeLength = null;
         // Seconds of music the scan looks through for THIS tune when the user has
         // asked it to keep looking; 0 = whatever Advanced settings says. Cleared
         // on a new tune (see processFile).
@@ -4411,6 +4414,9 @@ class UIController {
         // bakeParams carries the resolved frame-rate / search-window to the bake.
         const adv = this.getAdvancedSettings();
         let bakeParams = null;
+        // Set when this export goes ahead while the background scan is still
+        // running, and so carries no measured length and no forced loop.
+        let exportedBeforeLength = false;
         if (isFFT) {
             // Silent analyse under the busy overlay - no export modal. Cancellable:
             // the spectrometer needs the bake, so cancelling aborts the whole export
@@ -4473,19 +4479,29 @@ class UIController {
             //
             // If the user already stopped it from the corner chip, that answer
             // stands: export with no length rather than asking again here.
-            this._hideAnalysisChip();
-            this.showBusy('Finding song length', 'Preparing…', () => this.cancelAnalysis());
-            try {
-                await this._ensureAnalysis({
-                    holdOnLoopFound: true,
-                    onProgress: this._analysisProgressCallback(
-                        'Finding song length',
-                        'Analysing the SID to find its loop or end point. This finishes early as ' +
-                        'soon as the loop is found, but can take several minutes on long tunes ' +
-                        '— or cancel to export without length/loop info.'),
-                });
+            //
+            // A scan already running in the background is not waited for: the
+            // export goes ahead as if no length had been resolved (running clock,
+            // no total, no forced loop) and the scan carries on, so exporting
+            // again once it lands includes both. A queue run has nobody to export
+            // again, so it still waits.
+            if (this.analysisRunning && !this._queueRunning) {
+                exportedBeforeLength = true;
+            } else {
+                this._hideAnalysisChip();
+                this.showBusy('Finding song length', 'Preparing…', () => this.cancelAnalysis());
+                try {
+                    await this._ensureAnalysis({
+                        holdOnLoopFound: true,
+                        onProgress: this._analysisProgressCallback(
+                            'Finding song length',
+                            'Analysing the SID to find its loop or end point. This finishes early as ' +
+                            'soon as the loop is found, but can take several minutes on long tunes ' +
+                            '— or cancel to export without length/loop info.'),
+                    });
+                }
+                finally { this.hideBusy(); }
             }
-            finally { this.hideBusy(); }
         }
 
         // Song Looping: if the analysis just revealed that this song fades out and
@@ -4559,7 +4575,9 @@ class UIController {
                 // result, never a fresh render. The exporter only applies it to
                 // single-song tunes and skips it for spectrometer players (which derive
                 // the length from their own bake instead).
-                tuneAnalysis: needsTuneAnalysis ? (this.tuneAnalysis || null) : null,
+                // An export made before the background scan landed carries none
+                // of it, even if the scan finishes while this one is building.
+                tuneAnalysis: needsTuneAnalysis && !exportedBeforeLength ? (this.tuneAnalysis || null) : null,
                 // Forced song loop (Song tab toggle): restart fade-out tunes when
                 // they end. The exporter applies it to single-song tunes only.
                 forceSongLoop: forceSongLoop,
@@ -4657,6 +4675,14 @@ class UIController {
             // the page rather than in a dialog that dismisses itself after two
             // seconds. (It used to do both, for one event.)
             this._lastExportOk = true;
+            if (exportedBeforeLength) {
+                // Remembered against this tune, so the scan landing can say the
+                // next export will be different.
+                this._exportedBeforeLength = this._analysisToken;
+                this.showExportStatus('Exported without the song length or a forced loop, because '
+                    + 'the tune is still being measured. Export again after measuring finishes to '
+                    + 'include them.', 'info');
+            }
             const wanted = this.getAdvancedSettings().preferredGfxBank;
             if (wanted && this.prgExporter.lastGfxBankPreferenceHonoured === false) {
                 this.showExportStatus('The graphics could not go in the bank you asked for — '
@@ -4690,7 +4716,7 @@ class UIController {
                 compression: isCompressed ? compressionType : 'none',
                 span: memInfo ? { lo: memInfo.lowestAddress, hi: memInfo.highestAddress } : null,
                 spanBytes: memInfo ? memInfo.totalSize : null,
-                loopFrames: this.tuneAnalysis ? (this.tuneAnalysis.loopFrames ?? null) : null,
+                loopFrames: this.tuneAnalysis && !exportedBeforeLength ? (this.tuneAnalysis.loopFrames ?? null) : null,
                 prgHash: UIController.prgHash(prgData),
             };
             // Remember the settings that produced it too: a later "Save these
@@ -4700,7 +4726,10 @@ class UIController {
             if (this.recipeAlways()) this.saveRecipe(built, baseName);
 
             this.renderBakeTimeline(bakeInfo);
-            this.renderLoopInfo();
+            // The loop panel describes the file just made, which has no loop in it
+            // when it was exported before the scan landed.
+            if (!exportedBeforeLength) this.renderLoopInfo();
+            else if (this.elements.loopInfo) this.elements.loopInfo.style.display = 'none';
             this.renderMemoryMap(memInfo, {
                 compressed: isCompressed,
                 fileSize: prgData.length,
@@ -4759,13 +4788,6 @@ class UIController {
         }
         return { ranges, bad };
     }
-
-    /**
-     * How much of a tune must have been scanned before "use what it has found"
-     * is worth offering. Below this the answer would be a fade-out at a few
-     * seconds, which is worse than no answer.
-     */
-    static get STOP_OFFER_SECONDS() { return 45; }
 
     /**
      * Seconds of music the scan assumes a tune runs to, before anyone asks for
@@ -4864,13 +4886,11 @@ class UIController {
     }
 
     /**
-     * Why a scan came back with no loop. Running out of window and being stopped
-     * on purpose are different answers, and the first one used to read as "this
-     * tune has no loop" when it only meant "we did not look far enough".
+     * Why a scan came back with no loop. Running out of window used to read as
+     * "this tune has no loop" when it only meant "we did not look far enough".
      */
     _scanEndedBecause(a) {
         const scanned = this._mmss(a.analyzedSeconds);
-        if (a.stoppedEarly) return `You stopped the search after ${scanned}, and nothing repeated in it`;
         if (a.cappedAtMaxSeconds) return `Nothing repeated in ${scanned}, which is as far as the scan looks`;
         if (a.truncated) return `Nothing repeated in ${scanned}, and the tune was still playing at `
             + `${this._mmss(a.loopStartSeconds)} where the analysis stops`;
@@ -4930,7 +4950,11 @@ class UIController {
             enabled = false;
         } else if (scanning) {
             text = 'Measuring the song length — playing the tune through to find where it ' +
-                'loops or fades out. Carry on choosing a visualizer; this runs in the background.';
+                'loops or fades out. Carry on choosing a visualizer; this runs in the background. ' +
+                (this.selectedVisualizer && this.selectedVisualizer.dataSource === 'fft'
+                    ? 'The Spectrometer needs the measurement, so its export waits for it to finish.'
+                    : 'You can export now: that file gets a running clock with no total and no ' +
+                      'forced loop. Export again after measuring finishes to include them.');
         } else if (!a && manual) {
             text = `Song length ${this._mmss(manual)}, as typed. The C64 clock counts up to it ` +
                 'and wraps there.';
@@ -5834,11 +5858,7 @@ class UIController {
             return job.promise;
         }
         const ac = new AbortController();
-        // Two ways out of a long scan, and they mean different things. Cancel
-        // throws the render away and leaves the tune unmeasured; Stop keeps what
-        // has been rendered and measures that.
-        const stopAc = new AbortController();
-        const job = { ac, stopAc, listeners: onProgress ? [onProgress] : [], last: null };
+        const job = { ac, listeners: onProgress ? [onProgress] : [], last: null };
         const fanout = (label, frac, extra) => {
             job.last = [label, frac, extra];
             for (const fn of job.listeners) {
@@ -5847,7 +5867,7 @@ class UIController {
         };
         this._analysisCancelled = false;
         job.promise = this.runTuneAnalysis({
-            signal: ac.signal, stopSignal: stopAc.signal, onProgress: fanout, holdOnLoopFound,
+            signal: ac.signal, onProgress: fanout, holdOnLoopFound,
         })
             .finally(() => { if (this._analysisJob === job) this._analysisJob = null; });
         this._analysisJob = job;
@@ -5859,16 +5879,6 @@ class UIController {
         if (!this._analysisJob) return;
         this._analysisCancelled = true;
         this._analysisJob.ac.abort();
-    }
-
-    /**
-     * Stop searching but keep what has been found. Different from Cancel: the
-     * render so far is analysed and used, so a tune whose loop is further out
-     * than anyone wants to wait for still gets a length.
-     */
-    stopSearching() {
-        if (!this._analysisJob) return;
-        this._analysisJob.stopAc.abort();
     }
 
     /**
@@ -5958,13 +5968,21 @@ class UIController {
             this._finishAnalysisChip();
             this.updateSongLoopStatus();
             if (window.studioModal) window.studioModal.queueRefresh();
+            // A file exported while this ran went out without what it found.
+            const a = this.tuneAnalysis;
+            if (this._exportedBeforeLength === token && a && (a.looped || a.fadedOut)) {
+                this.showExportStatus('Measuring has finished. Export again to include the song '
+                    + 'length in the file.', 'info');
+            }
+            if (this._exportedBeforeLength === token) this._exportedBeforeLength = null;
         });
+        // The Song tab and the manifest say what exporting mid-scan leaves out,
+        // which only holds once the job exists.
+        this.updateSongLoopStatus();
+        if (window.studioModal) window.studioModal.queueRefresh();
     }
 
     _analysisChipText(extra) {
-        // extra.seconds is the doubled search window; halve it for the offer
-        // threshold the same way the label does.
-        this._analysisScanned = (extra && extra.seconds != null) ? extra.seconds / 2 : 0;
         if (extra && extra.loopFound) return 'Loop found';
         // extra.seconds counts the doubled search window, same as the overlay.
         if (extra && extra.seconds != null) return `Analysing tune… ${this._mmss(extra.seconds / 2)} scanned`;
@@ -6001,19 +6019,6 @@ class UIController {
                 this.updateSongLoopStatus();
                 if (window.studioModal) window.studioModal.queueRefresh();
             });
-            // Stop searching, but keep the answer: the scan runs to a cap of
-            // several minutes on a tune whose loop is a long way out, and
-            // "measure what you have" is usually what someone watching wants.
-            const stop = document.getElementById('analysisChipStop');
-            if (stop) stop.addEventListener('click', () => {
-                stop.disabled = true;
-                this.stopSearching();
-            });
-        }
-        const stopBtn = document.getElementById('analysisChipStop');
-        // Only worth offering once there is something to keep.
-        if (stopBtn && !stopBtn.disabled) {
-            stopBtn.hidden = !(this._analysisScanned > UIController.STOP_OFFER_SECONDS);
         }
         // A scan is running, so there is nothing to restart.
         const restartBtn = document.getElementById('analysisChipRestart');
@@ -6052,8 +6057,6 @@ class UIController {
         }
         if (label) label.textContent = msg;
         this._announceAnalysis(msg, true);
-        const stop = document.getElementById('analysisChipStop');
-        if (stop) stop.hidden = true;
         // A scan the user stopped is the one outcome they may want to take back, so
         // the chip stays until it is dismissed or the offer is taken. Every other
         // outcome also lands on the Song tab, so the chip gets out of the way.
@@ -6064,17 +6067,10 @@ class UIController {
         if (!undoable) this._analysisChipTimer = setTimeout(() => this._hideAnalysisChip(), 8000);
     }
 
-    _resetAnalysisChipStop() {
-        const stop = document.getElementById('analysisChipStop');
-        if (stop) { stop.disabled = false; stop.hidden = true; }
-        const restart = document.getElementById('analysisChipRestart');
-        if (restart) restart.hidden = true;
-        this._analysisScanned = 0;
-    }
-
     _hideAnalysisChip() {
         clearTimeout(this._analysisChipTimer);
-        this._resetAnalysisChipStop();
+        const restart = document.getElementById('analysisChipRestart');
+        if (restart) restart.hidden = true;
         const chip = document.getElementById('analysisChip');
         if (!chip) return;
         chip.hidden = true;
@@ -6151,7 +6147,6 @@ class UIController {
                 ...scanOptions,
                 onProgress,
                 signal: opts.signal,
-                stopSignal: opts.stopSignal,
             });
             if (storeKey && result) {
                 const { writeAnalysis } = await import(cb('./analysis-store.js'));

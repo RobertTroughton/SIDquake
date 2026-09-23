@@ -54,6 +54,16 @@ Driven from `ui.js`; the results land on the Studio's Song tab.
   A scan that resolves neither a loop nor an ending gives the C64 a running
   clock with no total, and offers "Keep looking" — the same search with the
   window doubled for that tune
+- The scan runs in the background once the Studio opens, and there is no way
+  to stop it early and keep a partial answer. Instead, an export pressed while
+  it is still running goes ahead without it: no length (running clock, no
+  total) and no forced loop, exactly as if nothing had been resolved. The scan
+  carries on, and an export after it lands includes both; the Song tab, the
+  manifest and the export status say so. Two cases still wait for the scan: the
+  baked Spectrometer, whose stream is cut from the scan's own render, and a
+  queue run, which has nobody to export again. With no background scan running
+  (the quick path outside the Studio, or no Worker), the export measures under
+  its overlay as before
 - The scan itself (`spectrometer-bake-core.js` `renderAndAnalyze`) runs a
   register pre-pass first (`loop-prepass.js`): the tune's player is stepped on
   the 6510 analyser for the whole window, about a second's work, and the frame

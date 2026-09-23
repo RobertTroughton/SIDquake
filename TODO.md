@@ -143,9 +143,9 @@ re-render**.
   instead of a render. **Not confirmed** — the archive is an unfetched LFS
   pointer in a fresh clone.
 
-Related and already scoped further down: "Stop searching / use what we have", and
-prompting at the cap instead of surrendering silently. Both matter more once the
-scan is something the user watches rather than waits on.
+Related and already scoped further down: prompting at the cap instead of
+surrendering silently. It matters more once the scan is something the user
+watches rather than waits on.
 
 **The register pre-pass** (`public/loop-prepass.js`, see `docs/ANALYSIS.md`)
 now finds the player's state loop before any audio is rendered, so a looping
@@ -656,15 +656,13 @@ said, so the user has to know to go and raise it. Most tunes loop or fade inside
 ~6 min, so the cap should be lower *and* the rare long tune handled in the
 moment.
 
-- **Done: "use what it has found"** sits in the corner chip next to Cancel, and
-  appears once 45 seconds have been scanned — below that the answer would be a
-  fade-out at a few seconds, which is worse than none. It is a second, softer
-  signal all the way down (`stopSignal`, distinct from the abort that throws the
-  render away): the render breaks out, the rows so far are analysed, and the job
-  resolves with a measurement.
+- **Done: export without waiting.** A live-method export pressed mid-scan goes
+  out with no length and no forced loop while the scan carries on; exporting
+  again after it lands includes them. This replaced "use what it has found"
+  (the soft `stopSignal`), which never reached the render.
 - **Done: hitting the cap is no longer silent.** The status now distinguishes
-  three endings — the scan ran out of window ("as far as the scan looks"), the
-  user stopped it, or nothing genuinely repeated.
+  the endings — the scan ran out of window ("as far as the scan looks"), the
+  tune was still playing where it stopped, or nothing genuinely repeated.
 - **Done: "Keep looking" is offered in the moment.** A scan that resolved nothing
   puts the button on the Song tab, saying how much of the tune the next search
   listens to and that it starts over. It doubles the window for that tune only
@@ -774,9 +772,6 @@ Bugs, most harmful first:
   and the replay overwrites their writes with stale mirror values. 13 tunes in
   `SID/` are affected (e.g. `dane-elderscrollers` from 122 s, `zardax-eldorado`
   from 31 s), and every one of them is still reported `suitable`. Scan the measured length or the whole window.
-- **"Stop searching" is dropped** — `spectrometer-bake-core.js` `ensureRows`
-  forwards `signal` but not `stopSignal` to `renderWithFallback`, so the scan
-  always runs its full window.
 - **`[WASM]` Implicit play address (play = 0) is never analysed** — the analyser
   never seeds `$01` (stays 0, so `$FFFE` is always chosen over `$0314`), and
   `cpu_execute_function` only accepts `RTS` as a return, so handlers ending in

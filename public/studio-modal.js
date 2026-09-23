@@ -619,7 +619,13 @@ class StudioModal {
             } else if (manual) {
                 rows.push(this.manifestRow('Song length', `${lmmss(manual)} · typed in`, 'ok', 'inc', 'song'));
             } else if (ui.analysisRunning) {
-                rows.push(this.manifestRow('Song length', 'measuring…', 'pending', 'pend', 'song'));
+                // A live-method export does not wait for the scan; the baked
+                // Spectrometer cannot export without it.
+                rows.push(this.manifestRow('Song length', viz.dataSource === 'fft'
+                    ? 'still being measured · Generate waits for it'
+                    : 'still being measured · exporting now gives a running clock only; '
+                      + 'export again after measuring finishes to include the length',
+                'pending', 'pend', 'song'));
             } else if (la && la.truncated) {
                 rows.push(this.manifestRow('Song length', 'still playing where the scan stops — running clock only',
                     'off', 'skip', 'song'));
@@ -636,6 +642,9 @@ class StudioModal {
                 rows.push(wantLoop
                     ? this.manifestRow('Song loop', `fades out at ${lmmss(la.loopStartSeconds)} — loop added (restarts)`, 'included', 'inc', 'song')
                     : this.manifestRow('Song loop', `fades out at ${lmmss(la.loopStartSeconds)} — no loop (song ends)`, 'off', 'skip', 'song'));
+            } else if (wantLoop && ui.analysisRunning && viz.dataSource !== 'fft') {
+                rows.push(this.manifestRow('Song loop', 'restart after fade-out · left out until measuring finishes',
+                    'pending', 'pend', 'song'));
             } else if (wantLoop) {
                 rows.push(this.manifestRow('Song loop', 'restart after fade-out — detected at export', 'included', 'inc', 'song'));
             }
@@ -695,7 +704,8 @@ class StudioModal {
                 const stored = a && (a.looped ? a.storedSeconds : Math.min(a.storedSeconds, cap));
                 rows.push(this.manifestRow('FFT bake',
                     a ? `tune analysed · ${mmss(stored)} stored${!a.looped && a.storedSeconds > cap ? ' (cut to fit)' : ''}`
-                      : 'analysis pass runs at generate time',
+                      : ui.analysisRunning ? 'tune still being analysed · Generate waits for it to finish'
+                          : 'analysis pass runs at generate time',
                     a ? 'ready' : 'pending', a ? 'inc' : 'pend', 'export'));
             }
         }

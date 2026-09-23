@@ -29,7 +29,10 @@ The page-level controllers. Layout rules for small screens and touch are in
 - Panels stay mounted when inactive - prg-builder reads option values from
   the DOM by id
 - Export tab renders a live include/skip manifest mirroring the builder's
-  gates; footer carries a one-line summary + the Generate button
+  gates; footer carries a one-line summary + the Generate button. Generate is
+  never disabled by the background scan: while it runs, the manifest says a
+  live-method export leaves the song length and forced loop out (and that the
+  Spectrometer waits); see [`ANALYSIS.md`](ANALYSIS.md)
 - Under 720px it goes fullscreen and drops the rail entirely: the footer's
   Previous/Next walk the same tab order and carry a step counter. It has to
   sit above the site header, no panel may set a width the viewport can't
