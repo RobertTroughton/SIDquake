@@ -11,6 +11,10 @@ One engine, libsidplayfp, fed into one AudioWorklet.
   sources in `roms/`), reSIDfp SID emulation (nonlinear 6581 filter, 2SID/3SID)
 - Correctly plays RSID tunes, main-loop/NMI digi players and raster-timed code
 - Built by `scripts/build-sidplayfp-wasm.sh` or the second emcc step in `0-build.bat`
+- Built with `-fwasm-exceptions` (libsidplayfp throws, e.g. on a JAM): a
+  third smaller and ~12% faster than emscripten's JS exception emulation, and needs
+  a browser with WebAssembly exception handling (Chrome 95, Firefox 100,
+  Safari 15.2 or later)
 
 libsidplayfp uses its own reSIDfp, not `wasm/resid/`.
 

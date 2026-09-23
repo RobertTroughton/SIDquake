@@ -145,7 +145,7 @@ if %ERRORLEVEL% NEQ 0 (
 REM Keep sources and flags in sync with scripts/build-sidplayfp-wasm.sh
 set LIBFP=wasm\libsidplayfp\src
 call em++ -O3 -std=c++17 ^
-    -sDISABLE_EXCEPTION_CATCHING=0 ^
+    -fwasm-exceptions ^
     -Iwasm\libsidplayfp ^
     -I%LIBFP% ^
     -I%LIBFP%\sidplayfp ^

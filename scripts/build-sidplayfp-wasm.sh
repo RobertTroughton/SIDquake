@@ -12,7 +12,7 @@ LIB=wasm/libsidplayfp/src
 python3 scripts/gen-roms-header.py
 
 em++ -O3 -std=c++17 \
-  -sDISABLE_EXCEPTION_CATCHING=0 \
+  -fwasm-exceptions \
   -Iwasm/libsidplayfp \
   -I$LIB \
   -I$LIB/sidplayfp \
