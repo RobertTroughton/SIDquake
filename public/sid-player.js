@@ -1,5 +1,5 @@
 // sid-player.js - SID Playback Component
-// Wraps reSID (via WASM) to provide playback UI for SIDquake
+// Playback UI for SIDquake over the shared SIDPlayback engine
 // Uses a shared SIDPlayback instance to avoid multiple AudioContexts
 
 var _activeSIDPlayerInstance = null;

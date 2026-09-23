@@ -1,14 +1,10 @@
 // sid-playback.js - SID playback engine for SIDquake
 // Wraps a WASM SID engine with AudioWorkletNode for glitch-free output.
 //
-// Two engines expose the same audio_* API:
-//   - 'fp' (default): libsidplayfp + reSIDfp in sidplayfp.wasm - a full C64
-//     environment (real KERNAL/BASIC ROMs, cycle-exact CPU/CIA/VIC) that
-//     correctly plays RSID tunes, main-loop/NMI digi players and raster-timed
-//     code, with a more accurate (nonlinear) 6581 filter.
-//   - 'resid': the old lightweight reSID engine inside sidquake.wasm, kept
-//     as a fallback (?engine=resid) for one release before removal.
-// Select with ?engine=fp / ?engine=resid or localStorage 'sidquake-engine'.
+// The engine is libsidplayfp + reSIDfp in sidplayfp.wasm - a full C64
+// environment (real KERNAL/BASIC ROMs, cycle-exact CPU/CIA/VIC) that correctly
+// plays RSID tunes, main-loop/NMI digi players and raster-timed code, with a
+// nonlinear 6581 filter.
 
 class SIDPlayback {
     constructor(bufferSize = 4096) {
@@ -70,19 +66,6 @@ class SIDPlayback {
         return 1.0;
     }
 
-    /** Which playback engine to use: 'fp' (libsidplayfp, default) or 'resid'. */
-    static engineName() {
-        try {
-            const qs = new URLSearchParams(window.location.search).get('engine');
-            if (qs === 'fp' || qs === 'resid') return qs;
-            const stored = localStorage.getItem('sidquake-engine');
-            if (stored === 'fp' || stored === 'resid') return stored;
-        } catch (e) {
-            // no window/localStorage access - fall through to default
-        }
-        return 'fp';
-    }
-
     /** Lazy-load and instantiate the libsidplayfp module (public/sidplayfp.js). */
     static _loadFPModule() {
         if (!window._sidplayfpModulePromise) {
@@ -123,18 +106,8 @@ class SIDPlayback {
     async _doInit() {
         if (this.module) return;
 
-        if (SIDPlayback.engineName() === 'fp') {
-            // libsidplayfp engine: a separate, lazily fetched WASM module.
-            this.module = await SIDPlayback._loadFPModule();
-        } else if (window.SIDquakeModule && typeof window.SIDquakeModule.cwrap === 'function') {
-            // Module already instantiated by sidquake-core.js
-            this.module = window.SIDquakeModule;
-        } else if (typeof SIDquakeModule === 'function') {
-            // Module factory not yet called - instantiate it
-            this.module = await SIDquakeModule();
-        } else {
-            throw new Error('SID WASM module factory not loaded. Include sidquake.js first.');
-        }
+        // libsidplayfp engine: a separate, lazily fetched WASM module.
+        this.module = await SIDPlayback._loadFPModule();
 
         this._bindAPI();
 
@@ -442,7 +415,7 @@ class SIDPlayback {
         return !!(this.api && this.api.audio_set_speed);
     }
 
-    /** Fast-forward multiplier (1 = realtime); no-op on the legacy engine. */
+    /** Fast-forward multiplier (1 = realtime). */
     setSpeed(mult) {
         this.speed = mult;
         if (this.api && this.api.audio_set_speed) {
@@ -456,10 +429,9 @@ class SIDPlayback {
     setModel(model) {
         if (!this.api) return;
         const forced = (model === 6581 || model === 8580) ? model : 0;
-        // For the header selection the fp engine takes 0 and consults the tune
-        // itself, per chip on a multi-SID tune. The legacy reSID engine has no
-        // header to consult, so hand it the model parsed from the file.
-        this.api.audio_set_model(forced || (SIDPlayback.engineName() === 'fp' ? 0 : this._headerModel));
+        // For the header selection the engine takes 0 and consults the tune
+        // itself, per chip on a multi-SID tune.
+        this.api.audio_set_model(forced);
         this._sidModel = forced || this._headerModel;
     }
 
@@ -546,19 +518,14 @@ function getSharedSIDPlayback() {
 }
 
 // ---- Engine credit label ----
-// The player UI shows which engine drives playback; keep it in sync with the
-// selected engine so an ?engine=fp session is visibly running libsidplayfp.
+// The player UI credits the engine that drives playback.
 
 SIDPlayback.engineCreditHTML = function() {
-    if (SIDPlayback.engineName() === 'fp') {
-        return 'Playback by <a href="https://github.com/libsidplayfp/libsidplayfp" target="_blank" rel="noopener">libsidplayfp</a> + reSIDfp';
-    }
-    return 'Playback by <a href="https://github.com/libsidplayfp/resid" target="_blank" rel="noopener">reSID</a>';
+    return 'Playback by <a href="https://github.com/libsidplayfp/libsidplayfp" target="_blank" rel="noopener">libsidplayfp</a> + reSIDfp';
 };
 
-// Rewrite every credit element on the page (static markup in index.html /
-// hvsc-embed.html defaults to the reSID label). Re-run by sid-player.js after
-// it builds its own player UI.
+// Rewrite every credit element on the page. Re-run by sid-player.js after it
+// builds its own player UI.
 function updateSIDEngineCredits() {
     try {
         document.querySelectorAll('.sid-player-credit').forEach((el) => {

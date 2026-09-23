@@ -1,27 +1,25 @@
 # Playback
 
-Two engines behind one API, fed into one AudioWorklet.
+One engine, libsidplayfp, fed into one AudioWorklet.
 
-## Engines
+## Engine
 
-**`sid_audio.cpp`** - Legacy lightweight reSID playback engine
-- Playback bus over `cpu6510_core.h`, routing reads and writes through the SID
-  chips; calls init once and JSR-to-play once per frame, driving reSID
-- No real C64 environment (RSID/digi/raster tunes need `sidplayfp.wasm`)
-- No longer the default; kept one release as the `?engine=resid` fallback
-- Key exports: `audio_init`, `audio_load_sid`, `audio_generate`, `audio_get_*`
-
-Compiled into `sidplayfp.wasm` (playback only, lazily loaded):
-
-**`sidplayfp_audio.cpp`** - libsidplayfp playback engine (the default)
-- Same `audio_*` export API as `sid_audio.cpp`, so `sid-playback.js` treats the two
-  engines interchangeably (`?engine=fp|resid` or localStorage `sidquake-engine`;
-  default `fp`)
+**`sidplayfp_audio.cpp`** (compiled into `sidplayfp.wasm`, lazily loaded)
+- Exports the `audio_*` API `sid-playback.js` drives
 - Full C64 environment from vendored `wasm/libsidplayfp/` (2.16.1): cycle-exact
   6510 + CIA + VIC-II, real KERNAL/BASIC/CHARGEN ROMs (embedded via `wasm/roms_data.h`,
   sources in `roms/`), reSIDfp SID emulation (nonlinear 6581 filter, 2SID/3SID)
 - Correctly plays RSID tunes, main-loop/NMI digi players and raster-timed code
 - Built by `scripts/build-sidplayfp-wasm.sh` or the second emcc step in `0-build.bat`
+
+libsidplayfp uses its own reSIDfp, not `wasm/resid/`.
+
+**`sid_audio.cpp`** (in `sidquake.wasm`) is a lightweight reSID engine with the
+same `audio_*` API. It no longer plays tunes to the listener. It renders audio
+for the song-length scan when the Studio's "reSID (about twice as fast)" scan
+engine is picked, and for the VU-visibility warning's audio check. It has no
+real C64 environment: a playback bus over `cpu6510_core.h`, a minimal KERNAL,
+init once and play once per frame.
 
 Timing is PAL-only throughout.
 
@@ -29,7 +27,7 @@ Timing is PAL-only throughout.
 
 **`sid-playback.js`** - Playback engine wrapper
 - `SIDPlayback`: one shared AudioContext + AudioWorklet for the whole page,
-  fed from whichever WASM engine `SIDPlayback.engineName()` selects
+  fed from `sidplayfp.wasm`
 - Asks iOS for the `playback` audio session type, so the ring/silent switch
   doesn't mute a tune the way it mutes Web Audio by default
 - `setModel(6581|8580)` forces a chip; anything else follows the tune's header

@@ -27,8 +27,10 @@ class SIDAnalyzer {
             }
             this.Module = await moduleFactory();
             this.wasmModule = this.Module;
-            // Expose globally so PNGConverter and other consumers can share the same instance
-            window.SIDquakeModule = this.Module;
+            // Expose the instance for consumers that share it. Not as
+            // window.SIDquakeModule: that global is the factory, and the bake's
+            // page fallback calls it for an instance of its own.
+            window.SIDquakeModuleInstance = this.Module;
 
             if (!this.Module.HEAPU8) {
                 console.error('HEAPU8 not found in module');

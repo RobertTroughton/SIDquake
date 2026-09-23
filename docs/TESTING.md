@@ -27,6 +27,8 @@ The rest:
 - `scripts/test-logo-fit.js`: the logo placement maths.
 - `scripts/test-c64-render.js`, `scripts/test-image-memory.js`: the C64 preview
   matches the export, and converted pictures keep their real memory footprint.
+- `scripts/test-sidquake-core.js`: starting the page's analyser leaves the
+  `SIDquakeModule` factory callable for the other loaders.
 - `scripts/test-zip-writer.js`, `scripts/test-share-shards.js`: the hand-written
   zip layout, and the three copies of the share-meta shard hash agree.
 

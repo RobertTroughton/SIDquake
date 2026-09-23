@@ -544,11 +544,6 @@ window.hvscBrowser = (function () {
             }
             if (typeof getSharedSIDPlayback === 'undefined') {
                 await window.loadScript('sid-playback.js');
-                // Only the legacy resid fallback lives inside sidquake.wasm;
-                // the default fp engine lazily fetches sidplayfp.js itself.
-                if (SIDPlayback.engineName() === 'resid') {
-                    await window.loadScript('sidquake.js');
-                }
             }
         }
         const container = document.getElementById('hvscPlayerContainer');

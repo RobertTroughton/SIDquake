@@ -896,7 +896,7 @@ class SIDquakePRGExporter {
                     // Use the analyzer's own WASM instance rather than a shared
                     // window global - the global's name is brittle across cached
                     // script versions, and the exporter already holds the module.
-                    const wasmModule = this.analyzer?.Module || window.SIDquakeModule;
+                    const wasmModule = this.analyzer?.Module || window.SIDquakeModuleInstance;
                     if (!wasmModule) {
                         console.error('WASM module not available');
                         throw new Error('WASM module not ready. Please wait a moment and try again.');
@@ -966,7 +966,7 @@ class SIDquakePRGExporter {
                             throw new Error('PNG converter not loaded. Please refresh the page and try again.');
                         }
 
-                        const wasmModule = this.analyzer?.Module || window.SIDquakeModule;
+                        const wasmModule = this.analyzer?.Module || window.SIDquakeModuleInstance;
                         if (!wasmModule) {
                             console.error('WASM module not available');
                             throw new Error('WASM module not ready. Please wait a moment and try again.');
