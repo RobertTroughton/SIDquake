@@ -530,14 +530,30 @@ function createFftAnalyzer(sampleRate, numBars, frameHz, fMin, fMax) {
     const { lo, hi } = computeBands(numBars, sampleRate, fMin, fMax);
     const bands = computeFineBands(sampleRate);
     // One window, FFT scratch, smoothing state and byte spectrum per source.
-    const srcs = bands.sources.map(src => ({
-        ...src,
-        win: blackmanWindow(src.n),
-        re: new Float64Array(src.n), im: new Float64Array(src.n),
-        smoothed: new Float64Array(src.bins),
-        byteBin: new Float64Array(src.bins),
-    }));
+    // The input is real, so each window runs as a complex FFT of half its length
+    // (even samples in re, odd in im) and the spectrum is split out afterwards;
+    // twr/twi hold that split's twiddles, cos/sin(2 pi k / n).
+    const srcs = bands.sources.map(src => {
+        const half = src.n / 2;
+        const twr = new Float64Array(half), twi = new Float64Array(half);
+        for (let k = 0; k < half; k++) { twr[k] = Math.cos(2 * Math.PI * k / src.n); twi[k] = Math.sin(2 * Math.PI * k / src.n); }
+        return {
+            ...src,
+            win: blackmanWindow(src.n),
+            zr: new Float64Array(half), zi: new Float64Array(half), twr, twi,
+            smoothed: new Float64Array(src.bins),
+            byteBin: new Float64Array(src.bins),
+        };
+    });
     const spectra = srcs.map(src => src.byteBin);
+    // The bins anything reads: the bars from the 4k spectrum, and each fine band
+    // from its own source. Magnitude, smoothing and dB are per bin, so working
+    // out only these gives the same values for a fraction of the cost (the long
+    // windows are read over a few dozen of their 1024 bins).
+    for (const src of srcs) { src.usedLo = src.bins; src.usedHi = 0; }
+    const use = (s, a, b) => { if (a < s.usedLo) s.usedLo = a; if (b > s.usedHi) s.usedHi = b; };
+    for (let b = 0; b < numBars; b++) use(srcs[0], lo[b], hi[b]);
+    for (let s = 0; s < bands.count; s++) use(srcs[bands.src[s]], bands.lo[s], bands.hi[s]);
     const rows = createRowStore(numBars);   // raw per-frame values (pre-whitening)
     // The fine grid rides along on the same store, so everything that caches
     // or hands on the rows carries it too (see fitRange / deriveBars).
@@ -582,12 +598,25 @@ function createFftAnalyzer(sampleRate, numBars, frameHz, fMin, fMax) {
     // Window `src` over the samples starting at global index `from` of either
     // stream (samples before the start of the tune read as zero).
     const analyse = (src, from) => {
-        const { n, re, im, win, smoothed, byteBin, bins } = src;
+        const { n, zr, zi, twr, twi, win, smoothed, byteBin, usedLo, usedHi } = src;
         const data = src.decimated ? dbuf : buf, off = from - (src.decimated ? dbase : base);
-        for (let i = 0; i < n; i++) { const k = off + i; re[i] = (k >= 0 ? data[k] : 0) * win[i]; im[i] = 0; }
-        fft(re, im);
-        for (let i = 0; i < bins; i++) {
-            const mag = Math.sqrt(re[i] * re[i] + im[i] * im[i]) / n;   // faster than hypot; no overflow risk here
+        const half = n >> 1;
+        for (let i = 0; i < half; i++) {
+            const k = off + 2 * i;
+            zr[i] = (k >= 0 ? data[k] : 0) * win[2 * i];
+            zi[i] = (k + 1 >= 0 ? data[k + 1] : 0) * win[2 * i + 1];
+        }
+        fft(zr, zi);
+        for (let i = usedLo; i < usedHi; i++) {
+            // Bin i of the real input from bins i and half-i of the packed FFT:
+            // X = E + W^i O, E and O the spectra of the even and odd samples.
+            const m = i === 0 ? 0 : half - i;
+            const ar = zr[i], ai = zi[i], br = zr[m], bi = -zi[m];
+            const er = (ar + br) * 0.5, ei = (ai + bi) * 0.5;
+            const or = (ai - bi) * 0.5, oi = (br - ar) * 0.5;
+            const c = twr[i], s = -twi[i];
+            const xr = er + c * or - s * oi, xi = ei + c * oi + s * or;
+            const mag = Math.sqrt(xr * xr + xi * xi) / n;   // faster than hypot; no overflow risk here
             smoothed[i] = SMOOTH * smoothed[i] + (1 - SMOOTH) * mag;   // AnalyserNode temporal smoothing
             const db = 20 * Math.log10(smoothed[i] + 1e-12);
             const byte = (db - MIN_DB) / (MAX_DB - MIN_DB);

@@ -52,9 +52,7 @@ class SIDWorkletProcessor extends AudioWorkletProcessor {
             const need = output.length - written;
             const n = Math.min(avail, need);
 
-            for (let i = 0; i < n; i++) {
-                output[written + i] = buf[this._offset + i];
-            }
+            output.set(buf.subarray(this._offset, this._offset + n), written);
 
             written += n;
             this._offset += n;

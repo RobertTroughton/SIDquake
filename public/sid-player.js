@@ -209,7 +209,7 @@ class SIDPlayer {
     async loadFromBinary(data, filename, opts = {}) {
         this._autoplayOnLoad = !!opts.autoplay;
         this._startSubtune = parseInt(opts.subtune, 10) || 0;
-        this.stop();
+        this.stop(false);
         this.takeOwnership();
         this._ownershipLost = false;
 
@@ -236,7 +236,7 @@ class SIDPlayer {
     }
 
     async loadFromUrl(url, filename) {
-        this.stop();
+        this.stop(false);
         this.takeOwnership();
 
         const player = getSharedSIDPlayback();
@@ -370,9 +370,10 @@ class SIDPlayer {
         this.stopTimeUpdate();
     }
 
-    stop() {
+    // rewind = false: a new tune is about to load, so leave the engine as it is.
+    stop(rewind = true) {
         if (_activeSIDPlayerInstance === this && _sharedSIDPlayback) {
-            _sharedSIDPlayback.stop();
+            _sharedSIDPlayback.stop(rewind);
         }
         this.isPlaying = false;
         this._paused = false;

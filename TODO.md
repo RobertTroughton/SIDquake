@@ -759,76 +759,33 @@ recommendation, and the warning says so. **The underlying bug is still open.**
 - **`.gitignore` residue** — still carries CMake / native-desktop-app entries from before the project became a web tool.
 - **HVSC token hardening** — the token is a deliberate speed-bump, not access control; a Netlify rate-limit on `/hvsc-token` + `/HVSC/*` would raise the bar.
 
-## Emulation and analysis review (2026-09)
+## Emulation and analysis review (2026-09): what is left
 
-Found by reading and reproducing against the committed WASM; none fixed yet.
-Each fix needs a regression test first. `[WASM]` items need `sidquake.wasm`
-rebuilt.
+The review's bugs and main optimisations are fixed (see `docs/ANALYSIS.md`,
+`docs/CPU_CORES.md`, `docs/PLAYBACK.md`). Still open:
 
-Bugs, most harmful first:
-
-- **Shadow export only scans 24 s** — `prg-builder.js` calls `analyzeShadow`
-  with `frames: 1200`. `$D4xx` store sites first reached later stay unpatched,
-  and the replay overwrites their writes with stale mirror values. 13 tunes in
-  `SID/` are affected (e.g. `dane-elderscrollers` from 122 s, `zardax-eldorado`
-  from 31 s), and every one of them is still reported `suitable`. Scan the measured length or the whole window.
-- **`[WASM]` Implicit play address (play = 0) is never analysed** — the analyser
-  never seeds `$01` (stays 0, so `$FFFE` is always chosen over `$0314`), and
-  `cpu_execute_function` only accepts `RTS` as a return, so handlers ending in
-  `RTI` / `JMP $EA31` fail on frame 0. The same `$01` test is in
-  `loop-prepass.js`. The derived play address is also never exposed, so the
-  exporter JSRs `$0000`. Seed `$00=$2F`/`$01=$37`, enter the handler IRQ-style,
-  expose the resolved address.
-- **`[WASM]` Init address 0 not mapped to load address** in `sid_load`
-  (`sid_audio.cpp`, `sid-playback.js`, `loop-prepass.js` all do it).
-- **`[WASM]` Rejected load corrupts state** — `sid_load` commits the new file
-  before the `-7` "doesn't fit in 64K" check.
-- **`[WASM]` Chip count describes only the last subtune** — `sidChipsUsed` is
-  reset per song and not accumulated like `modifiedAddresses`.
-- **`[WASM]` songs = 0 analyses nothing** and reports no init timeouts.
-- **Shadow/VU check init cap is 2M cycles** (`spectrometer-shadow-detect.js`),
-  below Slanted's documented 2.04M; a timed-out init is not treated as failure.
-- **Failed load leaves the UI half-switched** (`ui.js` `processFile` commits
-  name and starts playback before `loadSID` can throw).
-- **`checkVuVisibility` race** — header captured before an `await`, bytes read
-  after it; result filed under the new tune.
-- **Shared module on the page fallback** — `sidquake-core.js` overwrites the
-  `window.SIDquakeModule` factory with the instance. The page-fallback
-  pre-pass is then silently skipped, and under `?engine=resid` the VU check's
-  `audio_init(22050)` stops the playing tune and leaves the engine at 22050 Hz.
-- **Pause then Play restarts from 0:00** (`sid-player.js` always re-selects the subtune).
-- **Worklet stalls after one empty render** — `_requested` stays true when
-  `audio_generate` returns 0 (fp engine returns 0 after a JAM).
-- **Bake window crossover is an octave below `BAR_HEIGHT_METHODS.md`**
-  (`resolvesFrom` uses the half-lobe). Decide which is intended; fix code or doc.
-- `pickBakeResult` (main-thread fallback) omits `fMin`/`fMax`/`rangeFitted`.
-- `sid_create_modified` copies 124 header bytes even for a v1 file of 120-123 bytes.
-
-Legacy `?engine=resid` (`sid_audio.cpp`) only:
-
-- `[WASM]` `cpu_jsr` uses a 2-byte sentinel and a non-wrapping `sp >= initialSP`:
-  `RTI` handlers run garbage for whole frames, and a leaked SP stops a later call
-  on its first nested `JSR`.
-- `[WASM]` The per-write `sid.clock()` flush is not deducted from the frame, so
-  tunes play sharp (+2 cents at 25 writes/frame, +9 at 100). It is only needed
-  for 8580 + `SAMPLE_FAST`.
-- `[WASM]` `totalCycles` counts CPU and SID cycles, so the clock runs fast.
-- `[WASM]` A CIA subtune's `cyclesPerFrame` sticks when switching to a VBI subtune.
-- `[WASM]` `audio_set_subtune` re-inits on dirty memory and keeps the first
-  subtune's play address.
-- `docs/CPU_CORES.md` says audio-core cycle counts place each write within the
-  frame. In fact play runs whole before the SID is clocked.
-
-Optimisations:
-
-- `spectrometer-bake.js` `analyse()`: limit per-bin sqrt/smooth/log to the bins
-  that are read. Output is identical and 60 s of audio drops from 1.08 s to 0.68 s. A
-  real-input FFT with precomputed twiddles would roughly halve the rest.
-- Bake render cache holds ~24 MB per slot, against the ~1.4 MB its comment claims. Trim the rows
-  to `count` when a render finishes.
-- fp engine: one tune pick runs `config` + `initialise` five times (stop, load,
-  `setModel`, `setSamplingMethod`, play). Skip the no-op reloads.
-- Worklet: `output.set(subarray)` instead of the per-sample copy, and pool the
-  per-chunk `Float32Array`s.
-- The 6510 core itself needs nothing. It dispatches through a dense switch on a
-  template bus, and it passed an exhaustive decimal-mode and cycle-table check.
+- **Bake window crossover.** Each fine band takes the shortest window whose
+  main-lobe *half*-width fits in a bar, so near each crossover (~270 Hz for the
+  4k window) the whole lobe spans about three bars. Requiring the whole lobe to
+  fit moves the crossovers an octave up (`resolvesFrom` in
+  `spectrometer-bake.js`); worth a measured before/after on `SID/` first.
+- **Playback engine re-inits.** A real chip or quality change still
+  initialises the C64 twice (`engine->config()`, then `reloadTune`), and the
+  first Play after a load re-inits once more through `setSubtune`.
+- **Worklet allocation.** `_generateAndPost` allocates a `Float32Array` per
+  4096-sample chunk; transferring spent buffers back from the worklet as a pool
+  would stop the garbage.
+- **Smaller analyser points.** Operand bytes get no access flag (only the
+  opcode byte gets `MEM_EXECUTE`), so `sid_get_code_bytes` undercounts code and
+  `pickShadowPage` could pick a page holding only an operand tail;
+  `cpu_read_memory` marks host reads `MEM_READ`; CIA timer detection sees only
+  `$DC04/$DC05`, not their mirrors or CIA 2; `sid_analyze` divides the frame by
+  the CIA latch rather than latch + 1 (no difference on any tune in `SID/`);
+  `lastExecutionCycles` is stale after a timeout; the core's unreachable
+  `default:` pulls `printf`/`std::set` into the wasm.
+- **reSID engine multi-SID.** A second 8580 chip is set to `SAMPLE_FAST` while
+  chip 0 interpolates.
+- **Play clock.** The pill's time comes from the engine, which runs ahead of
+  what is heard by the worklet's queue (up to ~0.7 s).
+- **Build flags.** `sidplayfp.wasm` uses `-sDISABLE_EXCEPTION_CATCHING=0` (JS
+  trampolines); `-fwasm-exceptions` would be smaller. Unmeasured.

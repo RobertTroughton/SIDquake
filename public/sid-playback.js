@@ -395,9 +395,11 @@ class SIDPlayback {
         }
     }
 
-    stop() {
+    // rewind: put the engine back to the start song. Skipped when a new tune is
+    // about to replace this one, since that re-initialises the C64 anyway.
+    stop(rewind = true) {
         this.pause();
-        if (this.loaded) {
+        if (this.loaded && rewind) {
             // Reset to start of current subtune
             this.api.audio_set_subtune(this._startSong > 0 ? this._startSong - 1 : 0);
         }

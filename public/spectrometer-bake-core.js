@@ -341,9 +341,15 @@ async function renderAndAnalyze(sidBytes, loadEngine, options = {}) {
         try { api.cleanup(); } catch (e) { /* best-effort */ }
     }
 
+    // The finished rows are only read from here on, and a render cache slot holds
+    // them: give back the slack their doubling growth left (up to half of each).
+    const rows = session.rows();
+    rows.data = rows.data.slice(0, rows.count * rows.numBars);
+    if (rows.fine) rows.fine.data = rows.fine.data.slice(0, rows.fine.count * rows.fine.bands.count * 2);
+
     return {
         numBars, frameHz, isNtsc, engine,
-        rows: session.rows(),
+        rows,
         renderedSeconds: session.fedSeconds(),
         // The state loop the render was stopped on, for the detection that runs
         // over these rows later: they hold one pass of it, not the two the
@@ -387,7 +393,8 @@ export function createBakeCore(loadEngine) {
     // single slot meant A -> B -> A re-rendered A from scratch, which is the
     // most common thing anyone does while comparing two tunes. Rows are the
     // expensive part (~90% of a bake), so a handful of them is worth the memory:
-    // a 12-minute tune at 50 Hz over 40 bars is about 1.4 MB.
+    // a 12-minute tune at 50 Hz is about 13 MB (40 float bars plus two bytes per
+    // fine band per frame), and a slot is trimmed to that when its render ends.
     const MAX_SLOTS = 4;
     const cache = { rows: null, bakes: new Map() };
     const slots = new Map();   // slotKey -> { rows, bakes }

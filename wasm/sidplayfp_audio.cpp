@@ -240,7 +240,11 @@ int audio_generate(int16_t* buffer, int numSamples) {
 // the per-tune header selection.
 EMSCRIPTEN_KEEPALIVE
 void audio_set_model(int model) {
-    S.forcedModel = (model == 6581 || model == 8580) ? model : 0;
+    int forced = (model == 6581 || model == 8580) ? model : 0;
+    // The player re-applies its saved choice after every load; when nothing
+    // changed, reconfiguring would only re-initialise the C64 for nothing.
+    if (forced == S.forcedModel) return;
+    S.forcedModel = forced;
     if (applyConfig()) reloadTune();
 }
 
@@ -258,6 +262,7 @@ void audio_set_speed(int multiplier) {
 // 0 = fast (interpolate + fastSampling), 1 = interpolate, 2 = resample
 EMSCRIPTEN_KEEPALIVE
 void audio_set_sampling_method(int method) {
+    if (method == S.samplingMethod) return;   // see audio_set_model
     S.samplingMethod = method;
     if (applyConfig()) reloadTune();
 }
