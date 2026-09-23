@@ -61,9 +61,9 @@ below ~540 Hz, so a bass note used to light four to six adjacent bars. The fine
 grid therefore reads its low bands from longer windows: 186 ms and 371 ms, cut
 from the audio decimated 8× (a two-stage boxcar, then every eighth sample), so
 a 2048-point FFT on the decimated stream gives a 16384-point window's bins.
-Each band takes the shortest window whose main lobe fits inside a bar at its
-pitch — the 4k window from ~540 Hz up, 186 ms from ~270 Hz, 371 ms below that
-— so the time smearing of a long window (a note fading in and out over its
+Each band takes the shortest window whose main-lobe half-width is no wider
+than a bar at its pitch — the 4k window from ~270 Hz up, 186 ms from ~135 Hz,
+371 ms below that — so the time smearing of a long window (a note fading in and out over its
 length) only reaches the register nothing shorter can resolve. All three
 windows are centred on the same instant, which is why a frame is computed
 only once the audio reaches ~190 ms past its centre (`FRAME_NEED`). Through

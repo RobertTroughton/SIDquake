@@ -6,6 +6,9 @@ The page-level controllers. Layout rules for small screens and touch are in
 **`ui.js`** - Main application controller
 - `UIController` class orchestrating the entire UI
 - SID file loading (drag-drop, file picker, HVSC, random)
+  (`processFile`): the file is parsed first, and only an accepted one switches
+  the page, player and scan over to it; a rejected file leaves the previous
+  tune loaded
 - Header display and metadata editing
 - Visualizer grid with selection; renders option controls into Studio tabs
 - Quick path (`renderQuickExport`): a row of looks and one Generate button

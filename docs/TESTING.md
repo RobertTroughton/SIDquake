@@ -29,6 +29,8 @@ The rest:
   matches the export, and converted pictures keep their real memory footprint.
 - `scripts/test-resid-engine.js`: the reSID engine the fast song-length scan
   renders with: pitch, play clock, stack, play-address-0 and subtune handling.
+- `scripts/test-worklet.js`: the AudioWorklet asks again when a request comes
+  back empty, and keeps its queue across a pause.
 - `scripts/test-sidquake-core.js`: starting the page's analyser leaves the
   `SIDquakeModule` factory callable for the other loaders.
 - `scripts/test-zip-writer.js`, `scripts/test-share-shards.js`: the hand-written
@@ -48,6 +50,7 @@ isn't a dependency (`npm install --no-save playwright`):
 | `scripts/studio-smoke-check.js` | load a SID -> Studio -> background analysis -> export manifest, and the sticky visualizer choice; an export mid-scan leaves the length and loop out, one after the scan includes them |
 | `scripts/device-check.js` | a device matrix from iPhone to 2560px desktop: horizontal scrolling, clipped content, tap target and text sizes, contrast, how many HVSC rows fit |
 | `scripts/hvsc-deeplink-check.js` | a `?tune=` link arrives loaded and described, in either index/share-meta order and when the quick play fails; builds its own one-tune mirror |
+| `scripts/player-check.js` | a rejected file leaves the previous tune loaded, Play after Pause resumes, the VU answer stays with its tune, a play-address-0 tune is refused at export |
 | `scripts/compression-check.js` | crunching an export keeps the page answering, and gives the same bytes in the worker and on the page |
 | `scripts/embed-options-check.js` | every documented embed option reaches the widget: chrome switches, configurable text, palette, root confinement, initial sort and query |
 

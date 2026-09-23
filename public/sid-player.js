@@ -17,6 +17,7 @@ class SIDPlayer {
         this._lastLoadedData = null;
         this._lastLoadedFilename = null;
         this._ownershipLost = false;
+        this._paused = false;           // paused (not stopped): Play resumes
         this.buildUI();
     }
 
@@ -105,6 +106,8 @@ class SIDPlayer {
             try { localStorage.setItem('sidquake-sampling', String(method)); } catch (e) { /* ok */ }
             const player = getSharedSIDPlayback();
             player.setSamplingMethod(method);
+            // The engine reloads the tune, so a paused tune starts over on Play.
+            this._paused = false;
             // Sync all other quality selects on the page
             document.querySelectorAll('.sid-player-quality-select').forEach(sel => {
                 if (sel !== this.els.qualitySelect) sel.value = method;
@@ -121,6 +124,7 @@ class SIDPlayer {
             try { localStorage.setItem('sidquake-sid-model', choice); } catch (e) { /* ok */ }
             const player = getSharedSIDPlayback();
             player.setModel(parseInt(choice, 10) || 0);
+            this._paused = false;
             document.querySelectorAll('.sid-player-model-select').forEach(sel => {
                 if (sel !== this.els.modelSelect) sel.value = choice;
             });
@@ -188,6 +192,7 @@ class SIDPlayer {
     onLostOwnership() {
         // Another player took over the shared playback instance
         this.isPlaying = false;
+        this._paused = false;
         this._ownershipLost = true;
         this.els.playBtn.innerHTML = '<i class="fas fa-play"></i>';
         this.els.playBtn.title = 'Play';
@@ -254,6 +259,7 @@ class SIDPlayer {
         this._startSubtune = 0;
         this.currentSubtune = Math.max(0, Math.min(startSong - 1, this.totalSubtunes - 1));
         this.loaded = true;
+        this._paused = false;
 
         this.els.playBtn.disabled = false;
         this.els.stopBtn.disabled = false;
@@ -339,9 +345,16 @@ class SIDPlayer {
             return;
         }
 
-        player.pause();
-        player.setSubtune(this.currentSubtune);
-        player.play();
+        // Play after Pause carries on; anything else starts the tune over.
+        if (this._paused && player.resume) {
+            this._paused = false;
+            player.resume();
+        } else {
+            this._paused = false;
+            player.pause();
+            player.setSubtune(this.currentSubtune);
+            player.play();
+        }
         this.isPlaying = true;
         player.setAudioStateCallback(() => this._syncPlayButton());
         this._syncPlayButton();
@@ -349,7 +362,8 @@ class SIDPlayer {
 
     pause() {
         const player = getSharedSIDPlayback();
-        player.pause();
+        player.pause(true);
+        this._paused = true;
         this.isPlaying = false;
         this.els.playBtn.innerHTML = '<i class="fas fa-play"></i>';
         this.els.playBtn.title = 'Play';
@@ -361,6 +375,7 @@ class SIDPlayer {
             _sharedSIDPlayback.stop();
         }
         this.isPlaying = false;
+        this._paused = false;
         this.els.playBtn.innerHTML = '<i class="fas fa-play"></i>';
         this.els.playBtn.title = 'Play';
         this.els.time.textContent = '0:00';
@@ -369,12 +384,14 @@ class SIDPlayer {
 
     restart() {
         if (!this.loaded) return;
+        this._paused = false;
         this.play();
     }
 
     prevSubtune() {
         if (this.currentSubtune > 0) {
             this.currentSubtune--;
+            this._paused = false;
             this.updateSubtuneDisplay();
             if (window.hvscVisualizer && window.hvscVisualizer.reset) window.hvscVisualizer.reset();
             if (this.isPlaying) this.play();
@@ -384,6 +401,7 @@ class SIDPlayer {
     nextSubtune() {
         if (this.currentSubtune < this.totalSubtunes - 1) {
             this.currentSubtune++;
+            this._paused = false;
             this.updateSubtuneDisplay();
             if (window.hvscVisualizer && window.hvscVisualizer.reset) window.hvscVisualizer.reset();
             if (this.isPlaying) this.play();
@@ -395,6 +413,7 @@ class SIDPlayer {
         const want = Math.max(0, Math.min(index | 0, this.totalSubtunes - 1));
         if (!this.loaded || want === this.currentSubtune) return;
         this.currentSubtune = want;
+        this._paused = false;
         this.updateSubtuneDisplay();
         if (window.hvscVisualizer && window.hvscVisualizer.reset) window.hvscVisualizer.reset();
         if (this.isPlaying) this.play();

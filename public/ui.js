@@ -1099,22 +1099,10 @@ class UIController {
             return;
         }
 
-        this.currentFileName = file.name;
-        this.hasModifications = false;
         const autoplay = !!(opts && opts.autoplay);
         // Which tune to start on, when the caller knows (an HVSC pick made while
         // that tune was previewing). Bounds-checked against the header below.
         const wantSubtune = Math.max(0, parseInt(opts && opts.subtune, 10) || 0);
-        this._chosenSubtune = wantSubtune;
-        this.elements.exportModifiedSIDButton.disabled = true;
-
-        // A scan for the previous tune is now pointless, and its result must not
-        // land on this one: bump the token first, then stop it.
-        this._analysisToken++;
-        this.cancelAnalysis();
-        this._hideAnalysisChip();
-        // Stopping the previous tune's scan is not a decision about this one.
-        this._analysisCancelled = false;
 
         this.showBusy('Loading SID File', 'Initializing...');
         this.hideMessages();
@@ -1127,15 +1115,32 @@ class UIController {
 
             const buffer = await file.arrayBuffer();
 
+            this.updateBusy('Parsing SID Header', 'Extracting metadata...');
+
+            // Parse first: a file the analyser rejects (an RSID, a tune that does
+            // not fit in memory) leaves the previous tune loaded, so nothing below
+            // may switch the page over to this one until it has been accepted.
+            const header = await this.analyzer.loadSID(buffer);
+
+            this.currentFileName = file.name;
+            this.hasModifications = false;
+            this._chosenSubtune = wantSubtune;
+            this.elements.exportModifiedSIDButton.disabled = true;
+
+            // A scan for the previous tune is now pointless, and its result must
+            // not land on this one: bump the token first, then stop it.
+            this._analysisToken++;
+            this.cancelAnalysis();
+            this._hideAnalysisChip();
+            // Stopping the previous tune's scan is not a decision about this one.
+            this._analysisCancelled = false;
+
             const player = await this.ensureMainPlayer();
             if (player) {
                 player.loadFromBinary(new Uint8Array(buffer), file.name,
                     { autoplay, subtune: wantSubtune });
             }
 
-            this.updateBusy('Parsing SID Header', 'Extracting metadata...');
-
-            const header = await this.analyzer.loadSID(buffer);
             this.sidHeader = header;
             this.analyzer.sidHeader = header;
             if (window.studioModal) window.studioModal.refreshHeader();
@@ -2897,14 +2902,19 @@ class UIController {
      * worked out once per tune and re-shown from there on every visualizer switch.
      */
     async checkVuVisibility() {
-        const h = this.sidHeader;
-        if (!h || !this.analyzer || !this.analyzer.Module) return this.renderVuNotes();
+        if (!this.sidHeader || !this.analyzer || !this.analyzer.Module) return this.renderVuNotes();
         if (this._vuBlindFor === this._analysisToken) return this.renderVuNotes();
         const token = ++this._vuToken;
+        // The tune this answer is for. Another can load while the module import
+        // below is pending, and then its header and bytes must not be mixed with
+        // this one's, nor the answer filed under it.
+        const tuneToken = this._analysisToken;
         let res;
         try {
             const cb = window.cacheBust || (s => s);
             const { analyzeVuVisibility } = await import(cb('./spectrometer-shadow-detect.js'));
+            if (tuneToken !== this._analysisToken) return;
+            const h = this.sidHeader;
             const sidBytes = this.analyzer.createModifiedSID();
             if (!sidBytes) return;
             res = analyzeVuVisibility(this.analyzer.Module, sidBytes, {
@@ -2918,14 +2928,14 @@ class UIController {
         } catch (e) {
             return;   // a warning that cannot be worked out is simply not shown
         }
-        if (token !== this._vuToken || !res || !res.frames) return;
+        if (token !== this._vuToken || tuneToken !== this._analysisToken || !res || !res.frames) return;
 
         // Only a long leading stretch the listener can actually hear. Frames with
         // every gate closed are ordinary - across the tunes in SID/ they run from
         // 26% to 95% on tunes whose bars are fine - and a tune that genuinely
         // opens with silence has nothing wrong with it either.
         this._vuBlind = (res.leadingSeconds >= 3 && res.leadingAudible) ? res : null;
-        this._vuBlindFor = this._analysisToken;
+        this._vuBlindFor = tuneToken;
         this.renderVuNotes();
     }
 

@@ -46,9 +46,13 @@ Timing is PAL-only throughout.
   and mirrored across every pill on the page. Chip model defaults to `auto`,
   i.e. each tune's own header decides; changing quality or chip reloads the
   tune in the engine, so playback restarts
+- Pause keeps the engine's place and the worklet's queue, and Play resumes from
+  there; Stop, Restart, a subtune change or a reload start the tune over
 
 **`sid-worklet-processor.js`** - the AudioWorklet. The engine renders on the
 main thread; `sid-playback.js` posts Float32 sample blocks over the worklet's
 MessagePort and the processor queues them and plays them out in `process()`.
+It asks for more below ~0.37 s buffered, and asks again every ~0.2 s while a
+request has come back empty.
 
 `public/tests/engine-test.html` is a manual page for comparing the engines.

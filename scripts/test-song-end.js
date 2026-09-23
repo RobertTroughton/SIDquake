@@ -114,6 +114,16 @@ function analyse(bake, rows, outputMaxSeconds, extra = {}) {
         'a repeating tune is neither of those',
         JSON.stringify({ faded: looped.fadedOut, cut: looped.truncated, looped: looped.looped }));
 
+    // --- an option passed as undefined is an option left out ---------------
+    // The bake core forwards its caller's options field by field, so a caller
+    // that leaves maxHeight out hands analyzeRows maxHeight: undefined - which
+    // must not beat the default and quantise every bar to NaN.
+    const plain = analyse(bake, makeLoopingRows(20, 4), 600);
+    const holey = analyse(bake, makeLoopingRows(20, 4), 600, { maxHeight: undefined, numBars: undefined });
+    check(holey.looped === plain.looped && holey.numKeyframes === plain.numKeyframes,
+        'undefined options fall back to the defaults',
+        JSON.stringify({ looped: holey.looped, keyframes: holey.numKeyframes }));
+
     console.log(failures ? `\n${failures} check(s) failed` : '\nall checks passed');
     process.exit(failures ? 1 : 0);
 })().catch((e) => { console.error(e); process.exit(1); });

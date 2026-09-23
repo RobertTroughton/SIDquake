@@ -10,6 +10,7 @@ class SIDWorkletProcessor extends AudioWorkletProcessor {
         this._active = false;
         this._totalSamples = 0;
         this._requested = false;
+        this._starved = 0;      // quanta spent empty since the last request
 
         this.port.onmessage = (e) => {
             const msg = e.data;
@@ -17,8 +18,14 @@ class SIDWorkletProcessor extends AudioWorkletProcessor {
                 this._queue.push(msg.samples);
                 this._totalSamples += msg.samples.length;
                 this._requested = false;
+                this._starved = 0;
             } else if (msg.type === 'start') {
                 this._active = true;
+                this._requested = false;
+            } else if (msg.type === 'pause') {
+                // Stop consuming but keep the queue, so a resume plays on from
+                // where the listener was.
+                this._active = false;
                 this._requested = false;
             } else if (msg.type === 'stop') {
                 this._active = false;
@@ -66,6 +73,14 @@ class SIDWorkletProcessor extends AudioWorkletProcessor {
         // Request more samples when the buffer runs low. The threshold gives
         // the main thread ~0.37s of slack (heavy re-renders, GC, layout) and
         // the fill level is reported so it tops up to its high-water mark.
+        //
+        // A request can come back with nothing (the engine rendered no samples
+        // that once), and no answer means no next request: while the queue is
+        // empty, ask again every 64 quanta (~0.2 s) rather than wait forever.
+        if (this._requested && this._totalSamples === 0 && ++this._starved >= 64) {
+            this._requested = false;
+            this._starved = 0;
+        }
         if (this._totalSamples < 16384 && !this._requested) {
             this._requested = true;
             this.port.postMessage({ type: 'need-samples', buffered: this._totalSamples });

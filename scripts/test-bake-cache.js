@@ -126,6 +126,24 @@ function stubEngine(counter) {
     check(counter.renders > pushed, 'and the cache is bounded, not unlimited',
         `${counter.renders - pushed} render(s)`);
 
+    // --- both bake paths hand back the same fields --------------------------
+    // The worker and the page fallback each trim the baker's result to what the
+    // exporter reads. The worker's copy is lifted out of its source by text,
+    // since the worker file cannot be imported here.
+    {
+        const fs = require('fs');
+        const path = require('path');
+        const src = fs.readFileSync(path.join(__dirname, '..', 'public', 'spectrometer-bake-worker.js'), 'utf8');
+        const block = src.slice(src.indexOf('const result = {'), src.indexOf('};', src.indexOf('const result = {')));
+        const workerKeys = [...block.matchAll(/(\w+):/g)].map((m) => m[1]).sort();
+        const { pickBakeResult } = await import('../public/spectrometer-bake-runner.js');
+        const full = Object.fromEntries(workerKeys.map((k) => [k, 1]));
+        const pageKeys = Object.keys(pickBakeResult(full)).sort();
+        const missing = workerKeys.filter((k) => !pageKeys.includes(k));
+        check(workerKeys.length > 10 && missing.length === 0,
+            'the page fallback returns every field the worker does', missing.length ? `missing ${missing.join(', ')}` : '');
+    }
+
     console.log(failures ? `\n${failures} check(s) failed` : '\nall checks passed');
     process.exit(failures ? 1 : 0);
 })().catch((e) => { console.error(e); process.exit(1); });

@@ -53,9 +53,12 @@ const FIT_MIN = 30, FIT_MAX = 12000, FIT_MIN_OCTAVES = 4;
 // - 186 ms and 371 ms - cut from the audio decimated DEC times (a two-stage
 // boxcar, then every DEC-th sample), which gives a 16384-point window's bins
 // for the cost of a 2048-point FFT. Each band uses the SHORTEST window whose
-// main lobe (LOBE_BINS bins each side) fits inside a bar at that pitch, so the
-// time smearing a long window brings (a note fades in and out over its
-// length) only reaches the register nothing shorter can resolve. Measured
+// main lobe half-width (LOBE_BINS bins) is no wider than a bar at that pitch -
+// the 4k window from ~270 Hz, 186 ms from ~135 Hz, 371 ms below - so the time
+// smearing a long window brings (a note fades in and out over its length) only
+// reaches the register nothing shorter can resolve. Near each crossover the
+// whole lobe still spans about three bars; requiring it to fit inside one would
+// move the crossovers an octave up. Measured
 // over the SID/ fixtures the decimated windows match true long FFTs to ~0.1
 // on the 0..111 scale, and bars within 85% of the local peak among the bottom
 // twelve go from 4.8-6.4 to 2.5-4.2.
@@ -101,6 +104,15 @@ const NORM_STRENGTH = 0.5, NORM_PCTL = 0.96, NORM_DEAD_FRAC = 0.18, NORM_HEADROO
 // magnitude finer than the 1/111 step the values are eventually quantized to, so
 // the percentile it reports lands on the same bar height as an exact sort.
 const HIST_BUCKETS = 4096;
+
+// DEFAULTS under the caller's options, leaving out any the caller passed as
+// undefined: callers forward option fields one by one, and an undefined
+// maxHeight that beat the default quantised every bar to NaN.
+function withDefaults(options) {
+    const o = { ...DEFAULTS };
+    for (const k in options) if (options[k] !== undefined) o[k] = options[k];
+    return o;
+}
 
 const DEFAULTS = {
     numBars: 40,          // RaistlinBars NUM_FREQUENCY_BARS
@@ -229,7 +241,7 @@ function barValue(peak, avg, tilt) {
 
 // The three spectra a frame is analysed into: the 4096-point window on the
 // audio itself, and the mid/long windows on the decimated audio. `resolvesFrom`
-// is the pitch above which the window's main lobe fits inside a bar.
+// is the pitch above which the window's main-lobe half-width fits in a bar.
 function analysisSources(sampleRate) {
     const srDec = sampleRate / DEC;
     return [
@@ -1036,7 +1048,7 @@ function detectLoop(kf, nk, numBars, maxHeight, keyframeHz = 25, minLoopSeconds 
 // the returned shape. (The incremental render path uses createBakeSession instead,
 // so it never buffers the whole tune; this stays for tests + the offline harness.)
 export async function bakeSpectrometer(pcm, sampleRate, options = {}) {
-    const o = { ...DEFAULTS, ...options };
+    const o = withDefaults(options);
     // The C64 reads one keyframe every second raster frame, so the keyframe rate
     // is exactly half the frame rate - derive it rather than trusting a separate
     // default, so an accurate (PAL/NTSC) frameHz carries through to the grid and
@@ -1057,7 +1069,7 @@ export async function bakeSpectrometer(pcm, sampleRate, options = {}) {
 // per-frame rows are kept (never the whole tune), and whitening/detection reuse
 // those rows - so this is what the live export drives.
 export function createBakeSession(sampleRate, options = {}) {
-    const o = { ...DEFAULTS, ...options };
+    const o = withDefaults(options);
     o.keyframeHz = o.frameHz / (o.framesPerKeyframe || 2);
     const an = createFftAnalyzer(sampleRate, o.numBars, o.frameHz, o.fMin, o.fMax);
     let fedSamples = 0;
@@ -1089,7 +1101,7 @@ export function createBakeSession(sampleRate, options = {}) {
 // rows are maxHeight-independent) without re-rendering. hitCap = the render stopped
 // at the analysis cap without finding a loop.
 export async function bakeRows(rows, options = {}) {
-    const o = { ...DEFAULTS, ...options };
+    const o = withDefaults(options);
     o.keyframeHz = o.frameHz / (o.framesPerKeyframe || 2);
     const store = asRowStore(rows, o.numBars);
     const analyzedSeconds = options.analyzedSeconds != null ? options.analyzedSeconds : store.count / o.frameHz;
@@ -1208,7 +1220,7 @@ function resolveKeyframes(store, o, out = store) {
 // stored duration (numKeyframes / keyframeHz) is fps-independent, so one pass at the
 // default rate is enough to feed estimateBakeBytes for all three rates.
 export function analyzeRows(rows, options = {}) {
-    const o = { ...DEFAULTS, ...options };
+    const o = withDefaults(options);
     o.keyframeHz = o.frameHz / (o.framesPerKeyframe || 2);
     const store = asRowStore(rows, o.numBars);
     const analyzedSeconds = options.analyzedSeconds != null ? options.analyzedSeconds : store.count / o.frameHz;
@@ -1350,7 +1362,7 @@ async function bakeFromStore(store, o, analyzedSeconds, hitCap, prog) {
 // Returns { framesPerKeyframe, keyframeHz, keyframes, segments, codebookBytes,
 //           indexBytes, bytes, fits }.
 export function estimateBakeBytes(durationSeconds, options = {}) {
-    const o = { ...DEFAULTS, ...options };
+    const o = withDefaults(options);
     const fpk = Math.max(1, Math.round(options.framesPerKeyframe || 2));
     const keyframeHz = o.frameHz / fpk;
     const keyframes = Math.max(1, Math.round(durationSeconds * keyframeHz));

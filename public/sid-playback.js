@@ -328,6 +328,15 @@ class SIDPlayback {
     }
 
     play() {
+        this._start(true);
+    }
+
+    /** Carry on after pause(true): the worklet plays out what it still holds. */
+    resume() {
+        this._start(false);
+    }
+
+    _start(flush) {
         if (!this.loaded || !this.workletNode) return;
 
         // Resume audio context if suspended (browser autoplay policy). If the
@@ -348,13 +357,18 @@ class SIDPlayback {
 
         this.playing = true;
 
-        // Flush any stale samples and tell worklet to start accepting new ones
-        this.workletNode.port.postMessage({ type: 'stop' });
-        this.workletNode.port.postMessage({ type: 'start' });
+        if (flush) {
+            // Flush any stale samples and tell worklet to start accepting new ones
+            this.workletNode.port.postMessage({ type: 'stop' });
+            this.workletNode.port.postMessage({ type: 'start' });
 
-        // Pre-fill the worklet queue so playback starts immediately
-        this._workletBuffered = 0;
-        this._fillWorkletQueue();
+            // Pre-fill the worklet queue so playback starts immediately
+            this._workletBuffered = 0;
+            this._fillWorkletQueue();
+        } else {
+            // The queue is still there; the worklet asks for more as it drains.
+            this.workletNode.port.postMessage({ type: 'start' });
+        }
 
         // Fade in from silence to mask any transition click (~85ms)
         const now = this.audioCtx.currentTime;
@@ -368,10 +382,11 @@ class SIDPlayback {
         (this.analyser || this.gainNode).connect(this.audioCtx.destination);
     }
 
-    pause() {
+    // keepQueue: hold on to the audio already queued, for resume().
+    pause(keepQueue = false) {
         this.playing = false;
         if (this.workletNode) {
-            this.workletNode.port.postMessage({ type: 'stop' });
+            this.workletNode.port.postMessage({ type: keepQueue ? 'pause' : 'stop' });
         }
         try {
             (this.analyser || this.gainNode).disconnect(this.audioCtx.destination);

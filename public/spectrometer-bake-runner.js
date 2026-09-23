@@ -185,12 +185,14 @@ async function loadEngineOnPage(name) {
 // The worker sends a trimmed, structured-cloneable result; the fallback core returns
 // the baker's full object (which also carries a reconstruct() closure and the raw
 // keyframe grid). Normalize both to the same shape so callers can't accidentally
-// depend on something that only exists on one path.
-function pickBakeResult(r) {
+// depend on something that only exists on one path. Exported for
+// scripts/test-bake-cache.js, which checks it against the worker's copy.
+export function pickBakeResult(r) {
     return {
         codebook: r.codebook, indices: r.indices,
         numBars: r.numBars, maxHeight: r.maxHeight, K: r.K,
         segments: r.segments, segmentWidth: r.segmentWidth,
+        fMin: r.fMin, fMax: r.fMax, rangeFitted: r.rangeFitted,
         keyframeHz: r.keyframeHz, numKeyframes: r.numKeyframes,
         loopStart: r.loopStart, framesPerKeyframe: r.framesPerKeyframe,
         looped: r.looped, fadedOut: r.fadedOut, truncated: r.truncated, forcedLoop: r.forcedLoop,
