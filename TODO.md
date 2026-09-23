@@ -147,7 +147,7 @@ Related and already scoped further down: "Stop searching / use what we have", an
 prompting at the cap instead of surrendering silently. Both matter more once the
 scan is something the user watches rather than waits on.
 
-**The register pre-pass** (`public/loop-prepass.js`, see `docs/ARCHITECTURE.md`)
+**The register pre-pass** (`public/loop-prepass.js`, see `docs/ANALYSIS.md`)
 now finds the player's state loop before any audio is rendered, so a looping
 tune costs intro + one period + a confirm window of render rather than two or
 three passes. What it leaves open:

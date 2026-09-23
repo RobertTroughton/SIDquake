@@ -155,7 +155,7 @@ netlify/          Edge functions: HVSC access gating and per-tune share cards
 docs/             Architecture documentation
 ```
 
-See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for detailed component documentation.
+See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the overview and the per-area documents it links to.
 
 ## Technology
 
