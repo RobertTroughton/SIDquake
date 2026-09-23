@@ -30,6 +30,14 @@ class SIDPlayback {
         this.bufferHighWater = 32768;   // samples (~0.74s): fill target
         this._fillPending = false;
         this._workletBuffered = 0;
+        // Sample buffers the worklet has handed back, reused instead of
+        // allocating one per chunk; and how much audio it last said it held.
+        this._bufferPool = [];
+        this._queuedSamples = 0;
+        // The subtune the engine was just initialised on and has rendered
+        // nothing of yet, or -1. Selecting it again would only re-initialise
+        // the C64 to the state it is already in.
+        this._freshSubtune = -1;
 
         // Metadata cache (avoid crossing WASM boundary every frame)
         this._title = '';
@@ -146,6 +154,12 @@ class SIDPlayback {
             if (e.data.type === 'need-samples' && this.playing && this.loaded) {
                 this._workletBuffered = e.data.buffered || 0;
                 this._fillWorkletQueue();
+            } else if (e.data.type === 'recycle') {
+                this._queuedSamples = e.data.buffered || 0;
+                const ab = e.data.buffer;
+                if (ab && ab.byteLength === this.bufferSize * 4 && this._bufferPool.length < 16) {
+                    this._bufferPool.push(ab);
+                }
             }
         };
 
@@ -206,14 +220,17 @@ class SIDPlayback {
     _generateAndPost() {
         const generated = this.api.audio_generate(this.wasmBufferPtr, this.bufferSize);
         if (generated <= 0) return 0;
+        this._freshSubtune = -1;
 
         // Read samples from WASM heap (use HEAPU8.buffer fresh after WASM call
         // to handle ALLOW_MEMORY_GROWTH buffer detachment)
         const heap = this.module.HEAPU8.buffer;
         const int16View = new Int16Array(heap, this.wasmBufferPtr, generated);
 
-        // Convert int16 to float32 for the worklet
-        const floatSamples = new Float32Array(generated);
+        // Convert int16 to float32 for the worklet, into a buffer it sent back
+        // when there is one.
+        const ab = this._bufferPool.pop() || new ArrayBuffer(this.bufferSize * 4);
+        const floatSamples = new Float32Array(ab, 0, generated);
         for (let i = 0; i < generated; i++) {
             floatSamples[i] = int16View[i] / 32768.0;
         }
@@ -221,7 +238,7 @@ class SIDPlayback {
         // Transfer the buffer to the worklet (zero-copy)
         this.workletNode.port.postMessage(
             { type: 'samples', samples: floatSamples },
-            [floatSamples.buffer]
+            [ab]
         );
         return generated;
     }
@@ -307,6 +324,8 @@ class SIDPlayback {
         this._sidCount = this.api.audio_get_sid_count();
         this._isNTSC = this.api.audio_get_is_ntsc() !== 0;
 
+        // The load initialised the C64 on the tune's start song.
+        this._freshSubtune = this._startSong > 0 ? this._startSong - 1 : 0;
         this.loaded = true;
     }
 
@@ -324,7 +343,9 @@ class SIDPlayback {
 
     setSubtune(subtune) {
         if (!this.loaded) return;
+        if (subtune === this._freshSubtune) return;
         this.api.audio_set_subtune(subtune);
+        this._freshSubtune = subtune;
     }
 
     play() {
@@ -365,6 +386,7 @@ class SIDPlayback {
             // Pre-fill the worklet queue so playback starts immediately
             this._workletBuffered = 0;
             this._fillWorkletQueue();
+            this._queuedSamples = this._workletBuffered;
         } else {
             // The queue is still there; the worklet asks for more as it drains.
             this.workletNode.port.postMessage({ type: 'start' });
@@ -401,7 +423,7 @@ class SIDPlayback {
         this.pause();
         if (this.loaded && rewind) {
             // Reset to start of current subtune
-            this.api.audio_set_subtune(this._startSong > 0 ? this._startSong - 1 : 0);
+            this.setSubtune(this._startSong > 0 ? this._startSong - 1 : 0);
         }
     }
 
@@ -509,6 +531,14 @@ class SIDPlayback {
     getPlayTime() {
         if (!this.api || !this.loaded) return 0;
         return Math.floor(this.api.audio_get_play_time());
+    }
+
+    /** Seconds of the tune heard so far: the engine's time less what is still
+     *  queued in the worklet (at the fast-forward rate it was rendered at). */
+    getAudibleTime() {
+        if (!this.api || !this.loaded || !this.audioCtx) return 0;
+        const queued = this._queuedSamples / this.audioCtx.sampleRate * (this.speed || 1);
+        return Math.max(0, Math.floor(this.api.audio_get_play_time() - queued));
     }
 
     cleanup() {

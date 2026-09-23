@@ -6,6 +6,11 @@
  *   - a file the analyser rejects (here an RSID) leaves the previous tune in
  *     place: its name, its header and the tune in the player;
  *   - Play after Pause carries on where it stopped rather than starting over;
+ *   - loading a tune and pressing Play initialises the C64 once (the load),
+ *     rather than again for a subtune the engine is already on;
+ *   - changing the chip re-initialises the tune once, and it plays on;
+ *   - the clock shows what has been heard: the engine runs ahead by what the
+ *     worklet still has queued, and that is subtracted;
  *   - the VU-visibility answer is filed under the tune it was worked out for,
  *     not one that loaded while it was being worked out;
  *   - a tune with play address 0 is refused at export with a reason, rather
@@ -109,6 +114,48 @@ async function dropFile(page, name, bytes) {
             after.file === before.file && after.title === before.title && after.player === before.player,
             JSON.stringify({ before, after }));
 
+        // --- a fresh load is not re-initialised by the first Play --------------
+        const inits = await page.evaluate(async () => {
+            const sleep = (ms) => new Promise(r => setTimeout(r, ms));
+            const p = window.uiController.mainPlayer;
+            const pb = getSharedSIDPlayback();
+            let calls = 0;
+            const real = pb.api.audio_set_subtune;
+            pb.api.audio_set_subtune = (n) => { calls++; return real(n); };
+            try {
+                await p.loadFromBinary(p._lastLoadedData.slice(), p._lastLoadedFilename);
+                for (let i = 0; i < 50 && !p.loaded; i++) await sleep(100);
+                await p.play();
+                await sleep(300);
+                p.stop();
+            } finally { pb.api.audio_set_subtune = real; }
+            return { calls };
+        });
+        // stop() rewinds once at the end; the load and first Play add none.
+        check('Load then Play initialises the C64 only for the load',
+            inits.calls === 1, JSON.stringify(inits));
+
+        // --- a chip change restarts the tune on the new chip ---------------------
+        const chip = await page.evaluate(async () => {
+            const sleep = (ms) => new Promise(r => setTimeout(r, ms));
+            const p = window.uiController.mainPlayer;
+            const pb = getSharedSIDPlayback();
+            await p.play();
+            for (let i = 0; i < 60 && pb.getPlayTime() < 2; i++) await sleep(100);
+            const before = pb.api.audio_get_play_time();
+            pb.setModel(8580);
+            const after = pb.api.audio_get_play_time();
+            const model = pb.api.audio_get_sid_model();
+            await sleep(500);
+            const later = pb.api.audio_get_play_time();
+            pb.setModel(0);
+            p.stop();
+            return { before, after, later, model };
+        });
+        check('A chip change restarts the tune on that chip, and it plays on',
+            chip.before >= 2 && chip.after < 0.5 && chip.model === 8580 && chip.later > chip.after,
+            JSON.stringify(chip));
+
         // --- Play after Pause carries on ---------------------------------------
         const resume = await page.evaluate(async () => {
             const sleep = (ms) => new Promise(r => setTimeout(r, ms));
@@ -116,16 +163,21 @@ async function dropFile(page, name, bytes) {
             const pb = getSharedSIDPlayback();
             await p.play();
             for (let i = 0; i < 100 && pb.getPlayTime() < 3; i++) await sleep(100);
+            const lead = pb.api.audio_get_play_time() - (pb.getAudibleTime() + 1);
+            const queued = pb._queuedSamples;
             p.pause();
             const paused = pb.getPlayTime();
             await p.play();
             await sleep(600);
             const resumed = pb.getPlayTime();
             p.stop();
-            return { paused, resumed };
+            return { paused, resumed, lead, queued };
         });
         check('Play after Pause carries on from where it stopped',
             resume.paused >= 3 && resume.resumed >= resume.paused, JSON.stringify(resume));
+        // getAudibleTime floors to whole seconds, so +1 bounds it from above.
+        check('The clock trails the engine by what is queued',
+            resume.queued > 0 && resume.lead > -1, JSON.stringify(resume));
 
         // --- the VU answer belongs to the tune it was worked out for -----------
         const vu = await page.evaluate(async () => {

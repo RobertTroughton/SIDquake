@@ -53,6 +53,15 @@ Timing is PAL-only throughout.
 main thread; `sid-playback.js` posts Float32 sample blocks over the worklet's
 MessagePort and the processor queues them and plays them out in `process()`.
 It asks for more below ~0.37 s buffered, and asks again every ~0.2 s while a
-request has come back empty.
+request has come back empty. Each block it finishes goes back to the page
+(`recycle`, transferred) for the next chunk to be rendered into, carrying how
+much audio is still queued; `SIDPlayback.getAudibleTime()` subtracts that from
+the engine's time, so the pill's clock shows what has been heard rather than
+what has been rendered.
+
+The engine initialises the C64 once per load, per subtune selected, and per
+real chip or quality change (`engine->config()` re-initialises a loaded tune
+itself). Selecting the subtune the engine has just been initialised on, with
+nothing rendered since, is skipped.
 
 `public/tests/engine-test.html` is a manual page for comparing the engines.

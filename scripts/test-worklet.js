@@ -9,6 +9,9 @@
  *     the worklet waiting forever: it asks again while it is starved.
  *   - Pausing keeps the queued audio, so resuming carries on from where the
  *     listener was rather than skipping what was buffered.
+ *   - Each block played out goes back to the page for reuse, with how much
+ *     audio is still queued (which is how far the engine is ahead of what is
+ *     heard), and a flush hands back every block it drops.
  *
  * Run with `node scripts/test-worklet.js`.
  */
@@ -27,7 +30,7 @@ function makeProcessor() {
     let Klass = null;
     const sent = [];
     class AudioWorkletProcessor {
-        constructor() { this.port = { postMessage: (m) => sent.push(m), onmessage: null }; }
+        constructor() { this.port = { postMessage: (m, transfer) => sent.push({ ...m, transfer }), onmessage: null }; }
     }
     const ctx = vm.createContext({
         AudioWorkletProcessor,
@@ -62,6 +65,24 @@ console.log('pausing keeps what is queued');
     const resumed = w.quantum();
     check(first[0] === 1 && paused.every((v) => v === 0), 'nothing plays while paused');
     check(resumed[0] === 129, 'resuming plays on from the next queued sample', `first sample ${resumed[0]}`);
+}
+
+console.log('played blocks go back to the page');
+{
+    const w = makeProcessor();
+    w.send({ type: 'start' });
+    const ab = new ArrayBuffer(4096 * 4);
+    w.send({ type: 'samples', samples: new Float32Array(ab, 0, 256) });
+    w.send({ type: 'samples', samples: new Float32Array(1024) });
+    w.quantum(); w.quantum();                           // the first block is used up
+    const back = w.sent.filter((m) => m.type === 'recycle');
+    check(back.length === 1 && back[0].buffer === ab && back[0].transfer && back[0].transfer[0] === ab,
+        'the spent block is transferred back', `${back.length} returned`);
+    check(back.length === 1 && back[0].buffered === 1024, 'with what is still queued',
+        back.length ? `${back[0].buffered}` : '');
+    w.send({ type: 'stop' });
+    const flushed = w.sent.filter((m) => m.type === 'recycle').length - back.length;
+    check(flushed === 1, 'a flush returns the blocks it drops', `${flushed}`);
 }
 
 console.log(failures ? `\n${failures} check(s) FAILED` : '\nall checks passed');

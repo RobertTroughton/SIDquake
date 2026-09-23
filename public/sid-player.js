@@ -434,7 +434,8 @@ class SIDPlayer {
         this.playTimeInterval = setInterval(() => {
             if (this.isPlaying) {
                 const player = getSharedSIDPlayback();
-                const seconds = player.getPlayTime();
+                // What has been heard, not how far the engine has rendered.
+                const seconds = player.getAudibleTime ? player.getAudibleTime() : player.getPlayTime();
                 const mins = Math.floor(seconds / 60);
                 const secs = seconds % 60;
                 this.els.time.textContent = `${mins}:${secs.toString().padStart(2, '0')}`;

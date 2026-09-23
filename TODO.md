@@ -761,13 +761,5 @@ recommendation, and the warning says so. **The underlying bug is still open.**
 The review's bugs and main optimisations are fixed (see `docs/ANALYSIS.md`,
 `docs/CPU_CORES.md`, `docs/PLAYBACK.md`). Still open:
 
-- **Playback engine re-inits.** A real chip or quality change still
-  initialises the C64 twice (`engine->config()`, then `reloadTune`), and the
-  first Play after a load re-inits once more through `setSubtune`.
-- **Worklet allocation.** `_generateAndPost` allocates a `Float32Array` per
-  4096-sample chunk; transferring spent buffers back from the worklet as a pool
-  would stop the garbage.
-- **Play clock.** The pill's time comes from the engine, which runs ahead of
-  what is heard by the worklet's queue (up to ~0.7 s).
 - **Build flags.** `sidplayfp.wasm` uses `-sDISABLE_EXCEPTION_CATCHING=0` (JS
   trampolines); `-fwasm-exceptions` would be smaller. Unmeasured.

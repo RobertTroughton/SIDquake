@@ -118,7 +118,9 @@ void applySpeed() {
 }
 
 // Re-run engine load so a config change takes effect on the playing tune.
-bool reloadTune() {
+// Unused: engine->config() already re-initialises a loaded tune when the
+// configuration changes, which is all the setters needed this for.
+[[maybe_unused]] bool reloadTune() {
     if (!S.engine || !S.tune || !S.loaded) return true;  // nothing to reload
     try {
         if (!S.engine->load(S.tune)) return false;
@@ -245,7 +247,9 @@ void audio_set_model(int model) {
     // changed, reconfiguring would only re-initialise the C64 for nothing.
     if (forced == S.forcedModel) return;
     S.forcedModel = forced;
-    if (applyConfig()) reloadTune();
+    // With a tune loaded, a changed configuration re-initialises the C64
+    // itself (Player::config), so there is nothing to reload afterwards.
+    if (applyConfig()) applySpeed();
 }
 
 // Fast-forward multiplier (1 = realtime). Tune tempo speeds up Nx with
@@ -264,7 +268,7 @@ EMSCRIPTEN_KEEPALIVE
 void audio_set_sampling_method(int method) {
     if (method == S.samplingMethod) return;   // see audio_set_model
     S.samplingMethod = method;
-    if (applyConfig()) reloadTune();
+    if (applyConfig()) applySpeed();   // see audio_set_model
 }
 
 // ---- Metadata accessors (same contract as sid_audio.cpp) ----

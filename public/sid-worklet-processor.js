@@ -29,12 +29,19 @@ class SIDWorkletProcessor extends AudioWorkletProcessor {
                 this._requested = false;
             } else if (msg.type === 'stop') {
                 this._active = false;
+                for (const buf of this._queue) this._recycle(buf, 0);
                 this._queue.length = 0;
                 this._offset = 0;
                 this._totalSamples = 0;
                 this._requested = false;
             }
         };
+    }
+
+    // Hand a spent block back to the page for reuse, with how much audio is still
+    // queued here: the engine runs that far ahead of what is heard.
+    _recycle(buf, buffered) {
+        this.port.postMessage({ type: 'recycle', buffer: buf.buffer, buffered }, [buf.buffer]);
     }
 
     process(inputs, outputs) {
@@ -61,6 +68,7 @@ class SIDWorkletProcessor extends AudioWorkletProcessor {
             if (this._offset >= buf.length) {
                 this._queue.shift();
                 this._offset = 0;
+                this._recycle(buf, this._totalSamples);
             }
         }
 
