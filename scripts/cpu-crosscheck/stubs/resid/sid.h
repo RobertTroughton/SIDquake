@@ -23,6 +23,9 @@ public:
     void reset() { memset(regs, 0, sizeof(regs)); }
     bool set_chip_model(chip_model) { return true; }
     bool set_sampling_parameters(double, sampling_method, double) { return true; }
+    struct State { uint8_t envelope_counter[3]; };
+    State read_state() { return State{}; }
+    void write_state(const State&) {}
 };
 
 }
