@@ -72,6 +72,9 @@ extern "C" {
         std::vector<uint16_t> modifiedList;
 
         uint32_t sidRegisterWrites[32];
+        // $20-byte SID slots written to by any subtune.
+        bool sidChipsUsed[32];
+        uint16_t resolvedPlayAddress;
 
         uint32_t codeBytes;
         uint32_t dataBytes;
@@ -122,6 +125,10 @@ extern "C" {
     extern void cpu_restore_memory(uint8_t* buffer);
     extern void cpu_reset_state_only();
     extern uint32_t cpu_get_last_execution_cycles();
+    extern void cpu_setup_c64_env();
+    extern int cpu_execute_interrupt(uint16_t address, uint32_t maxCycles, bool kernalEntry);
+    extern uint32_t cpu_get_irq_handler();
+    extern bool cpu_get_sid_chip_used(uint32_t slot);
 
     // SID header values are stored big-endian on disk; the WASM host is
     // little-endian, so byte-swap after loading.
@@ -154,6 +161,8 @@ extern "C" {
         sidState.analysis.zeroPageUsed.clear();
         sidState.analysis.modifiedList.clear();
         memset(sidState.analysis.sidRegisterWrites, 0, sizeof(sidState.analysis.sidRegisterWrites));
+        memset(sidState.analysis.sidChipsUsed, 0, sizeof(sidState.analysis.sidChipsUsed));
+        sidState.analysis.resolvedPlayAddress = 0;
         sidState.analysis.codeBytes = 0;
         sidState.analysis.dataBytes = 0;
         sidState.analysis.hasPattern = false;
@@ -243,6 +252,22 @@ extern "C" {
             dataStart += 2;
         }
 
+        // PSID: an init address of 0 means the load address.
+        if (header.initAddress == 0) {
+            header.initAddress = header.loadAddress;
+        }
+
+        uint32_t musicSize = size - dataStart;
+        uint8_t* musicData = data + dataStart;
+
+        // The tune must fit in the 64K address space at its load address.
+        // cpu_write_memory takes a uint16_t address, so an oversized tune would
+        // silently wrap and corrupt zero page / the CPU vectors rather than
+        // failing. Reject it up front.
+        if ((uint32_t)header.loadAddress + musicSize > 0x10000) {
+            return -7;
+        }
+
         // Allocate the new file copy BEFORE freeing the old one, so even an
         // OOM here leaves the previous SID loaded.
         uint8_t* newBuffer = (uint8_t*)malloc(size);
@@ -264,19 +289,9 @@ extern "C" {
         sidState.cleanAuthor = cleanSIDString(header.author, 32);
         sidState.cleanCopyright = cleanSIDString(header.copyright, 32);
 
-        uint32_t musicSize = size - dataStart;
-        uint8_t* musicData = data + dataStart;
-
-        // The tune must fit in the 64K address space at its load address.
-        // cpu_write_memory takes a uint16_t address, so an oversized tune would
-        // silently wrap and corrupt zero page / the CPU vectors rather than
-        // failing. Reject it up front.
-        if ((uint32_t)header.loadAddress + musicSize > 0x10000) {
-            return -7;
-        }
-
         cpu_init();
         cpu_set_tracking(false);
+        cpu_setup_c64_env();
 
         for (uint32_t i = 0; i < musicSize; i++) {
             cpu_write_memory(header.loadAddress + i, musicData[i]);
@@ -298,6 +313,8 @@ extern "C" {
         sidState.analysis.zeroPageUsed.clear();
         sidState.analysis.modifiedList.clear();
         memset(sidState.analysis.sidRegisterWrites, 0, sizeof(sidState.analysis.sidRegisterWrites));
+        memset(sidState.analysis.sidChipsUsed, 0, sizeof(sidState.analysis.sidChipsUsed));
+        sidState.analysis.resolvedPlayAddress = 0;
         sidState.analysis.codeBytes = 0;
         sidState.analysis.dataBytes = 0;
         sidState.analysis.hasPattern = false;
@@ -324,6 +341,7 @@ extern "C" {
 
         cpu_init();
         cpu_set_tracking(false);
+        cpu_setup_c64_env();
 
         uint32_t musicSize = sidState.fileSize - sidState.dataStart;
         uint8_t* musicData = sidState.fileBuffer + sidState.dataStart;
@@ -338,6 +356,11 @@ extern "C" {
         uint16_t songsToAnalyze = sidState.header.songs;
         if (songsToAnalyze > 256) {
             songsToAnalyze = 256;
+        }
+        // A file claiming no songs still holds one: analyse it rather than
+        // report a tune that touches nothing.
+        if (songsToAnalyze == 0) {
+            songsToAnalyze = 1;
         }
 
         // Cycle budget for a subtune's init routine.
@@ -404,23 +427,28 @@ extern "C" {
             // A play address of 0 means init installed the play routine behind an
             // IRQ; without deriving it the loop below would "call" $0000 (BRK) and
             // abort on frame 0, so the analysis would cover init only (maxCycles 0,
-            // an incomplete modified-address set). Read the vector init set up,
-            // mirroring the audio engine (sid_audio.cpp): the hardware IRQ vector
-            // at $FFFE when RAM is banked in there, else the KERNAL vector at $0314.
+            // an incomplete modified-address set). Take the handler init set up
+            // and enter it as an interrupt, so the RTI (or JMP $EA31) that ends it
+            // counts as the return.
             uint16_t playAddr = sidState.header.playAddress;
+            bool playIsIrq = false, playViaKernal = false;
             if (playAddr == 0) {
-                extern uint8_t cpu_read_memory(uint16_t);
-                if ((cpu_read_memory(0x01) & 3) < 2) {
-                    playAddr = cpu_read_memory(0xFFFE) | (cpu_read_memory(0xFFFF) << 8);
-                } else {
-                    playAddr = cpu_read_memory(0x0314) | (cpu_read_memory(0x0315) << 8);
-                }
+                uint32_t handler = cpu_get_irq_handler();
+                playAddr = (uint16_t)handler;
+                playViaKernal = (handler & 0x10000u) != 0;
+                playIsIrq = true;
+            }
+            if (songNum == defaultSong) {
+                sidState.analysis.resolvedPlayAddress = playAddr;
             }
 
             cpu_set_record_writes(true);
 
             for (uint32_t frame = 0; frame < frameCount; frame++) {
-                if (!cpu_execute_function(playAddr, 20000)) {
+                int returned = playIsIrq
+                    ? cpu_execute_interrupt(playAddr, 20000, playViaKernal)
+                    : cpu_execute_function(playAddr, 20000);
+                if (!returned) {
                     break;
                 }
 
@@ -455,6 +483,11 @@ extern "C" {
 
             for (int reg = 0; reg < 32; reg++) {
                 sidState.analysis.sidRegisterWrites[reg] += cpu_get_sid_writes(reg);
+            }
+            for (uint32_t slot = 0; slot < 32; slot++) {
+                if (cpu_get_sid_chip_used(slot)) {
+                    sidState.analysis.sidChipsUsed[slot] = true;
+                }
             }
 
             // Multispeed (calls-per-frame) detection, keyed to the subtune the
@@ -629,7 +662,9 @@ extern "C" {
             tempHeader.flags = swap16(tempHeader.flags);
         }
 
-        memcpy(newBuffer, &tempHeader, sizeof(SIDHeader));
+        // A v1 header is 0x76 bytes; the v2+ tail would land on tune data (and,
+        // in a file shorter than the full struct, past the buffer).
+        memcpy(newBuffer, &tempHeader, sidState.header.version >= 2 ? sizeof(SIDHeader) : 0x76);
 
         *outSize = sidState.fileSize;
         return newBuffer;
@@ -685,13 +720,33 @@ extern "C" {
 
     EMSCRIPTEN_KEEPALIVE
         uint32_t sid_get_sid_chip_count() {
-        return cpu_get_sid_chip_count();
+        uint32_t count = 0;
+        for (int i = 0; i < 32; i++) {
+            if (sidState.analysis.sidChipsUsed[i]) count++;
+        }
+        return count;
     }
 
-    // Base address of the Nth SID chip detected during analysis (0-indexed).
+    // Base address of the Nth SID chip detected during analysis (0-indexed),
+    // counted over every subtune analysed.
     EMSCRIPTEN_KEEPALIVE
         uint16_t sid_get_sid_chip_address(uint32_t index) {
-        return cpu_get_sid_chip_address(index);
+        uint32_t count = 0;
+        for (int i = 0; i < 32; i++) {
+            if (sidState.analysis.sidChipsUsed[i]) {
+                if (count == index) return 0xD400 + i * 0x20;
+                count++;
+            }
+        }
+        return 0;
+    }
+
+    // The default subtune's play routine: the header's play address, or for
+    // play address 0 the interrupt handler its init installed. 0 until
+    // sid_analyze has run.
+    EMSCRIPTEN_KEEPALIVE
+        uint16_t sid_get_resolved_play_address() {
+        return sidState.analysis.resolvedPlayAddress;
     }
 
     // PSID v2+ flags bits 2-3 encode video standard.

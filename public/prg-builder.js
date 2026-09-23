@@ -1835,8 +1835,13 @@ class SIDquakePRGExporter {
             loadAddress: header.loadAddress,
             subtune: selectedSong,
             numChips,
-            frames: 1200,
         });
+        if (res.initFailed) {
+            throw new Error(
+                `Shadow method won't work for this tune: its init routine never ` +
+                `returned in the emulator, so its SID writes can't be traced. Use the ` +
+                `realtime variant instead.`);
+        }
         if (res.leakedWrites) {
             // A SID write we can't redirect (e.g. an indirect or self-modifying
             // store address) - if we can't capture every write we can't safely
@@ -2565,6 +2570,16 @@ class SIDquakePRGExporter {
             const actualSidAddress = (sidLoadAddress != null) ? sidLoadAddress : sidInfo.loadAddress;
             const actualInitAddress = (sidInitAddress != null) ? sidInitAddress : actualSidAddress;
             const actualPlayAddress = (sidPlayAddress != null) ? sidPlayAddress : (actualSidAddress + 3);
+            // A PSID play address of 0 means init hangs the player on its own
+            // interrupt handler, which ends in RTI or JMP $EA31. The players
+            // JSR the play address once per call, so there is nothing they
+            // could call: refuse rather than export a program that crashes.
+            if (actualPlayAddress === 0) {
+                throw new Error(
+                    'This tune has no play address: its init installs its own ' +
+                    'interrupt handler, which the visualizers cannot call. It plays ' +
+                    'here, but it cannot be exported.');
+            }
 
             let layout, dataLoadAddress, visualizerLoadAddress, layoutKey = options.layoutKey;
             let deferredVisualizerBinary = null;

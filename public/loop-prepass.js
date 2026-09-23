@@ -80,6 +80,9 @@ function makeApi(module) {
         setX:    cw('cpu_set_xreg', null, ['number']),
         setY:    cw('cpu_set_yreg', null, ['number']),
         exec:    cw('cpu_execute_function', 'number', ['number', 'number']),
+        execIrq: cw('cpu_execute_interrupt', 'number', ['number', 'number', 'number']),
+        irqHandler: cw('cpu_get_irq_handler', 'number', []),
+        env:     cw('cpu_setup_c64_env', null, []),
         record:  cw('cpu_set_record_writes', null, ['number']),
         seqLen:  cw('cpu_get_write_sequence_length', 'number', []),
         seqItem: cw('cpu_get_write_sequence_item', 'number', ['number']),
@@ -87,6 +90,19 @@ function makeApi(module) {
         ciaHi:   cw('cpu_get_cia_timer_hi', 'number', []),
         ciaWritten: cw('cpu_get_cia_timer_written', 'number', []),
     };
+}
+
+// Returns a function that runs one play call within a cycle cap and answers
+// whether it returned, or null when there is nothing to call. A play address
+// of 0 means init hung the play routine on an interrupt: take the handler it
+// installed and enter it as one, so the RTI or JMP $EA31 that ends it counts
+// as the return (cpu_get_irq_handler / cpu_execute_interrupt).
+function playCaller(api, playAddress) {
+    if (playAddress) return (cap) => api.exec(playAddress, cap);
+    const handler = api.irqHandler();
+    const addr = handler & 0xffff, viaKernal = handler > 0xffff ? 1 : 0;
+    if (!addr) return null;
+    return (cap) => api.execIrq(addr, cap, viaKernal);
 }
 
 // Load the tune into the analyser's RAM, run init for `subtune`, and fingerprint
@@ -105,6 +121,7 @@ export function fingerprintTune(module, sidBytes, { subtune = 0, maxFrames, isNt
     const api = makeApi(module);
 
     api.cpuInit();
+    api.env();
     for (let i = h.musicStart; i < sidBytes.length; i++) {
         api.wr((h.loadAddress + (i - h.musicStart)) & 0xffff, sidBytes[i]);
     }
@@ -113,14 +130,7 @@ export function fingerprintTune(module, sidBytes, { subtune = 0, maxFrames, isNt
     api.setA(subtune); api.setX(subtune); api.setY(subtune);
     if (!api.exec(h.initAddress, INIT_CYCLE_CAP)) return null;
 
-    // A play address of 0 means init hung the play routine on an interrupt; read
-    // the vector it installed, the way sid_analyze and the audio engine do.
-    let play = h.playAddress;
-    if (!play) {
-        play = (api.rd(0x01) & 3) < 2
-            ? (api.rd(0xfffe) | (api.rd(0xffff) << 8))
-            : (api.rd(0x0314) | (api.rd(0x0315) << 8));
-    }
+    const play = playCaller(api, h.playAddress);
     if (!play) return null;
 
     // Multispeed: this subtune's PSID speed bit says the play routine runs off
@@ -145,7 +155,7 @@ export function fingerprintTune(module, sidBytes, { subtune = 0, maxFrames, isNt
     let calls = 0;
     for (; calls < maxCalls; calls++) {
         api.record(1);
-        if (!api.exec(play, PLAY_CYCLE_CAP)) return null;
+        if (!play(PLAY_CYCLE_CAP)) return null;
         let x = 0x811c9dc5;
         const len = api.seqLen();
         for (let i = 0; i < len; i++) {

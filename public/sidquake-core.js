@@ -157,7 +157,8 @@ class SIDAnalyzer {
                     '-2': 'Invalid SID file format',
                     '-3': 'RSID format not supported',
                     '-4': 'Unsupported SID version',
-                    '-5': 'Missing load address',
+                    '-5': 'Missing load address or bad data offset',
+                    '-6': 'Out of memory',
                     '-7': 'SID data does not fit in C64 memory at its load address'
                 };
                 throw new Error(errors[result] || `Unknown error: ${result}`);

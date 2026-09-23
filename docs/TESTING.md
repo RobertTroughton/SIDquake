@@ -18,6 +18,9 @@ The rest:
   frame.
 - `scripts/test-range-fit.js`: feeds the bake synthetic tones and checks the
   per-song frequency span it fits.
+- `scripts/test-analyser-edge-cases.js`, `scripts/test-shadow-detect.js`: PSID
+  header rules, play-address-0 tunes and the shadow scan, on tunes the tests
+  build from a few bytes of 6502 (`scripts/lib/psid-asm.js`).
 - `scripts/test-loop-detect.js`, `scripts/test-song-end.js`,
   `scripts/test-bake-cache.js`, `scripts/test-vu-visibility.js`: song length,
   loop and bake decisions (see [`ANALYSIS.md`](ANALYSIS.md)).

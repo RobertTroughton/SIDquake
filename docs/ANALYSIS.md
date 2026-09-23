@@ -32,7 +32,17 @@ CPU core itself is in [`CPU_CORES.md`](CPU_CORES.md).
 **`opcodes.h`** - Shared opcode table (256 entries with mnemonic, addressing mode, size, cycles)
 
 The analyser counts a SID "chip" per touched `$20` slot in `$D400-$D7FF`, so a
-tune that sweeps writes across the mirror range reports up to 8 chips.
+tune that sweeps writes across the mirror range reports up to 8 chips. The count
+covers every subtune analysed.
+
+Header rules the analyser applies: an init address of 0 is the load address; a
+file claiming 0 songs is analysed as one; a play address of 0 means init hung
+the player on an interrupt, so each frame enters the handler it installed as an
+interrupt (see "Calling into a tune" in `CPU_CORES.md`), and
+`sid_get_resolved_play_address` reports it. The exporter refuses such a tune:
+the players JSR the play address, and a handler ending in `RTI` cannot be
+called that way. A load that fails any check, including "does not fit in 64K"
+(-7), leaves the previously loaded tune intact.
 
 ## JS glue
 
@@ -87,6 +97,11 @@ documented in [`tools/songlengths/README.md`](../tools/songlengths/README.md).
   (`spectrometer-bake.js`), over synthetic bar grids.
 - `scripts/test-vu-visibility.js`: the "these bars will be empty" warning does
   not fire on ordinary tunes (real 6510 over `SID/`).
+- `scripts/test-analyser-edge-cases.js`: the header rules above, on tunes built
+  in the test (`scripts/lib/psid-asm.js`).
+- `scripts/test-shadow-detect.js`: the shadow scan reaches late store sites,
+  waits out a long init and drives play-address-0 tunes; the VU warning's audio
+  check runs init.
 - `scripts/test-range-fit.js`, `scripts/test-bake-cache.js`,
   `scripts/test-baked-decoder.js`, `scripts/test-shadow-replay.js`: the bar-data
   methods (see `BAR_HEIGHT_METHODS.md`).

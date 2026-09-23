@@ -41,3 +41,6 @@ node_modules/
 
 # Song length scanner journal + generated reports (see tools/songlengths/README.md)
 tools/songlengths/out/
+
+# Agent worktrees (Claude Code)
+/.claude/worktrees/

@@ -14,6 +14,7 @@
 
 const fs = require('fs');
 const path = require('path');
+const { psid, asm } = require('./lib/psid-asm.js');
 
 const ROOT = path.join(__dirname, '..');
 const PAL_HZ = 50.1245;
@@ -77,6 +78,24 @@ async function main() {
             minLoopFrames: Math.round(2 * PAL_HZ), confirmFrames: Math.round(6 * PAL_HZ),
         });
         check(r === null, 'no state loop is claimed', r ? `${(r.periodFrames / PAL_HZ).toFixed(1)}s` : '');
+    }
+
+    console.log('findStateLoop: play address 0, player on the $0314 interrupt');
+    {
+        // The handler counts 0..49 and writes the count to $D400: a one-second
+        // loop from the first frame. It leaves through JMP $EA31.
+        const code = asm(0x1000, [
+            0xa9, '<irq', 0x8d, 0x14, 0x03, 0xa9, '>irq', 0x8d, 0x15, 0x03, 0x60,
+            'irq:', 0xae, 0x00, 0x11, 0xe8,     // LDX $1100 / INX
+            0xe0, 50, 0xd0, 0x02, 0xa2, 0x00,   // CPX #50 / BNE +2 / LDX #0
+            0x8e, 0x00, 0x11, 0x8e, 0x00, 0xd4, // STX $1100 / STX $D400
+            0x4c, 0x31, 0xea,                   // JMP $EA31
+        ]);
+        const r = findStateLoop(module, psid({ play: 0, code }), {
+            subtune: 0, maxFrames: 1000, minLoopFrames: 10, confirmFrames: 50,
+        });
+        check(r && r.periodFrames === 50, 'the handler is driven and its loop found',
+            r ? `period ${r.periodFrames} frames` : 'no state loop');
     }
 
     console.log(failures ? `\n${failures} check(s) failed` : '\nAll checks passed');

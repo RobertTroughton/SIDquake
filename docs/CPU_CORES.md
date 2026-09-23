@@ -22,6 +22,33 @@ let an instruction fetch reach reSID.
 
 All 256 opcodes are decoded, illegals included.
 
+## Calling into a tune (analysis core)
+
+The analysis core has no ROMs and starts from zeroed RAM, so a caller builds the
+machine a PSID expects before loading the tune: `cpu_setup_c64_env` sets
+`$00/$01` to their power-on values (`$2F`/`$37`) and plants just enough KERNAL
+to call into and to leave an interrupt through: the IRQ exits at `$EA31`,
+`$EA7E` and `$EA81` (pull Y, X, A, then `RTI`), the real `$FF48` IRQ entry, an
+`RTS` at every jump-table entry, and the `$0314`/`$0318`/`$FFFA`/`$FFFE`
+vectors. The tune is loaded afterwards, so it overwrites any stub it overlaps.
+`sid_analyze`, `loop-prepass.js` and `spectrometer-shadow-detect.js` all do
+this.
+
+Two ways to call a routine:
+
+- `cpu_execute_function` plants a return address and runs until the `RTS` that
+  pops it: init, and play when the header gives a play address.
+- `cpu_execute_interrupt` enters a handler the way the hardware does (PC and P
+  pushed, I set) and runs until the `RTI` that pops them. With `kernalEntry` it
+  also pushes A, X and Y, as the KERNAL's `$FF48` does before `JMP ($0314)`, so
+  a handler that leaves through `JMP $EA31` returns balanced. This is play for a
+  PSID with play address 0; `cpu_get_irq_handler` says which handler init
+  installed (`$FFFE` with the KERNAL banked out, else `$0314`, flagged in bit 16).
+
+Both stop on a JAM, on the cycle cap, or on a jump to `$0000/$0001`, and compare
+the stack pointer as a signed distance so a return that wraps SP past `$FF`
+still counts.
+
 ## Keeping them honest
 
 `scripts/cpu-crosscheck/run.sh` runs four checks:

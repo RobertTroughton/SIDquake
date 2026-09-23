@@ -28,6 +28,9 @@ function makeApi(module) {
         setX:    cw('cpu_set_xreg', null, ['number']),
         setY:    cw('cpu_set_yreg', null, ['number']),
         exec:    cw('cpu_execute_function', 'number', ['number', 'number']),
+        execIrq: cw('cpu_execute_interrupt', 'number', ['number', 'number', 'number']),
+        irqHandler: cw('cpu_get_irq_handler', 'number', []),
+        env:     cw('cpu_setup_c64_env', null, []),
         record:  cw('cpu_set_record_writes', null, ['number']),
         seqLen:  cw('cpu_get_write_sequence_length', 'number', []),
         seqItem: cw('cpu_get_write_sequence_item', 'number', ['number']),
@@ -35,28 +38,57 @@ function makeApi(module) {
     };
 }
 
+// Returns a function that runs one play call within a cycle cap and answers
+// whether it returned, or null when there is nothing to call. A play address
+// of 0 means init hung the play routine on an interrupt: take the handler it
+// installed and enter it as one, so the RTI or JMP $EA31 that ends it counts
+// as the return (cpu_get_irq_handler / cpu_execute_interrupt).
+function playCaller(api, playAddress) {
+    if (playAddress) return (cap) => api.exec(playAddress, cap);
+    const handler = api.irqHandler();
+    const addr = handler & 0xffff, viaKernal = handler > 0xffff ? 1 : 0;
+    if (!addr) return null;
+    return (cap) => api.execIrq(addr, cap, viaKernal);
+}
+
+// Init's cycle budget: sid_analyze's per-song ceiling. Julian_Jaymz/Slanted's
+// init alone takes 2,040,135 cycles.
+const INIT_CYCLE_CAP = 20000000;
+
+// How long the shadow scan steps a tune: the song-length scan's whole window,
+// 20 minutes. Store sites are found in the code that RUNS, so a site the scan
+// never reaches is left unpatched in the export - and every write it makes is
+// then replaced by the mirror's stale value when the player replays the mirror.
+// Some players only reach a store half a minute or two minutes in. Both passes
+// together cost well under a second at this length.
+export const SHADOW_SCAN_FRAMES = Math.round(20 * 60 * 50.1245);
+
 // Load the music into CPU RAM (applying byte patches), init the tune, and step
 // `frames` play calls with recording on. Returns the per-frame first-write
-// orders (arrays of register offsets 0..). Leaves memory-access flags populated.
+// orders (arrays of register offsets 0..), or null when init never returns.
+// Leaves memory-access flags populated.
 function loadAndRun(api, sidBytes, opts, patches) {
-    const { initAddress, playAddress, loadAddress, subtune = 0, frames = 1500, warmup = 8 } = opts;
+    const { initAddress, playAddress, loadAddress, subtune = 0, frames = SHADOW_SCAN_FRAMES, warmup = 8 } = opts;
     const dataOffset = (sidBytes[6] << 8) | sidBytes[7];
     const hdrLoad = (sidBytes[8] << 8) | sidBytes[9];
     const musicStart = hdrLoad === 0 ? dataOffset + 2 : dataOffset;
 
     api.cpuInit();
+    api.env();
     for (let i = musicStart; i < sidBytes.length; i++) api.wr((loadAddress + (i - musicStart)) & 0xffff, sidBytes[i]);
     if (patches) for (const [addr, val] of patches) api.wr(addr & 0xffff, val & 0xff);
     api.reset();
     api.track(1);
 
     api.setA(subtune); api.setX(subtune); api.setY(subtune);
-    api.exec(initAddress, 2000000);
+    if (!api.exec(initAddress, INIT_CYCLE_CAP)) return null;
+    const play = playCaller(api, playAddress);
+    if (!play) return null;
 
     const orders = [];
     for (let f = 0; f < frames; f++) {
         api.record(1);
-        if (api.exec(playAddress, 100000) === 0) break;
+        if (play(100000) === 0) break;
         if (f < warmup) continue;
         const len = api.seqLen();
         const seen = new Set(), order = [];
@@ -144,7 +176,16 @@ export function analyzeShadow(module, sidBytes, opts) {
         : sidBytes.length - ((sidBytes[6] << 8) | sidBytes[7]);
 
     // Pass 1: unpatched run -> write-order consistency + execute flags.
-    const ord = dominantOrder(loadAndRun(api, sidBytes, opts));
+    const orders = loadAndRun(api, sidBytes, opts);
+    if (!orders) {
+        // Init never returned, so nothing below would describe the tune.
+        return {
+            suitable: false, initFailed: true, consistency: 0, variants: 0,
+            order: fallbackOrder(numChips), numChips, usedFallback: true,
+            storeSites: [], redirectComplete: false, leakedWrites: 0, overflowWrites: 0,
+        };
+    }
+    const ord = dominantOrder(orders);
     // We always produce a full 25-register replay order: the tune's detected
     // order when it's consistent enough, otherwise the safe fallback. Low
     // consistency doesn't disqualify the tune - only an un-redirectable write does (below).
@@ -241,13 +282,15 @@ export function analyzeVuVisibility(module, sidBytes, opts) {
     const musicStart = hdrLoad === 0 ? dataOffset + 2 : dataOffset;
 
     api.cpuInit();
+    api.env();
     for (let i = musicStart; i < sidBytes.length; i++) {
         api.wr((loadAddress + (i - musicStart)) & 0xffff, sidBytes[i]);
     }
     api.reset();
     api.track(1);
     api.setA(subtune); api.setX(subtune); api.setY(subtune);
-    api.exec(initAddress, 2000000);
+    const inited = api.exec(initAddress, INIT_CYCLE_CAP);
+    const play = inited ? playCaller(api, playAddress) : null;
 
     // Control register per voice, per chip. Chips are $20 apart in $D400-$D7FF.
     const controls = [];
@@ -257,8 +300,8 @@ export function analyzeVuVisibility(module, sidBytes, opts) {
     }
 
     let ran = 0, quiet = 0, leading = 0, stillLeading = true;
-    for (let f = 0; f < frames; f++) {
-        if (api.exec(playAddress, 100000) === 0) break;
+    for (let f = 0; play && f < frames; f++) {
+        if (play(100000) === 0) break;
         ran++;
         let audible = false;
         for (const addr of controls) {
@@ -285,8 +328,9 @@ export function analyzeVuVisibility(module, sidBytes, opts) {
     };
 }
 
-/** Does the tune make a sound in its first `seconds`? */
-function soundsDuring(module, sidBytes, subtune, seconds) {
+/** Does the tune make a sound in its first `seconds`? Exported for
+ *  scripts/test-shadow-detect.js. */
+export function soundsDuring(module, sidBytes, subtune, seconds) {
     const SAMPLE_RATE = 22050;          // plenty to tell sound from silence
     const SILENCE = 0.004;              // ~-48 dB, the same floor the bake uses
     const cw = (n, r, a) => module.cwrap(n, r, a);
@@ -303,7 +347,8 @@ function soundsDuring(module, sidBytes, subtune, seconds) {
         sidPtr = module._malloc(sidBytes.length);
         module.HEAPU8.set(sidBytes, sidPtr);
         if (api.load(sidPtr, sidBytes.length) < 0) return true;   // cannot tell: do not warn
-        if (subtune) api.setSubtune(subtune);
+        // audio_set_subtune is what runs init, so subtune 0 needs it too.
+        api.setSubtune(subtune);
         const CHUNK = 4096;
         bufPtr = module._malloc(CHUNK * 2);
         let left = Math.floor(seconds * SAMPLE_RATE);
@@ -329,6 +374,6 @@ function soundsDuring(module, sidBytes, subtune, seconds) {
 // Back-compat: just the order-consistency check.
 export function detectWriteOrder(module, sidBytes, opts) {
     const api = makeApi(module);
-    const ord = dominantOrder(loadAndRun(api, sidBytes, opts));
+    const ord = dominantOrder(loadAndRun(api, sidBytes, opts) || []);
     return { ...ord, suitable: ord.consistency >= 0.90 && ord.order.length > 0 };
 }
