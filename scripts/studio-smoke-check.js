@@ -5,8 +5,9 @@
  * Covers the parts of the browser UI that nothing else does: that a dropped SID
  * reaches the Studio, that the background loop/length scan starts and reports in
  * the corner chip, that the export manifest renders, that metadata edits reach
- * the header the exporter reads, and that the visualizer choice survives loading
- * a second tune.
+ * the header the exporter reads, that an export pressed mid-scan leaves the
+ * length and loop out while one after the scan includes them, and that the
+ * visualizer choice survives loading a second tune.
  *
  * Playwright is NOT a dependency of this repo (same as mobile-layout-check.js and
  * logo-drop-check.js). Install it first:
@@ -1361,7 +1362,7 @@ async function loadSid(page, file) {
             clean.sys === 0x1234 && clean.honoured === true
             && clean.components === clean.before, JSON.stringify(clean));
 
-        // --- stopping a long scan keeps what it found -------------------------
+        // --- a scan that found no loop says why ------------------------------
         const stopScan = await page.evaluate(() => {
             const ui = window.uiController;
             const status = document.getElementById('songLoopStatus');
@@ -1369,7 +1370,6 @@ async function loadSid(page, file) {
             // The three ways a scan can come back with no loop read differently.
             for (const [name, extra] of [
                 ['ranOut', { cappedAtMaxSeconds: true }],
-                ['stopped', { stoppedEarly: true }],
                 ['cut', { truncated: true, loopStartSeconds: 360 }],
                 ['plain', {}],
             ]) {
@@ -1382,17 +1382,11 @@ async function loadSid(page, file) {
             }
             ui.tuneAnalysis = null;
             ui.updateSongLoopStatus();
-            return {
-                ...said,
-                hasStopButton: !!document.getElementById('analysisChipStop'),
-                hasStopMethod: typeof ui.stopSearching === 'function',
-            };
+            return said;
         });
         check('A scan that ran out of window says so, rather than "no loop"',
             /as far as the scan looks/i.test(stopScan.ranOut)
             && /keep looking/i.test(stopScan.ranOut), stopScan.ranOut);
-        check('A scan the user stopped says that instead',
-            /You stopped the search/i.test(stopScan.stopped), stopScan.stopped);
         check('And a scan that simply found nothing still says that',
             /No repeat or fade-out found/i.test(stopScan.plain), stopScan.plain);
         check('A tune still playing where the scan stops gets no invented length',
@@ -1470,41 +1464,113 @@ async function loadSid(page, file) {
         check('...and the wider search actually runs and lands',
             searchedAgain.measured && searchedAgain.after === searchedAgain.widened,
             JSON.stringify(searchedAgain));
-        check('There is a way to stop searching and keep the answer',
-            stopScan.hasStopButton && stopScan.hasStopMethod, JSON.stringify({
-                b: stopScan.hasStopButton, m: stopScan.hasStopMethod }));
-
-        // The soft stop reaches the render: start a scan, stop it, and the job
-        // must resolve with a measurement rather than throwing it away.
-        const softStop = await page.evaluate(async () => {
+        // --- exporting while the scan is still running -----------------------
+        // The export does not wait: it goes out with no length and no forced
+        // loop, the scan carries on, and an export after it lands has both. The
+        // scan is stood in for so the test decides when it finishes.
+        const early = await page.evaluate(async () => {
             const ui = window.uiController;
-            const cb = window.cacheBust || (s => s);
-            // A tune measured earlier in this run comes straight back from the
-            // store, and there is nothing to stop - so start from a clean slate.
-            const { clearAnalyses } = await import(cb('./analysis-store.js'));
-            await clearAnalyses();
-            ui.tuneAnalysis = null;
-            ui._analysisJob = null;
+            const sleep = (ms) => new Promise(r => setTimeout(r, ms));
+            const out = {};
+            // Later checks expect the player and the measurement they left.
+            const savedViz = ui.selectedVisualizer;
+            const none = document.querySelector('input[name="compression-type"][value="none"]');
+            if (none) { none.checked = true; none.dispatchEvent(new Event('change', { bubbles: true })); }
+            await ui.selectVisualizer(VISUALIZERS.find(v => v.id === 'default'));
+            for (let i = 0; i < 600 && ui.analysisRunning; i++) await sleep(100);
+            const manual = document.getElementById('songLengthManual');
+            manual.value = '';
+            manual.dispatchEvent(new Event('input', { bubbles: true }));
+            document.getElementById('showSongLengthToggle').checked = true;
+            const loop = document.getElementById('forceLoopToggle');
+            loop.checked = true;
+            ui._loopChoiceTouched = true;
 
-            const p = ui._ensureAnalysis({});
-            // Stop as soon as there is a scan to stop; a short tune can finish
-            // before a fixed wait is up.
-            let running = false;
-            for (let i = 0; i < 100 && !running; i++) {
-                running = ui.analysisRunning;
-                if (!running) await new Promise(r => setTimeout(r, 50));
+            // A tune that fades out at 1:00: 1500 keyframes at 25 Hz.
+            const fade = {
+                looped: false, fadedOut: true, truncated: false, loopStart: 1500,
+                numKeyframes: 1500, keyframeHz: 25, frameHz: 50, isNtsc: 0,
+                storedSeconds: 60, loopStartSeconds: 60, analyzedSeconds: 80,
+            };
+            let release = null;
+            const realRun = ui.runTuneAnalysis;
+            ui.runTuneAnalysis = async () => {
+                ui.tuneAnalysis = null;
+                await new Promise(r => { release = r; });
+                ui.tuneAnalysis = fade;
+                return fade;
+            };
+            await ui.ensurePRGExporter();
+            const ex = ui.prgExporter;
+            const realPatch = ex.patchSongLengthFields;
+            const builds = [];
+            ex.patchSongLengthFields = function (layout, ta, multi, forced, opts) {
+                const r = realPatch.call(this, layout, ta, multi, forced, opts);
+                const has = this.builder.components.find(c => c.name === 'Song Has Length');
+                builds.push({ analysed: !!ta, forced, hasLength: has ? has.data[0] : null });
+                return r;
+            };
+            ui._fileSink = () => {};
+            try {
+                ui.tuneAnalysis = null;
+                ui._analysisCancelled = false;
+                await ui.startBackgroundAnalysis({ userAsked: true });
+                for (let i = 0; i < 100 && !ui.analysisRunning; i++) await sleep(50);
+                out.running = ui.analysisRunning;
+                window.studioModal.renderManifest();
+                out.manifest = document.getElementById('exportManifest').textContent;
+                out.songTab = document.getElementById('songLoopStatus').textContent;
+
+                const t0 = Date.now();
+                await ui.exportPRGWithVisualizer();
+                out.exportMs = Date.now() - t0;
+                out.firstOk = ui._lastExportOk;
+                out.firstStatus = ui._lastExportMessage;
+                out.stillRunning = ui.analysisRunning;
+
+                release();
+                for (let i = 0; i < 100 && ui.analysisRunning; i++) await sleep(50);
+                await sleep(50);
+                out.landedStatus = ui._lastExportMessage;
+                window.studioModal.renderManifest();
+                out.manifestAfter = document.getElementById('exportManifest').textContent;
+
+                await ui.exportPRGWithVisualizer();
+                out.secondOk = ui._lastExportOk;
+            } finally {
+                ui.runTuneAnalysis = realRun;
+                ex.patchSongLengthFields = realPatch;
+                ui._fileSink = null;
+                loop.checked = false;
+                if (savedViz) await ui.selectVisualizer(savedViz);
+                // Back to the real measurement at the default window, which the
+                // store already holds.
+                ui.tuneAnalysis = null;
+                await ui._ensureAnalysis({});
+                ui.updateSongLoopStatus();
             }
-            if (!running) return { skipped: 'the scan finished before it could be stopped' };
-            ui.stopSearching();
-            const result = await p;
-            return { got: !!result, cancelled: ui._analysisCancelled };
+            out.builds = builds;
+            return out;
         });
-        if (softStop.skipped) {
-            console.log(`SKIP  soft stop - ${softStop.skipped}`);
-        } else {
-            check('Stopping keeps the measurement instead of discarding it',
-                softStop.got === true && softStop.cancelled === false, JSON.stringify(softStop));
-        }
+        const [midScan, afterScan] = early.builds || [];
+        check('The scan is running when the export is pressed', early.running === true, JSON.stringify(early));
+        check('The manifest says exporting now leaves the length out',
+            /still being measured/.test(early.manifest) && /export again/i.test(early.manifest),
+            early.manifest);
+        check('And so does the Song tab', /You can export now/.test(early.songTab), early.songTab);
+        check('An export mid-scan goes ahead without waiting for it',
+            early.firstOk === true && early.stillRunning === true, JSON.stringify(early));
+        check('...with no length and no forced loop in the file',
+            midScan && midScan.analysed === false && midScan.forced === 0 && midScan.hasLength === 0,
+            JSON.stringify(midScan));
+        check('...and says so', /still being measured/.test(early.firstStatus || ''), early.firstStatus);
+        check('The scan landing says to export again', /Export again/.test(early.landedStatus || ''),
+            early.landedStatus);
+        check('The manifest then shows the measured length', /1:00 · measured/.test(early.manifestAfter),
+            early.manifestAfter);
+        check('An export after the scan includes the length and the loop',
+            early.secondOk === true && afterScan && afterScan.analysed === true && afterScan.forced > 0
+            && afterScan.hasLength === 1, JSON.stringify(afterScan));
 
         // --- the collection index says how far along it is ---------------------
         // 7.5 MB behind a bare spinner is a page that looks stuck rather than

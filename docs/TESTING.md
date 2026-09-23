@@ -45,7 +45,7 @@ isn't a dependency (`npm install --no-save playwright`):
 |---|---|
 | `scripts/mobile-layout-check.js` | HVSC and Studio modals at phone widths |
 | `scripts/logo-drop-check.js` | picking a logo lands in the input the exporter reads |
-| `scripts/studio-smoke-check.js` | load a SID -> Studio -> background analysis -> export manifest, and the sticky visualizer choice |
+| `scripts/studio-smoke-check.js` | load a SID -> Studio -> background analysis -> export manifest, and the sticky visualizer choice; an export mid-scan leaves the length and loop out, one after the scan includes them |
 | `scripts/device-check.js` | a device matrix from iPhone to 2560px desktop: horizontal scrolling, clipped content, tap target and text sizes, contrast, how many HVSC rows fit |
 | `scripts/hvsc-deeplink-check.js` | a `?tune=` link arrives loaded and described, in either index/share-meta order and when the quick play fails; builds its own one-tune mirror |
 | `scripts/compression-check.js` | crunching an export keeps the page answering, and gives the same bytes in the worker and on the page |

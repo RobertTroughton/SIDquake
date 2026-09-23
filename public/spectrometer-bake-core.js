@@ -122,7 +122,7 @@ const DEAD_RENDER_SECONDS = 15;
 // (never the whole PCM: only the per-frame rows are kept).
 async function renderAndAnalyze(sidBytes, loadEngine, options = {}) {
     const { sampleRate, maxSeconds, subtune, numBars, maxHeight, minLoopSeconds, engine, onProgress,
-        signal, stopSignal } = options;
+        signal } = options;
     if (signal && signal.aborted) throw abortError();
 
     const module = await loadEngine(engine);
@@ -224,10 +224,6 @@ async function renderAndAnalyze(sidBytes, loadEngine, options = {}) {
     const NEVER_SOUNDED_STOP = SILENCE_STOP * 2;
     let rendered = 0, sinceYield = 0, sinceCheck = 0, foundLoop = false;
     let silentRun = 0, sawSignal = false, stoppedOnSilence = false;
-    // "Stop searching" - distinct from Cancel. Cancel throws the render away;
-    // this keeps what has been rendered and analyses that, which is what someone
-    // watching a long tune's scan actually wants.
-    let stoppedEarly = false;
     // The Int16 view onto the engine's output buffer is re-derived only when the WASM
     // heap actually moves (a grow detaches the old ArrayBuffer), not once per chunk.
     let view = null, viewBuffer = null;
@@ -338,13 +334,6 @@ async function renderAndAnalyze(sidBytes, loadEngine, options = {}) {
                 // The user pressed Cancel while we were yielded: stop now (finally
                 // cleans up) and let the caller decide what a cancel means.
                 if (signal && signal.aborted) throw abortError();
-                if (stopSignal && stopSignal.aborted) {
-                    stoppedEarly = true;
-                    onProgress('Stopped — using what has been scanned so far', 1,
-                        { seconds: rendered / sampleRate, totalSeconds: maxSeconds,
-                          loopFound: true, news: 'found' });
-                    break;
-                }
             }
         }
     } finally {
@@ -360,10 +349,7 @@ async function renderAndAnalyze(sidBytes, loadEngine, options = {}) {
         // over these rows later: they hold one pass of it, not the two the
         // unhinted search would need. Null whenever the render ended any other way.
         loopHint: foundLoop && hint ? hint : null,
-        hitCap: !foundLoop && !stoppedEarly && rendered >= total,
-        // The user stopped the scan and asked for what was found so far, so
-        // nothing downstream should treat this as "we searched everything".
-        stoppedEarly,
+        hitCap: !foundLoop && rendered >= total,
         // Nothing usable came out of this engine - see renderWithFallback. Either
         // the tune never made a sound at all, or it went quiet almost immediately.
         deadRender: !sawSignal || (stoppedOnSilence && (rendered / sampleRate) < DEAD_RENDER_SECONDS),
@@ -486,9 +472,6 @@ export function createBakeCore(loadEngine) {
                 loopSeconds: (r.numKeyframes - r.loopStart) / r.keyframeHz,
                 analyzedSeconds: r.analyzedSeconds,
                 cappedAtMaxSeconds: r.cappedAtMaxSeconds,
-                // The user pressed "use what it has found" rather than the scan
-                // running out of window, which is a different thing to say.
-                stoppedEarly: !!cache.rows.stoppedEarly,
                 // Frame-exact loop / length, for the song-length tool.
                 frameHzExact: cache.rows.frameHz,
                 loopStartFrames: r.loopStartFrames,
