@@ -125,7 +125,7 @@ https://dirquake.c64demo.com : a tool - mostly for C64GFX.com - to quickly grab 
 </UsedSIDs>
 <DownloadLinks><DownloadLink><Link>https://csdb.dk/getinternalfile.php/276831/ein geschenk.prg</Link>
 <CounterLink>https://csdb.dk/release/download.php?id=318688</CounterLink>
-<Downloads>312</Downloads>
+<Downloads>316</Downloads>
 <Status>Ok</Status>
 </DownloadLink>
 <DownloadLink><Link>https://csdb.dk/getinternalfile.php/276832/ein_geschenk.sid</Link>
@@ -558,7 +558,7 @@ Old dog old tryx</Trivia>
 </Handle>
 </Handles>
 </Scener>
-<FreelanceFunctions><Function>Co-Organizer</Function>
+<FreelanceFunctions><Function>Coder</Function>
 <Function>Graphician</Function>
 </FreelanceFunctions>
 </Handle>

@@ -5,29 +5,28 @@
 <ReleaseDay>22</ReleaseDay>
 <ReleaseMonth>2</ReleaseMonth>
 <ReleaseYear>2022</ReleaseYear>
-<Rating>9.6</Rating>
+<Rating>9.56</Rating>
 <ScreenShot>https://csdb.dk/gfx/releases/214000/214738.png</ScreenShot>
 <ReleasedBy><Group><ID>396</ID>
 <Name>Genesis Project</Name>
 <AKA>G*P</AKA>
 <Short>GP</Short>
 <Trivia>[IMG]https://i.imgur.com/xQ1uaEd.png [/IMG]
-Genesis Project is a multi platform demo group and one of the most well known and productive C64 cracking groups of all time, formed in late 1985 or early 1986 on the C64 by &amp;lt;scener id=6392&amp;gt; (TNT), later &amp;lt;scener id=315&amp;gt;. 
+Genesis Project is a multi-platform demo group and one of the most well known and productive C64 cracking groups of all time, formed in late 1985 or early 1986 on the C64 by &amp;lt;scener id=6392&amp;gt; (TNT), later &amp;lt;scener id=315&amp;gt;. 
 
-in 1993 a lot of the members strated cracking for SNES/PC etc. (See &amp;lt;release id=261018&amp;gt;. - SNES: L.A.Style, Tyger, Red Skin, Airwolf, Lexi, Zammbo. PC: Snacky)
+In 1993 a lot of the members started cracking for SNES/PC etc. (See &amp;lt;release id=261018&amp;gt;. - SNES: L.A.Style, Tyger, Red Skin, Airwolf, Lexi, Zammbo. PC: Snacky)
 
 A full detailed history 1986-2016 can be read in &amp;lt;release id=150629&amp;gt; (2016).
 
 [url=https://demozoo.org/groups/3170/]The history of Genesis Project and further information.[/url]
 
 
-Current (2024) G*P WHQ: &amp;lt;bbs id=103&amp;gt;, EHQ: &amp;lt;bbs id=1139&amp;gt;, and USHQ: &amp;lt;bbs id=320&amp;gt;. G*P also had
- &amp;lt;bbs id=114&amp;gt;, &amp;lt;bbs id=221&amp;gt;, &amp;lt;bbs id=42&amp;gt;, &amp;lt;bbs id=182&amp;gt;, &amp;lt;bbs id=113&amp;gt;, &amp;lt;bbs id=286&amp;gt;, &amp;lt;bbs id=39&amp;gt;, &amp;lt;bbs id=68&amp;gt; and &amp;lt;bbs id=218&amp;gt; as HQs.
+Current (2024) G*P WHQ: &amp;lt;bbs id=103&amp;gt;, EHQ: &amp;lt;bbs id=1139&amp;gt;, and USHQ: &amp;lt;bbs id=320&amp;gt;. G*P also had &amp;lt;bbs id=114&amp;gt;, &amp;lt;bbs id=221&amp;gt;, &amp;lt;bbs id=42&amp;gt;, &amp;lt;bbs id=182&amp;gt;, &amp;lt;bbs id=113&amp;gt;, &amp;lt;bbs id=286&amp;gt;, &amp;lt;bbs id=39&amp;gt;, &amp;lt;bbs id=68&amp;gt; and &amp;lt;bbs id=218&amp;gt; as HQs.
 
 G*P were the organizer of successful parties such as &amp;lt;event id=445&amp;gt;, &amp;lt;event id=128&amp;gt;, &amp;lt;event id=1846&amp;gt;, &amp;lt;event id=2316&amp;gt;, &amp;lt;event id=2879&amp;gt; and &amp;lt;event id=2756&amp;gt;.</Trivia>
 <FoundYear>1986</FoundYear>
-<Website>https://www.facebook.com/Genesis.Project.C64/</Website>
-<Rating>9.1</Rating>
+<Website>https://gp-64.com</Website>
+<Rating>9.08</Rating>
 <Grouptypes><Grouptype>Cracker Group</Grouptype>
 <Grouptype>Demo Group</Grouptype>
 <Grouptype>Fixing Group</Grouptype>
@@ -142,7 +141,7 @@ https://dirquake.c64demo.com : a tool - mostly for C64GFX.com - to quickly grab 
 </DownloadLink>
 <DownloadLink><Link>https://csdb.dk/getinternalfile.php/225456/acrouzet-thedescent.prg</Link>
 <CounterLink>https://csdb.dk/release/download.php?id=264837</CounterLink>
-<Downloads>357</Downloads>
+<Downloads>360</Downloads>
 <Status>Ok</Status>
 </DownloadLink>
 </DownloadLinks>
