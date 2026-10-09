@@ -136,12 +136,12 @@ https://dirquake.c64demo.com : a tool - mostly for C64GFX.com - to quickly grab 
 </UsedSIDs>
 <DownloadLinks><DownloadLink><Link>https://csdb.dk/getinternalfile.php/225457/The_Descent.sid</Link>
 <CounterLink>https://csdb.dk/release/download.php?id=264838</CounterLink>
-<Downloads>189</Downloads>
+<Downloads>192</Downloads>
 <Status>Ok</Status>
 </DownloadLink>
 <DownloadLink><Link>https://csdb.dk/getinternalfile.php/225456/acrouzet-thedescent.prg</Link>
 <CounterLink>https://csdb.dk/release/download.php?id=264837</CounterLink>
-<Downloads>360</Downloads>
+<Downloads>368</Downloads>
 <Status>Ok</Status>
 </DownloadLink>
 </DownloadLinks>
@@ -290,26 +290,23 @@ Organizer of the successful Gubbdata parties in Lund 2012-2022, Sweden. Also co-
 <CSDbEntry><Handle><ID>36891</ID>
 <Handle>demosic</Handle>
 <CurrentlyUsedHandle>true</CurrentlyUsedHandle>
+<HandleStory>random name generator, tweaked it a little</HandleStory>
 <Scener><ID>32802</ID>
 <Country>Sweden</Country>
-<Trivia>15 Years old.</Trivia>
-<Handles><Handle><ID>36891</ID>
-</Handle>
-<Handle><ID>36052</ID>
+<Handles><Handle><ID>36052</ID>
 <Handle>That8BitChiptuneGuy</Handle>
 <CurrentlyUsedHandle>false</CurrentlyUsedHandle>
-<HandleStory>I (DeMOSic) was gonna make a name for my youtube channel and "That8BitChiptuneGuy" just got into my head. I Couldnt come up with anything better and it stuck.</HandleStory>
 <Scener><ID>32802</ID>
 </Scener>
 <FreelanceFunctions><Function>Musician</Function>
 </FreelanceFunctions>
 </Handle>
+<Handle><ID>36891</ID>
+</Handle>
 </Handles>
 </Scener>
 <FreelanceFunctions><Function>Coder</Function>
 <Function>Cracker</Function>
-<Function>Graphician</Function>
-<Function>Logo Graphician</Function>
 <Function>Musician</Function>
 </FreelanceFunctions>
 </Handle>

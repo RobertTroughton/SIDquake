@@ -25,7 +25,7 @@
 <Achievement><Compo>C64 Music</Compo>
 <Place>8</Place>
 </Achievement>
-<Rating>9.56</Rating>
+<Rating>9.6</Rating>
 <ScreenShot>https://csdb.dk/gfx/releases/259000/259027.png</ScreenShot>
 <ReleasedBy><Group><ID>396</ID>
 <Name>Genesis Project</Name>
@@ -136,7 +136,7 @@ http://www.soundcloud.com/dees-productions</Trivia>
 </UsedSIDs>
 <DownloadLinks><DownloadLink><Link>https://csdb.dk/getinternalfile.php/276830/Xiny6581-shalloonandcollywobbles.prg</Link>
 <CounterLink>https://csdb.dk/release/download.php?id=318687</CounterLink>
-<Downloads>306</Downloads>
+<Downloads>311</Downloads>
 <Status>Ok</Status>
 </DownloadLink>
 </DownloadLinks>

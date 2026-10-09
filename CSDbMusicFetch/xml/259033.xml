@@ -25,7 +25,7 @@
 <Achievement><Compo>C64 Music</Compo>
 <Place>9</Place>
 </Achievement>
-<Rating>9.67</Rating>
+<Rating>9.69</Rating>
 <ScreenShot>https://csdb.dk/gfx/releases/259000/259033.png</ScreenShot>
 <ReleasedBy><Group><ID>396</ID>
 <Name>Genesis Project</Name>
@@ -170,12 +170,12 @@ Came back to the scene in 2016.</Trivia>
 </UsedSIDs>
 <DownloadLinks><DownloadLink><Link>https://csdb.dk/getinternalfile.php/276841/butterflies - steel - 8580.prg</Link>
 <CounterLink>https://csdb.dk/release/download.php?id=318700</CounterLink>
-<Downloads>269</Downloads>
+<Downloads>275</Downloads>
 <Status>Ok</Status>
 </DownloadLink>
 <DownloadLink><Link>https://csdb.dk/getinternalfile.php/276843/butterflies-steel-8580.sid</Link>
 <CounterLink>https://csdb.dk/release/download.php?id=318702</CounterLink>
-<Downloads>140</Downloads>
+<Downloads>141</Downloads>
 <Status>Ok</Status>
 </DownloadLink>
 </DownloadLinks>
