@@ -46,6 +46,9 @@ The rest:
   zip layout, and the three copies of the share-meta shard hash agree.
 - `scripts/test-render-determinism.js`: a render on either engine depends only
   on the tune, not on what the module played before it.
+- `scripts/test-engine-contract.js`: both engines answer the shared `audio_*`
+  calls the same way for 1/2/3-SID, multi-song and "either"-model tunes: song
+  counts, chips, PAL/NTSC, header and forced chip models.
 - `scripts/test-goldens.js`: the whole-tune regression. For a fast tier of
   tunes from `SID/` it compares the `sid_analyze` results, the analyser CPU's
   SID write trace (hashed per block of play calls) and hashes of both engines'

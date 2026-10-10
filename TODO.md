@@ -657,14 +657,12 @@ ranked by value against effort:
    share one CPU. `window.SIDquakeModuleInstance` is also shared with
    `prg-builder.js:899`. An `Analyser`/`ResidEngine` with a handle-based C
    layer (keeping a default instance) allows multiple instances and testing.
-2. **Playback as modules** — `sid-player.js:131`, `:397` call
-   `window.hvscBrowser`/`window.hvscVisualizer`; inject callbacks instead and
-   make `sid-playback.js`/`sid-player.js` ES modules (which would also let
-   `sid-playback.js` use `psid.js` instead of its own header parser). A shared `audio_*`
-   contract header and one Node conformance test over both engines would stop
-   the engine drift listed under Low. `ui.js` hanging `sidHeader` and
-   `analysisResults` on the analyser for `prg-builder` to read should become
-   explicit inputs.
+2. **Playback as modules** — `sid-playback.js`/`sid-player.js` are classic
+   scripts loaded by `window.loadScript` on three host pages; as ES modules
+   `sid-playback.js` could use `psid.js` instead of its own header parser.
+   Left for now: it means reworking each page's loader for little gain. `ui.js`
+   hanging `sidHeader` and `analysisResults` on the analyser for `prg-builder`
+   to read should become explicit inputs.
 3. Six illegal RMW groups in `cpu6510_core.h` repeat one addressing switch.
 
 ## Playback / engine
