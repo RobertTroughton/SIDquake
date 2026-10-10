@@ -588,22 +588,12 @@ wish of both experienced musicians and the beginner alike.
 
 ## Emulation and analysis audit
 
-From a five-way review of the 6510 core, both SID engines, the tune analyser and
-the spectrometer bake. Each item was reproduced with a scratch probe unless it
-says *suspected*. Most are `[WASM]`.
-
-What already holds: the core passes Klaus Dormann's functional test and every
-documented opcode of Tom Harte's SingleStepTests `6502/v1` (registers, RAM,
-cycles, NMOS decimal flags). The FFT, real-input packing, window scaling and
-decimation match a naive reference, and the baked-stream encoder and the 6502
-decoder agree.
-
-### Suggested order
-
-The regression harness, the render-determinism fix and the analyser abort have
-landed (`scripts/test-goldens.js`, `scripts/test-render-determinism.js`, CI job
-`wasm`). Next: folding the duplicated C64 environment and call harness, which
-is where several of the medium bugs came from.
+What is left of a five-way review of the 6510 core, both SID engines, the tune
+analyser and the spectrometer bake. The bugs it found are fixed, each with a
+test; the regression harness it called for is in place (`npm test` runs the fast
+golden tier, `npm run test:goldens` all of `SID/`, and CI rebuilds the WASM and
+checks it against what is committed; see `docs/TESTING.md`). Below is what is
+left: known limits, product choices and larger pieces of work.
 
 ### Low
 
