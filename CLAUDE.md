@@ -173,13 +173,12 @@ source for the visualiser players.
 
 **Test** (details in `docs/TESTING.md`) — `npm test` is fast, pure Node, and
 drives the real assembled 6502 in the WASM 6510 emulator; its golden tier pins
-what the emulation produces for tunes in `SID/` (`--update` with a reason when a
-change is meant to move them). Not in it: `npm run test:goldens` (all of `SID/`),
-Playwright browser checks (`scripts/*-check.js`, `npm install --no-save
-playwright`), VICE raster-split checks (`scripts/seam-*.js`),
-`scripts/build-players.sh --check` after touching `SIDPlayers/`, and
-`scripts/cpu-crosscheck/run.sh` + `singlestep.sh` after touching the 6510
-decoder or a bus adapter.
+what the emulation produces for `SID/` (`--update`, with a reason, to move it).
+Not in it: `npm run test:goldens` (all of `SID/`), Playwright browser checks
+(`scripts/*-check.js`, `npm install --no-save playwright`), VICE raster-split
+checks (`scripts/seam-*.js`), `scripts/build-players.sh --check` after touching
+`SIDPlayers/`, and `scripts/cpu-crosscheck/run.sh` + `singlestep.sh` after
+touching the 6510 decoder or a bus adapter.
 
 **Generated output — never edit by hand** — `public/icons.css` +
 `public/fonts/sidquake-icons.woff2`, `public/prg/*-code.bin`,
