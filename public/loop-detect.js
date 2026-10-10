@@ -8,6 +8,13 @@
 
 import { whitenQuantize } from './bake-dsp.js';
 
+// Version of the loop and song-end answers. It is part of the key scan results
+// are cached under (analysis-store.js, via ANALYSIS_VERSION in
+// spectrometer-bake-core.js), so bump it whenever a change moves what
+// detectLoop or resolveKeyframes answers; scripts/test-analysis-version.js
+// fails until it is bumped.
+export const LOOP_DETECT_VERSION = 1;
+
 // Detect a repeating loop in the quantized keyframe matrix. SID tunes replay
 // deterministically, so once the audio loops the columns become exactly
 // periodic. Returns { loopStart, loopEnd } (keyframes [0,loopEnd) are stored,

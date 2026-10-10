@@ -37,6 +37,13 @@
 import { parseSidHeader } from './psid.js';
 import { PLAY_CYCLE_CAP, makeAnalyserApi, startTune } from './analyser-session.js';
 
+// Version of the state loops this finds. It is part of the key scan results
+// are cached under (analysis-store.js, via ANALYSIS_VERSION in
+// spectrometer-bake-core.js), so bump it whenever a change here or in
+// analyser-session.js moves what findStateLoop answers;
+// scripts/test-analysis-version.js fails until it is bumped.
+export const PREPASS_VERSION = 1;
+
 // Load the tune into the analyser's RAM, run init for `subtune`, and fingerprint
 // `maxFrames` worth of play calls: one FNV-1a hash per call over the addresses
 // written, in order, and the value each one holds when the call returns.

@@ -113,6 +113,13 @@ Driven from `ui.js`; the results land on the Studio's Song tab.
   tail (Crystalline, JCH) be found rather than reported as an ending. A hint
   the audio does not confirm is dropped and the old search carries on from
   where the render is; a tune the analyser cannot drive gets no hint at all
+- Scan results are stored across reloads (`analysis-store.js`), keyed on the
+  tune, the scan options and `ANALYSIS_VERSION` (`spectrometer-bake-core.js`),
+  which joins `LOOP_DETECT_VERSION` (`loop-detect.js`) and `PREPASS_VERSION`
+  (`loop-prepass.js`). A change that moves what the loop detection or the
+  pre-pass answers bumps the matching constant, so older results are not read
+  back; `scripts/test-analysis-version.js` hashes both on fixed inputs and
+  fails until the constant is bumped and the new hash pinned
 - Files holding several tunes (`multiSongExport`): everything that can only
   describe one tune — the song length, the forced loop, the baked spectrometer
   — is off while the export still holds all of them, and the scan does not run

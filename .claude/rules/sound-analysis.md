@@ -12,6 +12,7 @@ paths:
   - "SIDPlayers/INC/spectrometer*.asm"
   - "scripts/test-loop-*.js"
   - "scripts/test-song-end.js"
+  - "scripts/test-analysis-version.js"
   - "scripts/test-range-fit.js"
   - "scripts/test-bake-cache.js"
   - "scripts/test-baked-decoder.js"
@@ -37,3 +38,7 @@ Read `docs/ANALYSIS.md` (analyser run, song length, loop pre-pass) and
   stay off unless the export is locked to one subtune (`exportSubtuneIndex()`).
 - A loop hint the audio does not confirm is dropped, never trusted. A tune still
   playing when the scan stops is unresolved, not a fade-out.
+- Stored scan results are keyed on `ANALYSIS_VERSION`: a change that moves
+  what `loop-detect.js` or `loop-prepass.js` answers bumps
+  `LOOP_DETECT_VERSION` or `PREPASS_VERSION` and pins the new hash in
+  `scripts/test-analysis-version.js`.

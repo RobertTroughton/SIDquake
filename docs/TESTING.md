@@ -26,6 +26,9 @@ The rest:
 - `scripts/test-loop-detect.js`, `scripts/test-song-end.js`,
   `scripts/test-bake-cache.js`, `scripts/test-vu-visibility.js`: song length,
   loop and bake decisions (see [`ANALYSIS.md`](ANALYSIS.md)).
+- `scripts/test-analysis-version.js`: the loop detection and the pre-pass
+  still answer what their version constants pinned, so stored scan results
+  are not read back across a change (see [`ANALYSIS.md`](ANALYSIS.md)).
 - `scripts/test-logo-fit.js`: the logo placement maths.
 - `scripts/test-c64-render.js`, `scripts/test-image-memory.js`: the C64 preview
   matches the export, and converted pictures keep their real memory footprint.
