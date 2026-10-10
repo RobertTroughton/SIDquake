@@ -613,10 +613,6 @@ is where several of the medium bugs came from.
   stub, and libsidplayfp does too (add `simpleMixer.cpp`). Useful mainly for
   valgrind/ASan runs; the WASM build itself is reproducible and fast (~6 s and
   ~30 s), so goldens run against the real `.wasm`.
-- **Property tests** (`scripts/test-properties.js`, seeded): header parsers never
-  read out of bounds on fuzzed input and agree with each other;
-  `sid_analyze` is order-independent across subtunes.
-
 ### Low
 
 - The analyser doesn't reject a load address below `$07E8`, which the PSID spec
