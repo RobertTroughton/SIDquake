@@ -130,6 +130,12 @@ function blackmanWindow(n) {
     return w;
 }
 
+// Lower edge (Hz) of bar `b` of `numBars` log-spaced bars over [fMin, fMax);
+// bar b + 1's lower edge is bar b's upper one.
+function barEdge(fMin, fMax, b, numBars) {
+    return fMin * Math.pow(fMax / fMin, b / numBars);
+}
+
 // Per-bar FFT-bin ranges, log-spaced (as in hvsc-visualizer computeBands).
 export function computeBands(numBars, sampleRate, fMin = F_MIN, fMaxHz = F_MAX) {
     const nyq = sampleRate / 2;
@@ -137,8 +143,8 @@ export function computeBands(numBars, sampleRate, fMin = F_MIN, fMaxHz = F_MAX) 
     const fMax = Math.min(fMaxHz, nyq);
     const lo = new Int32Array(numBars), hi = new Int32Array(numBars);
     for (let b = 0; b < numBars; b++) {
-        const f0 = fMin * Math.pow(fMax / fMin, b / numBars);
-        const f1 = fMin * Math.pow(fMax / fMin, (b + 1) / numBars);
+        const f0 = barEdge(fMin, fMax, b, numBars);
+        const f1 = barEdge(fMin, fMax, b + 1, numBars);
         let l = Math.floor(f0 / binHz), h = Math.ceil(f1 / binHz);
         l = Math.max(0, Math.min(BINS - 1, l));
         h = Math.max(l + 1, Math.min(BINS, h));
@@ -264,14 +270,7 @@ export function fitRange(fine, fallbackMin = F_MIN, fallbackMax = F_MAX) {
     const busy = new Float64Array(nb);
     let top = 0;
     for (let s = 0; s < nb; s++) {
-        const rank = Math.min(n - 1, Math.floor(n * NORM_PCTL));
-        const base = s * FINE_HIST_BUCKETS;
-        let cum = 0, bucket = FINE_HIST_BUCKETS - 1;
-        for (let k = 0; k < FINE_HIST_BUCKETS; k++) {
-            cum += fine.hist[base + k];
-            if (cum > rank) { bucket = k; break; }
-        }
-        busy[s] = (bucket + 0.5) / FINE_HIST_BUCKETS;
+        busy[s] = histPercentile(fine.hist, s * FINE_HIST_BUCKETS, FINE_HIST_BUCKETS, n);
         if (busy[s] > top) top = busy[s];
     }
     let first = -1, last = -1;
@@ -296,8 +295,8 @@ export function deriveBars(fine, numBars, fMin, fMax) {
     const { f0, f1, count: nb } = fine.bands;
     const members = [];
     for (let b = 0; b < numBars; b++) {
-        const e0 = fMin * Math.pow(fMax / fMin, b / numBars);
-        const e1 = fMin * Math.pow(fMax / fMin, (b + 1) / numBars);
+        const e0 = barEdge(fMin, fMax, b, numBars);
+        const e1 = barEdge(fMin, fMax, b + 1, numBars);
         const list = [];
         for (let s = 0; s < nb; s++) {
             const centre = Math.sqrt(f0[s] * f1[s]);
@@ -385,6 +384,20 @@ export function asRowStore(rows, numBars) {
     return store;
 }
 
+// The NORM_PCTL percentile of the `n` values counted in one band's histogram,
+// hist[base .. base + buckets) over [0, 1]: the same rank the old col.sort() +
+// index picked, resolved through cumulative bucket counts, with the bucket's
+// centre standing in for the exact sample.
+function histPercentile(hist, base, buckets, n) {
+    const rank = Math.min(n - 1, Math.floor(n * NORM_PCTL));
+    let cum = 0, bucket = buckets - 1;
+    for (let k = 0; k < buckets; k++) {
+        cum += hist[base + k];
+        if (cum > rank) { bucket = k; break; }
+    }
+    return (bucket + 0.5) / buckets;
+}
+
 // Per-band "busy level" (the NORM_PCTL percentile of that band's values over the
 // whole tune) read straight off the histogram: one pass over HIST_BUCKETS per band,
 // independent of how many frames have been analysed. Returns { ref, floor }.
@@ -393,16 +406,7 @@ export function bandRefs(store) {
     const ref = new Float64Array(nb);
     let globalRef = 0;
     for (let b = 0; b < nb; b++) {
-        // Same rank the old col.sort() + index picked, resolved through cumulative
-        // bucket counts; the bucket's centre stands in for the exact sample.
-        const rank = Math.min(n - 1, Math.floor(n * NORM_PCTL));
-        const base = b * HIST_BUCKETS;
-        let cum = 0, bucket = HIST_BUCKETS - 1;
-        for (let k = 0; k < HIST_BUCKETS; k++) {
-            cum += store.hist[base + k];
-            if (cum > rank) { bucket = k; break; }
-        }
-        const p = (bucket + 0.5) / HIST_BUCKETS;
+        const p = histPercentile(store.hist, b * HIST_BUCKETS, HIST_BUCKETS, n);
         ref[b] = p;
         if (p > globalRef) globalRef = p;
     }
@@ -584,6 +588,28 @@ export function createFftAnalyzer(sampleRate, numBars, frameHz, fMin, fMax) {
     };
 }
 
+// Per-band whitening divisor (the band's busy level, held up to the global
+// dead-band floor), resolved once rather than per element; null when the store
+// is too short to whiten.
+function whitenDenoms(store) {
+    if (!(NORM_STRENGTH > 0 && store.count > 1)) return null;
+    const nb = store.numBars;
+    const { ref, floor } = bandRefs(store);
+    const denom = new Float64Array(nb);
+    for (let b = 0; b < nb; b++) denom[b] = Math.max(ref[b], floor, 1e-6);
+    return denom;
+}
+
+// One raw value whitened against its band's divisor. The busy level maps to
+// NORM_HEADROOM, clamped so a quiet band's brief spike (divided by its tiny
+// floor) can't explode past the ceiling and pin the bar to full white; the
+// soft knee then rolls off the top instead of clipping flat.
+function whitened(raw, denom) {
+    let norm = raw / denom * NORM_HEADROOM;
+    if (norm > 1) norm = 1;
+    return softKnee((1 - NORM_STRENGTH) * raw + NORM_STRENGTH * norm);
+}
+
 // Global per-band whitening + quantization, fused into one sequential pass over the
 // row store and written straight into a 0..maxHeight byte grid.
 //
@@ -604,27 +630,12 @@ export function whitenQuantize(store, maxHeight, stride, nRows, out) {
     const nb = store.numBars, src = store.data;
     const need = nRows * nb;
     if (!out || out.length < need) out = new Uint8Array(need);
-    const whiten = NORM_STRENGTH > 0 && store.count > 1;
-    // Per-band divisor, resolved once rather than per element.
-    let denom = null;
-    if (whiten) {
-        const { ref, floor } = bandRefs(store);
-        denom = new Float64Array(nb);
-        for (let b = 0; b < nb; b++) denom[b] = Math.max(ref[b], floor, 1e-6);
-    }
+    const denom = whitenDenoms(store);
     for (let k = 0; k < nRows; k++) {
         const so = k * stride * nb, oo = k * nb;
         for (let b = 0; b < nb; b++) {
             const raw = src[so + b];
-            let v = raw;
-            if (whiten) {
-                // busy level -> NORM_HEADROOM; clamp so a quiet band's brief spike
-                // (divided by its tiny floor) can't explode past the ceiling and pin
-                // the bar to full white.
-                let norm = raw / denom[b] * NORM_HEADROOM;
-                if (norm > 1) norm = 1;
-                v = softKnee((1 - NORM_STRENGTH) * raw + NORM_STRENGTH * norm);  // roll off the top instead of clipping flat
-            }
+            const v = denom ? whitened(raw, denom[b]) : raw;
             const q = Math.round(v * maxHeight);
             out[oo + b] = q < 0 ? 0 : q > maxHeight ? maxHeight : q;
         }
@@ -639,21 +650,12 @@ export function whitenRows(rows, numBars) {
     const store = asRowStore(rows, numBars);
     const nb = store.numBars, n = store.count;
     const out = new Float64Array(n * nb);
-    const whiten = NORM_STRENGTH > 0 && n > 1;
-    let denom = null;
-    if (whiten) {
-        const { ref, floor } = bandRefs(store);
-        denom = new Float64Array(nb);
-        for (let b = 0; b < nb; b++) denom[b] = Math.max(ref[b], floor, 1e-6);
-    }
+    const denom = whitenDenoms(store);
     for (let k = 0; k < n; k++) {
         const o = k * nb;
         for (let b = 0; b < nb; b++) {
             const raw = store.data[o + b];
-            if (!whiten) { out[o + b] = raw; continue; }
-            let norm = raw / denom[b] * NORM_HEADROOM;
-            if (norm > 1) norm = 1;
-            out[o + b] = softKnee((1 - NORM_STRENGTH) * raw + NORM_STRENGTH * norm);
+            out[o + b] = denom ? whitened(raw, denom[b]) : raw;
         }
     }
     return out;
