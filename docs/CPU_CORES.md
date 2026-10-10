@@ -76,10 +76,6 @@ only exclusions are the ones listed under "What is still not modelled".
 
 ## What is still not modelled
 
-- **`JSR` pushing before its last operand fetch.** Real hardware fetches the
-  low operand byte, pushes the return address, then fetches the high byte, so
-  a `JSR` in the stack page can overwrite its own operand. The core reads both
-  bytes first.
 - **The NMOS read-modify-write double write.** Real hardware writes the
   unmodified value back before the modified one, which is visible on I/O
   registers. Adding it would double every `INC`/`DEC`/shift on a tracked

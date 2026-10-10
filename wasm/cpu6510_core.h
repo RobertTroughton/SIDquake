@@ -365,10 +365,12 @@ int Core<Bus>::step() {
         return 5;
     }
     case 0x20: {
-        uint16_t a = ea_abs();
-        uint16_t ret = uint16_t(b.pc - 1);
-        push(uint8_t(ret >> 8));
-        push(uint8_t(ret & 0xFF));
+        // The high operand byte is fetched after the return address is pushed,
+        // so a JSR in the stack page can overwrite its own operand.
+        uint8_t lo = fetch();
+        push(uint8_t(b.pc >> 8));
+        push(uint8_t(b.pc & 0xFF));
+        uint16_t a = uint16_t(lo | (fetch() << 8));
         b.pc = a;
         b.jumpTarget(a);
         return 6;
