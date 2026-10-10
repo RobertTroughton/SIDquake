@@ -13,6 +13,7 @@
 #include "resid/sid.h"
 #include "cpu6510_core.h"
 #include "c64_io.h"
+#include "c64_env.h"
 
 extern "C" {
 
@@ -108,8 +109,8 @@ static void sid_power_on(int i) {
 }
 
 // A write is only pipelined (and so needs flushing) with SAMPLE_FAST on an 8580.
-static inline bool writesPipelined() {
-    return S.samplingMethod == 0 && S.chipModel == 8580;
+static inline bool writesPipelined(int chip) {
+    return S.samplingMethod == 0 && S.chipModels[chip] == reSID::MOS8580;
 }
 
 // ---- Memory access with SID register interception ----
@@ -139,6 +140,11 @@ static inline uint8_t mem_read(uint16_t addr) {
 
 static inline void mem_write(uint16_t addr, uint8_t val) {
     S.memory[addr] = val;
+    // CIA 1 repeats every 16 bytes: a timer latch written through a mirror
+    // ($DC14) is the one audio_set_subtune reads at $DC04.
+    if ((addr & 0xFF00) == 0xDC00 && c64io::io_visible(S.memory[0x01])) {
+        S.memory[0xDC00 | (addr & 0x0F)] = val;
+    }
     if (!sid_area(addr)) return;
 
     // Primary SID at $D400
@@ -148,14 +154,14 @@ static inline void mem_write(uint16_t addr, uint8_t val) {
         // defers writes to a single-slot pipeline (only the LAST write is
         // stored). Clock 1 cycle to apply each write immediately, and count it
         // against the frame.
-        if (writesPipelined()) { S.sid[0].clock(); S.flushedCycles[0]++; }
+        if (writesPipelined(0)) { S.sid[0].clock(); S.flushedCycles[0]++; }
         return;
     }
     // Multi-SID chips
     for (int i = 1; i < S.sidCount; i++) {
         if (addr >= S.sidAddress[i] && addr < S.sidAddress[i] + 0x20) {
             S.sid[i].write(addr & 0x1F, val);
-            if (writesPipelined()) { S.sid[i].clock(); S.flushedCycles[i]++; }
+            if (writesPipelined(i)) { S.sid[i].clock(); S.flushedCycles[i]++; }
             return;
         }
     }
@@ -163,18 +169,8 @@ static inline void mem_write(uint16_t addr, uint8_t val) {
     if (addr >= 0xD420 && addr < 0xD800) {
         S.memory[0xD400 | (addr & 0x1F)] = val;
         S.sid[0].write(addr & 0x1F, val);
-        if (writesPipelined()) { S.sid[0].clock(); S.flushedCycles[0]++; }
+        if (writesPipelined(0)) { S.sid[0].clock(); S.flushedCycles[0]++; }
     }
-}
-
-// ---- Stack helper (used by cpu_call to plant a sentinel return address) ----
-static inline void push8(uint8_t val) {
-    S.memory[0x100 + S.sp] = val;
-    S.sp--;
-}
-static inline void push16(uint16_t val) {
-    push8((val >> 8) & 0xFF);
-    push8(val & 0xFF);
 }
 
 // ---- Bus adapter ----
@@ -182,6 +178,7 @@ static inline void push16(uint16_t val) {
 // writes go through the SID interception; instruction fetches are always plain
 // RAM, as on the real machine where the CPU never executes from $D400.
 static bool cpuJammed;
+static int cpu_step();
 
 struct AudioBus {
     uint16_t& pc;
@@ -196,6 +193,12 @@ struct AudioBus {
     void write(uint16_t addr, uint8_t val) { mem_write(addr, val); }
     void jumpTarget(uint16_t) {}
     void jam() { cpuJammed = true; }
+
+    // For c64env::call. A call's cycles also drive the raster position the
+    // I/O model reads (c64_io.h).
+    int step() { int c = cpu_step(); S.callCycles += c; return c; }
+    bool jammed() const { return cpuJammed; }
+    void clearJam() { cpuJammed = false; }
 };
 
 // ---- 6510 CPU step: execute one instruction, return cycle count ----
@@ -207,72 +210,17 @@ static int cpu_step() {
 // ---- CPU init ----
 static void cpu_init(uint16_t pc) {
     S.pc = pc;
-    S.sp = 0xFF;
+    S.sp = 0xFD;
     S.a = S.x = S.y = 0;
     S.st = cpu6510::FLAG_U | cpu6510::FLAG_I;
 }
 
-// Run a subroutine to completion or until maxCycles is exceeded.
-// A sentinel return address is pushed so the matching RTS lands on a known PC
-// and an SP-comparison can detect it without scanning the call graph.
-//
-// With `irq` the routine is an interrupt handler instead: entered the way the
-// hardware does (PC and P pushed, I set) and done at the RTI that pops them.
-// `viaKernal` adds the A/X/Y push of the KERNAL's $FF48 entry, which the
-// $EA31/$EA81 exits pull back.
-//
-// SP is compared as a signed distance, so a return that wraps SP past $FF still
-// counts, and a call that does not return (overrun, JAM, a jump to $0000) has
-// its stack put back, so the next call does not start lower.
+// Run init or play to completion, or until maxCycles run out (c64env::call).
 static void cpu_call(uint16_t addr, uint32_t maxCycles, bool irq = false, bool viaKernal = false) {
-    uint8_t initialSP = S.sp;
-    if (irq) {
-        push16(0x0000);
-        push8((S.st & ~cpu6510::FLAG_B) | cpu6510::FLAG_U);
-        if (viaKernal) { push8(S.a); push8(S.x); push8(S.y); }
-        S.st |= cpu6510::FLAG_I;
-    } else {
-        push16(0xFFFF);
-    }
-    S.pc = addr;
-    uint32_t cyclesRun = 0;
-    cpuJammed = false;
+    AudioBus bus{ S.pc, S.sp, S.a, S.x, S.y, S.st };
     S.callCycles = 0;
-
-    while (cyclesRun < maxCycles) {
-        uint8_t opcode = S.memory[S.pc];
-        cyclesRun += cpu_step();
-        S.callCycles = cyclesRun;
-
-        if (cpuJammed) break;  // KIL opcode; the CPU would never come back
-        if ((int8_t)(S.sp - initialSP) >= 0 && opcode == (irq ? 0x40 : 0x60)) {
-            return;  // matching RTS / RTI executed
-        }
-        if (S.pc == 0 || S.pc == 0xFFFF) break;  // BRK or sentinel landing
-    }
-    S.sp = initialSP;
+    c64env::call(bus, addr, maxCycles, irq, viaKernal);
 }
-
-// ---- SID file header (PSID/RSID v1-v4) ----
-#pragma pack(push, 1)
-struct SIDFileHeader {
-    char     magicID[4];
-    uint8_t  versionHi, versionLo;
-    uint8_t  dataOffsetHi, dataOffsetLo;
-    uint8_t  loadAddrHi, loadAddrLo;
-    uint8_t  initAddrHi, initAddrLo;
-    uint8_t  playAddrHi, playAddrLo;
-    uint8_t  songsHi, songsLo;
-    uint8_t  startSongHi, startSongLo;
-    uint8_t  speedB3, speedB2, speedB1, speedB0;
-    char     name[32];
-    char     author[32];
-    char     copyright[32];
-    // v2+ fields follow at offset 0x76
-};
-#pragma pack(pop)
-
-static uint16_t be16(uint8_t hi, uint8_t lo) { return (hi << 8) | lo; }
 
 // ====================================================================
 // WASM-exported functions
@@ -314,153 +262,52 @@ void audio_init(double sampleRate) {
 
 EMSCRIPTEN_KEEPALIVE
 int audio_load_sid(const uint8_t* data, int length) {
-    if (length < 0x7C) return -1;
+    // The analyser's checks and resolved addresses (c64env::parse_psid); RSID
+    // is accepted here. Errors as there: -1 too short, -2 not a SID, -4 bad
+    // version, -5 bad data offset, -7 does not fit in 64K, -8 MUS data.
+    c64env::Psid h;
+    const int parsed = c64env::parse_psid(data, length < 0 ? 0 : (uint32_t)length, h);
+    if (parsed < 0) return parsed;
 
-    const SIDFileHeader* hdr = (const SIDFileHeader*)data;
+    S.loadAddress = h.loadAddress;
+    S.initAddress = h.initAddress;
+    S.playAddress = h.playAddress;
+    S.songs       = h.songs;
+    S.startSong   = h.startSong;
+    S.speed       = h.speed;
+    S.flags       = h.flags;
+    S.secondSIDAddr = h.secondSidByte;
+    S.thirdSIDAddr  = h.thirdSidByte;
+    memcpy(S.name, data + 0x16, 32); S.name[32] = 0;
+    memcpy(S.author, data + 0x36, 32); S.author[32] = 0;
+    memcpy(S.copyright, data + 0x56, 32); S.copyright[32] = 0;
 
-    if (memcmp(hdr->magicID, "PSID", 4) != 0 &&
-        memcmp(hdr->magicID, "RSID", 4) != 0) {
-        return -2;
-    }
-
-    uint16_t version    = be16(hdr->versionHi, hdr->versionLo);
-    uint16_t dataOffset = be16(hdr->dataOffsetHi, hdr->dataOffsetLo);
-    S.loadAddress  = be16(hdr->loadAddrHi, hdr->loadAddrLo);
-    S.initAddress  = be16(hdr->initAddrHi, hdr->initAddrLo);
-    S.playAddress  = be16(hdr->playAddrHi, hdr->playAddrLo);
-    S.songs        = be16(hdr->songsHi, hdr->songsLo);
-    S.startSong    = be16(hdr->startSongHi, hdr->startSongLo);
-    S.speed        = ((uint32_t)hdr->speedB3 << 24) | ((uint32_t)hdr->speedB2 << 16) |
-                     ((uint32_t)hdr->speedB1 << 8)  | hdr->speedB0;
-
-    memcpy(S.name, hdr->name, 32); S.name[32] = 0;
-    memcpy(S.author, hdr->author, 32); S.author[32] = 0;
-    memcpy(S.copyright, hdr->copyright, 32); S.copyright[32] = 0;
-
-    // PSID convention: loadAddress=0 means the first two data bytes hold the
-    // actual load address (little-endian) and are stripped off the payload.
-    const uint8_t* musicData = data + dataOffset;
-    int musicLen = length - dataOffset;
-    if (S.loadAddress == 0 && musicLen >= 2) {
-        S.loadAddress = musicData[0] | (musicData[1] << 8);
-        musicData += 2;
-        musicLen -= 2;
-    }
-    if (S.initAddress == 0) S.initAddress = S.loadAddress;
-
-    // v2+ adds the flags word and (v3/v4) the second/third SID address bytes.
-    S.flags = 0;
-    S.secondSIDAddr = 0;
-    S.thirdSIDAddr = 0;
-    if (version >= 2 && length >= 0x7C) {
-        S.flags = (data[0x76] << 8) | data[0x77];
-        if (version >= 3 && length > 0x7A) S.secondSIDAddr = data[0x7A];
-        if (version >= 4 && length > 0x7B) S.thirdSIDAddr  = data[0x7B];
-    }
-
-    // PSID flags: bits 2-3 = video (00/01/11=PAL, 10=NTSC), bits 4-5 = SID model.
-    S.isNTSC = (S.flags & 0x0C) == 0x08;
+    S.isNTSC = c64env::is_ntsc(S.flags);
     S.clockFreq = S.isNTSC ? NTSC_CLOCK : PAL_CLOCK;
     S.cyclesPerFrame = S.isNTSC ? NTSC_CYCLES_PER_FRAME : PAL_CYCLES_PER_FRAME;
 
-    uint8_t sidModelBits = (S.flags >> 4) & 0x03;
-    S.chipModel = (sidModelBits >= 2) ? 8580 : 6581;
-
-    // Second/third SID base = $D000 + addrByte*16; valid range per PSID spec is
-    // $42..$7E or $E0..$FE on even high-nibbles (skipping I/O collision range).
     S.sidCount = 1;
     S.sidAddress[0] = 0xD400;
-    if (S.secondSIDAddr >= 0x42 && (S.secondSIDAddr < 0x80 || S.secondSIDAddr >= 0xE0)) {
-        S.sidAddress[S.sidCount++] = 0xD000 + S.secondSIDAddr * 16;
-    }
-    if (S.thirdSIDAddr >= 0x42 && (S.thirdSIDAddr < 0x80 || S.thirdSIDAddr >= 0xE0)) {
-        S.sidAddress[S.sidCount++] = 0xD000 + S.thirdSIDAddr * 16;
+    for (uint8_t b : { S.secondSIDAddr, S.thirdSIDAddr }) {
+        const uint16_t addr = c64env::sid_address(b);
+        if (addr) S.sidAddress[S.sidCount++] = addr;
     }
 
+    // The KERNAL stubs first, then the tune over them, so a tune that occupies
+    // any of those addresses keeps its own bytes.
     memset(S.memory, 0, 65536);
-    S.memory[0x01] = 0x37;  // processor port: default RAM/ROM banking
-
-    S.memory[0xDC04] = 0x24;  // CIA1 Timer A latch defaults to ~PAL frame rate
-    S.memory[0xDC05] = 0x40;
-
-    // ---- Minimal C64 Kernal environment for SID compatibility ----
-    // Many SID tunes JSR to Kernal ROM routines or JMP to IRQ exit points.
-    // Without stubs, those addresses contain 0x00 (BRK) which causes infinite
-    // BRK loops that eat all CPU cycles and prevent init/play from completing.
-    //
-    // These stubs are written into empty RAM FIRST; the tune's own data is
-    // loaded on top afterwards (see below), so a tune that occupies these
-    // addresses — e.g. one loaded over the $E000-$FFFF Kernal region — always
-    // wins and is never corrupted by a stub. Writing stubs after the tune with
-    // an "== 0" guard would clobber legitimate zero bytes inside such tunes.
-
-    // Kernal IRQ exits at $EA31, $EA7E (acknowledge CIA 1 first) and $EA81:
-    // PLA / TAY / PLA / TAX / PLA / RTI, undoing the $FF48 entry below.
-    static const uint8_t exitTail[] = {0x68,0xA8,0x68,0xAA,0x68,0x40};
-    memcpy(&S.memory[0xEA31], exitTail, sizeof(exitTail));
-    S.memory[0xEA7E] = 0xAD; S.memory[0xEA7F] = 0x0D; S.memory[0xEA80] = 0xDC;
-    memcpy(&S.memory[0xEA81], exitTail, sizeof(exitTail));
-
-    // Stub the Kernal jump table ($FF81-$FFF3, every 3 bytes) with RTS so any
-    // SCINIT/IOINIT/etc. calls return cleanly instead of running garbage.
-    for (int addr = 0xFF81; addr <= 0xFFF3; addr += 3) {
-        if (S.memory[addr] == 0) {
-            S.memory[addr] = 0x60;
-        }
-    }
-
-    // $FF48, the Kernal IRQ entry: save A/X/Y, then JMP ($0314), or ($0316)
-    // for a BRK.
-    static const uint8_t irqEntry[] = {
-        0x48, 0x8A, 0x48, 0x98, 0x48, 0xBA, 0xBD, 0x04, 0x01, 0x29, 0x10,
-        0xF0, 0x03, 0x6C, 0x16, 0x03, 0x6C, 0x14, 0x03 };
-    memcpy(&S.memory[0xFF48], irqEntry, sizeof(irqEntry));
-
-    // Hardware IRQ vector -> $FF48
-    if (S.memory[0xFFFE] == 0 && S.memory[0xFFFF] == 0) {
-        S.memory[0xFFFE] = 0x48;
-        S.memory[0xFFFF] = 0xFF;
-    }
-
-    // Hardware NMI vector -> $FF48
-    if (S.memory[0xFFFA] == 0 && S.memory[0xFFFB] == 0) {
-        S.memory[0xFFFA] = 0x48;
-        S.memory[0xFFFB] = 0xFF;
-    }
-
-    // Software IRQ vector ($0314/$0315) -> $EA31
-    if (S.memory[0x0314] == 0 && S.memory[0x0315] == 0) {
-        S.memory[0x0314] = 0x31;
-        S.memory[0x0315] = 0xEA;
-    }
-
-    // Software NMI vector ($0318/$0319) -> $EA81
-    if (S.memory[0x0318] == 0 && S.memory[0x0319] == 0) {
-        S.memory[0x0318] = 0x81;
-        S.memory[0x0319] = 0xEA;
-    }
-
-    // Load the tune's data LAST, so it overrides any overlapping stub/vector
-    // bytes above (a tune loaded over the Kernal region keeps its own data).
-    if (musicLen > 0 && S.loadAddress + musicLen <= 65536) {
-        memcpy(&S.memory[S.loadAddress], musicData, musicLen);
-    }
-
+    c64env::plant_kernal(S.memory);
+    memcpy(&S.memory[S.loadAddress], data + h.musicStart, h.musicSize);
     memcpy(S.loadedMemory, S.memory, sizeof(S.memory));
 
-    // The sampling method audio_init or audio_set_sampling_method chose is
-    // kept: the song-length scan's fast option sets it before loading.
-    reSID::chip_model model = (S.chipModel == 8580) ? reSID::MOS8580 : reSID::MOS6581;
-    for (int i = 0; i < S.sidCount; i++) S.chipModels[i] = model;
-
-    // PSID v2+ flag bits 6-7 select the second chip's model independently.
-    if (version >= 2) {
-        uint8_t model2bits = (S.flags >> 6) & 0x03;
-        if (S.sidCount > 1 && model2bits >= 2) {
-            S.chipModels[1] = reSID::MOS8580;
-        }
+    // Each chip's model from the header. The sampling method audio_init or
+    // audio_set_sampling_method chose is kept: the song-length scan's fast
+    // option sets it before loading.
+    S.chipModel = c64env::chip_model(S.flags, 0);
+    for (int i = 0; i < S.sidCount; i++) {
+        S.chipModels[i] = c64env::chip_model(S.flags, i) == 8580 ? reSID::MOS8580 : reSID::MOS6581;
+        sid_power_on(i);
     }
-    for (int i = 0; i < S.sidCount; i++) sid_power_on(i);
 
     S.loaded = true;
     S.totalCycles = 0;
@@ -502,24 +349,22 @@ void audio_set_subtune(int subtune) {
     // CIA-driven tunes (speed bit set) latch the play period in $DC04/$DC05.
     // Subtunes past 32 share bit 31.
     if (S.speed & (1u << (subtune < 31 ? subtune : 31))) {
+        // The timer counts its latch down to 0 and reloads: it fires every
+        // latch + 1 cycles.
         uint16_t timerVal = S.memory[0xDC04] | (S.memory[0xDC05] << 8);
         if (timerVal > 0) {
-            S.cyclesPerFrame = timerVal;
+            S.cyclesPerFrame = timerVal + 1;
         }
     }
 
-    // Implicit play address: the handler this subtune's init installed - the
-    // RAM vector at $FFFE with the Kernal banked out, else the Kernal's $0314.
+    // Implicit play address: the handler this subtune's init installed.
     S.playRoutine = S.playAddress;
     S.playIsIrq = S.playViaKernal = false;
     if (S.playAddress == 0) {
+        const c64env::IrqHandler handler = c64env::irq_handler(S.memory);
+        S.playRoutine = handler.addr;
         S.playIsIrq = true;
-        if ((S.memory[0x01] & 3) < 2) {
-            S.playRoutine = S.memory[0xFFFE] | (S.memory[0xFFFF] << 8);
-        } else {
-            S.playRoutine = S.memory[0x0314] | (S.memory[0x0315] << 8);
-            S.playViaKernal = true;
-        }
+        S.playViaKernal = handler.viaKernal;
     }
 
     S.remainingCycles = 0;
@@ -586,12 +431,15 @@ int audio_generate(int16_t* buffer, int numSamples) {
 }
 
 EMSCRIPTEN_KEEPALIVE
+// 6581 or 8580 forces every chip to that model; anything else returns to the
+// header's model for each chip, as in sidplayfp_audio.cpp.
 void audio_set_model(int model) {
-    S.chipModel = model;
-    reSID::chip_model m = (model == 8580) ? reSID::MOS8580 : reSID::MOS6581;
+    const bool forced = model == 6581 || model == 8580;
+    S.chipModel = forced ? model : c64env::chip_model(S.flags, 0);
     for (int i = 0; i < S.sidCount; i++) {
-        S.chipModels[i] = m;
-        S.sid[i].set_chip_model(m);
+        const int m = forced ? model : c64env::chip_model(S.flags, i);
+        S.chipModels[i] = m == 8580 ? reSID::MOS8580 : reSID::MOS6581;
+        S.sid[i].set_chip_model(S.chipModels[i]);
     }
 }
 

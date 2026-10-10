@@ -22,32 +22,41 @@ let an instruction fetch reach reSID.
 
 All 256 opcodes are decoded, illegals included.
 
-## Calling into a tune (analysis core)
+## Calling into a tune
 
-The analysis core has no ROMs and starts from zeroed RAM, so a caller builds the
-machine a PSID expects before loading the tune: `cpu_setup_c64_env` sets
-`$00/$01` to their power-on values (`$2F`/`$37`) and plants just enough KERNAL
-to call into and to leave an interrupt through: the IRQ exits at `$EA31`,
-`$EA7E` and `$EA81` (pull Y, X, A, then `RTI`), the real `$FF48` IRQ entry, an
-`RTS` at every jump-table entry, and the `$0314`/`$0318`/`$FFFA`/`$FFFE`
-vectors. The tune is loaded afterwards, so it overwrites any stub it overlaps.
-`sid_analyze`, `loop-prepass.js` and `spectrometer-shadow-detect.js` all do
-this.
+Both adapters build the machine a PSID expects, and call into it, the same way:
+`wasm/c64_env.h` holds the one PSID header parser (`parse_psid`, with the
+analyser's checks; the analyser alone then refuses RSID), the per-chip model
+and SID-address rules, the KERNAL stubs, the play-routine resolver and the call
+runner. The analysis core starts from zeroed RAM and `cpu_setup_c64_env` plants
+the stubs; the reSID engine does the same in `audio_load_sid`. The tune is
+loaded afterwards, so it overwrites any stub it overlaps. `sid_analyze`,
+`loop-prepass.js` and `spectrometer-shadow-detect.js` all do this.
 
-Two ways to call a routine:
+`plant_kernal` sets `$00/$01` to their power-on values (`$2F`/`$37`), CIA 1's
+timer A latch to the PAL KERNAL's `$4025`, and just enough KERNAL to call into
+and to leave an interrupt through: the IRQ exits at `$EA31`, `$EA7E` and `$EA81`
+(pull Y, X, A, then `RTI`), the real `$FF48` IRQ entry, the `$FE43` NMI entry
+(`SEI`, `JMP ($0318)`), an `RTS` at every jump-table entry, and the
+`$0314`/`$0318`/`$FFFA`/`$FFFE` vectors.
 
-- `cpu_execute_function` plants a return address and runs until the `RTS` that
-  pops it: init, and play when the header gives a play address.
-- `cpu_execute_interrupt` enters a handler the way the hardware does (PC and P
-  pushed, I set) and runs until the `RTI` that pops them. With `kernalEntry` it
-  also pushes A, X and Y, as the KERNAL's `$FF48` does before `JMP ($0314)`, so
-  a handler that leaves through `JMP $EA31` returns balanced. This is play for a
-  PSID with play address 0; `cpu_get_irq_handler` says which handler init
-  installed (`$FFFE` with the KERNAL banked out, else `$0314`, flagged in bit 16).
+`c64env::call` is the one way to run a routine:
 
-Both stop on a JAM, on the cycle cap, or on a jump to `$0000/$0001`, and compare
-the stack pointer as a signed distance so a return that wraps SP past `$FF`
-still counts.
+- as a subroutine (`cpu_execute_function`, the reSID engine's `cpu_call`): plant
+  a return address and run until the `RTS` that pops it: init, and play when the
+  header gives a play address;
+- as an interrupt handler (`cpu_execute_interrupt`): enter the way the hardware
+  does (PC and P pushed, I set, 7 cycles) and run until the `RTI` that pops
+  them. With `kernalEntry` it also pushes A, X and Y and counts the 29 cycles
+  of the KERNAL's `$FF48` entry, so a handler that leaves through `JMP $EA31`
+  returns balanced. This is play for a PSID with play address 0;
+  `irq_handler` says which handler init installed (`$FFFE` with the KERNAL
+  banked out, else `$0314`).
+
+A call ends at the matching `RTS`/`RTI` (SP back at or above where it started,
+compared as a signed distance so a wrap past `$FF` still counts), or fails on a
+JAM, on the cycle cap, or on a jump to `$0000/$0001` or `$FFFF`; a failed call
+has its stack pointer put back.
 
 ## Keeping them honest
 

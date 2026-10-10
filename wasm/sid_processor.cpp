@@ -9,6 +9,7 @@
 #include <set>
 #include <string>
 #include "opcodes.h"
+#include "c64_env.h"
 
 // Strip non-printable bytes and trailing spaces from a fixed-length SID header
 // field. SID header strings are Latin-1 (ISO 8859-1), so keep the printable
@@ -195,87 +196,40 @@ extern "C" {
     // operate on a half-parsed wreck of the rejected file.
     EMSCRIPTEN_KEEPALIVE
         int sid_load(uint8_t* data, uint32_t size) {
-        if (size < 120) {
-            return -1;
+        // The checks and the resolved addresses are the reSID engine's too
+        // (c64env::parse_psid); the analyser also refuses RSID (-3), which
+        // needs a real C64 environment it does not model.
+        c64env::Psid psid;
+        const int parsed = c64env::parse_psid(data, size, psid);
+        if (parsed < 0) {
+            return parsed;
         }
-
-        // Only copy what the file actually contains: a 120-byte v1 file is
-        // smaller than the packed struct (124 bytes with the v2+/v3/v4 tail),
-        // and copying sizeof(SIDHeader) unconditionally over-reads the input
-        // buffer. The v2+ fields are zeroed for v1 files instead.
-        SIDHeader header;
-        memset(&header, 0, sizeof(SIDHeader));
-        memcpy(&header, data, size < sizeof(SIDHeader) ? size : sizeof(SIDHeader));
-
-        // magicID has no null terminator in the file format.
-        std::string magicID(header.magicID, 4);
-
-        if (magicID != "PSID" && magicID != "RSID") {
-            return -2;
-        }
-
-        if (magicID == "RSID") {
+        if (psid.rsid) {
             return -3;
         }
 
-        header.version = swap16(header.version);
-        header.dataOffset = swap16(header.dataOffset);
-        header.loadAddress = swap16(header.loadAddress);
-        header.initAddress = swap16(header.initAddress);
-        header.playAddress = swap16(header.playAddress);
-        header.songs = swap16(header.songs);
-        header.startSong = swap16(header.startSong);
-        header.speed = swap32(header.speed);
+        // Only copy what the file actually contains: a v1 file can be smaller
+        // than the packed struct (124 bytes with the v2+/v3/v4 tail). The
+        // numeric fields are then replaced with the parsed ones.
+        SIDHeader header;
+        memset(&header, 0, sizeof(SIDHeader));
+        memcpy(&header, data, size < sizeof(SIDHeader) ? size : sizeof(SIDHeader));
+        std::string magicID(header.magicID, 4);   // no null terminator in the file
+        header.version = psid.version;
+        header.dataOffset = c64env::be16(data + 0x06);
+        header.loadAddress = psid.loadAddress;
+        header.initAddress = psid.initAddress;
+        header.playAddress = psid.playAddress;
+        header.songs = psid.songs;
+        header.startSong = psid.startSong;
+        header.speed = psid.speed;
+        header.flags = psid.flags;
+        header.secondSIDAddress = psid.secondSidByte;
+        header.thirdSIDAddress = psid.thirdSidByte;
 
-        if (header.version >= 2) {
-            header.flags = swap16(header.flags);
-        }
-
-        if (header.version < 1 || header.version > 4) {
-            return -4;
-        }
-
-        if (header.version >= 2 && size < 0x7C) {
-            return -1;
-        }
-
-        // dataOffset comes straight from the file: reject values that point
-        // before the end of the header or past the end of the file. Without
-        // this, `size - dataStart` underflows to ~4 billion and the load loop
-        // reads far out of bounds (a crafted/corrupt .sid would hang the tab).
-        const uint32_t minDataOffset = (header.version == 1) ? 0x76 : 0x7C;
-        if (header.dataOffset < minDataOffset || header.dataOffset >= size) {
-            return -5;
-        }
-
-        // If loadAddress is 0, the actual load address is encoded as the first
-        // two bytes of the data section (little-endian, like a PRG file).
-        uint32_t dataStart = header.dataOffset;
-        if (header.loadAddress == 0) {
-            if (size < dataStart + 2) {
-                return -5;
-            }
-            uint8_t lo = data[dataStart];
-            uint8_t hi = data[dataStart + 1];
-            header.loadAddress = lo | (hi << 8);
-            dataStart += 2;
-        }
-
-        // PSID: an init address of 0 means the load address.
-        if (header.initAddress == 0) {
-            header.initAddress = header.loadAddress;
-        }
-
-        uint32_t musicSize = size - dataStart;
-        uint8_t* musicData = data + dataStart;
-
-        // The tune must fit in the 64K address space at its load address.
-        // cpu_write_memory takes a uint16_t address, so an oversized tune would
-        // silently wrap and corrupt zero page / the CPU vectors rather than
-        // failing. Reject it up front.
-        if ((uint32_t)header.loadAddress + musicSize > 0x10000) {
-            return -7;
-        }
+        const uint32_t dataStart = psid.musicStart;
+        const uint32_t musicSize = psid.musicSize;
+        const uint8_t* musicData = data + dataStart;
 
         // Allocate the new file copy BEFORE freeing the old one, so even an
         // OOM here leaves the previous SID loaded.
@@ -573,15 +527,10 @@ extern "C" {
         // Every C64 has a SID at $D400, and a v3/v4 header names the address of
         // the second and third ($Dxx0, even xx in $42-$7F or $E0-$FE).
         sidState.analysis.sidChipsUsed[0] = true;
-        uint8_t declared[2] = {
-            sidState.header.version >= 3 ? sidState.header.secondSIDAddress : (uint8_t)0,
-            sidState.header.version >= 4 ? sidState.header.thirdSIDAddress : (uint8_t)0,
-        };
-        for (uint8_t b : declared) {
-            if (b & 1) continue;
-            uint16_t addr = 0xD000 | (b << 4);
-            if (b >= 0x42 && b <= 0x7F) sidState.analysis.sidChipsUsed[(addr - 0xD400) >> 5] = true;
-            else if (b >= 0xE0 && b <= 0xFE) sidState.analysis.sidChipsUsed[32 + ((addr - 0xDE00) >> 5)] = true;
+        for (uint8_t b : { sidState.header.secondSIDAddress, sidState.header.thirdSIDAddress }) {
+            const uint16_t addr = c64env::sid_address(b);
+            if (addr >= 0xDE00) sidState.analysis.sidChipsUsed[32 + ((addr - 0xDE00) >> 5)] = true;
+            else if (addr) sidState.analysis.sidChipsUsed[(addr - 0xD400) >> 5] = true;
         }
 
         // Code-vs-data only matters for the SID's own loaded range.
@@ -615,7 +564,7 @@ extern "C" {
     }
 
     EMSCRIPTEN_KEEPALIVE
-        uint16_t sid_get_header_value(int field) {
+        uint32_t sid_get_header_value(int field) {
         if (!sidState.isLoaded) return 0;
 
         switch (field) {

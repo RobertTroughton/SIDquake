@@ -632,27 +632,11 @@ is where several of the medium bugs came from.
   only matters for code in `$01xx`). No NMOS RMW dummy write, so `INC $D4xx`
   writes reSID once (gate the extra write on a bus trait so analysis counters
   don't double). ARR in decimal mode is wrong; ANE/LXA use no magic constant
-  (adopt `A | $EE`). NMI stub vector `$FFFA → $FF48` dispatches through `$0314`
-  (`cpu6510_wasm.cpp:365`, `sid_audio.cpp:393-396`); the KERNAL goes via
-  `$0318`. [WASM]
-- Interrupt-play cycle counts skip the 7-cycle entry and, via KERNAL, ~28 cycles
-  of `$FF48` dispatch (`cpu6510_wasm.cpp:284-317`); whether the exporter's
-  budget cares is *suspected*, not confirmed. [WASM]
-- reSID CIA: period is the latch, analyser uses latch + 1 (`sid_audio.cpp:474-478`
-  vs `sid_processor.cpp:532-534`); default preset `$4024` vs KERNAL `$4025`;
-  writes through register mirrors (`$DC14`) never reach `$DC04`. [WASM]
-- reSID loads an over-long tune as silence: `audio_load_sid` skips the copy when
-  `loadAddress + musicLen > 65536` but returns 0 (`sid_audio.cpp:418-420`); the
-  analyser rejects it with -7. [WASM]
-- Header handling drifts between engines: flags `11` ("either") is 8580 in reSID
-  (`sid_audio.cpp:334`) and 6581 in sidplayfp/`sid-playback.js:512`; reSID
-  reads only the second chip's model, gates on `version >= 2` (spec says v3),
-  and accepts odd second/third SID addresses. The analyser ignores the MUS flag,
-  doesn't reject a load address below `$07E8`, and returns `musicSize` (up to
-  `0x10000`) as `uint16` and as `fileSize`. [WASM]
-- reSID 3SID mix sums without attenuation and clips (`sid_audio.cpp:537-541`).
-  `audio_set_model(0)` forces 6581 instead of following the header (no caller
-  yet). `writesPipelined()` checks only the first chip's model. [WASM]
+  (adopt `A | $EE`). [WASM]
+- The analyser doesn't reject a load address below `$07E8`, which the PSID spec
+  forbids. Left as is: nothing breaks for such a tune, and refusing it would
+  only stop a file that works.
+- reSID 3SID mix sums without attenuation and clips (`sid_audio.cpp`). [WASM]
 - sidplayfp: 2SID/3SID are mono only (`SidConfig::MONO`); `digiBoost` never set,
   so 8580 `$D418` digis are near-silent; `audio_set_subtune` ignores
   `engine->load()`'s result.
@@ -682,21 +666,14 @@ is where several of the medium bugs came from.
 
 ### Design
 
-The core/bus split is right: one decoder, `cpu6510::Core<Bus>`, two adapters.
-The problems are around it. Ranked by value against effort; the ones marked
-*needs goldens* move output.
+The core/bus split is right: one decoder, `cpu6510::Core<Bus>`, two adapters,
+and since `wasm/c64_env.h` and `wasm/c64_io.h` one PSID parser, one KERNAL
+environment, one call runner and one I/O model between them. What is left,
+ranked by value against effort:
 
-1. **Shared C64 environment** — `wasm/c64_env.h` with one PSID parser, one
-   KERNAL-stub planter and one IRQ-handler resolver for both engines. Today they
-   differ on `$00`, the `$DC04/05` preset, reset SP and the NMI stub, and reSID's
-   `== 0` guards after a `memset` are dead. *Needs goldens.*
 2. **`wasm/cpu6510_api.h`** declaring the `cpu_*` C API, replacing the `extern`s
    inside function bodies in `sid_processor.cpp` (`:114-131`, `:403-405`,
    `:508-510`); with C linkage a signature mismatch is not caught today. Safe.
-3. **One call/IRQ runner** — `template<Bus> callUntilReturn(...)` in the core,
-   replacing `cpu_execute_function`/`cpu_execute_interrupt` and `cpu_call`,
-   which differ in sentinel, bail-out, SP restore and reset SP (the source of
-   the TXS bug above). *Needs goldens.*
 4. **Classes instead of singletons** — `cpu`, `sidState`, `S`/`cpuJammed` are
    process-wide, so one analyser per module, and `sid_analyze` and the pre-pass
    share one CPU. `window.SIDquakeModuleInstance` is also shared with

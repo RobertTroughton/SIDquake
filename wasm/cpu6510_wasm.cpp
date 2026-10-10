@@ -10,6 +10,7 @@
 #include <set>
 #include "opcodes.h"
 #include "c64_io.h"
+#include "c64_env.h"
 #include "cpu6510_core.h"
 
 extern "C" {
@@ -200,11 +201,7 @@ extern "C" {
         }
     }
 
-    // Stack push, used by cpu_execute_function to plant a return address.
-    void push(uint8_t value) {
-        write_memory_internal(0x0100 + cpu.sp, value);
-        cpu.sp--;
-    }
+    void cpu_step();
 
     // === Bus adapter ============================================================
     // Binds the shared decoder in cpu6510_core.h to this core's memory and its
@@ -230,6 +227,15 @@ extern "C" {
             if (cpu.trackingEnabled) cpu.memoryAccess[addr] |= MEM_JUMP_TARGET;
         }
         void jam() { cpu.halted = true; }
+
+        // For c64env::call.
+        int step() {
+            const uint64_t before = cpu.cycles;
+            cpu_step();
+            return (int)(cpu.cycles - before);
+        }
+        bool jammed() const { return cpu.halted; }
+        void clearJam() { cpu.halted = false; }
     };
 
     // Execute one instruction
@@ -251,136 +257,43 @@ extern "C" {
     }
 
 
-    // Execute a subroutine until its matching RTS, or maxCycles is exceeded.
+    // Run a subroutine until its matching RTS, or maxCycles is exceeded (see
+    // c64env::call). Returns 1 if it returned; lastExecutionCycles is then its
+    // cycle count, else 0.
     EMSCRIPTEN_KEEPALIVE
         int cpu_execute_function(uint16_t address, uint32_t maxCycles) {
-        cpu.lastExecutionCycles = 0;   // stays 0 unless the call returns
-        uint16_t returnAddr = cpu.pc - 1;
-        push(returnAddr >> 8);
-        push(returnAddr & 0xFF);
-
-        cpu.pc = address;
-        uint64_t startCycles = cpu.cycles;
-        uint8_t startSP = cpu.sp + 2;  // account for the two bytes just pushed
-
-        while ((cpu.cycles - startCycles) < maxCycles) {
-            uint8_t opcode = cpu.memory[cpu.pc];
-
-            cpu_step();
-
-            if (cpu.halted) return 0;  // KIL/JAM instruction executed
-
-            // Done when the matching RTS pops us back to (or above) the
-            // original SP. Using >= rather than == so a routine that pops
-            // more than it pushes (PLA-balancing tricks) is still detected
-            // instead of silently burning the whole cycle budget every frame.
-            // Compared as a signed distance so a start SP near $FF, where
-            // the pop wraps round to $00-$01, still counts as returned.
-            if (opcode == 0x60 && (int8_t)(cpu.sp - startSP) >= 0) {
-                cpu.lastExecutionCycles = (uint32_t)(cpu.cycles - startCycles);
-                return 1;
-            }
-
-            if (cpu.pc < 2) {
-                return 0;  // jumped to invalid address
-            }
-        }
-
-        return 0;  // cycle limit hit
+        AnalysisBus bus{ cpu.pc, cpu.sp, cpu.a, cpu.x, cpu.y, cpu.status };
+        const c64env::CallResult r = c64env::call(bus, address, maxCycles);
+        cpu.lastExecutionCycles = r.returned ? r.cycles : 0;
+        return r.returned ? 1 : 0;
     }
 
     // Run an interrupt handler until the RTI that ends it, or maxCycles is
-    // exceeded. Entered the way the hardware would: PC and P pushed, I set.
-    // kernalEntry adds what the KERNAL's $FF48 entry does before it jumps
-    // through $0314 - push A, X and Y - so a handler that leaves through
-    // JMP $EA31 / $EA81 (which pull them back, see cpu_setup_c64_env) returns
-    // with the stack balanced.
+    // exceeded. kernalEntry: the handler was reached through the KERNAL's $FF48
+    // entry, which pushed A, X and Y; a handler leaving through JMP $EA31 /
+    // $EA81 pulls them back.
     EMSCRIPTEN_KEEPALIVE
         int cpu_execute_interrupt(uint16_t address, uint32_t maxCycles, bool kernalEntry) {
-        cpu.lastExecutionCycles = 0;
-        uint8_t startSP = cpu.sp;
-        push(0x00);
-        push(0x00);
-        push((cpu.status & ~FLAG_BREAK) | FLAG_UNUSED);
-        if (kernalEntry) {
-            push(cpu.a);
-            push(cpu.x);
-            push(cpu.y);
-        }
-        cpu.status |= FLAG_INTERRUPT;
-
-        cpu.pc = address;
-        uint64_t startCycles = cpu.cycles;
-
-        while ((cpu.cycles - startCycles) < maxCycles) {
-            uint8_t opcode = cpu.memory[cpu.pc];
-
-            cpu_step();
-
-            if (cpu.halted) return 0;
-
-            if (opcode == 0x40 && (int8_t)(cpu.sp - startSP) >= 0) {
-                cpu.lastExecutionCycles = (uint32_t)(cpu.cycles - startCycles);
-                return 1;
-            }
-
-            if (cpu.pc < 2 && opcode != 0x40) {
-                return 0;
-            }
-        }
-
-        return 0;
+        AnalysisBus bus{ cpu.pc, cpu.sp, cpu.a, cpu.x, cpu.y, cpu.status };
+        const c64env::CallResult r = c64env::call(bus, address, maxCycles, true, kernalEntry);
+        cpu.lastExecutionCycles = r.returned ? r.cycles : 0;
+        return r.returned ? 1 : 0;
     }
 
-    // The play routine a PSID with play address 0 left behind: init hung it on
-    // an interrupt. With the KERNAL ROM banked in ($01 & 3 >= 2) the CPU's
-    // vector is the ROM's, which enters through $0314; with it banked out, the
-    // RAM vector at $FFFE is the handler. Bit 16 of the result is set for the
-    // $0314 case, i.e. the handler expects cpu_execute_interrupt's kernalEntry.
+    // The play routine a PSID with play address 0 left behind (see
+    // c64env::irq_handler). Bit 16 of the result is set when the handler expects
+    // cpu_execute_interrupt's kernalEntry.
     EMSCRIPTEN_KEEPALIVE
         uint32_t cpu_get_irq_handler() {
-        if ((cpu.memory[0x01] & 3) < 2) {
-            return cpu.memory[0xFFFE] | (cpu.memory[0xFFFF] << 8);
-        }
-        return 0x10000u | cpu.memory[0x0314] | (cpu.memory[0x0315] << 8);
+        const c64env::IrqHandler h = c64env::irq_handler(cpu.memory);
+        return (h.viaKernal ? 0x10000u : 0u) | h.addr;
     }
 
-    // The machine state a PSID expects before init, which cpu_init's zeroed RAM
-    // does not provide: the processor port at its power-on value, and just
-    // enough of the KERNAL for a tune to call into it or leave an interrupt
-    // through it. Call after cpu_init and BEFORE loading the tune, so a tune
-    // that occupies any of these addresses overwrites the stub. Mirrors the
-    // environment the reSID engine builds (sid_audio.cpp audio_load_sid).
+    // The machine a PSID expects of the KERNAL (see c64env::plant_kernal).
+    // Call before loading the tune, which then overwrites any stub it overlaps.
     EMSCRIPTEN_KEEPALIVE
         void cpu_setup_c64_env() {
-        uint8_t* m = cpu.memory;
-        m[0x00] = 0x2F;
-        m[0x01] = 0x37;
-
-        // The KERNAL's IRQ exits: $EA31 (the full handler, reduced here to its
-        // exit), $EA7E (acknowledge CIA 1 first) and $EA81 all end by pulling
-        // Y, X and A, then RTI.
-        static const uint8_t exitTail[] = { 0x68, 0xA8, 0x68, 0xAA, 0x68, 0x40 };
-        memcpy(&m[0xEA31], exitTail, sizeof(exitTail));
-        m[0xEA7E] = 0xAD; m[0xEA7F] = 0x0D; m[0xEA80] = 0xDC;   // LDA $DC0D
-        memcpy(&m[0xEA81], exitTail, sizeof(exitTail));
-
-        // KERNAL jump table: every entry returns at once.
-        for (int addr = 0xFF81; addr <= 0xFFF3; addr += 3) {
-            m[addr] = 0x60;
-        }
-
-        // $FF48, the KERNAL IRQ entry: save A/X/Y, then JMP ($0314) - or
-        // ($0316) for a BRK.
-        static const uint8_t irqEntry[] = {
-            0x48, 0x8A, 0x48, 0x98, 0x48, 0xBA, 0xBD, 0x04, 0x01, 0x29, 0x10,
-            0xF0, 0x03, 0x6C, 0x16, 0x03, 0x6C, 0x14, 0x03 };
-        memcpy(&m[0xFF48], irqEntry, sizeof(irqEntry));
-
-        m[0xFFFA] = 0x48; m[0xFFFB] = 0xFF;   // NMI -> $FF48
-        m[0xFFFE] = 0x48; m[0xFFFF] = 0xFF;   // IRQ -> $FF48
-        m[0x0314] = 0x31; m[0x0315] = 0xEA;   // IRQ -> $EA31
-        m[0x0318] = 0x81; m[0x0319] = 0xEA;   // NMI -> $EA81
+        c64env::plant_kernal(cpu.memory);
     }
 
     // Get CPU state
