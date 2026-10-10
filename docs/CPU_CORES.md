@@ -81,8 +81,6 @@ only exclusions are the ones listed under "What is still not modelled".
   registers. Adding it would double every `INC`/`DEC`/shift on a tracked
   address in `sidWrites`, `zpWrites` and the shadow-register write sequence, so
   it needs those consumers looked at first.
-- **`ARR` (`$6B`) in decimal mode.** Both cores use the binary-mode result and
-  flags. The BCD variant needs a separate fixup.
 - **`XAA` (`$8B`) and `LAX #imm` (`$AB`) magic constants.** Both cores use the
   common deterministic forms (`A = X & imm` and `A = X = imm`); on real hardware
   the result depends on the analogue state of the internal bus.

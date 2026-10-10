@@ -564,11 +564,21 @@ int Core<Bus>::step() {
         return 2;
 
     // ARR - AND #imm then ROR A; C is bit 6 of the result, V bit 6 ^ bit 5.
-    // Decimal mode is not modelled - see docs/CPU_CORES.md.
+    // In decimal mode N, Z and V come from the rotated value and each nibble
+    // of the AND result gets an ADC-style BCD fixup, which also sets C.
     case 0x6B: {
         uint8_t t = uint8_t(b.a & fetch());
         bool c = testFlag(FLAG_C);
         b.a = uint8_t((t >> 1) | (c ? 0x80 : 0));
+        if (testFlag(FLAG_D)) {
+            setZN(b.a);
+            setFlag(FLAG_V, ((t ^ b.a) & 0x40) != 0);
+            if ((t & 0x0F) + (t & 0x01) > 5) b.a = uint8_t((b.a & 0xF0) | ((b.a + 6) & 0x0F));
+            bool hc = (t & 0xF0) + (t & 0x10) > 0x50;
+            setFlag(FLAG_C, hc);
+            if (hc) b.a = uint8_t(b.a + 0x60);
+            return 2;
+        }
         setZN(b.a);
         setFlag(FLAG_C, (b.a & 0x40) != 0);
         setFlag(FLAG_V, ((b.a ^ (b.a << 1)) & 0x40) != 0);

@@ -62,8 +62,8 @@ static bool skipOpcode(uint8_t op) {
     // halt to its bus and stops instead, so there is no final state to compare.
     if ((op & 0x0F) == 0x02 && op != 0x82 && op != 0xA2 && op != 0xC2 && op != 0xE2)
         return true;
-    // ARR has no decimal-mode fixup. ANE and LXA use no magic constant.
-    if (op == 0x6B || op == 0x8B || op == 0xAB) return true;
+    // ANE and LXA use no magic constant.
+    if (op == 0x8B || op == 0xAB) return true;
     return false;
 }
 
