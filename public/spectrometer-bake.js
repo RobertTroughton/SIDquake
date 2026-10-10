@@ -822,6 +822,7 @@ async function kmeans(data, numRows, dim, K, iters, seed, onTick, snap) {
     for (let it = 0; it < iters; it++) {
         if (onTick) await onTick(it / iters);
         sums.fill(0); counts.fill(0);
+        let changed = it === 0;
         for (let r = 0; r < numRows; r++) {
             let best = 0, bestD = Infinity;
             for (let c = 0; c < K; c++) {
@@ -829,18 +830,25 @@ async function kmeans(data, numRows, dim, K, iters, seed, onTick, snap) {
                 for (let d = 0; d < dim; d++) { const df = data[r * dim + d] - cent[c * dim + d]; dd += df * df; if (dd >= bestD) break; }
                 if (dd < bestD) { bestD = dd; best = c; }
             }
+            if (labels[r] !== best) changed = true;
             labels[r] = best; counts[best]++;
             const off = best * dim, ro = r * dim;
             for (let d = 0; d < dim; d++) sums[off + d] += data[ro + d];
         }
+        let emptied = false;
         for (let c = 0; c < K; c++) {
             if (counts[c] === 0) { // reseed empty cluster on a random row
+                emptied = true;
                 const r = Math.floor(rng() * numRows);
                 for (let d = 0; d < dim; d++) cent[c * dim + d] = data[r * dim + d];
             } else {
                 for (let d = 0; d < dim; d++) cent[c * dim + d] = sums[c * dim + d] / counts[c];
             }
         }
+        // Same labels as the last pass and no reseed: the means just computed
+        // are the ones this pass started from, bit for bit, so every remaining
+        // pass would repeat this one exactly.
+        if (!changed && !emptied) break;
     }
     const codebook = new Uint8Array(K * dim);
     for (let i = 0; i < K * dim; i++) {
