@@ -81,10 +81,18 @@ not part of `npm test`: it needs a C++ toolchain and takes minutes.
 outside references: Tom Harte's SingleStepTests (`6502/v1`, 10,000 cases per
 opcode, compared on registers, RAM, cycle count and the order of bus writes)
 and Klaus Dormann's functional test. Both are downloaded at run time. The
-only exclusions are the ones listed under "What is still not modelled".
+JAM opcodes are the only exclusion, and bus reads are not compared (both are
+explained under "What is still not modelled").
 
 ## What is still not modelled
 
+- **`JAM`/`KIL` (`$x2`) locking the bus.** The core reports the halt to its
+  bus (`jam()`) and stops, rather than hanging on repeated reads, so these
+  opcodes are left out of the Harte run.
+- **Dummy reads.** The 6502 makes extra reads (the operand of an implied
+  instruction, the unfixed address of an indexed access, the stack before a
+  pull); the core does not, which only matters to read-sensitive I/O such as
+  the CIA interrupt flags. The Harte run compares bus writes, not reads.
 - **`XAA` (`$8B`) and `LAX #imm` (`$AB`) instability.** Both use the common
   magic constant `$EE` (`A = (A | $EE) & X & imm` and
   `A = X = (A | $EE) & imm`), as Tom Harte's tests do; on real hardware the
