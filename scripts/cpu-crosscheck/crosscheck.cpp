@@ -144,7 +144,7 @@ static int table_check() {
         cpu.memory[startPC + 2] = 0x12;
         cpu.pc = startPC;
         cpu.a = 0; cpu.x = 0; cpu.y = 0; cpu.sp = 0xFD;
-        cpu.status = cpu6510::FLAG_U | cpu6510::FLAG_I;
+        cpu.st = cpu6510::FLAG_U | cpu6510::FLAG_I;
         // With N, V, Z and C all clear these four branches are taken, which
         // costs the base cycle plus one. A zero displacement keeps the target
         // in the same page, so no page-crossing penalty is owed on top.
@@ -208,7 +208,7 @@ static int vector_check() {
         cpu.memory[startPC + 1] = v.o1;
         cpu.memory[startPC + 2] = v.o2;
         cpu.pc = startPC; cpu.a = v.a; cpu.x = v.x; cpu.y = v.y;
-        cpu.sp = 0xFD; cpu.status = cpu6510::FLAG_U | cpu6510::FLAG_I;
+        cpu.sp = 0xFD; cpu.st = cpu6510::FLAG_U | cpu6510::FLAG_I;
         cpu.cycles = 0; cpu.halted = false;
         cpu_step();
 
@@ -293,7 +293,7 @@ int main(int argc, char** argv) {
 
             memcpy(cpu.memory, base, 0x10000);
             cpu.pc = startPC; cpu.a = ra; cpu.x = rx; cpu.y = ry;
-            cpu.sp = rsp; cpu.status = rf; cpu.cycles = 0; cpu.halted = false;
+            cpu.sp = rsp; cpu.st = rf; cpu.cycles = 0; cpu.halted = false;
             cpu_step();
 
             aud_set_state(base, startPC, ra, rx, ry, rsp, rf);
@@ -318,10 +318,10 @@ int main(int argc, char** argv) {
                     snprintf(buf, sizeof(buf), "Y: A=$%02X R=$%02X", cpu.y, y);
                 else if (cpu.sp != sp)
                     snprintf(buf, sizeof(buf), "SP: A=$%02X R=$%02X", cpu.sp, sp);
-                else if ((cpu.status & FLAGMASK) != (flags & FLAGMASK))
+                else if ((cpu.st & FLAGMASK) != (flags & FLAGMASK))
                     snprintf(buf, sizeof(buf), "P: A=$%02X R=$%02X (diff $%02X)",
-                             cpu.status & FLAGMASK, flags & FLAGMASK,
-                             (cpu.status ^ flags) & FLAGMASK);
+                             cpu.st & FLAGMASK, flags & FLAGMASK,
+                             (cpu.st ^ flags) & FLAGMASK);
                 else if ((uint32_t)cpu.cycles != cpucycles)
                     snprintf(buf, sizeof(buf), "cycles: A=%u R=%u",
                              (uint32_t)cpu.cycles, cpucycles);
@@ -346,10 +346,10 @@ int main(int argc, char** argv) {
                 snprintf(buf, sizeof(buf), "Y: A=$%02X B=$%02X", cpu.y, aud_y());
             else if (cpu.sp != aud_sp())
                 snprintf(buf, sizeof(buf), "SP: A=$%02X B=$%02X", cpu.sp, aud_sp());
-            else if ((cpu.status & FLAGMASK) != (aud_st() & FLAGMASK))
+            else if ((cpu.st & FLAGMASK) != (aud_st() & FLAGMASK))
                 snprintf(buf, sizeof(buf), "P: A=$%02X B=$%02X (diff $%02X)",
-                         cpu.status & FLAGMASK, aud_st() & FLAGMASK,
-                         (cpu.status ^ aud_st()) & FLAGMASK);
+                         cpu.st & FLAGMASK, aud_st() & FLAGMASK,
+                         (cpu.st ^ aud_st()) & FLAGMASK);
             else if ((uint32_t)cpu.cycles != audCycles)
                 snprintf(buf, sizeof(buf), "cycles: A=%u B=%u",
                          (uint32_t)cpu.cycles, audCycles);

@@ -16,6 +16,8 @@ CPU core itself is in [`CPU_CORES.md`](CPU_CORES.md).
   the decoder. See `docs/CPU_CORES.md`.
 
 **`cpu6510_wasm.cpp`** - analysis bus over that core
+- The machine is the `Analyser6510` class; the `cpu_*` exports drive one
+  default instance
 - Memory access tracking (execute/read/write/jump-target flags per address)
 - SID register write capture (supports up to 32 SID chips)
 - Zero-page write tracking

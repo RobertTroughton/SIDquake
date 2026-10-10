@@ -1,4 +1,4 @@
-// Exposes the file-static 6510 core inside wasm/sid_audio.cpp to the
+// Exposes the default ResidEngine inside wasm/sid_audio.cpp to the
 // cross-check harness. Including the .cpp is what gives access to it.
 
 #include "sid_audio.cpp"
@@ -13,7 +13,7 @@ void aud_set_state(const uint8_t* image, uint16_t pc, uint8_t a, uint8_t x,
     for (int i = 0; i < MAX_SID_CHIPS; i++) S.sid[i].reset();
 }
 
-int aud_step() { return cpu_step(); }
+int aud_step() { return S.cpuStep(); }
 
 uint16_t aud_pc()  { return S.pc; }
 uint8_t  aud_a()   { return S.a; }

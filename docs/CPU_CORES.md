@@ -10,6 +10,17 @@ different jobs:
 | **analysis core** | `wasm/cpu6510_wasm.cpp` | runs init/play offline for `sid_analyze`, the spectrometer bar-data methods and `npm test`. Tracks per-address read/write/execute flags, SID and zero-page write counts, and the per-frame cycle count the exporter budgets against (`sid_get_max_cycles`). |
 | **audio core** | `wasm/sid_audio.cpp` | runs init/play to drive reSID for the song-length scan's fast option and the VU warning. Each play call runs to completion before the frame's SID cycles are clocked, so every write in a frame lands at its start; cycle counts only bound the call to its frame. |
 
+The analysis machine is the `Analyser6510` class: registers, RAM and the access
+tracking. It is its own bus, so the decoder reaches registers and RAM through
+one reference; a separate adapter struct holding references to them cost about
+9% on the analyser's hot path. The exported `cpu_*` C API (`cpu6510_api.h`)
+forwards to a single default instance, which `sid_analyze` and
+`analyser-session.js` share; native code can create as many instances as it
+needs. The reSID engine is a class too: `ResidEngine` holds the 6510, its RAM,
+the reSID chips, the loaded tune's header fields and the frame state, an
+`AudioBus` adapter is bound to one instance, and the `audio_*` exports drive a
+default instance.
+
 `wasm/sidplayfp_audio.cpp` is a third playback path but uses libsidplayfp's own
 CPU, not either of these.
 
@@ -83,6 +94,9 @@ has its stack pointer put back.
 - optionally the analysis core against a third-party `cpu.c` linked in as an
   outside opinion, the only check independent of this repo's reading of the
   hardware.
+
+It then runs `instances.cpp`, which interleaves two analysers, and two reSID
+engines, in one process and checks each ends exactly as it does run alone.
 
 Run it after touching either core; see `scripts/cpu-crosscheck/README.md`. It is
 not part of `npm test`: it needs a C++ toolchain and takes minutes.

@@ -34,6 +34,8 @@ Three code bodies:
 - `wasm/` - C++ compiled to the committed `.wasm` files. `sidquake.wasm` holds
   analysis, PNG conversion and the lightweight reSID engine; `sidplayfp.wasm`
   the accurate libsidplayfp playback engine; `exomizer.wasm` the cruncher.
+  The analyser's and the reSID engine's state are classes (`Analyser6510`,
+  `ResidEngine`); each exported C API drives one default instance.
 - `SIDPlayers/` - KickAssembler 6502 source for the visualiser players, built
   into `public/prg/`.
 
