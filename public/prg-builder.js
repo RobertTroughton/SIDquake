@@ -2769,6 +2769,10 @@ class SIDquakePRGExporter {
                 if (initTimeouts > 0) {
                     console.warn(`Save/restore may miss memory: the memory map may be incomplete for ${initTimeouts} song(s) whose init routine never returned.`);
                 }
+                const playTimeouts = this.analyzer.analysisResults.playTimeouts || 0;
+                if (playTimeouts > 0) {
+                    console.warn(`Save/restore may miss memory: the memory map may be incomplete for ${playTimeouts} song(s) with a play call that never returned.`);
+                }
 
                 // Calculate the routine size FIRST to know how much space we need
                 const routineSizes = this.calculateSaveRestoreSize(modifiedAddrs);
@@ -2803,7 +2807,10 @@ class SIDquakePRGExporter {
             // When needsSaveRestore is false, we don't add any components - the data block
             // will contain RTS instructions directly at the save/restore entry points
 
-            const numCallsPerFrame = this.analyzer.analysisResults?.numCallsPerFrame || 1;
+            // The rate of the subtune being exported, which can differ from the
+            // start song's.
+            const numCallsPerFrame = this.analyzer.analysisResults?.callsPerFrameBySong?.[selectedSong]
+                || this.analyzer.analysisResults?.numCallsPerFrame || 1;
             const sidChipCount = this.analyzer.analysisResults?.sidChipCount || 1;
 
             // The data block contains JMPs to save/restore routines, or RTS if not needed

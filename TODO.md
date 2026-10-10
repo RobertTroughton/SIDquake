@@ -628,28 +628,13 @@ is where several of the medium bugs came from.
 
 ### Medium
 
-- **A play call that never returns ends the analysis silently**
-  (`sid_processor.cpp:447-453` just `break`s); the memory map is then missing
-  every later write, so save/restore misses them. Fix: count `playTimeouts` and
-  the frame, surface it like `initTimeouts`. [WASM]
-- **A partial init timeout is never surfaced.** `ui.js:4227` warns only when
-  `initTimeouts > 0 && modifiedCount === 0`, and `prg-builder.js` never reads
-  it. Fix: warn on any timeout; refuse or warn on save/restore exports.
-- **`sidquake-core.js` drops real addresses as "sentinels".** `:217` drops
-  `$FFFF` and `:226` drops ZP `$FF`, but the loops only run to `count`, so the
-  C++ never returns a sentinel. Save/restore then skips `$FFFF`. Fix: remove
-  both filters. Test: in `test-sidquake-core.js`.
-- **Calls per frame come from the start song only** (`sid_processor.cpp:502-507`,
-  used by `prg-builder.js:2794`), so exporting a subtune with a different speed
-  bit gets the wrong tempo. `loop-prepass.js:136-147` already works it out per
-  subtune. [WASM or JS]
 - **No processor-port banking for I/O.** `$D400-$D7FF` always reaches reSID
   (`sid_audio.cpp:98-139`) or counts as a SID write (`cpu6510_wasm.cpp:163`),
   whatever `$01` says, so a depacker writing under I/O with `$01=$34` hits the
   SID and inflates the chip count. Fix: route only when I/O is visible. [WASM]
 - **No interrupt sources or I/O reads.** No CIA/VIC/NMI sources, and `$D012`,
   `$DC0D`, `$D019`, `$D41B` read back RAM, so a play routine polling `$D012`
-  hits the cycle cap (and then the silent break above). Minimal fix: a
+  hits the cycle cap (and then stops that song's analysis, now counted). Minimal fix: a
   free-running `$D012`/`$D011` bit 7 from the cycle count and a CIA1 ICR that
   reads as fired. Full playback is libsidplayfp, so this affects analysis and
   the fast scan only. [WASM]
@@ -659,9 +644,6 @@ is where several of the medium bugs came from.
   faster, so the "reSID (about twice as fast)" scan option runs at interpolate
   quality. Fix: keep `S.samplingMethod` across load, as the sidplayfp engine
   does. [WASM]
-- **Hard cut on stop, pause, subtune change and reload** — `sid-playback.js:408-418`
-  disconnects with no ramp and reSIDfp output carries a 6581 DC offset.
-  Audibility *suspected*. Fix: ramp gain to 0 over ~10–20 ms first.
 
 ### Low
 
@@ -692,24 +674,13 @@ is where several of the medium bugs came from.
   yet). `writesPipelined()` checks only the first chip's model. [WASM]
 - sidplayfp: 2SID/3SID are mono only (`SidConfig::MONO`); `digiBoost` never set,
   so 8580 `$D418` digis are near-silent; `audio_set_subtune` ignores
-  `engine->load()`'s result. `getAudibleTime` scales all queued audio by the
-  current speed, so the clock jumps on a speed change.
-- Play-cycle caps differ: 20,000 in `sid_analyze` and the pre-pass, 100,000 in
-  shadow and VU detection. Use one shared constant.
-- The VU-visibility check runs on `startSong` (`ui.js:2924`), not the export
-  subtune, and counts play calls as frames, so a multispeed tune's
-  `leadingSeconds` is too large by the speed factor.
+  `engine->load()`'s result.
 - CIA speed bit with no timer write in init reports 1 call per frame while
   sidplayfp uses its default CIA rate (*suspected*).
 - Bake timing offset is never chosen on purpose: windows centre ~2.3 frames
   after the row's frame, so bars rise 3–6 frames early and fall 2–5 late
   (`spectrometer-bake.js:528`, `629-633`). Pick the offset and pin it with an
   onset test.
-- Stale comments in `spectrometer-bake.js` (`:25-27` "mirrored from
-  hvsc-visualizer.js" with a different `MAX_DB`; `:11-12`, `:521`, `:1083-1086`
-  fixed 25 Hz keyframes; `:66` bass figures disagree with
-  `BAR_HEIGHT_METHODS.md`), `spectrometer-bake-core.js:141` ("~5.5 kHz"), and
-  `RaistlinMirrorBars.asm` ~500 (interpolation now in `TickBakedFrame`).
 - `analysis-store.js` cache key is the hand-bumped `|v4` (`ui.js:6202`); changes
   to the pre-pass or `detectLoop` don't invalidate it.
 
@@ -721,12 +692,8 @@ is where several of the medium bugs came from.
   per-call fingerprints and write orders; `sid_analyze` could also stop once the
   state loop is found and no new access flags appear. [WASM]
 - Per-write JS↔WASM calls in the pre-pass and shadow fingerprinting
-  (`loop-prepass.js:155-167`, `spectrometer-shadow-detect.js:93-97`), and tune
-  bytes loaded one `cpu_write_memory` call per byte while `cpu_load_memory` sits
-  unused. Add a `cpu_fingerprint_last_call()` and use the bulk load.
-- k-means always runs 30 iterations (`spectrometer-bake.js:822-844`): 465 ms per
-  segment at 3686×8, 7.3 s at 18000×40. Stop when no label changed and no
-  cluster emptied; output stays byte-identical.
+  (`loop-prepass.js`, `spectrometer-shadow-detect.js`): add a
+  `cpu_fingerprint_last_call()`.
 - Playback renders on the main thread with 0.37–0.74 s queued. Running
   `sidplayfp.wasm` in the AudioWorkletGlobalScope would drop that dependency and
   the queue; meanwhile, write float32 from C++ or convert in the worklet

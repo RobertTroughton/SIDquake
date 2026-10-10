@@ -4241,11 +4241,17 @@ class UIController {
         } else {
             countElement.textContent = `${modifiedCount} locations`;
         }
-        if (initTimeouts > 0) {
+        // A play call that never returned stops that song's analysis there, so
+        // anything it would have touched later is missing too.
+        const playTimeouts = this.analysisResults?.playTimeouts || 0;
+        if (initTimeouts > 0 || playTimeouts > 0) {
+            const why = [];
+            if (initTimeouts > 0) why.push(`${initTimeouts} subtune(s) had an init routine that never returned`);
+            if (playTimeouts > 0) why.push(`${playTimeouts} subtune(s) had a play call that never returned`);
             countElement.textContent += ' (incomplete)';
-            countElement.title = `${initTimeouts} subtune(s) had an init routine that never returned, ` +
-                `so the memory map may be incomplete for ${initTimeouts} song(s). Exports that need this ` +
-                `information (anything but the default player) may not work for those songs.`;
+            countElement.title = `${why.join(', and ')}, so the memory map may be incomplete for those ` +
+                `song(s). Exports that need this information (anything but the default player) may not ` +
+                `work for them.`;
         }
     }
 

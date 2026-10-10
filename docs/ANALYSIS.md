@@ -38,6 +38,10 @@ made by init are left out: an init that clears the whole mirror range would
 otherwise count as 32 chips. A play routine that does not return, or an init
 that times out, is counted too (`sid_get_play_timeouts`,
 `sid_get_init_timeouts`): either one means the memory maps are incomplete.
+Calls per frame are worked out per subtune from its speed bit and the CIA
+timer its init programs (`sid_get_song_calls_per_frame`); the exporter uses the
+rate of the subtune it exports, `sid_get_num_calls_per_frame` is the start
+song's.
 
 Header rules the analyser applies: an init address of 0 is the load address; a
 file claiming 0 songs is analysed as one; a play address of 0 means init hung
