@@ -81,9 +81,10 @@ only exclusions are the ones listed under "What is still not modelled".
   registers. Adding it would double every `INC`/`DEC`/shift on a tracked
   address in `sidWrites`, `zpWrites` and the shadow-register write sequence, so
   it needs those consumers looked at first.
-- **`XAA` (`$8B`) and `LAX #imm` (`$AB`) magic constants.** Both cores use the
-  common deterministic forms (`A = X & imm` and `A = X = imm`); on real hardware
-  the result depends on the analogue state of the internal bus.
+- **`XAA` (`$8B`) and `LAX #imm` (`$AB`) instability.** Both use the common
+  magic constant `$EE` (`A = (A | $EE) & X & imm` and
+  `A = X = (A | $EE) & imm`), as Tom Harte's tests do; on real hardware the
+  constant varies between chips. VICE and libsidplayfp use `$EF` for `XAA`.
 - **Most of the I/O chips.** `wasm/c64_io.h` is the whole model, shared by
   both adapters: the I/O area is there only while `$01` maps it in (CHAREN,
   and LORAM or HIRAM; otherwise `$D000-$DFFF` is RAM), the raster line in

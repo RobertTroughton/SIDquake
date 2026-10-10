@@ -595,12 +595,15 @@ int Core<Bus>::step() {
         return 2;
     }
 
-    // LAX #imm (LXA/ATX): A = X = imm. Unstable on hardware; the common
-    // emulated form just loads the immediate into both registers.
-    case 0xAB: { uint8_t v = fetch(); b.a = v; b.x = v; setZN(v); return 2; }
+    // LAX #imm (LXA/ATX): A = X = (A | magic) & imm. Unstable on hardware: the
+    // magic constant varies between chips. $EE is the common value, and the
+    // one Tom Harte's tests use.
+    case 0xAB: { uint8_t v = uint8_t((b.a | 0xEE) & fetch()); b.a = v; b.x = v; setZN(v); return 2; }
 
-    // XAA #imm (ANE): A = X & imm. Highly unstable on hardware.
-    case 0x8B: b.a = uint8_t(b.x & fetch()); setZN(b.a); return 2;
+    // XAA #imm (ANE): A = (A | magic) & X & imm, with the same $EE as LXA.
+    // VICE and libsidplayfp use $EF for ANE, which VICE's notes say Spectipede
+    // and Turrican 3 need.
+    case 0x8B: b.a = uint8_t((b.a | 0xEE) & b.x & fetch()); setZN(b.a); return 2;
 
     // SHA/SHX/SHY/TAS - see do_unstable_store.
     case 0x9F: { uint16_t base = fetch16(); do_unstable_store(base, b.y, uint8_t(b.a & b.x)); return 5; }
