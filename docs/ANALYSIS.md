@@ -50,6 +50,10 @@ called that way. A load that fails any check, including "does not fit in 64K"
 - `SIDAnalyzer` class wrapping all WASM calls via `cwrap()`
 - Manages WASM heap memory allocation for file transfers
 - Provides clean JS API: `loadSID()`, `analyze()`, `updateMetadata()`, `createModifiedSID()`
+- `analyze()` returns `initTimeouts`, the number of songs whose init never
+  returned; those songs have no memory map. The Modified Memory row then reads
+  "Unknown" when nothing was traced and appends "(incomplete)" otherwise, and an
+  export with save/restore logs a console warning.
 
 **`analysis-store.js`**, **`loop-prepass.js`**, **`spectrometer-shadow-detect.js`**
 and the `spectrometer-bake*.js` family consume the analyser; the bake is

@@ -2757,6 +2757,10 @@ class SIDquakePRGExporter {
 
             if (needsSaveRestore && this.analyzer.analysisResults && this.analyzer.analysisResults.modifiedAddresses) {
                 const modifiedAddrs = Array.from(this.analyzer.analysisResults.modifiedAddresses);
+                const initTimeouts = this.analyzer.analysisResults.initTimeouts || 0;
+                if (initTimeouts > 0) {
+                    console.warn(`Save/restore may miss memory: the memory map may be incomplete for ${initTimeouts} song(s) whose init routine never returned.`);
+                }
 
                 // Calculate the routine size FIRST to know how much space we need
                 const routineSizes = this.calculateSaveRestoreSize(modifiedAddrs);

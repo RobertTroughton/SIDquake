@@ -4239,6 +4239,12 @@ class UIController {
         } else {
             countElement.textContent = `${modifiedCount} locations`;
         }
+        if (initTimeouts > 0) {
+            countElement.textContent += ' (incomplete)';
+            countElement.title = `${initTimeouts} subtune(s) had an init routine that never returned, ` +
+                `so the memory map may be incomplete for ${initTimeouts} song(s). Exports that need this ` +
+                `information (anything but the default player) may not work for those songs.`;
+        }
     }
 
     updateSongTitle(header) {
