@@ -14,103 +14,298 @@
 #include "cpu6510_api.h"
 #include "cpu6510_core.h"
 
+// Memory access tracking flags
+enum MemoryAccessFlag {
+    MEM_EXECUTE = 1 << 0,
+    MEM_READ = 1 << 1,
+    MEM_WRITE = 1 << 2,
+    MEM_JUMP_TARGET = 1 << 3,
+    MEM_OPCODE = 1 << 4
+};
+
+// One analysis machine: registers, RAM and what the code did to it. The
+// exported C API below drives a single default instance; native tests can
+// create as many as they like.
+struct Analyser6510 {
+    uint16_t pc;
+    uint8_t sp;
+    uint8_t a;
+    uint8_t x;
+    uint8_t y;
+    uint8_t status;
+    uint64_t cycles;
+
+    uint8_t ciaTimerLo;
+    uint8_t ciaTimerHi;
+    bool ciaTimerWritten;
+
+    uint8_t memory[65536];
+    uint8_t memoryAccess[65536];
+
+    // SID write tracking
+    uint32_t sidWrites[32];  // Count writes to each SID register
+    uint32_t totalSidWrites;
+
+    // Multi-SID chip tracking: $20-byte slots, 0-31 for $D400-$D7FF and
+    // 32-47 for $DE00-$DFFF (the I/O areas a second or third SID sits in)
+    bool sidChipsUsed[48];   // Track which SID chips have been written to
+
+    // Zero page write tracking
+    uint32_t zpWrites[256];   // Count writes to each zero page location
+    uint32_t totalZpWrites;
+
+    // Memory write tracking
+    uint16_t lastWritePC[65536];  // Track PC that last wrote to each address
+
+    // For pattern detection
+    std::vector<uint16_t> writeSequence;
+    bool recordWrites;
+
+    // Flag to enable/disable tracking (so we can load without tracking)
+    bool trackingEnabled;
+
+    // Set by KIL/JAM opcodes; execute() exits immediately when true
+    bool halted;
+
+    // First byte of the instruction currently executing, so a store is
+    // attributed to the instruction rather than to the advanced PC.
+    uint16_t instructionPC;
+
+    // Track cycles from last function execution
+    uint32_t lastExecutionCycles;
+
+    void init();
+    void resetStateOnly();
+    void writeTracked(uint16_t address, uint8_t value);
+    void step();
+    int execute(uint16_t address, uint32_t maxCycles, bool irq, bool kernalEntry);
+    uint32_t sidChipCount() const;
+    uint16_t sidChipAddress(uint32_t index) const;
+    void setRecordWrites(bool record);
+};
+
+// === Bus adapter ============================================================
+// Binds the shared decoder in cpu6510_core.h to one analyser's memory and its
+// access tracking. Instruction-stream fetches deliberately bypass tracking:
+// they are covered by MEM_EXECUTE/MEM_OPCODE instead.
+struct AnalysisBus {
+    Analyser6510& cpu;
+    uint16_t& pc;
+    uint8_t& sp;
+    uint8_t& a;
+    uint8_t& x;
+    uint8_t& y;
+    uint8_t& st;
+
+    uint8_t fetch(uint16_t addr) { return cpu.memory[addr]; }
+    uint8_t read(uint16_t addr) {
+        if (cpu.trackingEnabled) cpu.memoryAccess[addr] |= MEM_READ;
+        uint8_t io;
+        if (c64io::read(addr, cpu.memory, cpu.cycles, io)) return io;
+        return cpu.memory[addr];
+    }
+    void write(uint16_t addr, uint8_t value) { cpu.writeTracked(addr, value); }
+    // The analyser models no write-sensitive I/O, and counting the RMW
+    // write-back would double every INC/DEC/shift in the write tracking.
+    void dummyWrite(uint16_t, uint8_t) {}
+    void jumpTarget(uint16_t addr) {
+        if (cpu.trackingEnabled) cpu.memoryAccess[addr] |= MEM_JUMP_TARGET;
+    }
+    void jam() { cpu.halted = true; }
+
+    // For c64env::call.
+    int step() {
+        const uint64_t before = cpu.cycles;
+        cpu.step();
+        return (int)(cpu.cycles - before);
+    }
+    bool jammed() const { return cpu.halted; }
+    void clearJam() { cpu.halted = false; }
+};
+
+void Analyser6510::init() {
+    pc = 0;
+    sp = 0xFD;
+    a = 0;
+    x = 0;
+    y = 0;
+    status = cpu6510::FLAG_I | cpu6510::FLAG_U;
+    cycles = 0;
+
+    ciaTimerLo = 0;
+    ciaTimerHi = 0;
+    ciaTimerWritten = false;
+
+    totalSidWrites = 0;
+    totalZpWrites = 0;
+    recordWrites = false;
+    trackingEnabled = false;
+    halted = false;
+    instructionPC = 0;
+    lastExecutionCycles = 0;
+
+    memset(memory, 0, sizeof(memory));
+    // The processor port as the KERNAL leaves it: I/O mapped in, so SID
+    // and CIA writes are seen as such until the code banks it out.
+    memory[0x00] = 0x2F;
+    memory[0x01] = 0x37;
+    memset(memoryAccess, 0, sizeof(memoryAccess));
+    memset(sidWrites, 0, sizeof(sidWrites));
+    memset(sidChipsUsed, 0, sizeof(sidChipsUsed));
+    memset(zpWrites, 0, sizeof(zpWrites));
+    memset(lastWritePC, 0, sizeof(lastWritePC));
+
+    writeSequence.clear();
+}
+
+// Reset CPU registers and tracking state, leaving memory contents intact.
+void Analyser6510::resetStateOnly() {
+    pc = 0;
+    sp = 0xFD;
+    a = 0;
+    x = 0;
+    y = 0;
+    status = cpu6510::FLAG_I | cpu6510::FLAG_U;
+    cycles = 0;
+
+    ciaTimerLo = 0;
+    ciaTimerHi = 0;
+    ciaTimerWritten = false;
+    totalSidWrites = 0;
+    totalZpWrites = 0;
+    recordWrites = false;
+    halted = false;
+    instructionPC = 0;
+    lastExecutionCycles = 0;
+
+    memset(memoryAccess, 0, sizeof(memoryAccess));
+    memset(sidWrites, 0, sizeof(sidWrites));
+    memset(sidChipsUsed, 0, sizeof(sidChipsUsed));
+    memset(zpWrites, 0, sizeof(zpWrites));
+    memset(lastWritePC, 0, sizeof(lastWritePC));
+    writeSequence.clear();
+}
+
+// Instruction-driven write: this is the path that records access info.
+void Analyser6510::writeTracked(uint16_t address, uint8_t value) {
+    memory[address] = value;
+    c64io::write(memory, address, value);
+
+    // Only track if tracking is enabled
+    if (trackingEnabled) {
+        memoryAccess[address] |= MEM_WRITE;
+        lastWritePC[address] = instructionPC;
+
+        // Track zero page writes
+        if (address < 256) {
+            zpWrites[address]++;
+            totalZpWrites++;
+        }
+
+        // I/O is only there when the processor port maps it in; otherwise
+        // a write here is to RAM.
+        if (c64io::io_visible(memory[0x01])) {
+            // Track SID writes (full SID range $D400-$D7FF)
+            if (address >= 0xD400 && address <= 0xD7FF) {
+                uint8_t reg = address & 0x1F;
+                sidWrites[reg]++;
+                totalSidWrites++;
+
+                // Track which SID chip is being used (each chip is $20 bytes)
+                uint8_t sidChipIndex = (address - 0xD400) >> 5;  // Divide by 32
+                sidChipsUsed[sidChipIndex] = true;
+
+                if (recordWrites) {
+                    writeSequence.push_back(address);
+                }
+            }
+            else if (address >= 0xDE00 && address <= 0xDFFF) {
+                sidChipsUsed[32 + ((address - 0xDE00) >> 5)] = true;
+            }
+
+            // Track CIA 1 timer A writes, through the register mirrors too: CIA 1
+            // repeats every 16 bytes across $DC00-$DCFF.
+            if ((address & 0xFF0F) == 0xDC04) {
+                ciaTimerLo = value;
+                ciaTimerWritten = true;
+            }
+            else if ((address & 0xFF0F) == 0xDC05) {
+                ciaTimerHi = value;
+                ciaTimerWritten = true;
+            }
+        }
+    }
+}
+
+// Execute one instruction
+void Analyser6510::step() {
+    if (trackingEnabled) {
+        // The whole instruction is code; MEM_OPCODE marks where it starts.
+        memoryAccess[pc] |= MEM_EXECUTE | MEM_OPCODE;
+        for (uint8_t i = 1; i < opcodeTable[memory[pc]].size; i++) {
+            memoryAccess[(uint16_t)(pc + i)] |= MEM_EXECUTE;
+        }
+    }
+    // Writes are attributed to the instruction that made them, not to
+    // wherever the PC has reached by the time the store happens.
+    instructionPC = pc;
+
+    AnalysisBus bus{ *this, pc, sp, a, x, y, status };
+    cycles += cpu6510::step(bus);
+}
+
+// Run a subroutine, or with `irq` an interrupt handler, until it returns or
+// maxCycles is exceeded (see c64env::call). Returns 1 if it returned;
+// lastExecutionCycles is then its cycle count, else 0.
+int Analyser6510::execute(uint16_t address, uint32_t maxCycles, bool irq, bool kernalEntry) {
+    AnalysisBus bus{ *this, pc, sp, a, x, y, status };
+    const c64env::CallResult r = c64env::call(bus, address, maxCycles, irq, kernalEntry);
+    lastExecutionCycles = r.returned ? r.cycles : 0;
+    return r.returned ? 1 : 0;
+}
+
+// Number of $20-byte SID slots written to.
+uint32_t Analyser6510::sidChipCount() const {
+    uint32_t count = 0;
+    for (int i = 0; i < 48; i++) {
+        if (sidChipsUsed[i]) {
+            count++;
+        }
+    }
+    return count;
+}
+
+// Base address of the Nth SID slot written to (0-indexed), or 0 if index is
+// out of range.
+uint16_t Analyser6510::sidChipAddress(uint32_t index) const {
+    uint32_t count = 0;
+    for (int i = 0; i < 48; i++) {
+        if (sidChipsUsed[i]) {
+            if (count == index) {
+                return i < 32 ? 0xD400 + (i * 0x20) : 0xDE00 + ((i - 32) * 0x20);
+            }
+            count++;
+        }
+    }
+    return 0;
+}
+
+void Analyser6510::setRecordWrites(bool record) {
+    recordWrites = record;
+    if (record) {
+        writeSequence.clear();
+    }
+}
+
+// The instance the exported C API drives.
+static Analyser6510 cpu;
+
 extern "C" {
-
-    // Memory access tracking flags
-    enum MemoryAccessFlag {
-        MEM_EXECUTE = 1 << 0,
-        MEM_READ = 1 << 1,
-        MEM_WRITE = 1 << 2,
-        MEM_JUMP_TARGET = 1 << 3,
-        MEM_OPCODE = 1 << 4
-    };
-
-
-    // Global CPU state
-    struct CPU6510State {
-        uint16_t pc;
-        uint8_t sp;
-        uint8_t a;
-        uint8_t x;
-        uint8_t y;
-        uint8_t status;
-        uint64_t cycles;
-
-        uint8_t ciaTimerLo;
-        uint8_t ciaTimerHi;
-        bool ciaTimerWritten;
-
-        uint8_t memory[65536];
-        uint8_t memoryAccess[65536];
-
-        // SID write tracking
-        uint32_t sidWrites[32];  // Count writes to each SID register
-        uint32_t totalSidWrites;
-
-        // Multi-SID chip tracking: $20-byte slots, 0-31 for $D400-$D7FF and
-        // 32-47 for $DE00-$DFFF (the I/O areas a second or third SID sits in)
-        bool sidChipsUsed[48];   // Track which SID chips have been written to
-
-        // Zero page write tracking
-        uint32_t zpWrites[256];   // Count writes to each zero page location
-        uint32_t totalZpWrites;
-
-        // Memory write tracking
-        uint16_t lastWritePC[65536];  // Track PC that last wrote to each address
-
-        // For pattern detection
-        std::vector<uint16_t> writeSequence;
-        bool recordWrites;
-
-        // Flag to enable/disable tracking (so we can load without tracking)
-        bool trackingEnabled;
-
-        // Set by KIL/JAM opcodes; cpu_execute_function exits immediately when true
-        bool halted;
-
-        // First byte of the instruction currently executing, so a store is
-        // attributed to the instruction rather than to the advanced PC.
-        uint16_t instructionPC;
-
-        // Track cycles from last function execution
-        uint32_t lastExecutionCycles;
-    } cpu;
 
     // Initialize CPU
     EMSCRIPTEN_KEEPALIVE
         void cpu_init() {
-        cpu.pc = 0;
-        cpu.sp = 0xFD;
-        cpu.a = 0;
-        cpu.x = 0;
-        cpu.y = 0;
-        cpu.status = cpu6510::FLAG_I | cpu6510::FLAG_U;
-        cpu.cycles = 0;
-
-        cpu.ciaTimerLo = 0;
-        cpu.ciaTimerHi = 0;
-        cpu.ciaTimerWritten = false;
-
-        cpu.totalSidWrites = 0;
-        cpu.totalZpWrites = 0;
-        cpu.recordWrites = false;
-        cpu.trackingEnabled = false;
-        cpu.halted = false;
-        cpu.instructionPC = 0;
-        cpu.lastExecutionCycles = 0;
-
-        memset(cpu.memory, 0, sizeof(cpu.memory));
-        // The processor port as the KERNAL leaves it: I/O mapped in, so SID
-        // and CIA writes are seen as such until the code banks it out.
-        cpu.memory[0x00] = 0x2F;
-        cpu.memory[0x01] = 0x37;
-        memset(cpu.memoryAccess, 0, sizeof(cpu.memoryAccess));
-        memset(cpu.sidWrites, 0, sizeof(cpu.sidWrites));
-        memset(cpu.sidChipsUsed, 0, sizeof(cpu.sidChipsUsed));
-        memset(cpu.zpWrites, 0, sizeof(cpu.zpWrites));
-        memset(cpu.lastWritePC, 0, sizeof(cpu.lastWritePC));
-
-        cpu.writeSequence.clear();
+        cpu.init();
     }
 
     // Enable or disable tracking
@@ -141,111 +336,10 @@ extern "C" {
         cpu.memory[address] = value;
     }
 
-    // Instruction-driven write: this is the path that records access info.
-    void write_memory_internal(uint16_t address, uint8_t value) {
-        cpu.memory[address] = value;
-        c64io::write(cpu.memory, address, value);
-
-        // Only track if tracking is enabled
-        if (cpu.trackingEnabled) {
-            cpu.memoryAccess[address] |= MEM_WRITE;
-            cpu.lastWritePC[address] = cpu.instructionPC;
-
-            // Track zero page writes
-            if (address < 256) {
-                cpu.zpWrites[address]++;
-                cpu.totalZpWrites++;
-            }
-
-            // I/O is only there when the processor port maps it in; otherwise
-            // a write here is to RAM.
-            if (c64io::io_visible(cpu.memory[0x01])) {
-                // Track SID writes (full SID range $D400-$D7FF)
-                if (address >= 0xD400 && address <= 0xD7FF) {
-                    uint8_t reg = address & 0x1F;
-                    cpu.sidWrites[reg]++;
-                    cpu.totalSidWrites++;
-
-                    // Track which SID chip is being used (each chip is $20 bytes)
-                    uint8_t sidChipIndex = (address - 0xD400) >> 5;  // Divide by 32
-                    cpu.sidChipsUsed[sidChipIndex] = true;
-
-                    if (cpu.recordWrites) {
-                        cpu.writeSequence.push_back(address);
-                    }
-                }
-                else if (address >= 0xDE00 && address <= 0xDFFF) {
-                    cpu.sidChipsUsed[32 + ((address - 0xDE00) >> 5)] = true;
-                }
-
-                // Track CIA 1 timer A writes, through the register mirrors too: CIA 1
-                // repeats every 16 bytes across $DC00-$DCFF.
-                if ((address & 0xFF0F) == 0xDC04) {
-                    cpu.ciaTimerLo = value;
-                    cpu.ciaTimerWritten = true;
-                }
-                else if ((address & 0xFF0F) == 0xDC05) {
-                    cpu.ciaTimerHi = value;
-                    cpu.ciaTimerWritten = true;
-                }
-            }
-        }
-    }
-
-    // === Bus adapter ============================================================
-    // Binds the shared decoder in cpu6510_core.h to this core's memory and its
-    // access tracking. Instruction-stream fetches deliberately bypass tracking:
-    // they are covered by MEM_EXECUTE/MEM_OPCODE instead.
-    struct AnalysisBus {
-        uint16_t& pc;
-        uint8_t& sp;
-        uint8_t& a;
-        uint8_t& x;
-        uint8_t& y;
-        uint8_t& st;
-
-        uint8_t fetch(uint16_t addr) { return cpu.memory[addr]; }
-        uint8_t read(uint16_t addr) {
-            if (cpu.trackingEnabled) cpu.memoryAccess[addr] |= MEM_READ;
-            uint8_t io;
-            if (c64io::read(addr, cpu.memory, cpu.cycles, io)) return io;
-            return cpu.memory[addr];
-        }
-        void write(uint16_t addr, uint8_t value) { write_memory_internal(addr, value); }
-        // The analyser models no write-sensitive I/O, and counting the RMW
-        // write-back would double every INC/DEC/shift in the write tracking.
-        void dummyWrite(uint16_t, uint8_t) {}
-        void jumpTarget(uint16_t addr) {
-            if (cpu.trackingEnabled) cpu.memoryAccess[addr] |= MEM_JUMP_TARGET;
-        }
-        void jam() { cpu.halted = true; }
-
-        // For c64env::call.
-        int step() {
-            const uint64_t before = cpu.cycles;
-            cpu_step();
-            return (int)(cpu.cycles - before);
-        }
-        bool jammed() const { return cpu.halted; }
-        void clearJam() { cpu.halted = false; }
-    };
-
     // Execute one instruction
     EMSCRIPTEN_KEEPALIVE
         void cpu_step() {
-        if (cpu.trackingEnabled) {
-            // The whole instruction is code; MEM_OPCODE marks where it starts.
-            cpu.memoryAccess[cpu.pc] |= MEM_EXECUTE | MEM_OPCODE;
-            for (uint8_t i = 1; i < opcodeTable[cpu.memory[cpu.pc]].size; i++) {
-                cpu.memoryAccess[(uint16_t)(cpu.pc + i)] |= MEM_EXECUTE;
-            }
-        }
-        // Writes are attributed to the instruction that made them, not to
-        // wherever the PC has reached by the time the store happens.
-        cpu.instructionPC = cpu.pc;
-
-        AnalysisBus bus{ cpu.pc, cpu.sp, cpu.a, cpu.x, cpu.y, cpu.status };
-        cpu.cycles += cpu6510::step(bus);
+        cpu.step();
     }
 
 
@@ -254,10 +348,7 @@ extern "C" {
     // cycle count, else 0.
     EMSCRIPTEN_KEEPALIVE
         int cpu_execute_function(uint16_t address, uint32_t maxCycles) {
-        AnalysisBus bus{ cpu.pc, cpu.sp, cpu.a, cpu.x, cpu.y, cpu.status };
-        const c64env::CallResult r = c64env::call(bus, address, maxCycles);
-        cpu.lastExecutionCycles = r.returned ? r.cycles : 0;
-        return r.returned ? 1 : 0;
+        return cpu.execute(address, maxCycles, false, false);
     }
 
     // Run an interrupt handler until the RTI that ends it, or maxCycles is
@@ -266,10 +357,7 @@ extern "C" {
     // $EA81 pulls them back.
     EMSCRIPTEN_KEEPALIVE
         int cpu_execute_interrupt(uint16_t address, uint32_t maxCycles, bool kernalEntry) {
-        AnalysisBus bus{ cpu.pc, cpu.sp, cpu.a, cpu.x, cpu.y, cpu.status };
-        const c64env::CallResult r = c64env::call(bus, address, maxCycles, true, kernalEntry);
-        cpu.lastExecutionCycles = r.returned ? r.cycles : 0;
-        return r.returned ? 1 : 0;
+        return cpu.execute(address, maxCycles, true, kernalEntry);
     }
 
     // The play routine a PSID with play address 0 left behind (see
@@ -365,29 +453,14 @@ extern "C" {
     // Get the number of SID chips used (based on which $20-byte groups were written to)
     EMSCRIPTEN_KEEPALIVE
         uint32_t cpu_get_sid_chip_count() {
-        uint32_t count = 0;
-        for (int i = 0; i < 48; i++) {
-            if (cpu.sidChipsUsed[i]) {
-                count++;
-            }
-        }
-        return count;
+        return cpu.sidChipCount();
     }
 
     // Get the base address of the Nth SID chip used (0-indexed)
     // Returns 0 if index is out of range
     EMSCRIPTEN_KEEPALIVE
         uint16_t cpu_get_sid_chip_address(uint32_t index) {
-        uint32_t count = 0;
-        for (int i = 0; i < 48; i++) {
-            if (cpu.sidChipsUsed[i]) {
-                if (count == index) {
-                    return i < 32 ? 0xD400 + (i * 0x20) : 0xDE00 + ((i - 32) * 0x20);
-                }
-                count++;
-            }
-        }
-        return 0;
+        return cpu.sidChipAddress(index);
     }
 
     // Get zero page write statistics
@@ -404,10 +477,7 @@ extern "C" {
     // Enable/disable write sequence recording
     EMSCRIPTEN_KEEPALIVE
         void cpu_set_record_writes(bool record) {
-        cpu.recordWrites = record;
-        if (record) {
-            cpu.writeSequence.clear();
-        }
+        cpu.setRecordWrites(record);
     }
 
     // Get write sequence length
@@ -486,30 +556,7 @@ extern "C" {
     // Reset CPU registers and tracking state, leaving memory contents intact.
     EMSCRIPTEN_KEEPALIVE
         void cpu_reset_state_only() {
-        cpu.pc = 0;
-        cpu.sp = 0xFD;
-        cpu.a = 0;
-        cpu.x = 0;
-        cpu.y = 0;
-        cpu.status = cpu6510::FLAG_I | cpu6510::FLAG_U;
-        cpu.cycles = 0;
-
-        cpu.ciaTimerLo = 0;
-        cpu.ciaTimerHi = 0;
-        cpu.ciaTimerWritten = false;
-        cpu.totalSidWrites = 0;
-        cpu.totalZpWrites = 0;
-        cpu.recordWrites = false;
-        cpu.halted = false;
-        cpu.instructionPC = 0;
-        cpu.lastExecutionCycles = 0;
-
-        memset(cpu.memoryAccess, 0, sizeof(cpu.memoryAccess));
-        memset(cpu.sidWrites, 0, sizeof(cpu.sidWrites));
-        memset(cpu.sidChipsUsed, 0, sizeof(cpu.sidChipsUsed));
-        memset(cpu.zpWrites, 0, sizeof(cpu.zpWrites));
-        memset(cpu.lastWritePC, 0, sizeof(cpu.lastWritePC));
-        cpu.writeSequence.clear();
+        cpu.resetStateOnly();
     }
 
 } // extern "C"

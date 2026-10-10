@@ -10,6 +10,12 @@ different jobs:
 | **analysis core** | `wasm/cpu6510_wasm.cpp` | runs init/play offline for `sid_analyze`, the spectrometer bar-data methods and `npm test`. Tracks per-address read/write/execute flags, SID and zero-page write counts, and the per-frame cycle count the exporter budgets against (`sid_get_max_cycles`). |
 | **audio core** | `wasm/sid_audio.cpp` | runs init/play to drive reSID for the song-length scan's fast option and the VU warning. Each play call runs to completion before the frame's SID cycles are clocked, so every write in a frame lands at its start; cycle counts only bound the call to its frame. |
 
+The analysis machine is the `Analyser6510` class: registers, RAM and the access
+tracking, with an `AnalysisBus` bound to one instance. The exported `cpu_*` C
+API (`cpu6510_api.h`) forwards to a single default instance, which
+`sid_analyze` and `analyser-session.js` share; native code can create as many
+instances as it needs.
+
 `wasm/sidplayfp_audio.cpp` is a third playback path but uses libsidplayfp's own
 CPU, not either of these.
 
