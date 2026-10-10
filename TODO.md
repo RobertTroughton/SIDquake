@@ -616,23 +616,12 @@ is where several of the medium bugs came from.
 - **Bake goldens** — a hash of the baked stream (codebook, indices, segments,
   loopStart) and the `findStateLoop` intro/period per tune;
   `scripts/bench-bake-analysis.mjs` already hashes these but is manual.
-- **Instruction-level CPU suite** — promote the audit's runners into
-  `scripts/cpu-crosscheck/`: fetch Klaus Dormann's binary (GPL-3, so fetched,
-  never committed) and Tom Harte's `6502/v1` JSON (MIT, 1.1 GB, ~1 min) at run
-  time, with explicit exclusions for JAM, ANE/LXA magic, ARR with D=1 and RMW
-  write sequences until those are fixed. Add `cpu-crosscheck/run.sh 2000`
-  (~5 s) to CI.
 - **Property tests** (`scripts/test-properties.js`, seeded): header parsers never
   read out of bounds on fuzzed input and agree with each other;
   `sid_analyze` is order-independent across subtunes.
 
 ### Low
 
-- 6510: JSR reads both operand bytes before pushing (`cpu6510_core.h:367-375`;
-  only matters for code in `$01xx`). No NMOS RMW dummy write, so `INC $D4xx`
-  writes reSID once (gate the extra write on a bus trait so analysis counters
-  don't double). ARR in decimal mode is wrong; ANE/LXA use no magic constant
-  (adopt `A | $EE`). [WASM]
 - The analyser doesn't reject a load address below `$07E8`, which the PSID spec
   forbids. Left as is: nothing breaks for such a tune, and refusing it would
   only stop a file that works.

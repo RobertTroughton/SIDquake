@@ -4,7 +4,7 @@
 //
 // The analyser (cpu6510_wasm.cpp) and the reSID engine (sid_audio.cpp) keep
 // their own RAM and cycle counts; both pass them in here, so the two machines
-// agree on what these reads return.
+// agree on what these reads return and these writes do.
 
 #pragma once
 
@@ -45,6 +45,13 @@ inline bool read(uint16_t addr, const uint8_t* mem, uint64_t cycles, uint8_t& va
         return true;
     }
     return false;
+}
+
+// The side effects of a write the caller has already stored in `mem`: CIA 1
+// repeats every 16 bytes across $DC00-$DCFF, so a register written through a
+// mirror ($DC14) is also the one read back at $DC04.
+inline void write(uint8_t* mem, uint16_t addr, uint8_t value) {
+    if ((addr & 0xFF00) == 0xDC00 && io_visible(mem[0x01])) mem[0xDC00 | (addr & 0x0F)] = value;
 }
 
 } // namespace c64io

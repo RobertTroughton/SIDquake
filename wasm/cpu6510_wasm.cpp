@@ -154,6 +154,7 @@ extern "C" {
     // Instruction-driven write: this is the path that records access info.
     void write_memory_internal(uint16_t address, uint8_t value) {
         cpu.memory[address] = value;
+        c64io::write(cpu.memory, address, value);
 
         // Only track if tracking is enabled
         if (cpu.trackingEnabled) {

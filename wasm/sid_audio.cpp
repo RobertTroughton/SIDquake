@@ -140,11 +140,7 @@ static inline uint8_t mem_read(uint16_t addr) {
 
 static inline void mem_write(uint16_t addr, uint8_t val) {
     S.memory[addr] = val;
-    // CIA 1 repeats every 16 bytes: a timer latch written through a mirror
-    // ($DC14) is the one audio_set_subtune reads at $DC04.
-    if ((addr & 0xFF00) == 0xDC00 && c64io::io_visible(S.memory[0x01])) {
-        S.memory[0xDC00 | (addr & 0x0F)] = val;
-    }
+    c64io::write(S.memory, addr, val);
     if (!sid_area(addr)) return;
 
     // Primary SID at $D400
