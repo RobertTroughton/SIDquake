@@ -5,7 +5,7 @@
  *
  * Two halves, both pure JS over synthetic bar grids (no WASM, no SID, no browser):
  *
- *   detectLoop (public/spectrometer-bake.js) has to name the tune's REAL musical
+ *   detectLoop (public/loop-detect.js) has to name the tune's REAL musical
  *   period. Too short and the C64 wraps the bars several times per musical loop;
  *   too long and the export stores minutes of duplicate stream. The two ways to
  *   get it wrong are a decoy lag (a phrase that recurs inside the loop at a lag

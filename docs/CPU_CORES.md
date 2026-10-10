@@ -39,8 +39,9 @@ analyser's checks; the analyser alone then refuses RSID), the per-chip model
 and SID-address rules, the KERNAL stubs, the play-routine resolver and the call
 runner. The analysis core starts from zeroed RAM and `cpu_setup_c64_env` plants
 the stubs; the reSID engine does the same in `audio_load_sid`. The tune is
-loaded afterwards, so it overwrites any stub it overlaps. `sid_analyze`,
-`loop-prepass.js` and `spectrometer-shadow-detect.js` all do this.
+loaded afterwards, so it overwrites any stub it overlaps. `sid_analyze` and
+`analyser-session.js` (for `loop-prepass.js` and
+`spectrometer-shadow-detect.js`) both do this.
 
 `plant_kernal` sets `$00/$01` to their power-on values (`$2F`/`$37`), CIA 1's
 timer A latch to the PAL KERNAL's `$4025`, and just enough KERNAL to call into

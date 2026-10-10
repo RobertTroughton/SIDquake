@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // measure-bass-resolution.mjs - how sharply the bake's bottom bars resolve a
 // note, in pitch and in time, for comparing changes to the bass windows in
-// spectrometer-bake.js (analysisSources / resolvesFrom).
+// bake-dsp.js (analysisSources / resolvesFrom).
 //
 //   node scripts/measure-bass-resolution.mjs [bake-module] [seconds]
 //

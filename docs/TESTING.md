@@ -26,6 +26,9 @@ The rest:
 - `scripts/test-loop-detect.js`, `scripts/test-song-end.js`,
   `scripts/test-bake-cache.js`, `scripts/test-vu-visibility.js`: song length,
   loop and bake decisions (see [`ANALYSIS.md`](ANALYSIS.md)).
+- `scripts/test-analysis-version.js`: the loop detection and the pre-pass
+  still answer what their version constants pinned, so stored scan results
+  are not read back across a change (see [`ANALYSIS.md`](ANALYSIS.md)).
 - `scripts/test-logo-fit.js`: the logo placement maths.
 - `scripts/test-c64-render.js`, `scripts/test-image-memory.js`: the C64 preview
   matches the export, and converted pictures keep their real memory footprint.
@@ -101,9 +104,12 @@ band and hides anything that goes wrong at its bottom edge.
   downloaded at run time (never committed). Needs `curl` and `g++`; CI runs it.
   See [`scripts/cpu-crosscheck/README.md`](../scripts/cpu-crosscheck/README.md).
 - `scripts/bench-bake-analysis.mjs [bake-module] [tune.sid]` after an
-  optimisation in `spectrometer-bake.js`: times the per-frame analysis and
-  hashes its output, so a copy of the old module passed as `bake-module` shows
-  whether the output stayed byte-identical.
+  optimisation or refactor of the bake: times the per-frame analysis and
+  hashes its output (`hash`), then hashes the whitened rows, the loop poll,
+  `analyzeRows` and the packed bake (`bake hash`), so a copy of the old module
+  passed as `bake-module` (copied together with `bake-dsp.js` and
+  `loop-detect.js`, which it imports) shows whether the output stayed
+  byte-identical.
 - `scripts/measure-bass-resolution.mjs [bake-module] [seconds]` after changing
   the bake's bass windows: pitch spread and time smearing of the bottom bars
   over every tune in `SID/`.

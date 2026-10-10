@@ -6205,7 +6205,7 @@ class UIController {
     async _analysisCacheKey(sidBytes, o) {
         const cb = window.cacheBust || (s => s);
         try {
-            const { tuneKey } = await import(cb('./spectrometer-bake-core.js'));
+            const { tuneKey, ANALYSIS_VERSION } = await import(cb('./spectrometer-bake-core.js'));
             const base = tuneKey(sidBytes, o.subtune, 44100, o.maxSeconds, o.minLoopSeconds, o.engine);
             // v2 distinguishes a tune that faded out from one still playing where
             // the analysis stopped; v3 measures to where the music really ends
@@ -6214,8 +6214,9 @@ class UIController {
             // picked, and no longer mistakes a long silence inside a loop for the
             // tune's end; v5 stores a loop as whole keyframes plus a shortened
             // last one (lastKeyframeFrames). Older entries answer a different
-            // question, so they must not be read back.
-            return `${base}|${o.numBars}x${o.maxHeight}|${o.outputMaxSeconds || 0}|v5`;
+            // question, so they must not be read back. ANALYSIS_VERSION moves
+            // with the loop detection and the pre-pass themselves.
+            return `${base}|${o.numBars}x${o.maxHeight}|${o.outputMaxSeconds || 0}|v5|a${ANALYSIS_VERSION}`;
         } catch (e) {
             return null;   // no key, no cache - the scan still runs
         }

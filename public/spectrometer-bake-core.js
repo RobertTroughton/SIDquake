@@ -35,7 +35,12 @@
 // of the analysis the UI shows.
 
 import * as bake from './spectrometer-bake.js';
-import { findStateLoop } from './loop-prepass.js';
+import { findStateLoop, PREPASS_VERSION } from './loop-prepass.js';
+import { LOOP_DETECT_VERSION } from './loop-detect.js';
+
+// The versions of the loop detection and the register pre-pass a scan result
+// came from; ui.js keys stored results (analysis-store.js) on it.
+export const ANALYSIS_VERSION = `${LOOP_DETECT_VERSION}.${PREPASS_VERSION}`;
 
 export const DEFAULT_ENGINE = 'fp';
 export const ENGINES = ['resid', 'fp'];

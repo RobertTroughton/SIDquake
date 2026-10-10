@@ -66,16 +66,20 @@ called that way. A load that fails any check, including "does not fit in 64K"
 **`analysis-store.js`**, **`loop-prepass.js`**, **`spectrometer-shadow-detect.js`**
 and the `spectrometer-bake*.js` family consume the analyser; the bake is
 described in `BAR_HEIGHT_METHODS.md`. The pre-pass and the shadow and VU scans
-give each play call the same 20,000-cycle budget as `sid_analyze`
-(`PLAY_CYCLE_CAP`, exported by `loop-prepass.js`), and load the music with one
-`cpu_load_memory` call (`loadMusic()`), dropping any byte that would land past
-`$FFFF` as `sid_analyze` refuses such a tune.
+drive the analyser CPU through **`analyser-session.js`**: `startTune()` sets up
+the C64 environment, loads the music with one `cpu_load_memory` call
+(`loadMusic()`), dropping any byte that would land past `$FFFF` as
+`sid_analyze` refuses such a tune, runs init for the subtune and returns the
+play caller and the subtune's play rate. Each play call gets the same
+20,000-cycle budget as `sid_analyze` (`PLAY_CYCLE_CAP`). They read the PSID
+header with **`psid.js`** `parseSidHeader()`; `sid-playback.js` is a classic
+script and keeps its own reader.
 
 The "these bars will be empty" warning (`analyzeVuVisibility`, run by `ui.js`
 `checkVuVisibility`) steps the song the export plays (`exportSubtuneIndex()`)
 for 1,200 raster frames, and warns when no voice is open the way the live bar
 methods look for over an audible lead-in of 3 s or more. A multispeed tune's
-play calls are converted to frames with `playTiming()` from `loop-prepass.js`,
+play calls are converted to frames with `playTiming()` from `analyser-session.js`,
 the same per-subtune speed reading the pre-pass uses.
 
 ## Song length and loop detection
@@ -109,6 +113,13 @@ Driven from `ui.js`; the results land on the Studio's Song tab.
   tail (Crystalline, JCH) be found rather than reported as an ending. A hint
   the audio does not confirm is dropped and the old search carries on from
   where the render is; a tune the analyser cannot drive gets no hint at all
+- Scan results are stored across reloads (`analysis-store.js`), keyed on the
+  tune, the scan options and `ANALYSIS_VERSION` (`spectrometer-bake-core.js`),
+  which joins `LOOP_DETECT_VERSION` (`loop-detect.js`) and `PREPASS_VERSION`
+  (`loop-prepass.js`). A change that moves what the loop detection or the
+  pre-pass answers bumps the matching constant, so older results are not read
+  back; `scripts/test-analysis-version.js` hashes both on fixed inputs and
+  fails until the constant is bumped and the new hash pinned
 - Files holding several tunes (`multiSongExport`): everything that can only
   describe one tune — the song length, the forced loop, the baked spectrometer
   — is off while the export still holds all of them, and the scan does not run
@@ -127,7 +138,7 @@ documented in [`tools/songlengths/README.md`](../tools/songlengths/README.md).
   and checks the pre-pass finds HVSC's loop period to the frame.
 - `scripts/test-loop-detect.js`, `scripts/test-song-end.js`: which loop period
   `detectLoop` settles on and when `analyzeRows` may call a song ended
-  (`spectrometer-bake.js`), over synthetic bar grids.
+  (`loop-detect.js`, `spectrometer-bake.js`), over synthetic bar grids.
 - `scripts/test-vu-visibility.js`: the "these bars will be empty" warning does
   not fire on ordinary tunes (real 6510 over `SID/`).
 - `scripts/test-analyser-edge-cases.js`: the header rules above, on tunes built

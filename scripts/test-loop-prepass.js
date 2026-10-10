@@ -44,7 +44,8 @@ async function main() {
         wasmBinary: fs.readFileSync(path.join(ROOT, 'public/sidquake.wasm')),
         print: () => {}, printErr: () => {},
     });
-    const { findStateLoop, parseSidHeader } = await import('../public/loop-prepass.js');
+    const { findStateLoop } = await import('../public/loop-prepass.js');
+    const { parseSidHeader } = await import('../public/psid.js');
 
     console.log('findStateLoop: period and intro of tunes with a known length');
     for (const [file, hvscSeconds, callsPerFrame] of CASES) {
