@@ -51,7 +51,11 @@ Timing is PAL-only throughout.
   i.e. each tune's own header decides; changing quality or chip reloads the
   tune in the engine, so playback restarts
 - Pause keeps the engine's place and the worklet's queue, and Play resumes from
-  there; Stop, Restart, a subtune change or a reload start the tune over
+  there; Stop, Restart, a subtune change or a reload start the tune over.
+  Each of them first ramps the output to silence over 15 ms
+  (`SIDPlayback.FADE_OUT_SECONDS`) and only then cuts the worklet's queue or
+  disconnects, so the waveform doesn't stop mid-cycle; a start asked for during
+  that ramp waits for it, and playback fades back in over ~85 ms
 
 **`sid-worklet-processor.js`** - the AudioWorklet. The engine renders on the
 main thread; `sid-playback.js` posts Float32 sample blocks over the worklet's

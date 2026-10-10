@@ -38,6 +38,11 @@ class SIDPlayback {
         // nothing of yet, or -1. Selecting it again would only re-initialise
         // the C64 to the state it is already in.
         this._freshSubtune = -1;
+        // Whether the output is connected to the destination, and the timer for
+        // what runs once a fade to silence ends (see _afterFadeOut).
+        this._connected = false;
+        this._fadeTimer = null;
+        this._afterFade = null;
 
         // Metadata cache (avoid crossing WASM boundary every frame)
         this._title = '';
@@ -250,7 +255,9 @@ class SIDPlayback {
         if (this._fillPending) return;
         const step = () => {
             this._fillPending = false;
-            if (!this.playing || !this.loaded) return;
+            // Nothing is rendered while the old queue fades out: it is about to
+            // be flushed, and the engine time spent on it would be lost.
+            if (!this.playing || !this.loaded || this._fadeTimer) return;
             for (let i = 0; i < 3 && this._workletBuffered < this.bufferHighWater; i++) {
                 const got = this._generateAndPost();
                 if (got <= 0) return;
@@ -286,10 +293,7 @@ class SIDPlayback {
         await this.init();
 
         // Stop playback and flush worklet queue before loading new SID
-        this.playing = false;
-        if (this.workletNode) {
-            this.workletNode.port.postMessage({ type: 'stop' });
-        }
+        this.pause();
 
         // Reset WASM SID state if a tune was already loaded
         if (this.loaded) {
@@ -378,6 +382,18 @@ class SIDPlayback {
 
         this.playing = true;
 
+        // A fade-out still running finishes first, then this starts instead of
+        // the pause or stop it was leading to.
+        if (this._fadeTimer) {
+            this._afterFade = () => this._begin(flush);
+        } else {
+            this._begin(flush);
+        }
+    }
+
+    _begin(flush) {
+        if (!this.playing || !this.loaded || !this.workletNode) return;
+
         if (flush) {
             // Flush any stale samples and tell worklet to start accepting new ones
             this.workletNode.port.postMessage({ type: 'stop' });
@@ -402,19 +418,47 @@ class SIDPlayback {
         // therefore actually fed samples (a dead-end analyser reads silence in
         // some browsers). worklet -> gain -> analyser -> destination.
         (this.analyser || this.gainNode).connect(this.audioCtx.destination);
+        this._connected = true;
     }
 
     // keepQueue: hold on to the audio already queued, for resume().
     pause(keepQueue = false) {
         this.playing = false;
-        if (this.workletNode) {
-            this.workletNode.port.postMessage({ type: keepQueue ? 'pause' : 'stop' });
+        this._afterFadeOut(() => {
+            if (this.workletNode) {
+                this.workletNode.port.postMessage({ type: keepQueue ? 'pause' : 'stop' });
+            }
+            try {
+                (this.analyser || this.gainNode).disconnect(this.audioCtx.destination);
+            } catch (e) {
+                // Already disconnected
+            }
+            this._connected = false;
+        });
+    }
+
+    // Ramp the output to silence, then run fn: cutting the queue or the graph
+    // mid-waveform clicks. Runs fn at once when nothing is connected. A call
+    // during a fade replaces the fn still waiting.
+    _afterFadeOut(fn) {
+        this._afterFade = fn;
+        if (this._fadeTimer) return;
+        if (!this._connected || !this.gainNode || !this.audioCtx) {
+            this._afterFade = null;
+            fn();
+            return;
         }
-        try {
-            (this.analyser || this.gainNode).disconnect(this.audioCtx.destination);
-        } catch (e) {
-            // Already disconnected
-        }
+        const now = this.audioCtx.currentTime;
+        const gain = this.gainNode.gain;
+        gain.cancelScheduledValues(now);
+        gain.setValueAtTime(gain.value, now);
+        gain.linearRampToValueAtTime(0, now + SIDPlayback.FADE_OUT_SECONDS);
+        this._fadeTimer = setTimeout(() => {
+            this._fadeTimer = null;
+            const next = this._afterFade;
+            this._afterFade = null;
+            if (next) next();
+        }, SIDPlayback.FADE_OUT_SECONDS * 1000);
     }
 
     // rewind: put the engine back to the start song. Skipped when a new tune is
@@ -553,6 +597,8 @@ class SIDPlayback {
         this.loaded = false;
     }
 }
+
+SIDPlayback.FADE_OUT_SECONDS = 0.015;
 
 // Shared singleton: only one AudioContext / SID engine in the page.
 var _sharedSIDPlayback = null;
