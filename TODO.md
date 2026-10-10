@@ -638,13 +638,6 @@ is where several of the medium bugs came from.
   free-running `$D012`/`$D011` bit 7 from the cycle count and a CIA1 ICR that
   reads as fired. Full playback is libsidplayfp, so this affects analysis and
   the fast scan only. [WASM]
-- **The reSID engine ignores the "fast" sampling request.**
-  `spectrometer-bake-core.js:142` sets it before `load`, and `audio_load_sid`
-  resets it to interpolate (`sid_audio.cpp:419-424`). Set after load it is ~5×
-  faster, so the "reSID (about twice as fast)" scan option runs at interpolate
-  quality. Fix: keep `S.samplingMethod` across load, as the sidplayfp engine
-  does. [WASM]
-
 ### Low
 
 - 6510: JSR reads both operand bytes before pushing (`cpu6510_core.h:367-375`;

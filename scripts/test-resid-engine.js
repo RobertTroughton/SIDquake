@@ -16,6 +16,8 @@
  *     CIA-timed subtune's rate does not stick to the next;
  *   - init ends at its RTS, not as soon as the stack pointer is back where it
  *     started (an init that resets the stack with LDX #$FF / TXS carried on);
+ *   - a sampling method chosen before the tune is loaded is the one it renders
+ *     with (the song-length scan's fast option sets it first);
  *   - every tune starts on a SID in its power-on state. A reset leaves reSID's
  *     envelope counters where the last tune left them, and a gate opened on a
  *     counter at $FF freezes it at zero, so every second tune loaded into one
@@ -213,6 +215,27 @@ async function main() {
         render(2);
         const calls = peek(0x1100);
         check(Math.abs(calls - 100) <= 2, 'song 2 plays at the frame rate', `${calls} calls in 2 s`);
+    }
+
+    console.log('a sampling method set before load sticks');
+    {
+        const setSampling = cw('audio_set_sampling_method', null, ['number']);
+        const bytes = fs.readFileSync(path.join(ROOT, 'SID/JCH-Crystalline.sid'));
+        const loadWith = (before) => {
+            A.init(RATE);
+            if (before) setSampling(0);
+            const p = M._malloc(bytes.length);
+            M.HEAPU8.set(bytes, p);
+            A.load(p, bytes.length);
+            M._free(p);
+            A.subtune(0);
+            if (!before) setSampling(0);
+            return render(1);
+        };
+        const a = loadWith(true), b = loadWith(false);
+        let same = a.length === b.length;
+        for (let i = 0; same && i < a.length; i++) same = a[i] === b[i];
+        check(same, 'fast sampling set before load renders as if set after');
     }
 
     console.log('init that resets the stack runs to its RTS');

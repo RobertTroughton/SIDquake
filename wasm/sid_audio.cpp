@@ -433,8 +433,9 @@ int audio_load_sid(const uint8_t* data, int length) {
 
     memcpy(S.loadedMemory, S.memory, sizeof(S.memory));
 
+    // The sampling method audio_init or audio_set_sampling_method chose is
+    // kept: the song-length scan's fast option sets it before loading.
     reSID::chip_model model = (S.chipModel == 8580) ? reSID::MOS8580 : reSID::MOS6581;
-    S.samplingMethod = 1;
     for (int i = 0; i < S.sidCount; i++) S.chipModels[i] = model;
 
     // PSID v2+ flag bits 6-7 select the second chip's model independently.
