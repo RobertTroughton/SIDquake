@@ -68,8 +68,18 @@ still counts.
 Run it after touching either core; see `scripts/cpu-crosscheck/README.md`. It is
 not part of `npm test`: it needs a C++ toolchain and takes minutes.
 
+`scripts/cpu-crosscheck/singlestep.sh` checks the decoder itself against two
+outside references: Tom Harte's SingleStepTests (`6502/v1`, 10,000 cases per
+opcode, compared on registers, RAM, cycle count and the order of bus writes)
+and Klaus Dormann's functional test. Both are downloaded at run time. The
+only exclusions are the ones listed under "What is still not modelled".
+
 ## What is still not modelled
 
+- **`JSR` pushing before its last operand fetch.** Real hardware fetches the
+  low operand byte, pushes the return address, then fetches the high byte, so
+  a `JSR` in the stack page can overwrite its own operand. The core reads both
+  bytes first.
 - **The NMOS read-modify-write double write.** Real hardware writes the
   unmodified value back before the modified one, which is visible on I/O
   registers. Adding it would double every `INC`/`DEC`/shift on a tracked

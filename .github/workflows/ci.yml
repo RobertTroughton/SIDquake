@@ -39,6 +39,18 @@ jobs:
           node-version: '20'
       - run: npm test
 
+  # The 6510 decoder against both bus adapters, and against Tom Harte's
+  # SingleStepTests and Klaus Dormann's functional test (downloaded at run time,
+  # about 1.1 GB, which takes seconds from GitHub).
+  cpu:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Bus adapters agree
+        run: scripts/cpu-crosscheck/run.sh 2000
+      - name: Decoder matches Harte and Klaus Dormann
+        run: scripts/cpu-crosscheck/singlestep.sh
+
   # The committed .wasm files are built from wasm/ with emscripten 5.0.7, and that
   # build is reproducible byte for byte. Rebuilding them here checks they still
   # match their source, then the whole SID/ corpus is run against its goldens.

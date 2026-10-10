@@ -39,6 +39,36 @@ scripts/cpu-crosscheck/run.sh 2000           # quicker
 Exit status is non-zero if anything diverges. Needs only `gcc`/`g++`; it does
 not touch emsdk or any committed `.wasm`.
 
+## Instruction-level tests (Harte, Klaus Dormann)
+
+`singlestep.sh` checks the decoder alone, on a flat 64 KB RAM bus, against two
+outside references:
+
+- **Tom Harte's [SingleStepTests 65x02](https://github.com/SingleStepTests/65x02)**
+  `6502/v1`: 10,000 cases per opcode, each an initial and final machine state
+  plus every bus cycle of a real NMOS 6502. Each case is checked on PC, A, X,
+  Y, SP, P, the RAM it lists, the cycle count, and the sequence of bus writes
+  (address and value, in order). Bus reads are not compared, since the core
+  does not make the 6502's dummy reads.
+- **Klaus Dormann's [`6502_functional_test.bin`](https://github.com/Klaus2m5/6502_65C02_functional_tests)**,
+  run from `$0400` until it traps; `$3469` is success.
+
+```sh
+scripts/cpu-crosscheck/singlestep.sh             # all 256 opcode files
+scripts/cpu-crosscheck/singlestep.sh --sample 20 # 20 random opcode files
+```
+
+The test data is downloaded on first use into `$SIDQUAKE_CPU_TESTS` (default
+`${TMPDIR:-/tmp}/sidquake-cpu-tests`) and reused after that. It is never
+committed: Klaus's test is GPL-3, and Harte's suite is about 1.1 GB. A full
+download takes seconds on a fast link and the run itself under ten. Needs
+`curl` and `g++`. CI runs it in full.
+
+Exclusions live in `singlestep.cpp` (`skipOpcode`), each with the reason, and
+are limited to behaviour the core does not model. P bit 4 is masked: it is not
+a register bit, only the copy `BRK`/`PHP` push, and every push in the repo sets
+or clears it explicitly.
+
 ## Comparing against a third-party core
 
 A third core can be linked in as an outside opinion:
