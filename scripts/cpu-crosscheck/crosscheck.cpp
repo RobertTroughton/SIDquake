@@ -144,7 +144,7 @@ static int table_check() {
         cpu.memory[startPC + 2] = 0x12;
         cpu.pc = startPC;
         cpu.a = 0; cpu.x = 0; cpu.y = 0; cpu.sp = 0xFD;
-        cpu.status = FLAG_UNUSED | FLAG_INTERRUPT;
+        cpu.status = cpu6510::FLAG_U | cpu6510::FLAG_I;
         // With N, V, Z and C all clear these four branches are taken, which
         // costs the base cycle plus one. A zero displacement keeps the target
         // in the same page, so no page-crossing penalty is owed on top.
@@ -208,7 +208,7 @@ static int vector_check() {
         cpu.memory[startPC + 1] = v.o1;
         cpu.memory[startPC + 2] = v.o2;
         cpu.pc = startPC; cpu.a = v.a; cpu.x = v.x; cpu.y = v.y;
-        cpu.sp = 0xFD; cpu.status = FLAG_UNUSED | FLAG_INTERRUPT;
+        cpu.sp = 0xFD; cpu.status = cpu6510::FLAG_U | cpu6510::FLAG_I;
         cpu.cycles = 0; cpu.halted = false;
         cpu_step();
 
@@ -219,7 +219,7 @@ static int vector_check() {
         }
 
         aud_set_state(cpu.memory, startPC, v.a, v.x, v.y, 0xFD,
-                      FLAG_UNUSED | FLAG_INTERRUPT);
+                      cpu6510::FLAG_U | cpu6510::FLAG_I);
         // aud_set_state copied the post-store image, so undo the store first.
         aud_mem()[v.expectAddr] = 0;
         aud_step();

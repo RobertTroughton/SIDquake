@@ -657,15 +657,12 @@ and since `wasm/c64_env.h` and `wasm/c64_io.h` one PSID parser, one KERNAL
 environment, one call runner and one I/O model between them. What is left,
 ranked by value against effort:
 
-2. **`wasm/cpu6510_api.h`** declaring the `cpu_*` C API, replacing the `extern`s
-   inside function bodies in `sid_processor.cpp` (`:114-131`, `:403-405`,
-   `:508-510`); with C linkage a signature mismatch is not caught today. Safe.
-4. **Classes instead of singletons** — `cpu`, `sidState`, `S`/`cpuJammed` are
+1. **Classes instead of singletons** — `cpu`, `sidState`, `S`/`cpuJammed` are
    process-wide, so one analyser per module, and `sid_analyze` and the pre-pass
    share one CPU. `window.SIDquakeModuleInstance` is also shared with
    `prg-builder.js:899`. An `Analyser`/`ResidEngine` with a handle-based C
    layer (keeping a default instance) allows multiple instances and testing.
-7. **Playback as modules** — `sid-player.js:131`, `:397` call
+2. **Playback as modules** — `sid-player.js:131`, `:397` call
    `window.hvscBrowser`/`window.hvscVisualizer`; inject callbacks instead and
    make `sid-playback.js`/`sid-player.js` ES modules (which would also let
    `sid-playback.js` use `psid.js` instead of its own header parser). A shared `audio_*`
@@ -673,11 +670,7 @@ ranked by value against effort:
    the engine drift listed under Low. `ui.js` hanging `sidHeader` and
    `analysisResults` on the analyser for `prg-builder` to read should become
    explicit inputs.
-8. The exported-function list in `scripts/build-sidquake-wasm.sh` is stale
-   (`_cpu_set_accumulator`, `_sid_get_init_timeouts` reach JS only via
-   `EMSCRIPTEN_KEEPALIVE`). Six illegal RMW groups in `cpu6510_core.h:429-547`
-   repeat one addressing switch; `cpu6510_wasm.cpp:26-35` re-declares the
-   core's flag enum.
+3. Six illegal RMW groups in `cpu6510_core.h` repeat one addressing switch.
 
 ## Playback / engine
 - **`png_converter` output accessors** trust caller buffer sizes (no length params) — an under-allocated JS buffer is a WASM heap overflow. [WASM]

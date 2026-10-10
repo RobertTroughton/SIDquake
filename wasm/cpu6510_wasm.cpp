@@ -11,6 +11,7 @@
 #include "opcodes.h"
 #include "c64_io.h"
 #include "c64_env.h"
+#include "cpu6510_api.h"
 #include "cpu6510_core.h"
 
 extern "C" {
@@ -24,17 +25,6 @@ extern "C" {
         MEM_OPCODE = 1 << 4
     };
 
-    // CPU Status flags
-    enum StatusFlag {
-        FLAG_CARRY = 0x01,
-        FLAG_ZERO = 0x02,
-        FLAG_INTERRUPT = 0x04,
-        FLAG_DECIMAL = 0x08,
-        FLAG_BREAK = 0x10,
-        FLAG_UNUSED = 0x20,
-        FLAG_OVERFLOW = 0x40,
-        FLAG_NEGATIVE = 0x80
-    };
 
     // Global CPU state
     struct CPU6510State {
@@ -94,7 +84,7 @@ extern "C" {
         cpu.a = 0;
         cpu.x = 0;
         cpu.y = 0;
-        cpu.status = FLAG_INTERRUPT | FLAG_UNUSED;
+        cpu.status = cpu6510::FLAG_I | cpu6510::FLAG_U;
         cpu.cycles = 0;
 
         cpu.ciaTimerLo = 0;
@@ -201,8 +191,6 @@ extern "C" {
             }
         }
     }
-
-    void cpu_step();
 
     // === Bus adapter ============================================================
     // Binds the shared decoder in cpu6510_core.h to this core's memory and its
@@ -503,7 +491,7 @@ extern "C" {
         cpu.a = 0;
         cpu.x = 0;
         cpu.y = 0;
-        cpu.status = FLAG_INTERRUPT | FLAG_UNUSED;
+        cpu.status = cpu6510::FLAG_I | cpu6510::FLAG_U;
         cpu.cycles = 0;
 
         cpu.ciaTimerLo = 0;

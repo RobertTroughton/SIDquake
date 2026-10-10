@@ -10,6 +10,7 @@
 #include <string>
 #include "opcodes.h"
 #include "c64_env.h"
+#include "cpu6510_api.h"
 
 // Strip non-printable bytes and trailing spaces from a fixed-length SID header
 // field. SID header strings are Latin-1 (ISO 8859-1), so keep the printable
@@ -116,26 +117,6 @@ extern "C" {
         std::string cleanCopyright;
         std::string cleanMagicID;
     } sidState;
-
-    // CPU functions imported from cpu6510_wasm.cpp.
-    extern void cpu_init();
-    extern void cpu_set_tracking(bool enabled);
-    extern void cpu_write_memory(uint16_t address, uint8_t value);
-    extern int cpu_execute_function(uint16_t address, uint32_t maxCycles);
-    extern uint8_t cpu_get_memory_access(uint16_t address);
-    extern uint32_t cpu_get_sid_writes(uint8_t reg);
-    extern uint32_t cpu_get_sid_chip_count();
-    extern uint16_t cpu_get_sid_chip_address(uint32_t index);
-    extern uint32_t cpu_get_zp_writes(uint8_t addr);
-    extern void cpu_set_record_writes(bool record);
-    extern void cpu_save_memory(uint8_t* buffer);
-    extern void cpu_restore_memory(uint8_t* buffer);
-    extern void cpu_reset_state_only();
-    extern uint32_t cpu_get_last_execution_cycles();
-    extern void cpu_setup_c64_env();
-    extern int cpu_execute_interrupt(uint16_t address, uint32_t maxCycles, bool kernalEntry);
-    extern uint32_t cpu_get_irq_handler();
-    extern bool cpu_get_sid_chip_used(uint32_t slot);
 
     // SID header values are stored big-endian on disk; the WASM host is
     // little-endian, so byte-swap after loading.
@@ -367,9 +348,6 @@ extern "C" {
             cpu_reset_state_only();
 
             // PSID convention: subtune index (0-based) is passed in A, X and Y.
-            extern void cpu_set_accumulator(uint8_t value);
-            extern void cpu_set_xreg(uint8_t value);
-            extern void cpu_set_yreg(uint8_t value);
             cpu_set_accumulator(songNum - 1);
             cpu_set_xreg(songNum - 1);
             cpu_set_yreg(songNum - 1);
@@ -392,7 +370,6 @@ extern "C" {
             }
             // Chips are counted from what play writes: an init that clears the
             // whole $D400-$D7FF mirror range otherwise reads as 32 SIDs.
-            extern void cpu_reset_sid_chip_usage();
             cpu_reset_sid_chip_usage();
 
             // A play address of 0 means init installed the play routine behind an
@@ -483,9 +460,6 @@ extern "C" {
             // (sid_get_song_calls_per_frame); sid_get_num_calls_per_frame is the
             // start song's.
             {
-                extern uint8_t cpu_get_cia_timer_lo();
-                extern uint8_t cpu_get_cia_timer_hi();
-                extern bool cpu_get_cia_timer_written();
 
                 uint8_t speedBit = (songNum - 1) < 31 ? (uint8_t)(songNum - 1) : 31;
                 bool ciaSpeed = (sidState.header.speed >> speedBit) & 1u;
