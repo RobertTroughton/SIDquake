@@ -52,6 +52,7 @@
   "ciaTimerValue": 0,
   "maxCycles": 2370,
   "initTimeouts": 0,
+  "playTimeouts": 0,
   "longestInitCycles": 1079
  },
  "subtunes": [

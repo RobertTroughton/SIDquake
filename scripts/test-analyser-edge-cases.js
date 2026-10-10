@@ -21,7 +21,9 @@
  *   - a call that does not return reports no execution cycles, rather than the
  *     previous call's;
  *   - a play routine making hundreds of SID writes a call (a $D418 digi) is
- *     analysed over the full 30,000 frames without running out of memory.
+ *     analysed over the full 30,000 frames without running out of memory;
+ *   - a play call that never returns is counted, with the frame it happened
+ *     on, rather than silently ending the analysis of that song.
  *
  * Needs public/sidquake.wasm; no browser. Run with
  * `node scripts/test-analyser-edge-cases.js`.
@@ -234,6 +236,23 @@ async function main() {
             again = analyze().r;
         } catch (e) { again = String(e.message || e); }
         check(again === 0, 'and the analyser still works afterwards', `${again}`);
+    }
+
+    console.log('a play call that never returns is reported');
+    {
+        // init: RTS. play: INC $1100 / LDA $1100 / CMP #11 / BEQ hang / RTS / hang: JMP hang
+        const code = asm(0x1000, [
+            0x60,
+            0xee, 0x00, 0x11, 0xad, 0x00, 0x11, 0xc9, 11, 0xf0, 0x01, 0x60,
+            'hang:', 0x4c, '<hang', '>hang',
+        ]);
+        check(load(psid({ init: 0x1000, play: 0x1001, songs: 2, code })) === 0, 'loads');
+        analyze(100);
+        const has = typeof M._sid_get_play_timeouts === 'function';
+        const timeouts = has ? M._sid_get_play_timeouts() : -1;
+        const frame = has ? M._sid_get_first_play_timeout_frame() : -1;
+        check(timeouts === 2, 'one timeout per song is counted', has ? `${timeouts}` : 'sid_get_play_timeouts missing');
+        check(frame === 10, 'on the frame it happened', `${frame}`);
     }
 
     console.log(failures ? `\n${failures} check(s) FAILED` : '\nall checks passed');

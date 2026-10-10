@@ -94,6 +94,8 @@ extern "C" {
         // be treated as "this tune touches nothing" - see sid_analyze.
         uint32_t initTimeouts;
         uint32_t longestInitCycles;
+        uint32_t playTimeouts;
+        uint32_t firstPlayTimeoutFrame;
     };
 
     struct {
@@ -171,6 +173,8 @@ extern "C" {
         sidState.analysis.maxCycles = 0;
         sidState.analysis.initTimeouts = 0;
         sidState.analysis.longestInitCycles = 0;
+        sidState.analysis.playTimeouts = 0;
+        sidState.analysis.firstPlayTimeoutFrame = UINT32_MAX;
 
         cpu_init();
     }
@@ -326,6 +330,8 @@ extern "C" {
         sidState.analysis.maxCycles = 0;
         sidState.analysis.initTimeouts = 0;
         sidState.analysis.longestInitCycles = 0;
+        sidState.analysis.playTimeouts = 0;
+        sidState.analysis.firstPlayTimeoutFrame = UINT32_MAX;
 
         // Snapshot memory after initial load so each song can start from
         // an identical baseline.
@@ -453,6 +459,13 @@ extern "C" {
                     ? cpu_execute_interrupt(playAddr, 20000, playViaKernal)
                     : cpu_execute_function(playAddr, 20000);
                 if (!returned) {
+                    // The CPU is left mid-routine, so the song's analysis stops
+                    // here; everything it would have touched later is missing
+                    // from the maps, so say so (sid_get_play_timeouts).
+                    sidState.analysis.playTimeouts++;
+                    if (frame < sidState.analysis.firstPlayTimeoutFrame) {
+                        sidState.analysis.firstPlayTimeoutFrame = frame;
+                    }
                     break;
                 }
 
@@ -804,6 +817,21 @@ extern "C" {
     EMSCRIPTEN_KEEPALIVE
         uint32_t sid_get_init_timeouts() {
         return sidState.analysis.initTimeouts;
+    }
+
+    // Number of subtunes whose analysis stopped at a play call that did not
+    // return within its cycle budget. Like an init timeout, non-zero means the
+    // memory maps are incomplete: they hold only what came before that call.
+    EMSCRIPTEN_KEEPALIVE
+        uint32_t sid_get_play_timeouts() {
+        return sidState.analysis.playTimeouts;
+    }
+
+    // The earliest play call (0-based, in calls) at which any subtune's
+    // analysis stopped, or UINT32_MAX when none did.
+    EMSCRIPTEN_KEEPALIVE
+        uint32_t sid_get_first_play_timeout_frame() {
+        return sidState.analysis.firstPlayTimeoutFrame;
     }
 
     // Cycles the slowest init that DID return took - useful for spotting tunes

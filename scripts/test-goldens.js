@@ -123,6 +123,7 @@ async function analysisGolden(M, bytes) {
         ciaTimerValue: c('sid_get_cia_timer_value', 'number')(),
         maxCycles: c('sid_get_max_cycles', 'number')(),
         initTimeouts: c('sid_get_init_timeouts', 'number')(),
+        playTimeouts: c('sid_get_play_timeouts', 'number')(),
         longestInitCycles: c('sid_get_longest_init_cycles', 'number')(),
     };
 }
