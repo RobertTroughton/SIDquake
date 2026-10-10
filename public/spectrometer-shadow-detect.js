@@ -12,6 +12,8 @@
 //      repointing them at the shadow page captures 100% of the writes. This is
 //      the only check that can disqualify a tune.
 
+import { PLAY_CYCLE_CAP, playTiming, loadMusic } from './loop-prepass.js';
+
 const MEM_WRITE = 1 << 2;
 const MEM_OPCODE = 1 << 4;   // the first byte of an executed instruction
 
@@ -35,6 +37,9 @@ function makeApi(module) {
         seqLen:  cw('cpu_get_write_sequence_length', 'number', []),
         seqItem: cw('cpu_get_write_sequence_item', 'number', ['number']),
         sidWrites: cw('cpu_get_sid_writes', 'number', ['number']),
+        ciaLo:   cw('cpu_get_cia_timer_lo', 'number', []),
+        ciaHi:   cw('cpu_get_cia_timer_hi', 'number', []),
+        ciaWritten: cw('cpu_get_cia_timer_written', 'number', []),
     };
 }
 
@@ -67,7 +72,7 @@ export const SHADOW_SCAN_FRAMES = Math.round(20 * 60 * 50.1245);
 // `frames` play calls with recording on. Returns the per-frame first-write
 // orders (arrays of register offsets 0..), or null when init never returns.
 // Leaves memory-access flags populated.
-function loadAndRun(api, sidBytes, opts, patches) {
+function loadAndRun(module, api, sidBytes, opts, patches) {
     const { initAddress, playAddress, loadAddress, subtune = 0, frames = SHADOW_SCAN_FRAMES, warmup = 8 } = opts;
     const dataOffset = (sidBytes[6] << 8) | sidBytes[7];
     const hdrLoad = (sidBytes[8] << 8) | sidBytes[9];
@@ -75,7 +80,7 @@ function loadAndRun(api, sidBytes, opts, patches) {
 
     api.cpuInit();
     api.env();
-    for (let i = musicStart; i < sidBytes.length; i++) api.wr((loadAddress + (i - musicStart)) & 0xffff, sidBytes[i]);
+    loadMusic(module, sidBytes, musicStart, loadAddress);
     if (patches) for (const [addr, val] of patches) api.wr(addr & 0xffff, val & 0xff);
     api.reset();
     api.track(1);
@@ -88,7 +93,7 @@ function loadAndRun(api, sidBytes, opts, patches) {
     const orders = [];
     for (let f = 0; f < frames; f++) {
         api.record(1);
-        if (play(100000) === 0) break;
+        if (play(PLAY_CYCLE_CAP) === 0) break;
         if (f < warmup) continue;
         const len = api.seqLen();
         const seen = new Set(), order = [];
@@ -176,7 +181,7 @@ export function analyzeShadow(module, sidBytes, opts) {
         : sidBytes.length - ((sidBytes[6] << 8) | sidBytes[7]);
 
     // Pass 1: unpatched run -> write-order consistency + execute flags.
-    const orders = loadAndRun(api, sidBytes, opts);
+    const orders = loadAndRun(module, api, sidBytes, opts);
     if (!orders) {
         // Init never returned, so nothing below would describe the tune.
         return {
@@ -215,7 +220,7 @@ export function analyzeShadow(module, sidBytes, opts) {
     // Pass 2: patch every site's high byte to the shadow page and re-run; if the
     // redirect is complete, ZERO writes should reach the real $D4xx registers.
     const patches = storeSites.map(off => [loadAddress + off, shadowHi]);
-    loadAndRun(api, sidBytes, opts, patches);
+    loadAndRun(module, api, sidBytes, opts, patches);
     // Write counts are kept per register ($00-$1F), pooled across every chip in
     // $D400-$D7FF - so any chip's leaked write shows up here whatever its address.
     let leaked = 0;
@@ -284,14 +289,19 @@ export function analyzeVuVisibility(module, sidBytes, opts) {
 
     api.cpuInit();
     api.env();
-    for (let i = musicStart; i < sidBytes.length; i++) {
-        api.wr((loadAddress + (i - musicStart)) & 0xffff, sidBytes[i]);
-    }
+    loadMusic(module, sidBytes, musicStart, loadAddress);
     api.reset();
     api.track(1);
     api.setA(subtune); api.setX(subtune); api.setY(subtune);
     const inited = api.exec(initAddress, INIT_CYCLE_CAP);
     const play = inited ? playCaller(api, playAddress) : null;
+    // `frames` and every count returned are raster frames; a multispeed tune
+    // makes several play calls in each.
+    const { framesPerCall } = playTiming({
+        speed: ((sidBytes[0x12] << 24) | (sidBytes[0x13] << 16) | (sidBytes[0x14] << 8) | sidBytes[0x15]) >>> 0,
+        subtune, ciaWritten: api.ciaWritten(), latch: api.ciaLo() | (api.ciaHi() << 8),
+    });
+    const calls = Math.max(1, Math.floor(frames / framesPerCall));
 
     // Control register per voice, per chip. Chips are $20 apart in $D400-$D7FF.
     const controls = [];
@@ -301,8 +311,8 @@ export function analyzeVuVisibility(module, sidBytes, opts) {
     }
 
     let ran = 0, quiet = 0, leading = 0, stillLeading = true;
-    for (let f = 0; play && f < frames; f++) {
-        if (play(100000) === 0) break;
+    for (let c = 0; play && c < calls; c++) {
+        if (play(PLAY_CYCLE_CAP) === 0) break;
         ran++;
         let audible = false;
         for (const addr of controls) {
@@ -315,11 +325,11 @@ export function analyzeVuVisibility(module, sidBytes, opts) {
         if (stillLeading) leading++;
     }
 
-    const leadingSeconds = leading / frameHz;
+    const leadingSeconds = leading * framesPerCall / frameHz;
     return {
-        frames: ran,
-        quietFrames: quiet,
-        leadingQuietFrames: leading,
+        frames: Math.round(ran * framesPerCall),
+        quietFrames: Math.round(quiet * framesPerCall),
+        leadingQuietFrames: Math.round(leading * framesPerCall),
         leadingSeconds,
         // Only a lead-in the listener can actually hear is a defect. Rendering
         // it costs a second or two of audio at most, and only when there is a
@@ -375,6 +385,6 @@ export function soundsDuring(module, sidBytes, subtune, seconds) {
 // Back-compat: just the order-consistency check.
 export function detectWriteOrder(module, sidBytes, opts) {
     const api = makeApi(module);
-    const ord = dominantOrder(loadAndRun(api, sidBytes, opts) || []);
+    const ord = dominantOrder(loadAndRun(module, api, sidBytes, opts) || []);
     return { ...ord, suitable: ord.consistency >= 0.90 && ord.order.length > 0 };
 }

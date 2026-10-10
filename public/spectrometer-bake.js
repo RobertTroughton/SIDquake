@@ -8,7 +8,8 @@
 // them with Vector Quantization so the C64 can just replay them:
 //
 //   codebook[K][NUM_BARS]  : K prototype "column shapes", one byte per bar (0..maxHeight)
-//   indices[segments][numKeyframes] : one byte per 25 Hz keyframe per segment,
+//   indices[segments][numKeyframes] : one byte per keyframe (every 1, 2 or 3
+//                            raster frames, framesPerKeyframe) per segment,
 //                            stored PLANAR (all of segment 0's indices, then all
 //                            of segment 1's, ...) - see bakeFromStore
 //
@@ -22,9 +23,10 @@
 // returns the packed bytes, so it runs identically in the browser export path
 // and in a Node test harness.
 
-// ---- constants mirrored from hvsc-visualizer.js so the bake target matches
-// the on-screen spectrum exactly (the `t` value in step(), BEFORE the slow
-// release smoothing - that raw target is what we hand to the C64) ----
+// ---- constants taken from hvsc-visualizer.js's bar target (the `t` value in
+// step(), BEFORE the slow release smoothing - that raw target is what we hand
+// to the C64). MAX_DB has since been raised here (see below), so the baked bar
+// heights no longer match the on-screen spectrum exactly ----
 const N = 4096;                 // fftSize (matches AnalyserNode)
 const BINS = N / 2;             // frequencyBinCount
 // Frequency span the bars cover when no per-song range is fitted (loop
@@ -61,9 +63,9 @@ const FIT_MIN = 30, FIT_MAX = 12000, FIT_MIN_OCTAVES = 4;
 // (crossovers an octave up) measured no better over SID/ - pitch spread 2.48
 // bars against 2.45, with more smearing in time
 // (scripts/measure-bass-resolution.mjs). Measured
-// over the SID/ fixtures the decimated windows match true long FFTs to ~0.1
-// on the 0..111 scale, and bars within 85% of the local peak among the bottom
-// twelve go from 4.8-6.4 to 2.5-4.2.
+// through the real pipeline over six SID/ tunes, the decimated windows match
+// true long FFTs to ~0.1 on the 0..111 scale, and bars within 85% of the local
+// peak among the bottom twelve go from 4.1-6.4 to 2.4-3.9.
 const DEC = 8, LONG_N = 2048, MID_N = 1024;
 const LOBE_BINS = 3;                   // Blackman main lobe half-width, in bins
 const BAR_FRACTION = 0.12;             // a two-semitone bar's width as a fraction of its pitch
@@ -518,7 +520,8 @@ function bandRefs(store) {
 // tune - so a 12-minute analysis costs ~6 MB, not ~130 MB of buffered audio.
 //
 // Fractional hop, rounded per frame (no accumulation): the C64 advances one
-// keyframe every 2 raster frames, so the grid must sit on the true raster rate
+// keyframe every 1, 2 or 3 raster frames (framesPerKeyframe), so the grid must
+// sit on the true raster rate
 // (PAL 50.1245 / NTSC 59.826), not a round 50 - a round-50 hop is ~0.25% slow and
 // drifts the bars ~0.2 s per loop.
 // A frame's windows are all centred on the same instant, the middle of its
@@ -822,6 +825,7 @@ async function kmeans(data, numRows, dim, K, iters, seed, onTick, snap) {
     for (let it = 0; it < iters; it++) {
         if (onTick) await onTick(it / iters);
         sums.fill(0); counts.fill(0);
+        let changed = it === 0;
         for (let r = 0; r < numRows; r++) {
             let best = 0, bestD = Infinity;
             for (let c = 0; c < K; c++) {
@@ -829,18 +833,25 @@ async function kmeans(data, numRows, dim, K, iters, seed, onTick, snap) {
                 for (let d = 0; d < dim; d++) { const df = data[r * dim + d] - cent[c * dim + d]; dd += df * df; if (dd >= bestD) break; }
                 if (dd < bestD) { bestD = dd; best = c; }
             }
+            if (labels[r] !== best) changed = true;
             labels[r] = best; counts[best]++;
             const off = best * dim, ro = r * dim;
             for (let d = 0; d < dim; d++) sums[off + d] += data[ro + d];
         }
+        let emptied = false;
         for (let c = 0; c < K; c++) {
             if (counts[c] === 0) { // reseed empty cluster on a random row
+                emptied = true;
                 const r = Math.floor(rng() * numRows);
                 for (let d = 0; d < dim; d++) cent[c * dim + d] = data[r * dim + d];
             } else {
                 for (let d = 0; d < dim; d++) cent[c * dim + d] = sums[c * dim + d] / counts[c];
             }
         }
+        // Same labels as the last pass and no reseed: the means just computed
+        // are the ones this pass started from, bit for bit, so every remaining
+        // pass would repeat this one exactly.
+        if (!changed && !emptied) break;
     }
     const codebook = new Uint8Array(K * dim);
     for (let i = 0; i < K * dim; i++) {
@@ -1080,10 +1091,10 @@ function detectLoop(kf, nk, numBars, maxHeight, keyframeHz = 25, minLoopSeconds 
 // so it never buffers the whole tune; this stays for tests + the offline harness.)
 export async function bakeSpectrometer(pcm, sampleRate, options = {}) {
     const o = withDefaults(options);
-    // The C64 reads one keyframe every second raster frame, so the keyframe rate
-    // is exactly half the frame rate - derive it rather than trusting a separate
-    // default, so an accurate (PAL/NTSC) frameHz carries through to the grid and
-    // the stored timing (decimation step stays 2).
+    // The C64 reads one keyframe every framesPerKeyframe raster frames (1, 2 or
+    // 3), so the keyframe rate is the frame rate divided by that - derive it
+    // rather than trusting a separate default, so an accurate (PAL/NTSC) frameHz
+    // carries through to the grid and the stored timing.
     o.keyframeHz = o.frameHz / (o.framesPerKeyframe || 2);
     const prog = o.onProgress || (() => {});
     const maxSamples = Math.floor(o.maxSeconds * sampleRate);

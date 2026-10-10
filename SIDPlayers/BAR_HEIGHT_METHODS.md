@@ -28,7 +28,10 @@ with **split (product) VQ**: the column is cut into segments (bars/segment) that
 are quantized independently, so segments animate on their own instead of the
 whole column freezing on one shared codebook shape. It ships a fixed-size
 codebook (256 columns × 40 bars, however split) plus one index byte per segment
-per keyframe, loop-trimmed. The exporter picks the segment count per tune —
+per keyframe, loop-trimmed. Each segment's codebook is a seeded k-means of up to
+30 passes, stopping early once a pass moves no keyframe to another entry and
+leaves no entry empty; from there every pass would repeat it, so the result is
+byte-identical to running all 30 (`scripts/test-kmeans.js`). The exporter picks the segment count per tune —
 5×8 for best detail whenever the index fits RAM at the chosen keyframe rate,
 dropping to 4/2/1 for long tunes so they animate all the way through. The
 player replays it (`DecodeBakedFrame`, reading the segment count/width from the

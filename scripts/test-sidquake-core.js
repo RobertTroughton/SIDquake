@@ -9,6 +9,9 @@
  * the global with the instance it made: a factory that has become an object
  * makes every one of those loads throw.
  *
+ * It also checks that analyze() reports every address the tune writes,
+ * including $FFFF and zero-page $FF.
+ *
  * Needs public/sidquake.wasm; no browser. Run with
  * `node scripts/test-sidquake-core.js`.
  */
@@ -16,6 +19,8 @@
 const fs = require('fs');
 const path = require('path');
 const vm = require('vm');
+
+const { psid, asm } = require('./lib/psid-asm.js');
 
 const ROOT = path.join(__dirname, '..');
 
@@ -40,6 +45,19 @@ function check(ok, what, detail) {
     check(typeof window.SIDquakeModule === 'function', 'window.SIDquakeModule is still the factory',
         typeof window.SIDquakeModule);
     check(window.SIDquakeModuleInstance === analyzer.Module, 'the shared instance is published separately');
+
+    console.log('analyze() reports the top address of each range');
+    // init: LDA #1; STA $FFFF; STA $FF; RTS   play: RTS
+    const tune = psid({ load: 0x1000, init: 0x1000, play: 0x1008, code: asm(0x1000, [
+        0xa9, 0x01, 0x8d, 0xff, 0xff, 0x85, 0xff, 0x60,
+        0x60,
+    ]) });
+    await analyzer.loadSID(tune.buffer);
+    const result = await analyzer.analyze(10);
+    check(result.modifiedAddresses.includes(0xFFFF), '$FFFF is in modifiedAddresses',
+        result.modifiedAddresses.map((a) => a.toString(16)).join(','));
+    check(result.zpAddresses.includes(0xFF), 'zero-page $FF is in zpAddresses',
+        result.zpAddresses.map((a) => a.toString(16)).join(','));
 
     console.log(failures ? `\n${failures} check(s) FAILED` : '\nall checks passed');
     process.exit(failures ? 1 : 0);

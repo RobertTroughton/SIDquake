@@ -18,6 +18,8 @@ The rest:
   frame.
 - `scripts/test-range-fit.js`: feeds the bake synthetic tones and checks the
   per-song frequency span it fits.
+- `scripts/test-kmeans.js`: the bake's k-means stops early with output
+  byte-identical to running every pass (`--bench` times both).
 - `scripts/test-analyser-edge-cases.js`, `scripts/test-shadow-detect.js`: PSID
   header rules, play-address-0 tunes and the shadow scan, on tunes the tests
   build from a few bytes of 6502 (`scripts/lib/psid-asm.js`).
@@ -31,8 +33,12 @@ The rest:
   renders with: pitch, play clock, stack, play-address-0 and subtune handling.
 - `scripts/test-worklet.js`: the AudioWorklet asks again when a request comes
   back empty, keeps its queue across a pause, and hands spent blocks back.
+- `scripts/test-playback.js`: `sid-playback.js` against stubbed Web Audio
+  objects: pause, stop, a subtune change and a reload fade out before they cut,
+  and the clock counts queued audio at the speed it was rendered at.
 - `scripts/test-sidquake-core.js`: starting the page's analyser leaves the
-  `SIDquakeModule` factory callable for the other loaders.
+  `SIDquakeModule` factory callable for the other loaders, and `analyze()`
+  reports writes to `$FFFF` and zero-page `$FF`.
 - `scripts/test-zip-writer.js`, `scripts/test-share-shards.js`: the hand-written
   zip layout, and the three copies of the share-meta shard hash agree.
 - `scripts/test-render-determinism.js`: a render on either engine depends only

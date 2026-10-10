@@ -54,10 +54,25 @@ called that way. A load that fails any check, including "does not fit in 64K"
 - `SIDAnalyzer` class wrapping all WASM calls via `cwrap()`
 - Manages WASM heap memory allocation for file transfers
 - Provides clean JS API: `loadSID()`, `analyze()`, `updateMetadata()`, `createModifiedSID()`
+- `analyze()` returns `initTimeouts`, the number of songs whose init never
+  returned; those songs have no memory map. The Modified Memory row then reads
+  "Unknown" when nothing was traced and appends "(incomplete)" otherwise, and an
+  export with save/restore logs a console warning.
 
 **`analysis-store.js`**, **`loop-prepass.js`**, **`spectrometer-shadow-detect.js`**
 and the `spectrometer-bake*.js` family consume the analyser; the bake is
-described in `BAR_HEIGHT_METHODS.md`.
+described in `BAR_HEIGHT_METHODS.md`. The pre-pass and the shadow and VU scans
+give each play call the same 20,000-cycle budget as `sid_analyze`
+(`PLAY_CYCLE_CAP`, exported by `loop-prepass.js`), and load the music with one
+`cpu_load_memory` call (`loadMusic()`), dropping any byte that would land past
+`$FFFF` as `sid_analyze` refuses such a tune.
+
+The "these bars will be empty" warning (`analyzeVuVisibility`, run by `ui.js`
+`checkVuVisibility`) steps the song the export plays (`exportSubtuneIndex()`)
+for 1,200 raster frames, and warns when no voice is open the way the live bar
+methods look for over an audible lead-in of 3 s or more. A multispeed tune's
+play calls are converted to frames with `playTiming()` from `loop-prepass.js`,
+the same per-subtune speed reading the pre-pass uses.
 
 ## Song length and loop detection
 
@@ -115,7 +130,9 @@ documented in [`tools/songlengths/README.md`](../tools/songlengths/README.md).
   in the test (`scripts/lib/psid-asm.js`).
 - `scripts/test-shadow-detect.js`: the shadow scan reaches late store sites,
   waits out a long init and drives play-address-0 tunes; the VU warning's audio
-  check runs init.
+  check runs init; a multispeed tune's lead-in is measured in frames, not play
+  calls; music running past `$FFFF` does not wrap into zero page; a play call
+  over the cycle budget ends the VU scan.
 - `scripts/test-range-fit.js`, `scripts/test-bake-cache.js`,
   `scripts/test-baked-decoder.js`, `scripts/test-shadow-replay.js`: the bar-data
   methods (see `BAR_HEIGHT_METHODS.md`).
