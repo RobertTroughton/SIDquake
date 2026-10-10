@@ -14,7 +14,12 @@
  *              value in order, hashed per block of TRACE_BLOCK play calls, so a
  *              failure names the first block that moved;
  *   resid      a hash of the reSID engine's output (sidquake.wasm);
- *   sidplayfp  a hash of the libsidplayfp engine's output (sidplayfp.wasm).
+ *   sidplayfp  a hash of the libsidplayfp engine's output (sidplayfp.wasm);
+ *   bake       for the start song, hashes of the spectrometer bake over
+ *              BAKE_SECONDS of the reSID render: the analyser's bar rows and
+ *              fine grid, then the whitened rows, the loop poll, the tune
+ *              analysis and the packed stream. The fast tier bakes BAKE_FAST
+ *              only; --full bakes every tune.
  *
  * One module per engine renders every tune in turn, so a render that depends
  * on what the engine played before it fails here too
@@ -48,6 +53,8 @@ const PLAY_CYCLE_CAP = 20000;
 const RATE = 44100;
 const AUDIO_SECONDS = 4;
 const SAMPLING_INTERPOLATE = 1;
+const BAKE_SECONDS = 20;
+const BAKE_FAST = ['JCH-Crystalline', 'Phat_Frog_2SID', 'drax-twine'];
 
 // One of each kind the corpus has: 1SID, 2SID, 3SID, multi-song, CIA
 // multispeed, digi, play address 0, long init.
@@ -194,6 +201,40 @@ async function audioGolden(M, bytes, subtune) {
     return `${n}:${hash(new Uint8Array(out.buffer, 0, n * 2))}`;
 }
 
+async function bakeGolden(M, bake, bytes) {
+    const c = (n, r, a) => M.cwrap(n, r, a || []);
+    c('audio_init', null, ['number'])(RATE);
+    withBytes(M, bytes, (p) => c('audio_load_sid', 'number', ['number', 'number'])(p, bytes.length));
+    c('audio_set_subtune', null, ['number'])(0);
+    c('audio_set_sampling_method', null, ['number'])(SAMPLING_INTERPOLATE);
+    const opts = { numBars: 40, maxHeight: 111, frameHz: 50.1245 };
+    const session = bake.createBakeSession(RATE, opts);
+    const CH = 8192, buf = M._malloc(CH * 2);
+    for (let n = 0; n < RATE * BAKE_SECONDS;) {
+        const got = c('audio_generate', 'number', ['number', 'number'])(buf, CH);
+        if (got <= 0) break;
+        const v = new Int16Array(M.HEAPU8.buffer, buf, got), f = new Float32Array(got);
+        for (let i = 0; i < got; i++) f[i] = v[i] / 32768;
+        session.feed(f);
+        n += got;
+    }
+    M._free(buf);
+    const rows = session.rows();
+    const r = crypto.createHash('sha1');
+    r.update(Buffer.from(rows.data.buffer, rows.data.byteOffset, rows.count * 40 * rows.data.BYTES_PER_ELEMENT));
+    r.update(Buffer.from(rows.fine.data.buffer, 0, rows.fine.count * rows.fine.bands.count * 2));
+    r.update(Buffer.from(rows.fine.hist.buffer));
+    const packed = await bake.bakeRows(rows, opts);
+    const d = crypto.createHash('sha1');
+    d.update(Buffer.from(bake._internals.whitenRows(rows, 40).buffer));
+    d.update(JSON.stringify(session.tryLoop()));
+    d.update(JSON.stringify(bake.analyzeRows(rows, opts)));
+    d.update(packed.codebook);
+    d.update(packed.indices);
+    d.update(JSON.stringify(packed, (k, v) => (ArrayBuffer.isView(v) ? undefined : v)));
+    return { frames: rows.count, rows: r.digest('hex').slice(0, 16), stream: d.digest('hex').slice(0, 16) };
+}
+
 async function goldenFor(file, engines) {
     const bytes = new Uint8Array(fs.readFileSync(file));
     const subtunes = Math.min(MAX_SUBTUNES, header(bytes).songs);
@@ -204,6 +245,9 @@ async function goldenFor(file, engines) {
             resid: await audioGolden(engines.resid, bytes, s),
             sidplayfp: await audioGolden(engines.sidplayfp, bytes, s),
         });
+    }
+    if (FULL || BAKE_FAST.includes(path.basename(file, '.sid'))) {
+        out.bake = await bakeGolden(engines.resid, engines.bake, bytes);
     }
     return out;
 }
@@ -235,6 +279,7 @@ async function main() {
         analyser: await instantiate('sidquake'),
         resid: await instantiate('sidquake'),
         sidplayfp: await instantiate('sidplayfp'),
+        bake: await import('../public/spectrometer-bake.js'),
     };
     for (const name of names) {
         const file = path.join(SID_DIR, `${name}.sid`);
@@ -242,12 +287,19 @@ async function main() {
         const got = await goldenFor(file, engines);
         const gfile = path.join(GOLDEN_DIR, `${name}.json`);
         if (UPDATE) {
+            // A run that did not bake this tune keeps the bake it had.
+            if (!('bake' in got) && fs.existsSync(gfile)) {
+                const old = JSON.parse(fs.readFileSync(gfile, 'utf8'));
+                if (old.bake) got.bake = old.bake;
+            }
             fs.writeFileSync(gfile, JSON.stringify(got, null, 1) + '\n');
             console.log(`  wrote ${name}`);
             continue;
         }
         if (!fs.existsSync(gfile)) { console.log(`  FAIL ${name}: no golden (run with --update)`); failures++; continue; }
-        const d = diff(JSON.parse(fs.readFileSync(gfile, 'utf8')), JSON.parse(JSON.stringify(got)));
+        const want = JSON.parse(fs.readFileSync(gfile, 'utf8'));
+        if (!('bake' in got)) delete want.bake;     // the fast tier bakes only BAKE_FAST
+        const d = diff(want, JSON.parse(JSON.stringify(got)));
         if (d.length) {
             failures++;
             console.log(`  FAIL ${name}`);

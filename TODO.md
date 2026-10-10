@@ -613,9 +613,6 @@ is where several of the medium bugs came from.
   stub, and libsidplayfp does too (add `simpleMixer.cpp`). Useful mainly for
   valgrind/ASan runs; the WASM build itself is reproducible and fast (~6 s and
   ~30 s), so goldens run against the real `.wasm`.
-- **Bake goldens** — a hash of the baked stream (codebook, indices, segments,
-  loopStart) and the `findStateLoop` intro/period per tune;
-  `scripts/bench-bake-analysis.mjs` already hashes these but is manual.
 - **Property tests** (`scripts/test-properties.js`, seeded): header parsers never
   read out of bounds on fuzzed input and agree with each other;
   `sid_analyze` is order-independent across subtunes.

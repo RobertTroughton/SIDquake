@@ -70,5 +70,10 @@
    "resid": "176400:2b1b36add22293b7",
    "sidplayfp": "176400:2ef8b22230d40e19"
   }
- ]
+ ],
+ "bake": {
+  "frames": 993,
+  "rows": "f24048f6b75d27ae",
+  "stream": "5f31720a33e87b2f"
+ }
 }

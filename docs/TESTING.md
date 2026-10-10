@@ -51,10 +51,12 @@ The rest:
   counts, chips, PAL/NTSC, header and forced chip models.
 - `scripts/test-goldens.js`: the whole-tune regression. For a fast tier of
   tunes from `SID/` it compares the `sid_analyze` results, the analyser CPU's
-  SID write trace (hashed per block of play calls) and hashes of both engines'
-  output against `scripts/goldens/<tune>.json`, and names the field or trace
-  block that moved. `npm run test:goldens` runs all of `SID/` (about a minute;
-  CI runs it). A change that is meant to move what the emulation produces
+  SID write trace (hashed per block of play calls), hashes of both engines'
+  output and, for three of them, of the spectrometer bake (rows, whitened rows,
+  loop poll, tune analysis, packed stream) against
+  `scripts/goldens/<tune>.json`, and names the field or trace block that moved.
+  `npm run test:goldens` runs all of `SID/`, baking every tune (under three
+  minutes; CI runs it). A change that is meant to move what the emulation produces
   rewrites the fixtures with `--update` (`--only=<tune>,...` narrows it), and
   its commit says why they moved.
 
