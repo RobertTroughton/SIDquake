@@ -15,7 +15,8 @@ Read `docs/CPU_CORES.md` before changing anything here.
   `cpu6510_wasm.cpp` (analysis) and `sid_audio.cpp` (reSID playback) are bus
   adapters. Put instruction semantics in the core, never in an adapter.
 - Machine state lives in a class (`Analyser6510`, `ResidEngine`), with the bus
-  bound to the instance, not in globals. The `extern "C"` API forwards to one
+  bound to the instance, not in globals. `Analyser6510` is its own bus: keep
+  it that way, an extra indirection on the analyser's bus is measurable. The `extern "C"` API forwards to one
   default instance and keeps its names and signatures (JS and tests call it).
 - Instruction fetch is not a data read: the analysis bus flags it
   `MEM_EXECUTE`/`MEM_OPCODE`, and the audio bus must not let it reach reSID.

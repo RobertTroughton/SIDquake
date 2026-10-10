@@ -64,7 +64,7 @@ static void load(Analyser6510& c, uint16_t at, const uint8_t* code, size_t size)
 
 static bool same(const Analyser6510& p, const Analyser6510& q) {
     return p.pc == q.pc && p.sp == q.sp && p.a == q.a && p.x == q.x && p.y == q.y
-        && p.status == q.status && p.cycles == q.cycles
+        && p.st == q.st && p.cycles == q.cycles
         && p.ciaTimerLo == q.ciaTimerLo && p.ciaTimerHi == q.ciaTimerHi
         && p.ciaTimerWritten == q.ciaTimerWritten
         && p.totalSidWrites == q.totalSidWrites && p.totalZpWrites == q.totalZpWrites

@@ -26,13 +26,18 @@ enum MemoryAccessFlag {
 // One analysis machine: registers, RAM and what the code did to it. The
 // exported C API below drives a single default instance; native tests can
 // create as many as they like.
+//
+// It is also the bus the shared decoder in cpu6510_core.h runs on, so the
+// decoder reaches registers and RAM through one reference. Instruction-stream
+// fetches deliberately bypass tracking: they are covered by
+// MEM_EXECUTE/MEM_OPCODE instead.
 struct Analyser6510 {
     uint16_t pc;
     uint8_t sp;
     uint8_t a;
     uint8_t x;
     uint8_t y;
-    uint8_t status;
+    uint8_t st;
     uint64_t cycles;
 
     uint8_t ciaTimerLo;
@@ -77,50 +82,32 @@ struct Analyser6510 {
     void init();
     void resetStateOnly();
     void writeTracked(uint16_t address, uint8_t value);
-    void step();
+    int step();
     int execute(uint16_t address, uint32_t maxCycles, bool irq, bool kernalEntry);
     uint32_t sidChipCount() const;
     uint16_t sidChipAddress(uint32_t index) const;
     void setRecordWrites(bool record);
-};
 
-// === Bus adapter ============================================================
-// Binds the shared decoder in cpu6510_core.h to one analyser's memory and its
-// access tracking. Instruction-stream fetches deliberately bypass tracking:
-// they are covered by MEM_EXECUTE/MEM_OPCODE instead.
-struct AnalysisBus {
-    Analyser6510& cpu;
-    uint16_t& pc;
-    uint8_t& sp;
-    uint8_t& a;
-    uint8_t& x;
-    uint8_t& y;
-    uint8_t& st;
-
-    uint8_t fetch(uint16_t addr) { return cpu.memory[addr]; }
+    // === Bus ================================================================
+    uint8_t fetch(uint16_t addr) { return memory[addr]; }
     uint8_t read(uint16_t addr) {
-        if (cpu.trackingEnabled) cpu.memoryAccess[addr] |= MEM_READ;
+        if (trackingEnabled) memoryAccess[addr] |= MEM_READ;
         uint8_t io;
-        if (c64io::read(addr, cpu.memory, cpu.cycles, io)) return io;
-        return cpu.memory[addr];
+        if (c64io::read(addr, memory, cycles, io)) return io;
+        return memory[addr];
     }
-    void write(uint16_t addr, uint8_t value) { cpu.writeTracked(addr, value); }
+    void write(uint16_t addr, uint8_t value) { writeTracked(addr, value); }
     // The analyser models no write-sensitive I/O, and counting the RMW
     // write-back would double every INC/DEC/shift in the write tracking.
     void dummyWrite(uint16_t, uint8_t) {}
     void jumpTarget(uint16_t addr) {
-        if (cpu.trackingEnabled) cpu.memoryAccess[addr] |= MEM_JUMP_TARGET;
+        if (trackingEnabled) memoryAccess[addr] |= MEM_JUMP_TARGET;
     }
-    void jam() { cpu.halted = true; }
+    void jam() { halted = true; }
 
-    // For c64env::call.
-    int step() {
-        const uint64_t before = cpu.cycles;
-        cpu.step();
-        return (int)(cpu.cycles - before);
-    }
-    bool jammed() const { return cpu.halted; }
-    void clearJam() { cpu.halted = false; }
+    // For c64env::call, with step() above.
+    bool jammed() const { return halted; }
+    void clearJam() { halted = false; }
 };
 
 void Analyser6510::init() {
@@ -129,7 +116,7 @@ void Analyser6510::init() {
     a = 0;
     x = 0;
     y = 0;
-    status = cpu6510::FLAG_I | cpu6510::FLAG_U;
+    st = cpu6510::FLAG_I | cpu6510::FLAG_U;
     cycles = 0;
 
     ciaTimerLo = 0;
@@ -165,7 +152,7 @@ void Analyser6510::resetStateOnly() {
     a = 0;
     x = 0;
     y = 0;
-    status = cpu6510::FLAG_I | cpu6510::FLAG_U;
+    st = cpu6510::FLAG_I | cpu6510::FLAG_U;
     cycles = 0;
 
     ciaTimerLo = 0;
@@ -237,8 +224,8 @@ void Analyser6510::writeTracked(uint16_t address, uint8_t value) {
     }
 }
 
-// Execute one instruction
-void Analyser6510::step() {
+// Execute one instruction; returns its cycles, which are also added to cycles.
+int Analyser6510::step() {
     if (trackingEnabled) {
         // The whole instruction is code; MEM_OPCODE marks where it starts.
         memoryAccess[pc] |= MEM_EXECUTE | MEM_OPCODE;
@@ -250,16 +237,16 @@ void Analyser6510::step() {
     // wherever the PC has reached by the time the store happens.
     instructionPC = pc;
 
-    AnalysisBus bus{ *this, pc, sp, a, x, y, status };
-    cycles += cpu6510::step(bus);
+    const int c = cpu6510::step(*this);
+    cycles += c;
+    return c;
 }
 
 // Run a subroutine, or with `irq` an interrupt handler, until it returns or
 // maxCycles is exceeded (see c64env::call). Returns 1 if it returned;
 // lastExecutionCycles is then its cycle count, else 0.
 int Analyser6510::execute(uint16_t address, uint32_t maxCycles, bool irq, bool kernalEntry) {
-    AnalysisBus bus{ *this, pc, sp, a, x, y, status };
-    const c64env::CallResult r = c64env::call(bus, address, maxCycles, irq, kernalEntry);
+    const c64env::CallResult r = c64env::call(*this, address, maxCycles, irq, kernalEntry);
     lastExecutionCycles = r.returned ? r.cycles : 0;
     return r.returned ? 1 : 0;
 }

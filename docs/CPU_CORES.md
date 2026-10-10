@@ -11,13 +11,15 @@ different jobs:
 | **audio core** | `wasm/sid_audio.cpp` | runs init/play to drive reSID for the song-length scan's fast option and the VU warning. Each play call runs to completion before the frame's SID cycles are clocked, so every write in a frame lands at its start; cycle counts only bound the call to its frame. |
 
 The analysis machine is the `Analyser6510` class: registers, RAM and the access
-tracking, with an `AnalysisBus` bound to one instance. The exported `cpu_*` C
-API (`cpu6510_api.h`) forwards to a single default instance, which
-`sid_analyze` and `analyser-session.js` share; native code can create as many
-instances as it needs. The reSID engine is the same shape: `ResidEngine` holds
-the 6510, its RAM, the reSID chips, the loaded tune's header fields and the
-frame state, its `AudioBus` is bound to one instance, and the `audio_*` exports
-drive a default instance.
+tracking. It is its own bus, so the decoder reaches registers and RAM through
+one reference; a separate adapter struct holding references to them cost about
+9% on the analyser's hot path. The exported `cpu_*` C API (`cpu6510_api.h`)
+forwards to a single default instance, which `sid_analyze` and
+`analyser-session.js` share; native code can create as many instances as it
+needs. The reSID engine is a class too: `ResidEngine` holds the 6510, its RAM,
+the reSID chips, the loaded tune's header fields and the frame state, an
+`AudioBus` adapter is bound to one instance, and the `audio_*` exports drive a
+default instance.
 
 `wasm/sidplayfp_audio.cpp` is a third playback path but uses libsidplayfp's own
 CPU, not either of these.
