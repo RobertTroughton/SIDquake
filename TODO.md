@@ -633,11 +633,6 @@ is where several of the medium bugs came from.
   and now on the reSID engine, but exports at one call a frame (50 a second):
   the players only call play a whole number of times a frame. Worth a warning
   in the UI if it turns up in practice.
-- Bake timing offset is never chosen on purpose: windows centre ~2.3 frames
-  after the row's frame, so bars rise 3–6 frames early and fall 2–5 late
-  (`spectrometer-bake.js:528`, `629-633`). Pick the offset and pin it with an
-  onset test.
-
 ### Performance
 
 - The same tune is stepped five times: `sid_analyze` (30,000 frames per subtune,
