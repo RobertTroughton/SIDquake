@@ -442,7 +442,11 @@ extern "C" {
                 sidState.analysis.resolvedPlayAddress = playAddr;
             }
 
-            cpu_set_record_writes(true);
+            // Nothing here reads the write sequence, and over 30,000 frames a
+            // play routine with a few hundred SID writes a call (a $D418 digi)
+            // grew it past the heap and aborted the module. The loop pre-pass
+            // shares this CPU and may have left recording on.
+            cpu_set_record_writes(false);
 
             for (uint32_t frame = 0; frame < frameCount; frame++) {
                 int returned = playIsIrq

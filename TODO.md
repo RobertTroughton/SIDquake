@@ -600,10 +600,10 @@ decoder agree.
 
 ### Suggested order
 
-The regression harness and the render-determinism fix have landed
-(`scripts/test-goldens.js`, `scripts/test-render-determinism.js`, CI job
-`wasm`). Next: the analyser abort, then folding the duplicated C64 environment
-and call harness, which is where several of the medium bugs came from.
+The regression harness, the render-determinism fix and the analyser abort have
+landed (`scripts/test-goldens.js`, `scripts/test-render-determinism.js`, CI job
+`wasm`). Next: folding the duplicated C64 environment and call harness, which
+is where several of the medium bugs came from.
 
 ### Regression harness
 
@@ -626,16 +626,6 @@ and call harness, which is where several of the medium bugs came from.
   read out of bounds on fuzzed input and agree with each other;
   `sid_analyze` is order-independent across subtunes.
 
-### High
-
-- **`sid_analyze` aborts the whole module on write-heavy tunes.** It turns on
-  `cpu_set_record_writes(true)` for all 30,000 frames (`sid_processor.cpp:445`)
-  and `writeSequence` grows unbounded (`cpu6510_wasm.cpp:172-174`); nothing in
-  `sid_analyze` reads it. At ~300 SID writes per play call the vector outgrows
-  the heap and the module aborts, dead for the rest of the page session (a
-  `$D418` digi in play is enough). Fix: don't record in `sid_analyze`, or cap
-  the buffer. Test: 300+ writes/call over 30,000 frames in
-  `test-analyser-edge-cases.js`. [WASM]
 ### Medium
 
 - **reSID `cpu_call` returns as soon as SP climbs back to its start**

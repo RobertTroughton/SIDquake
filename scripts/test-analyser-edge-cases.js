@@ -19,7 +19,9 @@
  *   - the CIA 1 timer is seen through its mirrors ($DC14 is $DC04), and fires
  *     every latch + 1 cycles, which decides the rounding of calls per frame;
  *   - a call that does not return reports no execution cycles, rather than the
- *     previous call's.
+ *     previous call's;
+ *   - a play routine making hundreds of SID writes a call (a $D418 digi) is
+ *     analysed over the full 30,000 frames without running out of memory.
  *
  * Needs public/sidquake.wasm; no browser. Run with
  * `node scripts/test-analyser-edge-cases.js`.
@@ -211,6 +213,27 @@ async function main() {
             `${cpu.lastCycles()}`);
         check(cpu.exec(0x2100, 1000) === 0 && cpu.lastCycles() === 0, 'a timed-out one reports none',
             `${cpu.lastCycles()}`);
+    }
+
+    console.log('hundreds of SID writes a call, over a full-length analysis');
+    {
+        // play: LDX #160 / loop: STA $D418 / STA $D418 / DEX / BNE loop / RTS
+        const code = asm(0x1000, [
+            0x60,
+            0xa2, 160,
+            'loop:', 0x8d, 0x18, 0xd4, 0x8d, 0x18, 0xd4, 0xca, 0xd0, 0xf7,
+            0x60,
+        ]);
+        check(load(psid({ init: 0x1000, play: 0x1001, code })) === 0, 'loads');
+        let a = null, err = null;
+        try { a = analyze(30000); } catch (e) { err = e; }
+        check(!err && a && a.r === 0, '30,000 frames of 320 writes analyse', err ? String(err.message || err) : `r=${a && a.r}`);
+        let again = null;
+        try {
+            load(psid({ code: Uint8Array.from([0x60, 0x00, 0x00, 0x60]) }));
+            again = analyze().r;
+        } catch (e) { again = String(e.message || e); }
+        check(again === 0, 'and the analyser still works afterwards', `${again}`);
     }
 
     console.log(failures ? `\n${failures} check(s) FAILED` : '\nall checks passed');
