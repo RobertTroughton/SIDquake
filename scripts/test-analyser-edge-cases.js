@@ -27,7 +27,9 @@
  *   - a play routine making hundreds of SID writes a call (a $D418 digi) is
  *     analysed over the full 30,000 frames without running out of memory;
  *   - a play call that never returns is counted, with the frame it happened
- *     on, rather than silently ending the analysis of that song.
+ *     on, rather than silently ending the analysis of that song;
+ *   - a play routine that waits on the raster ($D012, $D011 bit 7) or on the
+ *     CIA 1 interrupt flags ($DC0D) gets there, as on the machine.
  *
  * Needs public/sidquake.wasm; no browser. Run with
  * `node scripts/test-analyser-edge-cases.js`.
@@ -299,6 +301,21 @@ async function main() {
             again = analyze().r;
         } catch (e) { again = String(e.message || e); }
         check(again === 0, 'and the analyser still works afterwards', `${again}`);
+    }
+
+    console.log('a play routine waiting on the raster or the CIA returns');
+    {
+        // play: w1: LDA $D011 / BPL w1 / w2: LDA $D012 / CMP #$20 / BNE w2 /
+        //       w3: LDA $DC0D / AND #$01 / BEQ w3 / INC $1100 / RTS
+        const code = Uint8Array.from([0x60,
+            0xad, 0x11, 0xd0, 0x10, 0xfb,
+            0xad, 0x12, 0xd0, 0xc9, 0x20, 0xd0, 0xf9,
+            0xad, 0x0d, 0xdc, 0x29, 0x01, 0xf0, 0xf9,
+            0xee, 0x00, 0x11, 0x60]);
+        check(load(psid({ play: 0x1001, code })) === 0, 'loads');
+        const a = analyze(50);
+        check(M._sid_get_play_timeouts() === 0 && a.mod.has(0x1100), 'every play call returns',
+            `timeouts ${M._sid_get_play_timeouts()}`);
     }
 
     console.log('a play call that never returns is reported');

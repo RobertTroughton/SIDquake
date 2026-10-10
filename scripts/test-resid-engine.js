@@ -16,6 +16,7 @@
  *     CIA-timed subtune's rate does not stick to the next;
  *   - a write to $D400-$D7FF with I/O banked out ($01 = $34) is a RAM write,
  *     not a SID one;
+ *   - a play routine waiting on the raster ($D012) gets there, once a frame;
  *   - init ends at its RTS, not as soon as the stack pointer is back where it
  *     started (an init that resets the stack with LDX #$FF / TXS carried on);
  *   - a sampling method chosen before the tune is loaded is the one it renders
@@ -248,6 +249,16 @@ async function main() {
         start(psid({ play: 0x100e, code }));
         check(peek(0xd421) === 0xaa && peek(0xd401) !== 0xaa, 'the RAM under $D421 holds it, chip 1\'s $D401 does not',
             `$D421 = ${peek(0xd421)}, $D401 = ${peek(0xd401)}`);
+    }
+
+    console.log('a play routine waiting on the raster runs every frame');
+    {
+        // play: w: LDA $D012 / CMP #$80 / BNE w / INC $1100 / RTS
+        const code = Uint8Array.from([0x60, 0xad, 0x12, 0xd0, 0xc9, 0x80, 0xd0, 0xf9, 0xee, 0x00, 0x11, 0x60]);
+        start(psid({ play: 0x1001, code }));
+        render(2);
+        const calls = peek(0x1100);
+        check(Math.abs(calls - 100) <= 2, 'about 100 calls in 2 s', `${calls}`);
     }
 
     console.log('init that resets the stack runs to its RTS');

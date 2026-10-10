@@ -12,6 +12,7 @@
 #include <new>
 #include "resid/sid.h"
 #include "cpu6510_core.h"
+#include "c64_io.h"
 
 extern "C" {
 
@@ -60,6 +61,7 @@ static struct {
     int      remainingCycles;  // cycles left in current frame
     bool     playRoutineActive;
     uint64_t totalCycles;      // SID cycles rendered since play started
+    uint32_t callCycles;       // CPU cycles into the init or play call running
     int      chipModel;        // 6581 or 8580
     reSID::chip_model chipModels[MAX_SID_CHIPS];   // per chip, as last set
 
@@ -112,20 +114,15 @@ static inline bool writesPipelined() {
 
 // ---- Memory access with SID register interception ----
 
-// Whether the processor port at $01 maps the I/O area in: CHAREN set, and
-// LORAM or HIRAM set. Otherwise $D000-$DFFF is RAM (or character ROM).
-static inline bool io_visible() {
-    uint8_t port = S.memory[0x01];
-    return (port & 0x03) && (port & 0x04);
-}
-
 // The SIDs sit in $D400-$D7FF and $DE00-$DFFF; everything outside that, and
 // everything when I/O is banked out, is plain RAM.
 static inline bool sid_area(uint16_t addr) {
-    return addr >= 0xD400 && addr <= 0xDFFF && io_visible();
+    return addr >= 0xD400 && addr <= 0xDFFF && c64io::io_visible(S.memory[0x01]);
 }
 
 static inline uint8_t mem_read(uint16_t addr) {
+    uint8_t io;
+    if (c64io::read(addr, S.memory, S.totalCycles + S.callCycles, io)) return io;
     if (!sid_area(addr)) return S.memory[addr];
     // Primary SID reads
     if (addr >= 0xD400 && addr <= 0xD41F) {
@@ -240,10 +237,12 @@ static void cpu_call(uint16_t addr, uint32_t maxCycles, bool irq = false, bool v
     S.pc = addr;
     uint32_t cyclesRun = 0;
     cpuJammed = false;
+    S.callCycles = 0;
 
     while (cyclesRun < maxCycles) {
         uint8_t opcode = S.memory[S.pc];
         cyclesRun += cpu_step();
+        S.callCycles = cyclesRun;
 
         if (cpuJammed) break;  // KIL opcode; the CPU would never come back
         if ((int8_t)(S.sp - initialSP) >= 0 && opcode == (irq ? 0x40 : 0x60)) {
@@ -304,6 +303,7 @@ void audio_init(double sampleRate) {
     S.remainingCycles = 0;
     S.playRoutineActive = false;
     S.totalCycles = 0;
+    S.callCycles = 0;
     S.chipModel = 6581;
     for (int i = 0; i < MAX_SID_CHIPS; i++) S.chipModels[i] = reSID::MOS6581;
     S.playRoutine = 0;

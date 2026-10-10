@@ -9,6 +9,7 @@
 #include <algorithm>
 #include <set>
 #include "opcodes.h"
+#include "c64_io.h"
 #include "cpu6510_core.h"
 
 extern "C" {
@@ -164,12 +165,9 @@ extern "C" {
                 cpu.totalZpWrites++;
             }
 
-            // I/O is only there when the processor port maps it in (CHAREN
-            // set, and LORAM or HIRAM); otherwise a write here is to RAM.
-            const uint8_t port = cpu.memory[0x01];
-            const bool io = (port & 0x03) && (port & 0x04);
-
-            if (io) {
+            // I/O is only there when the processor port maps it in; otherwise
+            // a write here is to RAM.
+            if (c64io::io_visible(cpu.memory[0x01])) {
                 // Track SID writes (full SID range $D400-$D7FF)
                 if (address >= 0xD400 && address <= 0xD7FF) {
                     uint8_t reg = address & 0x1F;
@@ -223,6 +221,8 @@ extern "C" {
         uint8_t fetch(uint16_t addr) { return cpu.memory[addr]; }
         uint8_t read(uint16_t addr) {
             if (cpu.trackingEnabled) cpu.memoryAccess[addr] |= MEM_READ;
+            uint8_t io;
+            if (c64io::read(addr, cpu.memory, cpu.cycles, io)) return io;
             return cpu.memory[addr];
         }
         void write(uint16_t addr, uint8_t value) { write_memory_internal(addr, value); }

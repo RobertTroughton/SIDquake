@@ -80,9 +80,13 @@ not part of `npm test`: it needs a C++ toolchain and takes minutes.
 - **`XAA` (`$8B`) and `LAX #imm` (`$AB`) magic constants.** Both cores use the
   common deterministic forms (`A = X & imm` and `A = X = imm`); on real hardware
   the result depends on the analogue state of the internal bus.
-- **Bus conflicts and open-bus reads.** There is no I/O, VIC or PLA banking
-  model here at all; `$D400-$D7FF` is plain RAM in the analysis core and mapped
-  to reSID in the audio core, with no way to bank RAM in underneath it.
+- **Most of the I/O chips.** `wasm/c64_io.h` is the whole model, shared by
+  both adapters: the I/O area is there only while `$01` maps it in (CHAREN,
+  and LORAM or HIRAM; otherwise `$D000-$DFFF` is RAM), the raster line in
+  `$D012` and `$D011` bit 7 runs free at PAL timing from the core's cycle count,
+  and CIA 1's `$DC0D` reads as "timer A fired", so a routine waiting on either
+  gets there. Everything else reads back the RAM underneath: no VIC, CIA or NMI
+  interrupt sources, no SID readback in the analysis core, no open bus.
 
 The `SHA`/`SHX`/`SHY`/`TAS` behaviour that *is* modelled - value is
 `reg & (pre-index high byte + 1)`, and a page-crossing index replaces the

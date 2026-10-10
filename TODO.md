@@ -626,14 +626,6 @@ is where several of the medium bugs came from.
   read out of bounds on fuzzed input and agree with each other;
   `sid_analyze` is order-independent across subtunes.
 
-### Medium
-
-- **No interrupt sources or I/O reads.** No CIA/VIC/NMI sources, and `$D012`,
-  `$DC0D`, `$D019`, `$D41B` read back RAM, so a play routine polling `$D012`
-  hits the cycle cap (and then stops that song's analysis, now counted). Minimal fix: a
-  free-running `$D012`/`$D011` bit 7 from the cycle count and a CIA1 ICR that
-  reads as fired. Full playback is libsidplayfp, so this affects analysis and
-  the fast scan only. [WASM]
 ### Low
 
 - 6510: JSR reads both operand bytes before pushing (`cpu6510_core.h:367-375`;
@@ -687,6 +679,7 @@ is where several of the medium bugs came from.
   `sidplayfp.wasm` in the AudioWorkletGlobalScope would drop that dependency and
   the queue; meanwhile, write float32 from C++ or convert in the worklet
   (`sid-playback.js:234-236`).
+
 ### Design
 
 The core/bus split is right: one decoder, `cpu6510::Core<Bus>`, two adapters.
