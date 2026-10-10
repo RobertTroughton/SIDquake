@@ -97,9 +97,10 @@ band and hides anything that goes wrong at its bottom edge.
   adapter. Needs a C++ toolchain and takes minutes. See
   [`CPU_CORES.md`](CPU_CORES.md).
 - `scripts/bench-bake-analysis.mjs [bake-module] [tune.sid]` after an
-  optimisation in `spectrometer-bake.js`: times the per-frame analysis and
-  hashes its output, so a copy of the old module passed as `bake-module` shows
-  whether the output stayed byte-identical.
+  optimisation or refactor of the bake: times the per-frame analysis and
+  hashes its output (`hash`), then hashes the whitened rows, the loop poll,
+  `analyzeRows` and the packed bake (`bake hash`), so a copy of the old module
+  passed as `bake-module` shows whether the output stayed byte-identical.
 - `scripts/measure-bass-resolution.mjs [bake-module] [seconds]` after changing
   the bake's bass windows: pitch spread and time smearing of the bottom bars
   over every tune in `SID/`.

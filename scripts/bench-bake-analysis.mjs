@@ -2,6 +2,9 @@
 // bench-bake-analysis.mjs - time the bake's per-frame FFT analysis and hash what
 // it produces (the raw bar rows, the fine grid and its histogram), so a change
 // meant to be an optimisation can be shown to leave the output byte-identical.
+// A second hash covers everything downstream of the rows: the whitened rows, the
+// loop poll, the lightweight analysis and the packed bake (codebook, indices and
+// timing fields), so a refactor of those stages can be checked the same way.
 //
 //   node scripts/bench-bake-analysis.mjs [bake-module] [tune.sid]
 //
@@ -34,3 +37,12 @@ h.update(Buffer.from(rows.data.buffer, rows.data.byteOffset, rows.count * 40 * r
 h.update(Buffer.from(rows.fine.data.buffer, 0, rows.fine.count * rows.fine.bands.count * 2));
 h.update(Buffer.from(rows.fine.hist.buffer));
 console.log('frames', rows.count, 'analyse ms', ms.toFixed(0), 'hash', h.digest('hex').slice(0, 16));
+const opts = { numBars: 40, maxHeight: 111, frameHz: 50.1245 };
+const b = await bake.bakeRows(rows, opts);
+const d = crypto.createHash('sha1');
+d.update(Buffer.from(bake._internals.whitenRows(rows, 40).buffer));
+d.update(JSON.stringify(s.tryLoop()));
+d.update(JSON.stringify(bake.analyzeRows(rows, opts)));
+d.update(b.codebook); d.update(b.indices);
+d.update(JSON.stringify(b, (k, v) => (ArrayBuffer.isView(v) ? undefined : v)));
+console.log('bake hash', d.digest('hex').slice(0, 16));
