@@ -105,6 +105,24 @@ function playCaller(api, playAddress) {
     return (cap) => api.execIrq(addr, cap, viaKernal);
 }
 
+// How often a subtune's play routine runs, read once its init has run.
+// Multispeed: this subtune's PSID speed bit says the play routine runs off
+// the CIA timer, and init programmed one. Subtunes past 32 share bit 31.
+// A CIA timer counts its latch down to zero and reloads, so it fires every
+// latch + 1 cycles: Blending_Mode programs 6551 and runs exactly three
+// calls a frame (6552 * 3 = 19656), and the audio repeats on that grid.
+export function playTiming({ speed, subtune, isNtsc = false, ciaWritten, latch }) {
+    const cyclesPerFrame = isNtsc ? NTSC_CYCLES_PER_FRAME : PAL_CYCLES_PER_FRAME;
+    let callsPerFrame = 1, framesPerCall = 1;
+    const speedBit = subtune < 31 ? subtune : 31;
+    if (((speed >>> speedBit) & 1) && ciaWritten && latch > 0) {
+        const cyclesPerCall = latch + 1;
+        callsPerFrame = Math.min(MAX_CALLS_PER_FRAME, Math.max(1, Math.round(cyclesPerFrame / cyclesPerCall)));
+        framesPerCall = cyclesPerCall / cyclesPerFrame;
+    }
+    return { callsPerFrame, framesPerCall };
+}
+
 // Load the tune into the analyser's RAM, run init for `subtune`, and fingerprint
 // `maxFrames` worth of play calls: one FNV-1a hash per call over the addresses
 // written, in order, and the value each one holds when the call returns.
@@ -133,22 +151,10 @@ export function fingerprintTune(module, sidBytes, { subtune = 0, maxFrames, isNt
     const play = playCaller(api, h.playAddress);
     if (!play) return null;
 
-    // Multispeed: this subtune's PSID speed bit says the play routine runs off
-    // the CIA timer, and init programmed one. Subtunes past 32 share bit 31.
-    // A CIA timer counts its latch down to zero and reloads, so it fires every
-    // latch + 1 cycles: Blending_Mode programs 6551 and runs exactly three
-    // calls a frame (6552 * 3 = 19656), and the audio repeats on that grid.
-    const cyclesPerFrame = isNtsc ? NTSC_CYCLES_PER_FRAME : PAL_CYCLES_PER_FRAME;
-    let callsPerFrame = 1, framesPerCall = 1;
-    const speedBit = subtune < 31 ? subtune : 31;
-    if (((h.speed >>> speedBit) & 1) && api.ciaWritten()) {
-        const latch = api.ciaLo() | (api.ciaHi() << 8);
-        if (latch > 0) {
-            const cyclesPerCall = latch + 1;
-            callsPerFrame = Math.min(MAX_CALLS_PER_FRAME, Math.max(1, Math.round(cyclesPerFrame / cyclesPerCall)));
-            framesPerCall = cyclesPerCall / cyclesPerFrame;
-        }
-    }
+    const { callsPerFrame, framesPerCall } = playTiming({
+        speed: h.speed, subtune, isNtsc,
+        ciaWritten: api.ciaWritten(), latch: api.ciaLo() | (api.ciaHi() << 8),
+    });
 
     const maxCalls = Math.max(1, Math.floor(maxFrames / framesPerCall));
     const hashes = new Uint32Array(maxCalls);

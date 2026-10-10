@@ -14,6 +14,8 @@
  *   - The audio check behind the warning runs init for subtune 0 too.
  *   - Only executed opcodes are store sites: operand bytes that happen to read
  *     8D xx D4 are not.
+ *   - The VU check measures its lead-in in raster frames, so a multispeed
+ *     tune's several play calls per frame are not each counted as one.
  *   - A play call gets the same cycle budget as in the analyser and the loop
  *     pre-pass, so a call too long for a frame ends the scan in all three.
  *
@@ -109,6 +111,23 @@ async function main() {
         ]);
         const bytes = psid({ play: 0x101a, code });
         check(soundsDuring(M, bytes, 0, 1) === true, 'the tune is heard');
+    }
+
+    console.log('a multispeed tune silent for its first 149 play calls');
+    {
+        // init: CIA timer latch 6551, so play runs every 6552 cycles - three
+        // calls a PAL frame. play: gate a pulse from the 150th call on.
+        const code = Uint8Array.from([
+            0xa9, 0x97, 0x8d, 0x04, 0xdc, 0xa9, 0x19, 0x8d, 0x05, 0xdc, 0x60,
+            0xee, 0x00, 0x11, 0xad, 0x00, 0x11, 0xc9, 0x96, 0x90, 0x05,
+            0xa9, 0x41, 0x8d, 0x04, 0xd4, 0x60,
+        ]);
+        const bytes = psid({ play: 0x100b, code });
+        bytes[0x15] = 1;                                // speed bit: song 1 is CIA-timed
+        const r = analyzeVuVisibility(M, bytes, { initAddress: 0x1000, playAddress: 0x100b, loadAddress: 0x1000, subtune: 0, numChips: 1, frames: 300 });
+        check(Math.abs(r.leadingSeconds - 149 / 3 / 50.1245) < 0.05, 'the lead-in is ~1 s, not 3',
+            `${r.leadingSeconds.toFixed(2)} s`);
+        check(r.frames === 300, 'it steps 300 frames, not 300 calls', `${r.frames}`);
     }
 
     console.log('a play call of about 31,000 cycles');

@@ -12,7 +12,7 @@
 //      repointing them at the shadow page captures 100% of the writes. This is
 //      the only check that can disqualify a tune.
 
-import { PLAY_CYCLE_CAP } from './loop-prepass.js';
+import { PLAY_CYCLE_CAP, playTiming } from './loop-prepass.js';
 
 const MEM_WRITE = 1 << 2;
 const MEM_OPCODE = 1 << 4;   // the first byte of an executed instruction
@@ -37,6 +37,9 @@ function makeApi(module) {
         seqLen:  cw('cpu_get_write_sequence_length', 'number', []),
         seqItem: cw('cpu_get_write_sequence_item', 'number', ['number']),
         sidWrites: cw('cpu_get_sid_writes', 'number', ['number']),
+        ciaLo:   cw('cpu_get_cia_timer_lo', 'number', []),
+        ciaHi:   cw('cpu_get_cia_timer_hi', 'number', []),
+        ciaWritten: cw('cpu_get_cia_timer_written', 'number', []),
     };
 }
 
@@ -294,6 +297,13 @@ export function analyzeVuVisibility(module, sidBytes, opts) {
     api.setA(subtune); api.setX(subtune); api.setY(subtune);
     const inited = api.exec(initAddress, INIT_CYCLE_CAP);
     const play = inited ? playCaller(api, playAddress) : null;
+    // `frames` and every count returned are raster frames; a multispeed tune
+    // makes several play calls in each.
+    const { framesPerCall } = playTiming({
+        speed: ((sidBytes[0x12] << 24) | (sidBytes[0x13] << 16) | (sidBytes[0x14] << 8) | sidBytes[0x15]) >>> 0,
+        subtune, ciaWritten: api.ciaWritten(), latch: api.ciaLo() | (api.ciaHi() << 8),
+    });
+    const calls = Math.max(1, Math.floor(frames / framesPerCall));
 
     // Control register per voice, per chip. Chips are $20 apart in $D400-$D7FF.
     const controls = [];
@@ -303,7 +313,7 @@ export function analyzeVuVisibility(module, sidBytes, opts) {
     }
 
     let ran = 0, quiet = 0, leading = 0, stillLeading = true;
-    for (let f = 0; play && f < frames; f++) {
+    for (let c = 0; play && c < calls; c++) {
         if (play(PLAY_CYCLE_CAP) === 0) break;
         ran++;
         let audible = false;
@@ -317,11 +327,11 @@ export function analyzeVuVisibility(module, sidBytes, opts) {
         if (stillLeading) leading++;
     }
 
-    const leadingSeconds = leading / frameHz;
+    const leadingSeconds = leading * framesPerCall / frameHz;
     return {
-        frames: ran,
-        quietFrames: quiet,
-        leadingQuietFrames: leading,
+        frames: Math.round(ran * framesPerCall),
+        quietFrames: Math.round(quiet * framesPerCall),
+        leadingQuietFrames: Math.round(leading * framesPerCall),
         leadingSeconds,
         // Only a lead-in the listener can actually hear is a defect. Rendering
         // it costs a second or two of audio at most, and only when there is a

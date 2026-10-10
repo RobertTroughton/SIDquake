@@ -2898,8 +2898,9 @@ class UIController {
      * The FFT method reads the rendered audio, so it is unaffected - which makes
      * it the answer whenever this fires.
      *
-     * The answer is about the TUNE, and it costs 1,200 frames of 6510, so it is
-     * worked out once per tune and re-shown from there on every visualizer switch.
+     * The answer is about the TUNE the export plays (exportSubtuneIndex), and it
+     * costs 1,200 frames of 6510, so it is worked out once per tune and song
+     * choice and re-shown from there on every visualizer switch.
      */
     async checkVuVisibility() {
         if (!this.sidHeader || !this.analyzer || !this.analyzer.Module) return this.renderVuNotes();
@@ -2921,20 +2922,21 @@ class UIController {
                 initAddress: h.initAddress,
                 playAddress: h.playAddress,
                 loadAddress: h.loadAddress,
-                subtune: Math.max(0, (h.startSong || 1) - 1),
+                subtune: this.exportSubtuneIndex(),
                 numChips: this.analysisResults?.sidChipCount || 1,
                 frames: 1200,
             });
         } catch (e) {
             return;   // a warning that cannot be worked out is simply not shown
         }
-        if (token !== this._vuToken || tuneToken !== this._analysisToken || !res || !res.frames) return;
+        if (token !== this._vuToken || tuneToken !== this._analysisToken) return;
 
         // Only a long leading stretch the listener can actually hear. Frames with
         // every gate closed are ordinary - across the tunes in SID/ they run from
         // 26% to 95% on tunes whose bars are fine - and a tune that genuinely
-        // opens with silence has nothing wrong with it either.
-        this._vuBlind = (res.leadingSeconds >= 3 && res.leadingAudible) ? res : null;
+        // opens with silence has nothing wrong with it either. A song that could
+        // not be stepped clears the answer left by the previous song choice.
+        this._vuBlind = (res && res.frames && res.leadingSeconds >= 3 && res.leadingAudible) ? res : null;
         this._vuBlindFor = tuneToken;
         this.renderVuNotes();
     }

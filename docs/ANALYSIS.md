@@ -61,6 +61,13 @@ described in `BAR_HEIGHT_METHODS.md`. The pre-pass and the shadow and VU scans
 give each play call the same 20,000-cycle budget as `sid_analyze`
 (`PLAY_CYCLE_CAP`, exported by `loop-prepass.js`).
 
+The "these bars will be empty" warning (`analyzeVuVisibility`, run by `ui.js`
+`checkVuVisibility`) steps the song the export plays (`exportSubtuneIndex()`)
+for 1,200 raster frames, and warns when no voice is open the way the live bar
+methods look for over an audible lead-in of 3 s or more. A multispeed tune's
+play calls are converted to frames with `playTiming()` from `loop-prepass.js`,
+the same per-subtune speed reading the pre-pass uses.
+
 ## Song length and loop detection
 
 Driven from `ui.js`; the results land on the Studio's Song tab.
@@ -117,7 +124,8 @@ documented in [`tools/songlengths/README.md`](../tools/songlengths/README.md).
   in the test (`scripts/lib/psid-asm.js`).
 - `scripts/test-shadow-detect.js`: the shadow scan reaches late store sites,
   waits out a long init and drives play-address-0 tunes; the VU warning's audio
-  check runs init; a play call over the cycle budget ends the VU scan.
+  check runs init; a multispeed tune's lead-in is measured in frames, not play
+  calls; a play call over the cycle budget ends the VU scan.
 - `scripts/test-range-fit.js`, `scripts/test-bake-cache.js`,
   `scripts/test-baked-decoder.js`, `scripts/test-shadow-replay.js`: the bar-data
   methods (see `BAR_HEIGHT_METHODS.md`).
