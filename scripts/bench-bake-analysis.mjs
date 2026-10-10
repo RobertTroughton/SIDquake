@@ -9,9 +9,9 @@
 //   node scripts/bench-bake-analysis.mjs [bake-module] [tune.sid]
 //
 // bake-module defaults to public/spectrometer-bake.js; pass a copy of an older
-// version to compare. The tune (from SID/, default JCH-Crystalline.sid) is
-// rendered for 60 s on the reSID engine in sidquake.wasm first; only the
-// analysis is timed.
+// version to compare (with the bake-dsp.js and loop-detect.js it imports). The
+// tune (from SID/, default JCH-Crystalline.sid) is rendered for 60 s on the
+// reSID engine in sidquake.wasm first; only the analysis is timed.
 import fs from 'fs'; import crypto from 'crypto';
 import { createRequire } from 'module';
 const require = createRequire(import.meta.url);

@@ -7,6 +7,8 @@ paths:
   - "public/analyser-session.js"
   - "public/psid.js"
   - "public/spectrometer-*.js"
+  - "public/bake-dsp.js"
+  - "public/loop-detect.js"
   - "SIDPlayers/INC/spectrometer*.asm"
   - "scripts/test-loop-*.js"
   - "scripts/test-song-end.js"

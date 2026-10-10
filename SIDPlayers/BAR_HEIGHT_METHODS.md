@@ -40,9 +40,15 @@ data block) and drops the whole analysis subsystem (freqtable,
 `voiceRelease`). One play call, no bar maths, but needs the data in RAM and can
 fail to find a clean loop on very long tunes.
 
+The JS side is three modules: `public/bake-dsp.js` (the FFT analyser, the bar
+and fine grids, whitening and the range fit), `public/loop-detect.js` (the
+loop and song-end decisions, `detectLoop` and `resolveKeyframes`) and
+`public/spectrometer-bake.js` (k-means, packing and the stream format the
+player decodes, plus the entry points the app imports).
+
 ### Which part of the spectrum the bars cover
 
-The span is fitted per tune (`fitRange` in `public/spectrometer-bake.js`). The
+The span is fitted per tune (`fitRange` in `public/bake-dsp.js`). The
 analyser keeps every frame's spectrum on a fine semitone grid (30 Hz–12 kHz,
 peak and mean byte per band) next to the fixed 40 bars, and the bake takes the
 lowest and highest bands that are alive by the whitening's own rule — busy

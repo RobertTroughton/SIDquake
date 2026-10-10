@@ -131,7 +131,7 @@ documented in [`tools/songlengths/README.md`](../tools/songlengths/README.md).
   and checks the pre-pass finds HVSC's loop period to the frame.
 - `scripts/test-loop-detect.js`, `scripts/test-song-end.js`: which loop period
   `detectLoop` settles on and when `analyzeRows` may call a song ended
-  (`spectrometer-bake.js`), over synthetic bar grids.
+  (`loop-detect.js`, `spectrometer-bake.js`), over synthetic bar grids.
 - `scripts/test-vu-visibility.js`: the "these bars will be empty" warning does
   not fire on ordinary tunes (real 6510 over `SID/`).
 - `scripts/test-analyser-edge-cases.js`: the header rules above, on tunes built

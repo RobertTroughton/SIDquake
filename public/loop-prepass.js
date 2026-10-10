@@ -25,7 +25,7 @@
 // ends no later than the state one, so the render needs intro + one period + a
 // confirm window rather than three passes of the loop, and detectLoop tests a
 // handful of divisors at one known lag rather than every lag against the tail
-// (spectrometer-bake.js, detectLoop's `hint`). A tune whose audio does not
+// (loop-detect.js, detectLoop's `hint`). A tune whose audio does not
 // repeat where its state does - a player reading a timer the analyser does not
 // model, say - fails that check and gets the full audio search as before.
 //
