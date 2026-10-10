@@ -151,6 +151,21 @@ struct Core {
         return v;
     }
     void rmw_store(uint16_t a, uint8_t old, uint8_t v) { b.dummyWrite(a, old); b.write(a, v); }
+
+    // The undocumented read-modify-write groups (SLO, RLA, SRE, RRA, DCP, ISC)
+    // share one set of addressing modes, picked by the opcode's low five bits.
+    // Sets the effective address and returns the cycle count.
+    int ea_illegal_rmw(uint8_t op, uint16_t& a) {
+        switch (op & 0x1F) {
+        case 0x07: a = ea_zp();   return 5;
+        case 0x17: a = ea_zpx();  return 6;
+        case 0x0F: a = ea_abs();  return 6;
+        case 0x1F: a = ea_absx(); return 7;
+        case 0x1B: a = ea_absy(); return 7;
+        case 0x03: a = ea_indx(); return 8;
+        default:   a = ea_indy(); return 8;
+        }
+    }
     void rmw_asl(uint16_t a) { uint8_t o = b.read(a); rmw_store(a, o, do_asl(o)); }
     void rmw_lsr(uint16_t a) { uint8_t o = b.read(a); rmw_store(a, o, do_lsr(o)); }
     void rmw_rol(uint16_t a) { uint8_t o = b.read(a); rmw_store(a, o, do_rol(o)); }
@@ -435,16 +450,8 @@ int Core<Bus>::step() {
 
     // DCP - DEC + CMP
     case 0xC7: case 0xD7: case 0xCF: case 0xDF: case 0xDB: case 0xC3: case 0xD3: {
-        uint16_t a; int cyc;
-        switch (op) {
-        case 0xC7: a = ea_zp();   cyc = 5; break;
-        case 0xD7: a = ea_zpx();  cyc = 6; break;
-        case 0xCF: a = ea_abs();  cyc = 6; break;
-        case 0xDF: a = ea_absx(); cyc = 7; break;
-        case 0xDB: a = ea_absy(); cyc = 7; break;
-        case 0xC3: a = ea_indx(); cyc = 8; break;
-        default:   a = ea_indy(); cyc = 8; break;
-        }
+        uint16_t a;
+        const int cyc = ea_illegal_rmw(op, a);
         uint8_t o = b.read(a);
         uint8_t v = uint8_t(o - 1);
         rmw_store(a, o, v);
@@ -454,16 +461,8 @@ int Core<Bus>::step() {
 
     // ISC (ISB) - INC + SBC
     case 0xE7: case 0xF7: case 0xEF: case 0xFF: case 0xFB: case 0xE3: case 0xF3: {
-        uint16_t a; int cyc;
-        switch (op) {
-        case 0xE7: a = ea_zp();   cyc = 5; break;
-        case 0xF7: a = ea_zpx();  cyc = 6; break;
-        case 0xEF: a = ea_abs();  cyc = 6; break;
-        case 0xFF: a = ea_absx(); cyc = 7; break;
-        case 0xFB: a = ea_absy(); cyc = 7; break;
-        case 0xE3: a = ea_indx(); cyc = 8; break;
-        default:   a = ea_indy(); cyc = 8; break;
-        }
+        uint16_t a;
+        const int cyc = ea_illegal_rmw(op, a);
         uint8_t o = b.read(a);
         uint8_t v = uint8_t(o + 1);
         rmw_store(a, o, v);
@@ -473,16 +472,8 @@ int Core<Bus>::step() {
 
     // SLO - ASL + ORA
     case 0x07: case 0x17: case 0x0F: case 0x1F: case 0x1B: case 0x03: case 0x13: {
-        uint16_t a; int cyc;
-        switch (op) {
-        case 0x07: a = ea_zp();   cyc = 5; break;
-        case 0x17: a = ea_zpx();  cyc = 6; break;
-        case 0x0F: a = ea_abs();  cyc = 6; break;
-        case 0x1F: a = ea_absx(); cyc = 7; break;
-        case 0x1B: a = ea_absy(); cyc = 7; break;
-        case 0x03: a = ea_indx(); cyc = 8; break;
-        default:   a = ea_indy(); cyc = 8; break;
-        }
+        uint16_t a;
+        const int cyc = ea_illegal_rmw(op, a);
         uint8_t o = b.read(a);
         setFlag(FLAG_C, (o & 0x80) != 0);
         uint8_t v = uint8_t(o << 1);
@@ -494,16 +485,8 @@ int Core<Bus>::step() {
 
     // RLA - ROL + AND
     case 0x27: case 0x37: case 0x2F: case 0x3F: case 0x3B: case 0x23: case 0x33: {
-        uint16_t a; int cyc;
-        switch (op) {
-        case 0x27: a = ea_zp();   cyc = 5; break;
-        case 0x37: a = ea_zpx();  cyc = 6; break;
-        case 0x2F: a = ea_abs();  cyc = 6; break;
-        case 0x3F: a = ea_absx(); cyc = 7; break;
-        case 0x3B: a = ea_absy(); cyc = 7; break;
-        case 0x23: a = ea_indx(); cyc = 8; break;
-        default:   a = ea_indy(); cyc = 8; break;
-        }
+        uint16_t a;
+        const int cyc = ea_illegal_rmw(op, a);
         uint8_t o = b.read(a);
         bool c = testFlag(FLAG_C);
         setFlag(FLAG_C, (o & 0x80) != 0);
@@ -516,16 +499,8 @@ int Core<Bus>::step() {
 
     // SRE - LSR + EOR
     case 0x47: case 0x57: case 0x4F: case 0x5F: case 0x5B: case 0x43: case 0x53: {
-        uint16_t a; int cyc;
-        switch (op) {
-        case 0x47: a = ea_zp();   cyc = 5; break;
-        case 0x57: a = ea_zpx();  cyc = 6; break;
-        case 0x4F: a = ea_abs();  cyc = 6; break;
-        case 0x5F: a = ea_absx(); cyc = 7; break;
-        case 0x5B: a = ea_absy(); cyc = 7; break;
-        case 0x43: a = ea_indx(); cyc = 8; break;
-        default:   a = ea_indy(); cyc = 8; break;
-        }
+        uint16_t a;
+        const int cyc = ea_illegal_rmw(op, a);
         uint8_t o = b.read(a);
         setFlag(FLAG_C, (o & 1) != 0);
         uint8_t v = uint8_t(o >> 1);
@@ -537,16 +512,8 @@ int Core<Bus>::step() {
 
     // RRA - ROR + ADC
     case 0x67: case 0x77: case 0x6F: case 0x7F: case 0x7B: case 0x63: case 0x73: {
-        uint16_t a; int cyc;
-        switch (op) {
-        case 0x67: a = ea_zp();   cyc = 5; break;
-        case 0x77: a = ea_zpx();  cyc = 6; break;
-        case 0x6F: a = ea_abs();  cyc = 6; break;
-        case 0x7F: a = ea_absx(); cyc = 7; break;
-        case 0x7B: a = ea_absy(); cyc = 7; break;
-        case 0x63: a = ea_indx(); cyc = 8; break;
-        default:   a = ea_indy(); cyc = 8; break;
-        }
+        uint16_t a;
+        const int cyc = ea_illegal_rmw(op, a);
         uint8_t o = b.read(a);
         bool c = testFlag(FLAG_C);
         setFlag(FLAG_C, (o & 1) != 0);

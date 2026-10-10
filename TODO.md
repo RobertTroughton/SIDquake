@@ -622,23 +622,23 @@ left: known limits, product choices and larger pieces of work.
 
 ### Design
 
-The core/bus split is right: one decoder, `cpu6510::Core<Bus>`, two adapters,
-and since `wasm/c64_env.h` and `wasm/c64_io.h` one PSID parser, one KERNAL
-environment, one call runner and one I/O model between them. What is left,
-ranked by value against effort:
+The core/bus split is right: one decoder, `cpu6510::Core<Bus>`, two adapters
+held in classes, and one PSID parser, one KERNAL environment, one call runner
+and one I/O model between them (`wasm/c64_env.h`, `wasm/c64_io.h`). What is
+left:
 
-1. **Classes instead of singletons** — `cpu`, `sidState`, `S`/`cpuJammed` are
-   process-wide, so one analyser per module, and `sid_analyze` and the pre-pass
-   share one CPU. `window.SIDquakeModuleInstance` is also shared with
-   `prg-builder.js:899`. An `Analyser`/`ResidEngine` with a handle-based C
-   layer (keeping a default instance) allows multiple instances and testing.
+1. **One analyser per module from JS** — the analyser and the reSID engine are
+   classes now (`Analyser6510`, `ResidEngine`), but the C API forwards to one
+   default instance of each, `sidState` in `sid_processor.cpp` is still a
+   singleton, and `window.SIDquakeModuleInstance` is shared with
+   `prg-builder.js`. A handle-based C API would let JS run several analysers in
+   one module; nothing needs that yet.
 2. **Playback as modules** — `sid-playback.js`/`sid-player.js` are classic
    scripts loaded by `window.loadScript` on three host pages; as ES modules
    `sid-playback.js` could use `psid.js` instead of its own header parser.
    Left for now: it means reworking each page's loader for little gain. `ui.js`
    hanging `sidHeader` and `analysisResults` on the analyser for `prg-builder`
    to read should become explicit inputs.
-3. Six illegal RMW groups in `cpu6510_core.h` repeat one addressing switch.
 
 ## Playback / engine
 - **`png_converter` output accessors** trust caller buffer sizes (no length params) — an under-allocated JS buffer is a WASM heap overflow. [WASM]
