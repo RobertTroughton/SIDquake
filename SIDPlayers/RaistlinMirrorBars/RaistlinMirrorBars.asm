@@ -492,9 +492,9 @@ FrameCall:
 !skip:
 
 #if SPECTROMETER_BAKED
-	//; Bars are precomputed. Refresh the baked targets at 25 Hz (every 2nd
-	//; frame); UpdateBars interpolates/decays the held targets over the odd
-	//; frame so motion stays smooth at the 50 Hz visual rate.
+	//; Bars are precomputed. TickBakedFrame takes a new keyframe every 1-3
+	//; frames (bakedFrameDivisor) and steps the targets toward the next one on
+	//; the frames between, so motion stays smooth at the 50 Hz visual rate.
 	jsr TickBakedFrame
 #endif
 

@@ -581,8 +581,8 @@ FrameCall:
 	inc visualizationUpdateFlag
 
 #if SPECTROMETER_BAKED
-	//; Refresh the baked targets at the chosen keyframe rate; UpdateBars
-	//; interpolates the held targets between keyframes for smooth 50 Hz motion.
+	//; Refresh the baked targets at the chosen keyframe rate; TickBakedFrame
+	//; steps them toward the next keyframe in between for smooth 50 Hz motion.
 	jsr TickBakedFrame
 #endif
 
