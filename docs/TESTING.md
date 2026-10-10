@@ -103,6 +103,11 @@ band and hides anything that goes wrong at its bottom edge.
 
 ## Slow checks to run by hand
 
+- `scripts/native-check/run.sh [--valgrind] [resid|sidplayfp]` builds the
+  engines natively under ASan/UBSan or valgrind and checks a render does not
+  depend on what played before it; for bugs the WASM heap hides. See its
+  README.
+
 - `scripts/build-players.sh --check` after touching `SIDPlayers/`: did any
   shipped binary move?
 - `scripts/cpu-crosscheck/run.sh` after touching the 6510 decoder or either bus

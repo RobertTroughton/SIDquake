@@ -605,14 +605,6 @@ landed (`scripts/test-goldens.js`, `scripts/test-render-determinism.js`, CI job
 `wasm`). Next: folding the duplicated C64 environment and call harness, which
 is where several of the medium bugs came from.
 
-### Regression harness
-
-- **Native C++ build of the engines** — `cpu6510_wasm.cpp`, `sid_processor.cpp`,
-  `sid_audio.cpp` and `resid/*.cc` (minus `filter.cc`, as the build script does)
-  compile with plain g++ in ~5 s given a one-line `emscripten/emscripten.h`
-  stub, and libsidplayfp does too (add `simpleMixer.cpp`). Useful mainly for
-  valgrind/ASan runs; the WASM build itself is reproducible and fast (~6 s and
-  ~30 s), so goldens run against the real `.wasm`.
 ### Low
 
 - The analyser doesn't reject a load address below `$07E8`, which the PSID spec
