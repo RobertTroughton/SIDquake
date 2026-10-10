@@ -16,6 +16,8 @@
  *     8D xx D4 are not.
  *   - The VU check measures its lead-in in raster frames, so a multispeed
  *     tune's several play calls per frame are not each counted as one.
+ *   - Music that would run past $FFFF is cut there, as sid_analyze refuses
+ *     it, rather than wrapping round into zero page.
  *   - A play call gets the same cycle budget as in the analyser and the loop
  *     pre-pass, so a call too long for a frame ends the scan in all three.
  *
@@ -42,6 +44,7 @@ async function main() {
         print: () => {}, printErr: () => {},
     });
     const { analyzeShadow, analyzeVuVisibility, soundsDuring } = await import('../public/spectrometer-shadow-detect.js');
+    const { fingerprintTune } = await import('../public/loop-prepass.js');
 
     console.log('a store site first reached 36 s in');
     {
@@ -128,6 +131,23 @@ async function main() {
         check(Math.abs(r.leadingSeconds - 149 / 3 / 50.1245) < 0.05, 'the lead-in is ~1 s, not 3',
             `${r.leadingSeconds.toFixed(2)} s`);
         check(r.frames === 300, 'it steps 300 frames, not 300 calls', `${r.frames}`);
+    }
+
+    console.log('music loaded at $FFF8 that runs 8 bytes past $FFFF');
+    {
+        const code = new Uint8Array(16).fill(0xab);
+        code[0] = 0x60; code[1] = 0x60;                 // init and play: RTS
+        const bytes = psid({ load: 0xfff8, init: 0xfff8, play: 0xfff9, code });
+        const opts = { initAddress: 0xfff8, playAddress: 0xfff9, loadAddress: 0xfff8, subtune: 0, numChips: 1, frames: 2 };
+        const rd = (a) => M._cpu_read_memory(a);
+        analyzeVuVisibility(M, bytes, opts);
+        check(rd(0xfff9) === 0x60 && rd(0xffff) === 0xab, 'VU check: the part that fits is loaded');
+        check(rd(0x0004) !== 0xab, 'VU check: nothing wraps into zero page', `$0004 = $${rd(0x0004).toString(16)}`);
+        analyzeShadow(M, bytes, opts);
+        check(rd(0x0004) !== 0xab, 'shadow scan: nothing wraps into zero page', `$0004 = $${rd(0x0004).toString(16)}`);
+        fingerprintTune(M, bytes, { maxFrames: 2 });
+        check(rd(0xfff9) === 0x60 && rd(0x0004) !== 0xab, 'loop pre-pass: loaded up to $FFFF and no further',
+            `$0004 = $${rd(0x0004).toString(16)}`);
     }
 
     console.log('a play call of about 31,000 cycles');

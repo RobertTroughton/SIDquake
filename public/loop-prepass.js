@@ -74,7 +74,7 @@ function makeApi(module) {
         cpuInit: cw('cpu_init', null, []),
         reset:   cw('cpu_reset_state_only', null, []),
         track:   cw('cpu_set_tracking', null, ['number']),
-        wr:      cw('cpu_write_memory', null, ['number', 'number']),
+        wr:      cw('cpu_write_memory', null, ['number', 'number']),   // one-byte poke; nothing here uses it
         rd:      cw('cpu_read_memory', 'number', ['number']),
         setA:    cw('cpu_set_accumulator', null, ['number']),
         setX:    cw('cpu_set_xreg', null, ['number']),
@@ -90,6 +90,18 @@ function makeApi(module) {
         ciaHi:   cw('cpu_get_cia_timer_hi', 'number', []),
         ciaWritten: cw('cpu_get_cia_timer_written', 'number', []),
     };
+}
+
+// Copy the music into the analyser's RAM in one call. Bytes that would land
+// past $FFFF are dropped: sid_analyze refuses such a tune outright, and wrapping
+// them round would overwrite zero page.
+export function loadMusic(module, sidBytes, musicStart, loadAddress) {
+    const music = sidBytes.subarray(musicStart, musicStart + 0x10000 - loadAddress);
+    if (!music.length) return;
+    const ptr = module._malloc(music.length);
+    module.HEAPU8.set(music, ptr);
+    module.cwrap('cpu_load_memory', null, ['number', 'number', 'number'])(loadAddress, ptr, music.length);
+    module._free(ptr);
 }
 
 // Returns a function that runs one play call within a cycle cap and answers
@@ -140,9 +152,7 @@ export function fingerprintTune(module, sidBytes, { subtune = 0, maxFrames, isNt
 
     api.cpuInit();
     api.env();
-    for (let i = h.musicStart; i < sidBytes.length; i++) {
-        api.wr((h.loadAddress + (i - h.musicStart)) & 0xffff, sidBytes[i]);
-    }
+    loadMusic(module, sidBytes, h.musicStart, h.loadAddress);
     api.reset();
     api.track(1);
     api.setA(subtune); api.setX(subtune); api.setY(subtune);

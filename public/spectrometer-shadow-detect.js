@@ -12,7 +12,7 @@
 //      repointing them at the shadow page captures 100% of the writes. This is
 //      the only check that can disqualify a tune.
 
-import { PLAY_CYCLE_CAP, playTiming } from './loop-prepass.js';
+import { PLAY_CYCLE_CAP, playTiming, loadMusic } from './loop-prepass.js';
 
 const MEM_WRITE = 1 << 2;
 const MEM_OPCODE = 1 << 4;   // the first byte of an executed instruction
@@ -72,7 +72,7 @@ export const SHADOW_SCAN_FRAMES = Math.round(20 * 60 * 50.1245);
 // `frames` play calls with recording on. Returns the per-frame first-write
 // orders (arrays of register offsets 0..), or null when init never returns.
 // Leaves memory-access flags populated.
-function loadAndRun(api, sidBytes, opts, patches) {
+function loadAndRun(module, api, sidBytes, opts, patches) {
     const { initAddress, playAddress, loadAddress, subtune = 0, frames = SHADOW_SCAN_FRAMES, warmup = 8 } = opts;
     const dataOffset = (sidBytes[6] << 8) | sidBytes[7];
     const hdrLoad = (sidBytes[8] << 8) | sidBytes[9];
@@ -80,7 +80,7 @@ function loadAndRun(api, sidBytes, opts, patches) {
 
     api.cpuInit();
     api.env();
-    for (let i = musicStart; i < sidBytes.length; i++) api.wr((loadAddress + (i - musicStart)) & 0xffff, sidBytes[i]);
+    loadMusic(module, sidBytes, musicStart, loadAddress);
     if (patches) for (const [addr, val] of patches) api.wr(addr & 0xffff, val & 0xff);
     api.reset();
     api.track(1);
@@ -181,7 +181,7 @@ export function analyzeShadow(module, sidBytes, opts) {
         : sidBytes.length - ((sidBytes[6] << 8) | sidBytes[7]);
 
     // Pass 1: unpatched run -> write-order consistency + execute flags.
-    const orders = loadAndRun(api, sidBytes, opts);
+    const orders = loadAndRun(module, api, sidBytes, opts);
     if (!orders) {
         // Init never returned, so nothing below would describe the tune.
         return {
@@ -220,7 +220,7 @@ export function analyzeShadow(module, sidBytes, opts) {
     // Pass 2: patch every site's high byte to the shadow page and re-run; if the
     // redirect is complete, ZERO writes should reach the real $D4xx registers.
     const patches = storeSites.map(off => [loadAddress + off, shadowHi]);
-    loadAndRun(api, sidBytes, opts, patches);
+    loadAndRun(module, api, sidBytes, opts, patches);
     // Write counts are kept per register ($00-$1F), pooled across every chip in
     // $D400-$D7FF - so any chip's leaked write shows up here whatever its address.
     let leaked = 0;
@@ -289,9 +289,7 @@ export function analyzeVuVisibility(module, sidBytes, opts) {
 
     api.cpuInit();
     api.env();
-    for (let i = musicStart; i < sidBytes.length; i++) {
-        api.wr((loadAddress + (i - musicStart)) & 0xffff, sidBytes[i]);
-    }
+    loadMusic(module, sidBytes, musicStart, loadAddress);
     api.reset();
     api.track(1);
     api.setA(subtune); api.setX(subtune); api.setY(subtune);
@@ -387,6 +385,6 @@ export function soundsDuring(module, sidBytes, subtune, seconds) {
 // Back-compat: just the order-consistency check.
 export function detectWriteOrder(module, sidBytes, opts) {
     const api = makeApi(module);
-    const ord = dominantOrder(loadAndRun(api, sidBytes, opts) || []);
+    const ord = dominantOrder(loadAndRun(module, api, sidBytes, opts) || []);
     return { ...ord, suitable: ord.consistency >= 0.90 && ord.order.length > 0 };
 }
