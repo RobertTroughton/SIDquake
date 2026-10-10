@@ -311,6 +311,14 @@ class UIController {
             window.loadScript('sid-player.js')
         ]);
         this.mainPlayer = new SIDPlayer(container);
+        // The chip model shows in the HVSC info panel, and the visualizer's
+        // smoothing should not carry one tune's levels into the next.
+        this.mainPlayer.onModelChange = () => {
+            if (window.hvscBrowser && window.hvscBrowser.refreshInfoPanel) window.hvscBrowser.refreshInfoPanel();
+        };
+        this.mainPlayer.onSubtuneStep = () => {
+            if (window.hvscVisualizer && window.hvscVisualizer.reset) window.hvscVisualizer.reset();
+        };
         // The tune stepped to on the transport is the tune the user means to
         // export, so the Song tab's picker follows it.
         this.mainPlayer.onSubtuneChange = (index) => this.followPlayedSubtune(index);

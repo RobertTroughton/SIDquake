@@ -18,6 +18,11 @@ class SIDPlayer {
         this._lastLoadedFilename = null;
         this._ownershipLost = false;
         this._paused = false;           // paused (not stopped): Play resumes
+        // Set by whoever hosts the player: onModelChange() after the chip model
+        // changes, onSubtuneStep() when the transport moves to another tune,
+        // before it plays (see also onSubtuneChange).
+        this.onModelChange = null;
+        this.onSubtuneStep = null;
         this.buildUI();
     }
 
@@ -128,9 +133,7 @@ class SIDPlayer {
             document.querySelectorAll('.sid-player-model-select').forEach(sel => {
                 if (sel !== this.els.modelSelect) sel.value = choice;
             });
-            if (window.hvscBrowser && window.hvscBrowser.refreshInfoPanel) {
-                window.hvscBrowser.refreshInfoPanel();
-            }
+            if (typeof this.onModelChange === 'function') this.onModelChange();
         });
 
         // Volume: restore the saved level and keep all sliders in sync.
@@ -394,7 +397,7 @@ class SIDPlayer {
             this.currentSubtune--;
             this._paused = false;
             this.updateSubtuneDisplay();
-            if (window.hvscVisualizer && window.hvscVisualizer.reset) window.hvscVisualizer.reset();
+            if (typeof this.onSubtuneStep === 'function') this.onSubtuneStep();
             if (this.isPlaying) this.play();
         }
     }
@@ -404,7 +407,7 @@ class SIDPlayer {
             this.currentSubtune++;
             this._paused = false;
             this.updateSubtuneDisplay();
-            if (window.hvscVisualizer && window.hvscVisualizer.reset) window.hvscVisualizer.reset();
+            if (typeof this.onSubtuneStep === 'function') this.onSubtuneStep();
             if (this.isPlaying) this.play();
         }
     }
@@ -416,7 +419,7 @@ class SIDPlayer {
         this.currentSubtune = want;
         this._paused = false;
         this.updateSubtuneDisplay();
-        if (window.hvscVisualizer && window.hvscVisualizer.reset) window.hvscVisualizer.reset();
+        if (typeof this.onSubtuneStep === 'function') this.onSubtuneStep();
         if (this.isPlaying) this.play();
     }
 
