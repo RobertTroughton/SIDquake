@@ -57,7 +57,9 @@ called that way. A load that fails any check, including "does not fit in 64K"
 
 **`analysis-store.js`**, **`loop-prepass.js`**, **`spectrometer-shadow-detect.js`**
 and the `spectrometer-bake*.js` family consume the analyser; the bake is
-described in `BAR_HEIGHT_METHODS.md`.
+described in `BAR_HEIGHT_METHODS.md`. The pre-pass and the shadow and VU scans
+give each play call the same 20,000-cycle budget as `sid_analyze`
+(`PLAY_CYCLE_CAP`, exported by `loop-prepass.js`).
 
 ## Song length and loop detection
 
@@ -115,7 +117,7 @@ documented in [`tools/songlengths/README.md`](../tools/songlengths/README.md).
   in the test (`scripts/lib/psid-asm.js`).
 - `scripts/test-shadow-detect.js`: the shadow scan reaches late store sites,
   waits out a long init and drives play-address-0 tunes; the VU warning's audio
-  check runs init.
+  check runs init; a play call over the cycle budget ends the VU scan.
 - `scripts/test-range-fit.js`, `scripts/test-bake-cache.js`,
   `scripts/test-baked-decoder.js`, `scripts/test-shadow-replay.js`: the bar-data
   methods (see `BAR_HEIGHT_METHODS.md`).

@@ -12,6 +12,8 @@
 //      repointing them at the shadow page captures 100% of the writes. This is
 //      the only check that can disqualify a tune.
 
+import { PLAY_CYCLE_CAP } from './loop-prepass.js';
+
 const MEM_WRITE = 1 << 2;
 const MEM_OPCODE = 1 << 4;   // the first byte of an executed instruction
 
@@ -88,7 +90,7 @@ function loadAndRun(api, sidBytes, opts, patches) {
     const orders = [];
     for (let f = 0; f < frames; f++) {
         api.record(1);
-        if (play(100000) === 0) break;
+        if (play(PLAY_CYCLE_CAP) === 0) break;
         if (f < warmup) continue;
         const len = api.seqLen();
         const seen = new Set(), order = [];
@@ -302,7 +304,7 @@ export function analyzeVuVisibility(module, sidBytes, opts) {
 
     let ran = 0, quiet = 0, leading = 0, stillLeading = true;
     for (let f = 0; play && f < frames; f++) {
-        if (play(100000) === 0) break;
+        if (play(PLAY_CYCLE_CAP) === 0) break;
         ran++;
         let audible = false;
         for (const addr of controls) {

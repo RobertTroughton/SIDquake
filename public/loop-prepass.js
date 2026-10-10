@@ -37,7 +37,7 @@
 const PAL_CYCLES_PER_FRAME = 19656;    // 312 lines * 63 cycles
 const NTSC_CYCLES_PER_FRAME = 17095;   // 263 lines * 65 cycles
 const INIT_CYCLE_CAP = 20000000;       // ~20 s of C64 time, matches sid_analyze's per-song ceiling
-const PLAY_CYCLE_CAP = 20000;          // one raster frame, matches sid_analyze
+export const PLAY_CYCLE_CAP = 20000;   // one raster frame, matches sid_analyze
 const MAX_CALLS_PER_FRAME = 16;
 
 const be16 = (b, o) => (b[o] << 8) | b[o + 1];
