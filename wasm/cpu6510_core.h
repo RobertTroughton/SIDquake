@@ -5,12 +5,13 @@
 // how memory is reached and what gets recorded on the way. That difference is
 // the Bus template parameter, so the decoder itself exists in one place.
 //
-// A Bus supplies the register file by reference plus five operations:
+// A Bus supplies the register file by reference plus six operations:
 //
 //   uint16_t& pc;  uint8_t& sp, a, x, y, st;   // live registers
 //   uint8_t fetch(uint16_t addr)               // instruction stream read
 //   uint8_t read(uint16_t addr)                // data read
 //   void    write(uint16_t addr, uint8_t val)  // data write
+//   void    dummyWrite(uint16_t addr, uint8_t val)  // RMW write-back, below
 //   void    jumpTarget(uint16_t addr)          // JMP/JSR destination
 //   void    jam()                              // a KIL opcode executed
 //
@@ -18,6 +19,10 @@
 // reads but covers the instruction stream with its execute flags instead, and
 // because the audio core routes read()/write() through the SID chips while
 // instructions are always plain RAM.
+//
+// Every read-modify-write instruction writes the unmodified value back before
+// the modified one, as the NMOS 6502 does; dummyWrite() carries that first
+// write, so a bus can pass it to I/O without counting it as a store.
 //
 // step() runs one instruction and returns its cycle count, page-crossing and
 // branch-taken penalties included.
@@ -145,10 +150,11 @@ struct Core {
         setZN(v);
         return v;
     }
-    void rmw_asl(uint16_t a) { b.write(a, do_asl(b.read(a))); }
-    void rmw_lsr(uint16_t a) { b.write(a, do_lsr(b.read(a))); }
-    void rmw_rol(uint16_t a) { b.write(a, do_rol(b.read(a))); }
-    void rmw_ror(uint16_t a) { b.write(a, do_ror(b.read(a))); }
+    void rmw_store(uint16_t a, uint8_t old, uint8_t v) { b.dummyWrite(a, old); b.write(a, v); }
+    void rmw_asl(uint16_t a) { uint8_t o = b.read(a); rmw_store(a, o, do_asl(o)); }
+    void rmw_lsr(uint16_t a) { uint8_t o = b.read(a); rmw_store(a, o, do_lsr(o)); }
+    void rmw_rol(uint16_t a) { uint8_t o = b.read(a); rmw_store(a, o, do_rol(o)); }
+    void rmw_ror(uint16_t a) { uint8_t o = b.read(a); rmw_store(a, o, do_ror(o)); }
 
     void do_lax(uint8_t v) { b.a = v; b.x = v; setZN(v); }
 
@@ -305,14 +311,14 @@ int Core<Bus>::step() {
     }
 
     // ---- INC / DEC memory ----
-    case 0xE6: { uint16_t a = ea_zp();   uint8_t v = uint8_t(b.read(a) + 1); b.write(a, v); setZN(v); return 5; }
-    case 0xF6: { uint16_t a = ea_zpx();  uint8_t v = uint8_t(b.read(a) + 1); b.write(a, v); setZN(v); return 6; }
-    case 0xEE: { uint16_t a = ea_abs();  uint8_t v = uint8_t(b.read(a) + 1); b.write(a, v); setZN(v); return 6; }
-    case 0xFE: { uint16_t a = ea_absx(); uint8_t v = uint8_t(b.read(a) + 1); b.write(a, v); setZN(v); return 7; }
-    case 0xC6: { uint16_t a = ea_zp();   uint8_t v = uint8_t(b.read(a) - 1); b.write(a, v); setZN(v); return 5; }
-    case 0xD6: { uint16_t a = ea_zpx();  uint8_t v = uint8_t(b.read(a) - 1); b.write(a, v); setZN(v); return 6; }
-    case 0xCE: { uint16_t a = ea_abs();  uint8_t v = uint8_t(b.read(a) - 1); b.write(a, v); setZN(v); return 6; }
-    case 0xDE: { uint16_t a = ea_absx(); uint8_t v = uint8_t(b.read(a) - 1); b.write(a, v); setZN(v); return 7; }
+    case 0xE6: { uint16_t a = ea_zp();   uint8_t o = b.read(a); uint8_t v = uint8_t(o + 1); rmw_store(a, o, v); setZN(v); return 5; }
+    case 0xF6: { uint16_t a = ea_zpx();  uint8_t o = b.read(a); uint8_t v = uint8_t(o + 1); rmw_store(a, o, v); setZN(v); return 6; }
+    case 0xEE: { uint16_t a = ea_abs();  uint8_t o = b.read(a); uint8_t v = uint8_t(o + 1); rmw_store(a, o, v); setZN(v); return 6; }
+    case 0xFE: { uint16_t a = ea_absx(); uint8_t o = b.read(a); uint8_t v = uint8_t(o + 1); rmw_store(a, o, v); setZN(v); return 7; }
+    case 0xC6: { uint16_t a = ea_zp();   uint8_t o = b.read(a); uint8_t v = uint8_t(o - 1); rmw_store(a, o, v); setZN(v); return 5; }
+    case 0xD6: { uint16_t a = ea_zpx();  uint8_t o = b.read(a); uint8_t v = uint8_t(o - 1); rmw_store(a, o, v); setZN(v); return 6; }
+    case 0xCE: { uint16_t a = ea_abs();  uint8_t o = b.read(a); uint8_t v = uint8_t(o - 1); rmw_store(a, o, v); setZN(v); return 6; }
+    case 0xDE: { uint16_t a = ea_absx(); uint8_t o = b.read(a); uint8_t v = uint8_t(o - 1); rmw_store(a, o, v); setZN(v); return 7; }
 
     // ---- INX / INY / DEX / DEY ----
     case 0xE8: b.x++; setZN(b.x); return 2;
@@ -439,8 +445,9 @@ int Core<Bus>::step() {
         case 0xC3: a = ea_indx(); cyc = 8; break;
         default:   a = ea_indy(); cyc = 8; break;
         }
-        uint8_t v = uint8_t(b.read(a) - 1);
-        b.write(a, v);
+        uint8_t o = b.read(a);
+        uint8_t v = uint8_t(o - 1);
+        rmw_store(a, o, v);
         do_cmp(b.a, v);
         return cyc;
     }
@@ -457,8 +464,9 @@ int Core<Bus>::step() {
         case 0xE3: a = ea_indx(); cyc = 8; break;
         default:   a = ea_indy(); cyc = 8; break;
         }
-        uint8_t v = uint8_t(b.read(a) + 1);
-        b.write(a, v);
+        uint8_t o = b.read(a);
+        uint8_t v = uint8_t(o + 1);
+        rmw_store(a, o, v);
         do_sbc(v);
         return cyc;
     }
@@ -475,10 +483,10 @@ int Core<Bus>::step() {
         case 0x03: a = ea_indx(); cyc = 8; break;
         default:   a = ea_indy(); cyc = 8; break;
         }
-        uint8_t v = b.read(a);
-        setFlag(FLAG_C, (v & 0x80) != 0);
-        v = uint8_t(v << 1);
-        b.write(a, v);
+        uint8_t o = b.read(a);
+        setFlag(FLAG_C, (o & 0x80) != 0);
+        uint8_t v = uint8_t(o << 1);
+        rmw_store(a, o, v);
         b.a |= v;
         setZN(b.a);
         return cyc;
@@ -496,11 +504,11 @@ int Core<Bus>::step() {
         case 0x23: a = ea_indx(); cyc = 8; break;
         default:   a = ea_indy(); cyc = 8; break;
         }
-        uint8_t v = b.read(a);
+        uint8_t o = b.read(a);
         bool c = testFlag(FLAG_C);
-        setFlag(FLAG_C, (v & 0x80) != 0);
-        v = uint8_t((v << 1) | (c ? 1 : 0));
-        b.write(a, v);
+        setFlag(FLAG_C, (o & 0x80) != 0);
+        uint8_t v = uint8_t((o << 1) | (c ? 1 : 0));
+        rmw_store(a, o, v);
         b.a &= v;
         setZN(b.a);
         return cyc;
@@ -518,10 +526,10 @@ int Core<Bus>::step() {
         case 0x43: a = ea_indx(); cyc = 8; break;
         default:   a = ea_indy(); cyc = 8; break;
         }
-        uint8_t v = b.read(a);
-        setFlag(FLAG_C, (v & 1) != 0);
-        v = uint8_t(v >> 1);
-        b.write(a, v);
+        uint8_t o = b.read(a);
+        setFlag(FLAG_C, (o & 1) != 0);
+        uint8_t v = uint8_t(o >> 1);
+        rmw_store(a, o, v);
         b.a ^= v;
         setZN(b.a);
         return cyc;
@@ -539,11 +547,11 @@ int Core<Bus>::step() {
         case 0x63: a = ea_indx(); cyc = 8; break;
         default:   a = ea_indy(); cyc = 8; break;
         }
-        uint8_t v = b.read(a);
+        uint8_t o = b.read(a);
         bool c = testFlag(FLAG_C);
-        setFlag(FLAG_C, (v & 1) != 0);
-        v = uint8_t((v >> 1) | (c ? 0x80 : 0));
-        b.write(a, v);
+        setFlag(FLAG_C, (o & 1) != 0);
+        uint8_t v = uint8_t((o >> 1) | (c ? 0x80 : 0));
+        rmw_store(a, o, v);
         do_adc(v);
         return cyc;
     }

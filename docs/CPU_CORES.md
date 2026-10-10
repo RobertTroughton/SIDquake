@@ -2,8 +2,8 @@
 
 The instruction set lives once, in `wasm/cpu6510_core.h`. It is a template over
 a *bus*: a type supplying the register file by reference plus `fetch`, `read`,
-`write`, `jumpTarget` and `jam`. Two bus adapters use it, for two different
-jobs:
+`write`, `dummyWrite`, `jumpTarget` and `jam`. Two bus adapters use it, for two
+different jobs:
 
 | | source | job |
 |---|---|---|
@@ -19,6 +19,15 @@ writes through the SID chips. Instruction fetch is a separate operation from
 data read in both: the analysis core covers the instruction stream with
 `MEM_EXECUTE`/`MEM_OPCODE` rather than `MEM_READ`, and the audio core must not
 let an instruction fetch reach reSID.
+
+Every read-modify-write instruction (`ASL`/`LSR`/`ROL`/`ROR`/`INC`/`DEC` on
+memory, `SLO`/`RLA`/`SRE`/`RRA`/`DCP`/`ISC`) writes the unmodified value back
+before the modified one, as the NMOS 6502 does, and the core hands that first
+write to the bus as `dummyWrite`. The audio adapter sends it through its normal
+write path, so reSID hears both writes of an `INC $D4xx`. The analysis adapter
+drops it: it models no write-sensitive I/O, and counting it would double every
+read-modify-write in `sidWrites`, `zpWrites` and the shadow-register write
+sequence.
 
 All 256 opcodes are decoded, illegals included.
 
@@ -76,11 +85,6 @@ only exclusions are the ones listed under "What is still not modelled".
 
 ## What is still not modelled
 
-- **The NMOS read-modify-write double write.** Real hardware writes the
-  unmodified value back before the modified one, which is visible on I/O
-  registers. Adding it would double every `INC`/`DEC`/shift on a tracked
-  address in `sidWrites`, `zpWrites` and the shadow-register write sequence, so
-  it needs those consumers looked at first.
 - **`XAA` (`$8B`) and `LAX #imm` (`$AB`) instability.** Both use the common
   magic constant `$EE` (`A = (A | $EE) & X & imm` and
   `A = X = (A | $EE) & imm`), as Tom Harte's tests do; on real hardware the

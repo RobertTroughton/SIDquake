@@ -43,6 +43,7 @@ struct FlatBus {
     uint8_t fetch(uint16_t addr) { return m.mem[addr]; }
     uint8_t read(uint16_t addr) { return m.mem[addr]; }
     void write(uint16_t addr, uint8_t val) { m.mem[addr] = val; m.writes.push_back({addr, val}); }
+    void dummyWrite(uint16_t addr, uint8_t val) { write(addr, val); }
     void jumpTarget(uint16_t) {}
     void jam() { m.jammed = true; }
 };
@@ -62,26 +63,6 @@ static bool skipOpcode(uint8_t op) {
     // halt to its bus and stops instead, so there is no final state to compare.
     if ((op & 0x0F) == 0x02 && op != 0x82 && op != 0xA2 && op != 0xC2 && op != 0xE2)
         return true;
-    return false;
-}
-
-// Opcodes whose bus writes are not compared, only the state they leave.
-static bool skipWriteSequence(uint8_t op) {
-    // Read-modify-write: the core does not make the NMOS dummy write of the
-    // unmodified value before the modified one.
-    switch (op) {
-    case 0x06: case 0x16: case 0x0E: case 0x1E: case 0x46: case 0x56: case 0x4E: case 0x5E:
-    case 0x26: case 0x36: case 0x2E: case 0x3E: case 0x66: case 0x76: case 0x6E: case 0x7E:
-    case 0xE6: case 0xF6: case 0xEE: case 0xFE: case 0xC6: case 0xD6: case 0xCE: case 0xDE:
-        return true;
-    }
-    // SLO/RLA/SRE/RRA/DCP/ISC: columns 3, 7, F of every row outside $80-$BF.
-    if ((op & 0xC0) != 0x80) {
-        switch (op & 0x1F) {
-        case 0x03: case 0x07: case 0x0F: case 0x13: case 0x17: case 0x1B: case 0x1F:
-            return true;
-        }
-    }
     return false;
 }
 
@@ -200,7 +181,7 @@ static bool readCase(Reader& r, Case& c) {
 // ---- Harte -----------------------------------------------------------------
 
 // Runs one case; returns an empty string on a match, else what differed.
-static std::string runCase(uint8_t op, const Case& c) {
+static std::string runCase(const Case& c) {
     for (auto& e : c.initial.ram) m.mem[e.first] = e.second;
     m.pc = c.initial.pc; m.sp = c.initial.s; m.a = c.initial.a;
     m.x = c.initial.x; m.y = c.initial.y; m.st = c.initial.p;
@@ -237,7 +218,7 @@ static std::string runCase(uint8_t op, const Case& c) {
             err = buf;
         }
     }
-    if (err.empty() && !skipWriteSequence(op)) {
+    if (err.empty()) {
         // The bus writes, in order. Reads are not compared: the core does not
         // make the 6502's dummy reads, which only matter to read-sensitive I/O.
         std::vector<std::pair<uint16_t, uint8_t>> want;
@@ -281,7 +262,7 @@ static int runHarte(const char* dir, int nFiles, char** files) {
         while (r.ok && !r.peek(']')) {
             if (!readCase(r, c)) break;
             cases++;
-            std::string err = runCase(op, c);
+            std::string err = runCase(c);
             if (!err.empty()) {
                 if (!bad) { firstName = c.name; firstErr = err; }
                 bad++;

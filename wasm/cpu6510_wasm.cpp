@@ -226,6 +226,9 @@ extern "C" {
             return cpu.memory[addr];
         }
         void write(uint16_t addr, uint8_t value) { write_memory_internal(addr, value); }
+        // The analyser models no write-sensitive I/O, and counting the RMW
+        // write-back would double every INC/DEC/shift in the write tracking.
+        void dummyWrite(uint16_t, uint8_t) {}
         void jumpTarget(uint16_t addr) {
             if (cpu.trackingEnabled) cpu.memoryAccess[addr] |= MEM_JUMP_TARGET;
         }
