@@ -6,6 +6,8 @@
  *   - Pause, stop, a subtune change and a reload ramp the output to silence
  *     before the worklet's queue is cut or the graph disconnected, so the
  *     waveform does not stop mid-cycle.
+ *   - The clock counts audio still queued at the fast-forward speed it was
+ *     rendered at, so it does not jump when the speed changes.
  *
  * Run with `node scripts/test-playback.js`.
  */
@@ -120,6 +122,21 @@ const isRampDown = (e) => e.gain === 'ramp' && e.v === 0;
         await pb._applyLoad(new Uint8Array(0x7c).buffer).catch(() => {});
         check(at(log, isRampDown) !== -1 && (at(log, isCut) === -1 || at(log, isCut) > at(log, isRampDown)),
             'no cut before the fade-out', JSON.stringify(log));
+    }
+
+    console.log('a speed change does not rescale audio already queued');
+    {
+        // One chunk is one second at this rate.
+        const { pb } = makePlayback({ sampleRate: 4096 });
+        let rendered = 0;
+        pb.api.audio_generate = () => { rendered += pb.speed; return 4096; };
+        pb.api.audio_get_play_time = () => rendered;
+        for (let i = 0; i < 6; i++) pb._generateAndPost();
+        pb.setSpeed(4);
+        for (let i = 0; i < 2; i++) pb._generateAndPost();
+        // The worklet has played 5 of the 1x chunks: 1 + 2 chunks still queued.
+        pb._queuedSamples = 3 * 4096;
+        check(pb.getAudibleTime() === 5, 'clock shows the 5 s heard', `got ${pb.getAudibleTime()}`);
     }
 
     console.log(failures ? `\n${failures} check(s) FAILED` : '\nall checks passed');

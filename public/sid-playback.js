@@ -34,6 +34,9 @@ class SIDPlayback {
         // allocating one per chunk; and how much audio it last said it held.
         this._bufferPool = [];
         this._queuedSamples = 0;
+        // Length and fast-forward speed of the chunks posted since the last
+        // flush, oldest first; enough of them to cover the worklet's queue.
+        this._postedChunks = [];
         // The subtune the engine was just initialised on and has rendered
         // nothing of yet, or -1. Selecting it again would only re-initialise
         // the C64 to the state it is already in.
@@ -240,6 +243,9 @@ class SIDPlayback {
             floatSamples[i] = int16View[i] / 32768.0;
         }
 
+        this._postedChunks.push({ samples: generated, speed: this.speed || 1 });
+        if (this._postedChunks.length > 32) this._postedChunks.shift();
+
         // Transfer the buffer to the worklet (zero-copy)
         this.workletNode.port.postMessage(
             { type: 'samples', samples: floatSamples },
@@ -401,6 +407,7 @@ class SIDPlayback {
 
             // Pre-fill the worklet queue so playback starts immediately
             this._workletBuffered = 0;
+            this._postedChunks.length = 0;
             this._fillWorkletQueue();
             this._queuedSamples = this._workletBuffered;
         } else {
@@ -581,7 +588,17 @@ class SIDPlayback {
      *  queued in the worklet (at the fast-forward rate it was rendered at). */
     getAudibleTime() {
         if (!this.api || !this.loaded || !this.audioCtx) return 0;
-        const queued = this._queuedSamples / this.audioCtx.sampleRate * (this.speed || 1);
+        // The queue is the newest audio posted, so walk the chunks back from
+        // the last one.
+        let left = this._queuedSamples;
+        let scaled = 0;
+        for (let i = this._postedChunks.length - 1; i >= 0 && left > 0; i--) {
+            const n = Math.min(left, this._postedChunks[i].samples);
+            scaled += n * this._postedChunks[i].speed;
+            left -= n;
+        }
+        scaled += left * (this.speed || 1);
+        const queued = scaled / this.audioCtx.sampleRate;
         return Math.max(0, Math.floor(this.api.audio_get_play_time() - queued));
     }
 

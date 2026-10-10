@@ -32,7 +32,8 @@ The rest:
 - `scripts/test-worklet.js`: the AudioWorklet asks again when a request comes
   back empty, keeps its queue across a pause, and hands spent blocks back.
 - `scripts/test-playback.js`: `sid-playback.js` against stubbed Web Audio
-  objects: pause, stop, a subtune change and a reload fade out before they cut.
+  objects: pause, stop, a subtune change and a reload fade out before they cut,
+  and the clock counts queued audio at the speed it was rendered at.
 - `scripts/test-sidquake-core.js`: starting the page's analyser leaves the
   `SIDquakeModule` factory callable for the other loaders, and `analyze()`
   reports writes to `$FFFF` and zero-page `$FF`.

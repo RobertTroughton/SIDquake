@@ -65,7 +65,8 @@ request has come back empty. Each block it finishes goes back to the page
 (`recycle`, transferred) for the next chunk to be rendered into, carrying how
 much audio is still queued; `SIDPlayback.getAudibleTime()` subtracts that from
 the engine's time, so the pill's clock shows what has been heard rather than
-what has been rendered.
+what has been rendered. It counts each queued chunk at the fast-forward speed it
+was rendered at, so a speed change doesn't make the clock jump.
 
 The engine initialises the C64 once per load, per subtune selected, and per
 real chip or quality change (`engine->config()` re-initialises a loaded tune
