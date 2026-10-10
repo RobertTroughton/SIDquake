@@ -1,0 +1,149 @@
+{
+ "analysis": {
+  "modifiedCount": 321,
+  "modifiedHash": "6564c56d79e306cf",
+  "zeroPage": [
+   144,
+   145,
+   146,
+   147,
+   148,
+   149,
+   150,
+   151,
+   152,
+   153,
+   154,
+   155,
+   156,
+   157,
+   158,
+   159,
+   160,
+   161,
+   162,
+   163,
+   164,
+   165,
+   166,
+   167,
+   168,
+   169,
+   170,
+   171,
+   172,
+   173
+  ],
+  "codeBytes": 2567,
+  "dataBytes": 4588,
+  "sidRegisterWrites": [
+   4456,
+   4456,
+   4253,
+   4253,
+   659,
+   282,
+   282,
+   4418,
+   4418,
+   5048,
+   5048,
+   289,
+   178,
+   178,
+   2112,
+   2112,
+   4297,
+   4297,
+   429,
+   252,
+   252,
+   0,
+   0,
+   0,
+   5,
+   0,
+   0,
+   0,
+   0,
+   0,
+   0,
+   0
+  ],
+  "chips": [
+   54272
+  ],
+  "resolvedPlayAddress": 49120,
+  "callsPerFrame": 1,
+  "ciaTimerValue": 0,
+  "maxCycles": 3576,
+  "initTimeouts": 0,
+  "longestInitCycles": 1174
+ },
+ "subtunes": [
+  {
+   "trace": {
+    "calls": 3000,
+    "writes": 23759,
+    "blocks": [
+     "143f909eeceda130",
+     "dd55ddc10980c61a",
+     "a3f65d660e070cad",
+     "aa8b85290e8452a4",
+     "3182e2273ec55b1e",
+     "f2f4f0e7d7af550f"
+    ]
+   },
+   "resid": "176400:25c19a28684ae43a",
+   "sidplayfp": "176400:544a4d557ed5d6bc"
+  },
+  {
+   "trace": {
+    "calls": 3000,
+    "writes": 26792,
+    "blocks": [
+     "68ca0a1e46aaadbc",
+     "348f2bce7faf1c3b",
+     "0c95dc2641a63cde",
+     "c572cecdfbc2f8d1",
+     "d040f94d5ad3141b",
+     "55a181bf6aab2136"
+    ]
+   },
+   "resid": "176400:04371c8ebc61dcdd",
+   "sidplayfp": "176400:428d805056b2ead8"
+  },
+  {
+   "trace": {
+    "calls": 3000,
+    "writes": 12575,
+    "blocks": [
+     "ffcaed866fa8782c",
+     "e357798df5510dc7",
+     "a1611a6e6a6f317b",
+     "da39a3ee5e6b4b0d",
+     "da39a3ee5e6b4b0d",
+     "da39a3ee5e6b4b0d"
+    ]
+   },
+   "resid": "176400:4c0988486555588f",
+   "sidplayfp": "176400:da4afd1b5951e904"
+  },
+  {
+   "trace": {
+    "calls": 3000,
+    "writes": 28966,
+    "blocks": [
+     "da0f3fc0c3080dc7",
+     "294b9f773b073016",
+     "4bc891a8fb56aac7",
+     "ab57880fb71dba6f",
+     "189898ab33e499af",
+     "b7bf76516dda641b"
+    ]
+   },
+   "resid": "176400:97065745b80eb842",
+   "sidplayfp": "176400:5f5d576692af3c51"
+  }
+ ]
+}

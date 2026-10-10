@@ -1,0 +1,121 @@
+{
+ "analysis": {
+  "modifiedCount": 145,
+  "modifiedHash": "6f79a6baa2c0698a",
+  "zeroPage": [
+   251,
+   252
+  ],
+  "codeBytes": 956,
+  "dataBytes": 4403,
+  "sidRegisterWrites": [
+   7500,
+   7500,
+   7500,
+   7500,
+   7500,
+   7500,
+   7500,
+   7500,
+   7500,
+   7500,
+   7500,
+   7500,
+   7500,
+   7500,
+   7500,
+   7500,
+   7500,
+   7500,
+   7500,
+   7500,
+   7500,
+   7500,
+   7500,
+   7500,
+   7500,
+   0,
+   0,
+   0,
+   0,
+   0,
+   0,
+   0
+  ],
+  "chips": [
+   54272
+  ],
+  "resolvedPlayAddress": 4099,
+  "callsPerFrame": 1,
+  "ciaTimerValue": 0,
+  "maxCycles": 1397,
+  "initTimeouts": 0,
+  "longestInitCycles": 21
+ },
+ "subtunes": [
+  {
+   "trace": {
+    "calls": 3000,
+    "writes": 75000,
+    "blocks": [
+     "b2c473627d95c275",
+     "403c1bebe3a19e78",
+     "dccfc8f45cd18739",
+     "f868a0795ce15f11",
+     "24746a76186fa4f0",
+     "0aeffcb84876996c"
+    ]
+   },
+   "resid": "176400:25efc636a52a3a47",
+   "sidplayfp": "176400:dc239b24ce1c8822"
+  },
+  {
+   "trace": {
+    "calls": 3000,
+    "writes": 75000,
+    "blocks": [
+     "8ffa369356005710",
+     "9b3407cec94b39c3",
+     "83a58041de0a9efc",
+     "283930b19aabb4a8",
+     "727dcdcbf7bffcbb",
+     "a8320e3dc7258a12"
+    ]
+   },
+   "resid": "176400:07fe22a2434c0438",
+   "sidplayfp": "176400:9000e29b29b611ae"
+  },
+  {
+   "trace": {
+    "calls": 3000,
+    "writes": 75000,
+    "blocks": [
+     "c9809c2e10f2a711",
+     "536c08764b9ed4ff",
+     "adf0bd8e740ff866",
+     "ad50b36b1dc80cd3",
+     "1cbd32fd25f6b899",
+     "bf699ab96792c339"
+    ]
+   },
+   "resid": "176400:e6efd480a477dc18",
+   "sidplayfp": "176400:9a1545660d8559bd"
+  },
+  {
+   "trace": {
+    "calls": 3000,
+    "writes": 75000,
+    "blocks": [
+     "72f5ffa9f45094fd",
+     "3bc36f69b39982b4",
+     "36d10f275960def9",
+     "3dab704388f88cb0",
+     "8afa152a38c92ccb",
+     "2110253e2ebaf585"
+    ]
+   },
+   "resid": "176400:ab8c3a7bd939efb5",
+   "sidplayfp": "176400:44c58576b5773a05"
+  }
+ ]
+}

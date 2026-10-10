@@ -1,0 +1,105 @@
+{
+ "analysis": {
+  "modifiedCount": 142,
+  "modifiedHash": "57356bb500e626ea",
+  "zeroPage": [
+   254,
+   255
+  ],
+  "codeBytes": 899,
+  "dataBytes": 4534,
+  "sidRegisterWrites": [
+   4500,
+   4500,
+   4500,
+   4500,
+   4500,
+   4500,
+   4500,
+   4500,
+   4500,
+   4500,
+   4500,
+   4500,
+   4500,
+   4500,
+   4500,
+   4500,
+   4500,
+   4500,
+   4500,
+   4500,
+   4500,
+   4500,
+   4500,
+   4500,
+   4500,
+   0,
+   0,
+   0,
+   0,
+   0,
+   0,
+   0
+  ],
+  "chips": [
+   54272
+  ],
+  "resolvedPlayAddress": 16387,
+  "callsPerFrame": 1,
+  "ciaTimerValue": 0,
+  "maxCycles": 1239,
+  "initTimeouts": 0,
+  "longestInitCycles": 21
+ },
+ "subtunes": [
+  {
+   "trace": {
+    "calls": 3000,
+    "writes": 75000,
+    "blocks": [
+     "52d05ab3447f3187",
+     "132f531504fa9ee2",
+     "e66c05015f75f167",
+     "11bb7d1ed95eb942",
+     "082fc203a2f55606",
+     "81599aa617a5b408"
+    ]
+   },
+   "resid": "176400:1b54d873bb7649ba",
+   "sidplayfp": "176400:d87c6fb4b0e9d72f"
+  },
+  {
+   "trace": {
+    "calls": 3000,
+    "writes": 75000,
+    "blocks": [
+     "77db1178c712fe53",
+     "d8479d686b4fb50a",
+     "715fd4fd5989e74d",
+     "8d8706a7987d6f7c",
+     "dfe5e22b579332b3",
+     "eea77232e6abc126"
+    ]
+   },
+   "resid": "176400:315b535da4a87187",
+   "sidplayfp": "176400:f484a7fb3deceb70"
+  },
+  {
+   "trace": {
+    "calls": 3000,
+    "writes": 75000,
+    "blocks": [
+     "52cea7aa791dfe6d",
+     "98a3bbc2e942e56b",
+     "8f8f5b226ad8d463",
+     "fe5ffe49b932a976",
+     "12411aaae5b4c360",
+     "20c719ff009af1e6"
+    ]
+   },
+   "resid": "176400:6817aaa5c4ad1727",
+   "sidplayfp": "176400:0b32a1fe59609d14"
+  }
+ ]
+}

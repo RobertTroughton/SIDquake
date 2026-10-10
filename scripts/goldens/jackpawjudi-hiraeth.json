@@ -1,0 +1,121 @@
+{
+ "analysis": {
+  "modifiedCount": 206,
+  "modifiedHash": "4b18c0e80ef5fb4c",
+  "zeroPage": [
+   254,
+   255
+  ],
+  "codeBytes": 1838,
+  "dataBytes": 4604,
+  "sidRegisterWrites": [
+   5817,
+   5817,
+   2323,
+   2323,
+   6190,
+   377,
+   564,
+   5786,
+   5786,
+   1945,
+   1945,
+   6221,
+   439,
+   661,
+   5811,
+   5811,
+   2613,
+   2613,
+   6196,
+   389,
+   583,
+   4,
+   1805,
+   6000,
+   6000,
+   0,
+   0,
+   0,
+   0,
+   0,
+   0,
+   0
+  ],
+  "chips": [
+   54272
+  ],
+  "resolvedPlayAddress": 4099,
+  "callsPerFrame": 1,
+  "ciaTimerValue": 0,
+  "maxCycles": 1653,
+  "initTimeouts": 0,
+  "longestInitCycles": 1074
+ },
+ "subtunes": [
+  {
+   "trace": {
+    "calls": 3000,
+    "writes": 47432,
+    "blocks": [
+     "8b3773aacd17c6a6",
+     "cc06a93072f9199b",
+     "68c6c4162ef940c2",
+     "db9ece8c178bcd92",
+     "88faea1ead32de0f",
+     "82ff7a964e5b7377"
+    ]
+   },
+   "resid": "176400:c568ebebc69282ff",
+   "sidplayfp": "176400:fccf40a6a4cbffb0"
+  },
+  {
+   "trace": {
+    "calls": 3000,
+    "writes": 39051,
+    "blocks": [
+     "27fae0aa295bb580",
+     "2676125e7c09fcde",
+     "58cdb9b40aa61e23",
+     "d470c3fd2045cf34",
+     "2676125e7c09fcde",
+     "58cdb9b40aa61e23"
+    ]
+   },
+   "resid": "176400:2c0cc5f54f151c92",
+   "sidplayfp": "176400:fb5145e69b6f00cf"
+  },
+  {
+   "trace": {
+    "calls": 3000,
+    "writes": 48783,
+    "blocks": [
+     "df067c57a52edbb0",
+     "d6f1f1b5fa87d39e",
+     "ad0ef376ac5b1be5",
+     "74dd2296c1419142",
+     "55348dd5d19b32a1",
+     "a880fe8f7b9e361d"
+    ]
+   },
+   "resid": "176400:afaa95d017583097",
+   "sidplayfp": "176400:f17a818e2d2b26fa"
+  },
+  {
+   "trace": {
+    "calls": 3000,
+    "writes": 34520,
+    "blocks": [
+     "dc833e7606b5db0c",
+     "cd52596860d25da9",
+     "29f895adac17f41a",
+     "29f895adac17f41a",
+     "29f895adac17f41a",
+     "29f895adac17f41a"
+    ]
+   },
+   "resid": "176400:f0224edc8ee5ff05",
+   "sidplayfp": "176400:2cc0df4a53a1b1f6"
+  }
+ ]
+}

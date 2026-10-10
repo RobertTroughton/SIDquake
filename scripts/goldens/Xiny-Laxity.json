@@ -1,0 +1,73 @@
+{
+ "analysis": {
+  "modifiedCount": 129,
+  "modifiedHash": "4e53debbf00af36f",
+  "zeroPage": [
+   254,
+   255
+  ],
+  "codeBytes": 919,
+  "dataBytes": 3386,
+  "sidRegisterWrites": [
+   1495,
+   1495,
+   1237,
+   1237,
+   1500,
+   8,
+   8,
+   1374,
+   1374,
+   747,
+   747,
+   1500,
+   250,
+   250,
+   1470,
+   1470,
+   0,
+   0,
+   1500,
+   59,
+   58,
+   1,
+   1499,
+   1499,
+   1499,
+   0,
+   0,
+   0,
+   0,
+   0,
+   0,
+   0
+  ],
+  "chips": [
+   54272
+  ],
+  "resolvedPlayAddress": 4099,
+  "callsPerFrame": 1,
+  "ciaTimerValue": 0,
+  "maxCycles": 1304,
+  "initTimeouts": 0,
+  "longestInitCycles": 13
+ },
+ "subtunes": [
+  {
+   "trace": {
+    "calls": 3000,
+    "writes": 46942,
+    "blocks": [
+     "5072c06b56154657",
+     "a77c24eaeb55a332",
+     "c445b41e8a571ec2",
+     "7f10a8212b35bffa",
+     "6997eab5b30f0871",
+     "cd54eb9f7372ac8c"
+    ]
+   },
+   "resid": "176400:2d5d107a4b1e419f",
+   "sidplayfp": "176400:534c67c68717055c"
+  }
+ ]
+}
