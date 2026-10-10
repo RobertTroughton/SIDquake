@@ -34,106 +34,8 @@
 // returns, a BASIC tune, a play routine that runs past the cycle cap) simply
 // reports null and costs the audio pass nothing.
 
-const PAL_CYCLES_PER_FRAME = 19656;    // 312 lines * 63 cycles
-const NTSC_CYCLES_PER_FRAME = 17095;   // 263 lines * 65 cycles
-const INIT_CYCLE_CAP = 20000000;       // ~20 s of C64 time, matches sid_analyze's per-song ceiling
-export const PLAY_CYCLE_CAP = 20000;   // one raster frame, matches sid_analyze
-const MAX_CALLS_PER_FRAME = 16;
-
-const be16 = (b, o) => (b[o] << 8) | b[o + 1];
-
-// The header fields the pre-pass drives the tune from. Mirrors sid_processor.cpp.
-export function parseSidHeader(bytes) {
-    if (!bytes || bytes.length < 0x76) return null;
-    const magic = String.fromCharCode(bytes[0], bytes[1], bytes[2], bytes[3]);
-    if (magic !== 'PSID' && magic !== 'RSID') return null;
-    const version = be16(bytes, 4);
-    const dataOffset = be16(bytes, 6);
-    if (dataOffset + 2 > bytes.length) return null;
-    const hdrLoad = be16(bytes, 8);
-    const musicStart = hdrLoad === 0 ? dataOffset + 2 : dataOffset;
-    const loadAddress = hdrLoad === 0 ? (bytes[dataOffset] | (bytes[dataOffset + 1] << 8)) : hdrLoad;
-    const initAddress = be16(bytes, 10) || loadAddress;
-    const flags = version >= 2 ? be16(bytes, 0x76) : 0;
-    return {
-        magic, version, loadAddress, musicStart,
-        initAddress,
-        playAddress: be16(bytes, 12),
-        songs: be16(bytes, 0x0e),
-        startSong: be16(bytes, 0x10),
-        speed: ((bytes[0x12] << 24) | (bytes[0x13] << 16) | (bytes[0x14] << 8) | bytes[0x15]) >>> 0,
-        // RSID flag bit 1: the tune is a BASIC program, nothing here can drive it.
-        isBasic: magic === 'RSID' && (flags & 2) !== 0,
-        isNtsc: (flags & 0x0c) === 0x08,
-    };
-}
-
-function makeApi(module) {
-    const cw = (n, r, a) => module.cwrap(n, r, a);
-    return {
-        cpuInit: cw('cpu_init', null, []),
-        reset:   cw('cpu_reset_state_only', null, []),
-        track:   cw('cpu_set_tracking', null, ['number']),
-        wr:      cw('cpu_write_memory', null, ['number', 'number']),   // one-byte poke; nothing here uses it
-        rd:      cw('cpu_read_memory', 'number', ['number']),
-        setA:    cw('cpu_set_accumulator', null, ['number']),
-        setX:    cw('cpu_set_xreg', null, ['number']),
-        setY:    cw('cpu_set_yreg', null, ['number']),
-        exec:    cw('cpu_execute_function', 'number', ['number', 'number']),
-        execIrq: cw('cpu_execute_interrupt', 'number', ['number', 'number', 'number']),
-        irqHandler: cw('cpu_get_irq_handler', 'number', []),
-        env:     cw('cpu_setup_c64_env', null, []),
-        record:  cw('cpu_set_record_writes', null, ['number']),
-        seqLen:  cw('cpu_get_write_sequence_length', 'number', []),
-        seqItem: cw('cpu_get_write_sequence_item', 'number', ['number']),
-        ciaLo:   cw('cpu_get_cia_timer_lo', 'number', []),
-        ciaHi:   cw('cpu_get_cia_timer_hi', 'number', []),
-        ciaWritten: cw('cpu_get_cia_timer_written', 'number', []),
-    };
-}
-
-// Copy the music into the analyser's RAM in one call. Bytes that would land
-// past $FFFF are dropped: sid_analyze refuses such a tune outright, and wrapping
-// them round would overwrite zero page.
-export function loadMusic(module, sidBytes, musicStart, loadAddress) {
-    const music = sidBytes.subarray(musicStart, musicStart + 0x10000 - loadAddress);
-    if (!music.length) return;
-    const ptr = module._malloc(music.length);
-    module.HEAPU8.set(music, ptr);
-    module.cwrap('cpu_load_memory', null, ['number', 'number', 'number'])(loadAddress, ptr, music.length);
-    module._free(ptr);
-}
-
-// Returns a function that runs one play call within a cycle cap and answers
-// whether it returned, or null when there is nothing to call. A play address
-// of 0 means init hung the play routine on an interrupt: take the handler it
-// installed and enter it as one, so the RTI or JMP $EA31 that ends it counts
-// as the return (cpu_get_irq_handler / cpu_execute_interrupt).
-function playCaller(api, playAddress) {
-    if (playAddress) return (cap) => api.exec(playAddress, cap);
-    const handler = api.irqHandler();
-    const addr = handler & 0xffff, viaKernal = handler > 0xffff ? 1 : 0;
-    if (!addr) return null;
-    return (cap) => api.execIrq(addr, cap, viaKernal);
-}
-
-// How often a subtune's play routine runs, read once its init has run.
-// Multispeed: this subtune's PSID speed bit says the play routine runs off
-// the CIA timer, and init programmed one. Subtunes past 32 share bit 31.
-// A CIA timer counts its latch down to zero and reloads, so it fires every
-// latch + 1 cycles: Blending_Mode programs 6551 and runs exactly three
-// calls a frame (6552 * 3 = 19656), and the audio repeats on that grid.
-export function playTiming({ speed, subtune, isNtsc = false, ciaWritten, latch }) {
-    const cyclesPerFrame = isNtsc ? NTSC_CYCLES_PER_FRAME : PAL_CYCLES_PER_FRAME;
-    let callsPerFrame = 1, framesPerCall = 1;
-    const speedBit = subtune < 31 ? subtune : 31;
-    if (((speed >>> speedBit) & 1) && ciaWritten && latch > 0) {
-        const cyclesPerCall = latch + 1;
-        callsPerFrame = Math.min(MAX_CALLS_PER_FRAME, Math.max(1, Math.round(cyclesPerFrame / cyclesPerCall)));
-        framesPerCall = cyclesPerCall / cyclesPerFrame;
-    }
-    return { callsPerFrame, framesPerCall };
-}
+import { parseSidHeader } from './psid.js';
+import { PLAY_CYCLE_CAP, makeAnalyserApi, startTune } from './analyser-session.js';
 
 // Load the tune into the analyser's RAM, run init for `subtune`, and fingerprint
 // `maxFrames` worth of play calls: one FNV-1a hash per call over the addresses
@@ -148,23 +50,9 @@ export function playTiming({ speed, subtune, isNtsc = false, ciaWritten, latch }
 export function fingerprintTune(module, sidBytes, { subtune = 0, maxFrames, isNtsc = false } = {}) {
     const h = parseSidHeader(sidBytes);
     if (!h || h.isBasic) return null;
-    const api = makeApi(module);
-
-    api.cpuInit();
-    api.env();
-    loadMusic(module, sidBytes, h.musicStart, h.loadAddress);
-    api.reset();
-    api.track(1);
-    api.setA(subtune); api.setX(subtune); api.setY(subtune);
-    if (!api.exec(h.initAddress, INIT_CYCLE_CAP)) return null;
-
-    const play = playCaller(api, h.playAddress);
+    const api = makeAnalyserApi(module);
+    const { play, callsPerFrame, framesPerCall } = startTune(module, api, sidBytes, h, { subtune, isNtsc });
     if (!play) return null;
-
-    const { callsPerFrame, framesPerCall } = playTiming({
-        speed: h.speed, subtune, isNtsc,
-        ciaWritten: api.ciaWritten(), latch: api.ciaLo() | (api.ciaHi() << 8),
-    });
 
     const maxCalls = Math.max(1, Math.floor(maxFrames / framesPerCall));
     const hashes = new Uint32Array(maxCalls);

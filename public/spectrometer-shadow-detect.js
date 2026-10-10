@@ -12,53 +12,11 @@
 //      repointing them at the shadow page captures 100% of the writes. This is
 //      the only check that can disqualify a tune.
 
-import { PLAY_CYCLE_CAP, playTiming, loadMusic } from './loop-prepass.js';
+import { parseSidHeader } from './psid.js';
+import { PLAY_CYCLE_CAP, makeAnalyserApi, startTune } from './analyser-session.js';
 
 const MEM_WRITE = 1 << 2;
 const MEM_OPCODE = 1 << 4;   // the first byte of an executed instruction
-
-function makeApi(module) {
-    const cw = (n, r, a) => module.cwrap(n, r, a);
-    return {
-        cpuInit: cw('cpu_init', null, []),
-        reset:   cw('cpu_reset_state_only', null, []),
-        track:   cw('cpu_set_tracking', null, ['number']),
-        wr:      cw('cpu_write_memory', null, ['number', 'number']),
-        rd:      cw('cpu_read_memory', 'number', ['number']),
-        access:  cw('cpu_get_memory_access', 'number', ['number']),
-        setA:    cw('cpu_set_accumulator', null, ['number']),
-        setX:    cw('cpu_set_xreg', null, ['number']),
-        setY:    cw('cpu_set_yreg', null, ['number']),
-        exec:    cw('cpu_execute_function', 'number', ['number', 'number']),
-        execIrq: cw('cpu_execute_interrupt', 'number', ['number', 'number', 'number']),
-        irqHandler: cw('cpu_get_irq_handler', 'number', []),
-        env:     cw('cpu_setup_c64_env', null, []),
-        record:  cw('cpu_set_record_writes', null, ['number']),
-        seqLen:  cw('cpu_get_write_sequence_length', 'number', []),
-        seqItem: cw('cpu_get_write_sequence_item', 'number', ['number']),
-        sidWrites: cw('cpu_get_sid_writes', 'number', ['number']),
-        ciaLo:   cw('cpu_get_cia_timer_lo', 'number', []),
-        ciaHi:   cw('cpu_get_cia_timer_hi', 'number', []),
-        ciaWritten: cw('cpu_get_cia_timer_written', 'number', []),
-    };
-}
-
-// Returns a function that runs one play call within a cycle cap and answers
-// whether it returned, or null when there is nothing to call. A play address
-// of 0 means init hung the play routine on an interrupt: take the handler it
-// installed and enter it as one, so the RTI or JMP $EA31 that ends it counts
-// as the return (cpu_get_irq_handler / cpu_execute_interrupt).
-function playCaller(api, playAddress) {
-    if (playAddress) return (cap) => api.exec(playAddress, cap);
-    const handler = api.irqHandler();
-    const addr = handler & 0xffff, viaKernal = handler > 0xffff ? 1 : 0;
-    if (!addr) return null;
-    return (cap) => api.execIrq(addr, cap, viaKernal);
-}
-
-// Init's cycle budget: sid_analyze's per-song ceiling. Julian_Jaymz/Slanted's
-// init alone takes 2,040,135 cycles.
-const INIT_CYCLE_CAP = 20000000;
 
 // How long the shadow scan steps a tune: the song-length scan's whole window,
 // 20 minutes. Store sites are found in the code that RUNS, so a site the scan
@@ -68,26 +26,20 @@ const INIT_CYCLE_CAP = 20000000;
 // together cost well under a second at this length.
 export const SHADOW_SCAN_FRAMES = Math.round(20 * 60 * 50.1245);
 
+// The header's music placement and speed, with the addresses the caller gives
+// (the analyser's view of the tune) taking precedence.
+function tuneFrom(sidBytes, { initAddress, playAddress, loadAddress }) {
+    const h = parseSidHeader(sidBytes);
+    return { musicStart: h.musicStart, speed: h.speed, initAddress, playAddress, loadAddress };
+}
+
 // Load the music into CPU RAM (applying byte patches), init the tune, and step
 // `frames` play calls with recording on. Returns the per-frame first-write
 // orders (arrays of register offsets 0..), or null when init never returns.
 // Leaves memory-access flags populated.
 function loadAndRun(module, api, sidBytes, opts, patches) {
-    const { initAddress, playAddress, loadAddress, subtune = 0, frames = SHADOW_SCAN_FRAMES, warmup = 8 } = opts;
-    const dataOffset = (sidBytes[6] << 8) | sidBytes[7];
-    const hdrLoad = (sidBytes[8] << 8) | sidBytes[9];
-    const musicStart = hdrLoad === 0 ? dataOffset + 2 : dataOffset;
-
-    api.cpuInit();
-    api.env();
-    loadMusic(module, sidBytes, musicStart, loadAddress);
-    if (patches) for (const [addr, val] of patches) api.wr(addr & 0xffff, val & 0xff);
-    api.reset();
-    api.track(1);
-
-    api.setA(subtune); api.setX(subtune); api.setY(subtune);
-    if (!api.exec(initAddress, INIT_CYCLE_CAP)) return null;
-    const play = playCaller(api, playAddress);
+    const { subtune = 0, frames = SHADOW_SCAN_FRAMES, warmup = 8 } = opts;
+    const { play } = startTune(module, api, sidBytes, tuneFrom(sidBytes, opts), { subtune, patches });
     if (!play) return null;
 
     const orders = [];
@@ -173,12 +125,10 @@ export function buildFullOrder(observed, consistency, numChips) {
 //   { suitable, consistency, order, storeSites:[offsets in the music image],
 //     redirectComplete, leakedWrites } .
 export function analyzeShadow(module, sidBytes, opts) {
-    const api = makeApi(module);
+    const api = makeAnalyserApi(module);
     const { loadAddress } = opts;
     const numChips = Math.min(Math.max(opts.numChips || 1, 1), MAX_SHADOW_CHIPS);
-    const musicLen = ((sidBytes[8] << 8) | sidBytes[9]) === 0
-        ? sidBytes.length - (((sidBytes[6] << 8) | sidBytes[7]) + 2)
-        : sidBytes.length - ((sidBytes[6] << 8) | sidBytes[7]);
+    const musicLen = sidBytes.length - parseSidHeader(sidBytes).musicStart;
 
     // Pass 1: unpatched run -> write-order consistency + execute flags.
     const orders = loadAndRun(module, api, sidBytes, opts);
@@ -278,29 +228,14 @@ export function analyzeShadow(module, sidBytes, opts) {
  *            leadingSeconds:number, leadingAudible:boolean, quietFraction:number}}
  */
 export function analyzeVuVisibility(module, sidBytes, opts) {
-    const api = makeApi(module);
+    const api = makeAnalyserApi(module);
     const numChips = Math.min(Math.max(opts.numChips || 1, 1), MAX_SHADOW_CHIPS);
     const frameHz = opts.frameHz || 50.1245;
-    const { initAddress, playAddress, loadAddress, subtune = 0, frames = 1500 } = opts;
+    const { subtune = 0, frames = 1500 } = opts;
 
-    const dataOffset = (sidBytes[6] << 8) | sidBytes[7];
-    const hdrLoad = (sidBytes[8] << 8) | sidBytes[9];
-    const musicStart = hdrLoad === 0 ? dataOffset + 2 : dataOffset;
-
-    api.cpuInit();
-    api.env();
-    loadMusic(module, sidBytes, musicStart, loadAddress);
-    api.reset();
-    api.track(1);
-    api.setA(subtune); api.setX(subtune); api.setY(subtune);
-    const inited = api.exec(initAddress, INIT_CYCLE_CAP);
-    const play = inited ? playCaller(api, playAddress) : null;
     // `frames` and every count returned are raster frames; a multispeed tune
     // makes several play calls in each.
-    const { framesPerCall } = playTiming({
-        speed: ((sidBytes[0x12] << 24) | (sidBytes[0x13] << 16) | (sidBytes[0x14] << 8) | sidBytes[0x15]) >>> 0,
-        subtune, ciaWritten: api.ciaWritten(), latch: api.ciaLo() | (api.ciaHi() << 8),
-    });
+    const { play, framesPerCall } = startTune(module, api, sidBytes, tuneFrom(sidBytes, opts), { subtune });
     const calls = Math.max(1, Math.floor(frames / framesPerCall));
 
     // Control register per voice, per chip. Chips are $20 apart in $D400-$D7FF.
@@ -384,7 +319,7 @@ export function soundsDuring(module, sidBytes, subtune, seconds) {
 
 // Back-compat: just the order-consistency check.
 export function detectWriteOrder(module, sidBytes, opts) {
-    const api = makeApi(module);
+    const api = makeAnalyserApi(module);
     const ord = dominantOrder(loadAndRun(module, api, sidBytes, opts) || []);
     return { ...ord, suitable: ord.consistency >= 0.90 && ord.order.length > 0 };
 }

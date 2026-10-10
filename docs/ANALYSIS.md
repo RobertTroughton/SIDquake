@@ -66,16 +66,20 @@ called that way. A load that fails any check, including "does not fit in 64K"
 **`analysis-store.js`**, **`loop-prepass.js`**, **`spectrometer-shadow-detect.js`**
 and the `spectrometer-bake*.js` family consume the analyser; the bake is
 described in `BAR_HEIGHT_METHODS.md`. The pre-pass and the shadow and VU scans
-give each play call the same 20,000-cycle budget as `sid_analyze`
-(`PLAY_CYCLE_CAP`, exported by `loop-prepass.js`), and load the music with one
-`cpu_load_memory` call (`loadMusic()`), dropping any byte that would land past
-`$FFFF` as `sid_analyze` refuses such a tune.
+drive the analyser CPU through **`analyser-session.js`**: `startTune()` sets up
+the C64 environment, loads the music with one `cpu_load_memory` call
+(`loadMusic()`), dropping any byte that would land past `$FFFF` as
+`sid_analyze` refuses such a tune, runs init for the subtune and returns the
+play caller and the subtune's play rate. Each play call gets the same
+20,000-cycle budget as `sid_analyze` (`PLAY_CYCLE_CAP`). They read the PSID
+header with **`psid.js`** `parseSidHeader()`; `sid-playback.js` is a classic
+script and keeps its own reader.
 
 The "these bars will be empty" warning (`analyzeVuVisibility`, run by `ui.js`
 `checkVuVisibility`) steps the song the export plays (`exportSubtuneIndex()`)
 for 1,200 raster frames, and warns when no voice is open the way the live bar
 methods look for over an audible lead-in of 3 s or more. A multispeed tune's
-play calls are converted to frames with `playTiming()` from `loop-prepass.js`,
+play calls are converted to frames with `playTiming()` from `analyser-session.js`,
 the same per-subtune speed reading the pre-pass uses.
 
 ## Song length and loop detection

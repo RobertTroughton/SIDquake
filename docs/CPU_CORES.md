@@ -31,8 +31,8 @@ to call into and to leave an interrupt through: the IRQ exits at `$EA31`,
 `$EA7E` and `$EA81` (pull Y, X, A, then `RTI`), the real `$FF48` IRQ entry, an
 `RTS` at every jump-table entry, and the `$0314`/`$0318`/`$FFFA`/`$FFFE`
 vectors. The tune is loaded afterwards, so it overwrites any stub it overlaps.
-`sid_analyze`, `loop-prepass.js` and `spectrometer-shadow-detect.js` all do
-this.
+`sid_analyze` and `analyser-session.js` (for `loop-prepass.js` and
+`spectrometer-shadow-detect.js`) both do this.
 
 Two ways to call a routine:
 

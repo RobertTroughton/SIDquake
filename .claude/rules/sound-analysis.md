@@ -4,6 +4,8 @@ paths:
   - "public/sidquake-core.js"
   - "public/analysis-store.js"
   - "public/loop-prepass.js"
+  - "public/analyser-session.js"
+  - "public/psid.js"
   - "public/spectrometer-*.js"
   - "SIDPlayers/INC/spectrometer*.asm"
   - "scripts/test-loop-*.js"
