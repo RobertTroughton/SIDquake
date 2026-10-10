@@ -1,0 +1,129 @@
+{
+ "analysis": {
+  "modifiedCount": 94,
+  "modifiedHash": "1611969b1edb2ae3",
+  "zeroPage": [
+   2,
+   3,
+   4,
+   5
+  ],
+  "codeBytes": 1027,
+  "dataBytes": 2776,
+  "sidRegisterWrites": [
+   1367,
+   1413,
+   548,
+   548,
+   578,
+   292,
+   292,
+   544,
+   1461,
+   166,
+   166,
+   1445,
+   316,
+   316,
+   200,
+   246,
+   807,
+   807,
+   328,
+   312,
+   312,
+   0,
+   0,
+   0,
+   462,
+   0,
+   0,
+   0,
+   0,
+   0,
+   0,
+   0
+  ],
+  "chips": [
+   54272
+  ],
+  "resolvedPlayAddress": 49170,
+  "callsPerFrame": 1,
+  "ciaTimerValue": 0,
+  "maxCycles": 1364,
+  "initTimeouts": 0,
+  "playTimeouts": 0,
+  "longestInitCycles": 55
+ },
+ "subtunes": [
+  {
+   "trace": {
+    "calls": 3000,
+    "writes": 21919,
+    "blocks": [
+     "08c658968eec36c9",
+     "dfd05e0847ad3d93",
+     "6479225ca2961b50",
+     "07a3d1ada6bd529e",
+     "dc2df6d1507fcaa4",
+     "61707f2499751e84"
+    ]
+   },
+   "resid": "176400:4a96b68912c8051e",
+   "sidplayfp": "176400:8f184d007b26bae5"
+  },
+  {
+   "trace": {
+    "calls": 3000,
+    "writes": 22,
+    "blocks": [
+     "afb314b5696c5853",
+     "da39a3ee5e6b4b0d",
+     "da39a3ee5e6b4b0d",
+     "da39a3ee5e6b4b0d",
+     "da39a3ee5e6b4b0d",
+     "da39a3ee5e6b4b0d"
+    ]
+   },
+   "resid": "176400:e001edafcb24fa7f",
+   "sidplayfp": "176400:99ea5ea730ae8de4"
+  },
+  {
+   "trace": {
+    "calls": 3000,
+    "writes": 318,
+    "blocks": [
+     "46157b5723da7616",
+     "da39a3ee5e6b4b0d",
+     "da39a3ee5e6b4b0d",
+     "da39a3ee5e6b4b0d",
+     "da39a3ee5e6b4b0d",
+     "da39a3ee5e6b4b0d"
+    ]
+   },
+   "resid": "176400:dc109cb32ef9c055",
+   "sidplayfp": "176400:95401c5bb24929c5"
+  },
+  {
+   "trace": {
+    "calls": 3000,
+    "writes": 22,
+    "blocks": [
+     "0743d7d661c9fff5",
+     "da39a3ee5e6b4b0d",
+     "da39a3ee5e6b4b0d",
+     "da39a3ee5e6b4b0d",
+     "da39a3ee5e6b4b0d",
+     "da39a3ee5e6b4b0d"
+    ]
+   },
+   "resid": "176400:676845373297d25d",
+   "sidplayfp": "176400:e85a5ac1598f3b03"
+  }
+ ],
+ "bake": {
+  "frames": 993,
+  "rows": "ee55126d029fffd3",
+  "stream": "a388daf348620d53"
+ }
+}

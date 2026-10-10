@@ -26,7 +26,8 @@ real C64 environment: a playback bus over `cpu6510_core.h`, a minimal KERNAL,
 init once and play once per frame (entered as an interrupt for play address 0).
 Selecting a subtune reloads the tune and powers the SID chips on afresh, so
 nothing carries over from the previous tune; `scripts/test-resid-engine.js`
-covers it.
+covers it. The engine is a `ResidEngine` class; the `audio_*` exports drive one
+default instance.
 
 Timing is PAL-only throughout.
 
@@ -51,7 +52,11 @@ Timing is PAL-only throughout.
   i.e. each tune's own header decides; changing quality or chip reloads the
   tune in the engine, so playback restarts
 - Pause keeps the engine's place and the worklet's queue, and Play resumes from
-  there; Stop, Restart, a subtune change or a reload start the tune over
+  there; Stop, Restart, a subtune change or a reload start the tune over.
+  Each of them first ramps the output to silence over 15 ms
+  (`SIDPlayback.FADE_OUT_SECONDS`) and only then cuts the worklet's queue or
+  disconnects, so the waveform doesn't stop mid-cycle; a start asked for during
+  that ramp waits for it, and playback fades back in over ~85 ms
 
 **`sid-worklet-processor.js`** - the AudioWorklet. The engine renders on the
 main thread; `sid-playback.js` posts Float32 sample blocks over the worklet's
@@ -61,7 +66,8 @@ request has come back empty. Each block it finishes goes back to the page
 (`recycle`, transferred) for the next chunk to be rendered into, carrying how
 much audio is still queued; `SIDPlayback.getAudibleTime()` subtracts that from
 the engine's time, so the pill's clock shows what has been heard rather than
-what has been rendered.
+what has been rendered. It counts each queued chunk at the fast-forward speed it
+was rendered at, so a speed change doesn't make the clock jump.
 
 The engine initialises the C64 once per load, per subtune selected, and per
 real chip or quality change (`engine->config()` re-initialises a loaded tune

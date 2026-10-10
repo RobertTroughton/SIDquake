@@ -588,190 +588,26 @@ wish of both experienced musicians and the beginner alike.
 
 ## Emulation and analysis audit
 
-From a five-way review of the 6510 core, both SID engines, the tune analyser and
-the spectrometer bake. Each item was reproduced with a scratch probe unless it
-says *suspected*. Most are `[WASM]`.
-
-What already holds: the core passes Klaus Dormann's functional test and every
-documented opcode of Tom Harte's SingleStepTests `6502/v1` (registers, RAM,
-cycles, NMOS decimal flags). The FFT, real-input packing, window scaling and
-decimation match a naive reference, and the baked-stream encoder and the 6502
-decoder agree.
-
-### Suggested order
-
-1. Land the regression harness (below) first. Most fixes here move output, so
-   they need goldens to show what moved and why.
-2. The high-severity bugs: the analyser abort and render determinism.
-3. Fold the duplicated C64 environment and call harness, which is where several
-   of the medium bugs came from.
-
-### Regression harness
-
-- **Golden corpus test** — `scripts/test-goldens.js` with fixtures in
-  `scripts/goldens/<tune>.json`, over the `SID/` corpus (68 tunes, already
-  committed under `SID/README.md`'s terms), up to 4 subtunes each:
-  - `sid_analyze` result (every `sid_get_*` value, sorted address lists);
-  - a hash of the per-frame `(frame, reg, value)` SID write trace, plus the
-    first 64 writes so a failure names the first differing write. The current
-    `cpu_get_write_sequence_*` is address-only, so this needs a value variant
-    or a `$D400+` read after each frame;
-  - a hash of 10 s of `audio_generate` output per engine, each from a **fresh
-    module** (see determinism below);
-  - a hash of the baked stream (codebook, indices, segments, loopStart) and the
-    `findStateLoop` intro/period — `scripts/bench-bake-analysis.mjs` already
-    hashes these but is manual.
-  `--update` rewrites the fixtures; CI never passes it, and a commit that moves
-  a golden says why. Run a ~15-tune fast tier in `npm test` (target < 10 s,
-  `worker_threads`) and the full corpus as `npm run test:goldens` in CI.
-- **Native C++ build of the engines** — `cpu6510_wasm.cpp`, `sid_processor.cpp`,
-  `sid_audio.cpp` and `resid/*.cc` (minus `filter.cc`, as the build script does)
-  compile with plain g++ in ~5 s given a one-line `emscripten/emscripten.h`
-  stub. A `scripts/native-test/` driver emitting the same golden JSON lets CI
-  test a C++ edit before anyone rebuilds the `.wasm`; today every test runs the
-  committed binary, so a `wasm/*.cpp` change is untested until then. Integer
-  outputs should match the wasm byte for byte; audio may not (float/FMA), so
-  keep audio goldens wasm-only.
-- **WASM build in CI** — emsdk pinned to 5.0.7 (the build script warns 6.0
-  breaks the node loader), build, then `npm test` against the fresh `.wasm`.
-  Whether the build is deterministic enough for a `--check` diff is not
-  confirmed.
-- **Instruction-level CPU suite** — promote the audit's runners into
-  `scripts/cpu-crosscheck/`: fetch Klaus Dormann's binary (GPL-3, so fetched,
-  never committed) and Tom Harte's `6502/v1` JSON (MIT, 1.1 GB, ~1 min) at run
-  time, with explicit exclusions for JAM, ANE/LXA magic, ARR with D=1 and RMW
-  write sequences until those are fixed. Add `cpu-crosscheck/run.sh 2000`
-  (~5 s) to CI.
-- **Targeted tests to add with each fix below**, named per item.
-- **Property tests** (`scripts/test-properties.js`, seeded): header parsers never
-  read out of bounds on fuzzed input and agree with each other;
-  `audio_set_subtune(k)` after any other subtune equals a fresh load;
-  `sid_analyze` is order-independent across subtunes.
-
-### High
-
-- **`sid_analyze` aborts the whole module on write-heavy tunes.** It turns on
-  `cpu_set_record_writes(true)` for all 30,000 frames (`sid_processor.cpp:445`)
-  and `writeSequence` grows unbounded (`cpu6510_wasm.cpp:172-174`); nothing in
-  `sid_analyze` reads it. At ~300 SID writes per play call the vector outgrows
-  the heap and the module aborts, dead for the rest of the page session (a
-  `$D418` digi in play is enough). Fix: don't record in `sid_analyze`, or cap
-  the buffer. Test: 300+ writes/call over 30,000 frames in
-  `test-analyser-edge-cases.js`. [WASM]
-- **Renders are reproducible only on a fresh module, in both engines.** Loading
-  the same tune twice in one module gives different audio (Flex-Lundia: 435k of
-  441k samples differ). sidplayfp: reSIDfp's `WaveformGenerator::reset` keeps
-  the oscillator accumulators and the mixer's dither LCG is seeded once
-  (`libsidplayfp/src/mixer.h:189`). reSID: `sid_power_on`
-  (`sid_audio.cpp:84-89`) leaves `accumulator` alone; zeroing it cuts the
-  difference to ~23–50 LSB, with a remainder not yet traced. The bake worker
-  caches one module per engine (`spectrometer-bake-worker.js:36-54`), so every
-  bake after the first in a worker differs, against the stated intent of
-  pinning `powerOnDelay` (`sidplayfp_audio.cpp:91-99`). Fix: recreate the
-  `sidplayfp`/`ReSIDfpBuilder` per load; for reSID zero the accumulators and
-  find the remainder, or construct fresh `reSID::SID` objects. Test: render,
-  reload, render in one module, equal. [WASM]
-
-### Medium
-
-- **reSID `cpu_call` returns as soon as SP climbs back to its start**
-  (`sid_audio.cpp:217`), not on a matching RTS: an init doing `LDX #$FF; TXS`
-  stops right after the TXS. The analyser requires `opcode == 0x60`
-  (`cpu6510_wasm.cpp:264`), so the two disagree on when init ends. Fix: require
-  RTS on the non-IRQ path. Test: `TXS` and `PLA; PLA; JMP` inits run to
-  completion in `test-resid-engine.js`. [WASM]
-- **A play call that never returns ends the analysis silently**
-  (`sid_processor.cpp:447-453` just `break`s); the memory map is then missing
-  every later write, so save/restore misses them. Fix: count `playTimeouts` and
-  the frame, surface it like `initTimeouts`. [WASM]
-- **A partial init timeout is never surfaced.** `ui.js:4227` warns only when
-  `initTimeouts > 0 && modifiedCount === 0`, and `prg-builder.js` never reads
-  it. Fix: warn on any timeout; refuse or warn on save/restore exports.
-- **SID chip count is inflated by init sweeps and blind to `$DE00`/`$DF00`.**
-  Any write marks a `$20` slot (`cpu6510_wasm.cpp:163-170`): an init clearing
-  `$D400-$D47F` reports 4 chips, one clearing `$D400-$D7FF` reports 32. The
-  header's second/third SID addresses are parsed but unused. `numChips` feeds
-  the shadow replay (`prg-builder.js:1821`) and the VU check. Fix: count from
-  play-phase writes, prefer v3/v4 header addresses; correct `docs/ANALYSIS.md`
-  and `.claude/rules/sound-analysis.md`, which say "up to 8". [WASM]
-- **`sidquake-core.js` drops real addresses as "sentinels".** `:217` drops
-  `$FFFF` and `:226` drops ZP `$FF`, but the loops only run to `count`, so the
-  C++ never returns a sentinel. Save/restore then skips `$FFFF`. Fix: remove
-  both filters. Test: in `test-sidquake-core.js`.
-- **Calls per frame come from the start song only** (`sid_processor.cpp:502-507`,
-  used by `prg-builder.js:2794`), so exporting a subtune with a different speed
-  bit gets the wrong tempo. `loop-prepass.js:136-147` already works it out per
-  subtune. [WASM or JS]
-- **No processor-port banking for I/O.** `$D400-$D7FF` always reaches reSID
-  (`sid_audio.cpp:98-139`) or counts as a SID write (`cpu6510_wasm.cpp:163`),
-  whatever `$01` says, so a depacker writing under I/O with `$01=$34` hits the
-  SID and inflates the chip count. Fix: route only when I/O is visible. [WASM]
-- **No interrupt sources or I/O reads.** No CIA/VIC/NMI sources, and `$D012`,
-  `$DC0D`, `$D019`, `$D41B` read back RAM, so a play routine polling `$D012`
-  hits the cycle cap (and then the silent break above). Minimal fix: a
-  free-running `$D012`/`$D011` bit 7 from the cycle count and a CIA1 ICR that
-  reads as fired. Full playback is libsidplayfp, so this affects analysis and
-  the fast scan only. [WASM]
-- **The reSID engine ignores the "fast" sampling request.**
-  `spectrometer-bake-core.js:142` sets it before `load`, and `audio_load_sid`
-  resets it to interpolate (`sid_audio.cpp:419-424`). Set after load it is ~5×
-  faster, so the "reSID (about twice as fast)" scan option runs at interpolate
-  quality. Fix: keep `S.samplingMethod` across load, as the sidplayfp engine
-  does. [WASM]
-- **Hard cut on stop, pause, subtune change and reload** — `sid-playback.js:408-418`
-  disconnects with no ramp and reSIDfp output carries a 6581 DC offset.
-  Audibility *suspected*. Fix: ramp gain to 0 over ~10–20 ms first.
+What is left of a five-way review of the 6510 core, both SID engines, the tune
+analyser and the spectrometer bake. The bugs it found are fixed, each with a
+test; the regression harness it called for is in place (`npm test` runs the fast
+golden tier, `npm run test:goldens` all of `SID/`, and CI rebuilds the WASM and
+checks it against what is committed; see `docs/TESTING.md`). Below is what is
+left: known limits, product choices and larger pieces of work.
 
 ### Low
 
-- 6510: JSR reads both operand bytes before pushing (`cpu6510_core.h:367-375`;
-  only matters for code in `$01xx`). No NMOS RMW dummy write, so `INC $D4xx`
-  writes reSID once (gate the extra write on a bus trait so analysis counters
-  don't double). ARR in decimal mode is wrong; ANE/LXA use no magic constant
-  (adopt `A | $EE`). NMI stub vector `$FFFA → $FF48` dispatches through `$0314`
-  (`cpu6510_wasm.cpp:365`, `sid_audio.cpp:393-396`); the KERNAL goes via
-  `$0318`. [WASM]
-- Interrupt-play cycle counts skip the 7-cycle entry and, via KERNAL, ~28 cycles
-  of `$FF48` dispatch (`cpu6510_wasm.cpp:284-317`); whether the exporter's
-  budget cares is *suspected*, not confirmed. [WASM]
-- reSID CIA: period is the latch, analyser uses latch + 1 (`sid_audio.cpp:474-478`
-  vs `sid_processor.cpp:532-534`); default preset `$4024` vs KERNAL `$4025`;
-  writes through register mirrors (`$DC14`) never reach `$DC04`. [WASM]
-- reSID loads an over-long tune as silence: `audio_load_sid` skips the copy when
-  `loadAddress + musicLen > 65536` but returns 0 (`sid_audio.cpp:418-420`); the
-  analyser rejects it with -7. [WASM]
-- Header handling drifts between engines: flags `11` ("either") is 8580 in reSID
-  (`sid_audio.cpp:334`) and 6581 in sidplayfp/`sid-playback.js:512`; reSID
-  reads only the second chip's model, gates on `version >= 2` (spec says v3),
-  and accepts odd second/third SID addresses. The analyser ignores the MUS flag,
-  doesn't reject a load address below `$07E8`, and returns `musicSize` (up to
-  `0x10000`) as `uint16` and as `fileSize`. [WASM]
-- reSID 3SID mix sums without attenuation and clips (`sid_audio.cpp:537-541`).
-  `audio_set_model(0)` forces 6581 instead of following the header (no caller
-  yet). `writesPipelined()` checks only the first chip's model. [WASM]
-- sidplayfp: 2SID/3SID are mono only (`SidConfig::MONO`); `digiBoost` never set,
-  so 8580 `$D418` digis are near-silent; `audio_set_subtune` ignores
-  `engine->load()`'s result. `getAudibleTime` scales all queued audio by the
-  current speed, so the clock jumps on a speed change.
-- Play-cycle caps differ: 20,000 in `sid_analyze` and the pre-pass, 100,000 in
-  shadow and VU detection. Use one shared constant.
-- The VU-visibility check runs on `startSong` (`ui.js:2924`), not the export
-  subtune, and counts play calls as frames, so a multispeed tune's
-  `leadingSeconds` is too large by the speed factor.
-- CIA speed bit with no timer write in init reports 1 call per frame while
-  sidplayfp uses its default CIA rate (*suspected*).
-- Bake timing offset is never chosen on purpose: windows centre ~2.3 frames
-  after the row's frame, so bars rise 3–6 frames early and fall 2–5 late
-  (`spectrometer-bake.js:528`, `629-633`). Pick the offset and pin it with an
-  onset test.
-- Stale comments in `spectrometer-bake.js` (`:25-27` "mirrored from
-  hvsc-visualizer.js" with a different `MAX_DB`; `:11-12`, `:521`, `:1083-1086`
-  fixed 25 Hz keyframes; `:66` bass figures disagree with
-  `BAR_HEIGHT_METHODS.md`), `spectrometer-bake-core.js:141` ("~5.5 kHz"), and
-  `RaistlinMirrorBars.asm` ~500 (interpolation now in `TickBakedFrame`).
-- `analysis-store.js` cache key is the hand-bumped `|v4` (`ui.js:6202`); changes
-  to the pre-pass or `detectLoop` don't invalidate it.
-
+- The analyser doesn't reject a load address below `$07E8`, which the PSID spec
+  forbids. Left as is: nothing breaks for such a tune, and refusing it would
+  only stop a file that works.
+- sidplayfp: 2SID/3SID are mono only (`SidConfig::MONO`); a stereo option would
+  be a feature. `digiBoost` is left off, so 8580 `$D418` digis are near-silent,
+  as on an unmodified 8580; turning it on is a product choice, not a fix.
+- A tune whose speed bit says CIA but whose init never programs the timer runs
+  at the KERNAL's rate (latch `$4025`, about 60 calls a second) on sidplayfp
+  and now on the reSID engine, but exports at one call a frame (50 a second):
+  the players only call play a whole number of times a frame. Worth a warning
+  in the UI if it turns up in practice.
 ### Performance
 
 - The same tune is stepped five times: `sid_analyze` (30,000 frames per subtune,
@@ -779,64 +615,30 @@ decoder agree.
   each reloading and re-initing. One C++ pass could produce the memory map,
   per-call fingerprints and write orders; `sid_analyze` could also stop once the
   state loop is found and no new access flags appear. [WASM]
-- Per-write JS↔WASM calls in the pre-pass and shadow fingerprinting
-  (`loop-prepass.js:155-167`, `spectrometer-shadow-detect.js:93-97`), and tune
-  bytes loaded one `cpu_write_memory` call per byte while `cpu_load_memory` sits
-  unused. Add a `cpu_fingerprint_last_call()` and use the bulk load.
-- k-means always runs 30 iterations (`spectrometer-bake.js:822-844`): 465 ms per
-  segment at 3686×8, 7.3 s at 18000×40. Stop when no label changed and no
-  cluster emptied; output stays byte-identical.
 - Playback renders on the main thread with 0.37–0.74 s queued. Running
   `sidplayfp.wasm` in the AudioWorkletGlobalScope would drop that dependency and
   the queue; meanwhile, write float32 from C++ or convert in the worklet
   (`sid-playback.js:234-236`).
-- `mem_read`/`mem_write` loop over extra SIDs on every access
-  (`sid_audio.cpp:98-139`); gate on the `$D4-$DF` page first. Minor.
 
 ### Design
 
-The core/bus split is right: one decoder, `cpu6510::Core<Bus>`, two adapters.
-The problems are around it. Ranked by value against effort; the ones marked
-*needs goldens* move output.
+The core/bus split is right: one decoder, `cpu6510::Core<Bus>`, two adapters
+held in classes, and one PSID parser, one KERNAL environment, one call runner
+and one I/O model between them (`wasm/c64_env.h`, `wasm/c64_io.h`). What is
+left:
 
-1. **Shared C64 environment** — `wasm/c64_env.h` with one PSID parser, one
-   KERNAL-stub planter and one IRQ-handler resolver for both engines. Today they
-   differ on `$00`, the `$DC04/05` preset, reset SP and the NMI stub, and reSID's
-   `== 0` guards after a `memset` are dead. *Needs goldens.*
-2. **`wasm/cpu6510_api.h`** declaring the `cpu_*` C API, replacing the `extern`s
-   inside function bodies in `sid_processor.cpp` (`:114-131`, `:403-405`,
-   `:508-510`); with C linkage a signature mismatch is not caught today. Safe.
-3. **One call/IRQ runner** — `template<Bus> callUntilReturn(...)` in the core,
-   replacing `cpu_execute_function`/`cpu_execute_interrupt` and `cpu_call`,
-   which differ in sentinel, bail-out, SP restore and reset SP (the source of
-   the TXS bug above). *Needs goldens.*
-4. **Classes instead of singletons** — `cpu`, `sidState`, `S`/`cpuJammed` are
-   process-wide, so one analyser per module, and `sid_analyze` and the pre-pass
-   share one CPU. `window.SIDquakeModuleInstance` is also shared with
-   `prg-builder.js:899`. An `Analyser`/`ResidEngine` with a handle-based C
-   layer (keeping a default instance) allows multiple instances and testing.
-5. **Shared JS analyser session** — `makeApi`, the play caller and load/init are
-   near-verbatim in `loop-prepass.js:73-114` and
-   `spectrometer-shadow-detect.js:18-80`, `:280-293`; PSID parsing is in C++,
-   `parseSidHeader`, inline twice in shadow-detect and in `sid-playback.js`.
-   One `analyser-session.js` plus one `psid.js`.
-6. **Split `spectrometer-bake.js`** — `bake-dsp.js` (FFT, bands, whitening,
-   range fit), `loop-detect.js` (`detectLoop`, `resolveKeyframes`), and the
-   remainder (VQ, packing, C64 format) as the one place the decoder contract
-   lives. Fold the duplicated whitening maths (`:703-733`/`:738-760`) and
-   histogram percentile (`:337-347`/`:496-509`).
-7. **Playback as modules** — `sid-player.js:131`, `:397` call
-   `window.hvscBrowser`/`window.hvscVisualizer`; inject callbacks instead and
-   make `sid-playback.js`/`sid-player.js` ES modules. A shared `audio_*`
-   contract header and one Node conformance test over both engines would stop
-   the engine drift listed under Low. `ui.js` hanging `sidHeader` and
-   `analysisResults` on the analyser for `prg-builder` to read should become
-   explicit inputs.
-8. The exported-function list in `scripts/build-sidquake-wasm.sh` is stale
-   (`_cpu_set_accumulator`, `_sid_get_init_timeouts` reach JS only via
-   `EMSCRIPTEN_KEEPALIVE`). Six illegal RMW groups in `cpu6510_core.h:429-547`
-   repeat one addressing switch; `cpu6510_wasm.cpp:26-35` re-declares the
-   core's flag enum.
+1. **One analyser per module from JS** — the analyser and the reSID engine are
+   classes now (`Analyser6510`, `ResidEngine`), but the C API forwards to one
+   default instance of each, `sidState` in `sid_processor.cpp` is still a
+   singleton, and `window.SIDquakeModuleInstance` is shared with
+   `prg-builder.js`. A handle-based C API would let JS run several analysers in
+   one module; nothing needs that yet.
+2. **Playback as modules** — `sid-playback.js`/`sid-player.js` are classic
+   scripts loaded by `window.loadScript` on three host pages; as ES modules
+   `sid-playback.js` could use `psid.js` instead of its own header parser.
+   Left for now: it means reworking each page's loader for little gain. `ui.js`
+   hanging `sidHeader` and `analysisResults` on the analyser for `prg-builder`
+   to read should become explicit inputs.
 
 ## Playback / engine
 - **`png_converter` output accessors** trust caller buffer sizes (no length params) — an under-allocated JS buffer is a WASM heap overflow. [WASM]

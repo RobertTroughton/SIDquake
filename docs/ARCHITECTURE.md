@@ -34,6 +34,8 @@ Three code bodies:
 - `wasm/` - C++ compiled to the committed `.wasm` files. `sidquake.wasm` holds
   analysis, PNG conversion and the lightweight reSID engine; `sidplayfp.wasm`
   the accurate libsidplayfp playback engine; `exomizer.wasm` the cruncher.
+  The analyser's and the reSID engine's state are classes (`Analyser6510`,
+  `ResidEngine`); each exported C API drives one default instance.
 - `SIDPlayers/` - KickAssembler 6502 source for the visualiser players, built
   into `public/prg/`.
 
@@ -44,8 +46,8 @@ Each area has its own document. Read the one for the code you are touching.
 | area | main code | doc |
 |---|---|---|
 | 6510 emulation | `wasm/cpu6510_core.h`, `cpu6510_wasm.cpp`, `opcodes.h`, `sid_audio.cpp` (bus) | [`CPU_CORES.md`](CPU_CORES.md) |
-| Tune analysis, song length | `wasm/sid_processor.cpp`, `public/sidquake-core.js`, `loop-prepass.js`, `analysis-store.js` | [`ANALYSIS.md`](ANALYSIS.md) |
-| Bar data (spectrometer) | `public/spectrometer-*.js`, `SIDPlayers/INC/spectrometer*.asm` | [`../SIDPlayers/BAR_HEIGHT_METHODS.md`](../SIDPlayers/BAR_HEIGHT_METHODS.md) |
+| Tune analysis, song length | `wasm/sid_processor.cpp`, `public/sidquake-core.js`, `loop-prepass.js`, `analyser-session.js`, `psid.js`, `analysis-store.js` | [`ANALYSIS.md`](ANALYSIS.md) |
+| Bar data (spectrometer) | `public/spectrometer-*.js`, `bake-dsp.js`, `loop-detect.js`, `SIDPlayers/INC/spectrometer*.asm` | [`../SIDPlayers/BAR_HEIGHT_METHODS.md`](../SIDPlayers/BAR_HEIGHT_METHODS.md) |
 | Playback | `wasm/sidplayfp_audio.cpp`, `wasm/sid_audio.cpp`, `public/sid-playback.js`, `sid-player.js`, `sid-worklet-processor.js` | [`PLAYBACK.md`](PLAYBACK.md) |
 | PRG export, images, compression | `public/prg-builder.js`, `compressor-*.js`, `png-converter.js`, `logo-fit*.js`, `charsetlab-core.js`, `petscii-*.js` | [`EXPORT.md`](EXPORT.md) |
 | C64 players | `SIDPlayers/`, `public/prg/` | [`PLAYERS.md`](PLAYERS.md), [`../SIDPlayers/CODE_ONLY_GUIDE.md`](../SIDPlayers/CODE_ONLY_GUIDE.md) |

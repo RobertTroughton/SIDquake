@@ -549,6 +549,14 @@ window.hvscBrowser = (function () {
         const container = document.getElementById('hvscPlayerContainer');
         if (container && typeof SIDPlayer !== 'undefined') {
             hvscPlayer = new SIDPlayer(container);
+            // The chip model shows in the HVSC info panel, and the visualizer's
+            // smoothing should not carry one tune's levels into the next.
+            hvscPlayer.onModelChange = () => {
+                if (window.hvscBrowser && window.hvscBrowser.refreshInfoPanel) window.hvscBrowser.refreshInfoPanel();
+            };
+            hvscPlayer.onSubtuneStep = () => {
+                if (window.hvscVisualizer && window.hvscVisualizer.reset) window.hvscVisualizer.reset();
+            };
         }
     }
 

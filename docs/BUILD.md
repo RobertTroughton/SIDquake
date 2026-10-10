@@ -15,6 +15,13 @@ built is committed, except the HVSC-derived site output.
 location and diff against the committed output instead of overwriting it. Use
 them to answer "did my change move anything shipped?".
 
+The `sidquake` and `sidplayfp` WASM builds are reproducible: emscripten 5.0.7
+(the version the build scripts name) rebuilds the committed `.wasm` and glue
+byte for byte, so `git diff` after a build answers the same question. Any
+emsdk checkout works on Linux: `./emsdk install 5.0.7 && ./emsdk activate 5.0.7
+&& source ./emsdk_env.sh`. CI rebuilds both and fails if they differ from what
+is committed (`.github/workflows/ci.yml`, job `wasm`).
+
 ## Generated output (never edit by hand)
 
 `public/icons.css` + `public/fonts/sidquake-icons.woff2`,

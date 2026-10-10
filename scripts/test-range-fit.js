@@ -10,7 +10,10 @@
  * the minimum span rather than given bars the FFT cannot resolve; the fixed
  * grid the loop detection measures on is untouched by the fit; the bars
  * derived from the fine grid agree with the ones computed straight from the
- * bins over the same span; and silence keeps the fixed span.
+ * bins over the same span; and silence keeps the fixed span. It also pins when
+ * a bar moves against the audio: a tone's bar crosses half height a few rows
+ * before the tone starts and after it stops, the same amount either side, so
+ * the bars are centred on the music and only the analysis window smears them.
  *
  * Pure JS: no WASM, no browser, no SID. Run with `node scripts/test-range-fit.js`.
  */
@@ -129,6 +132,31 @@ function tones(seconds, list, noise = 0.0005) {
     check(onFixed.dip > 0.9 * Math.min(onFixed.p55, onFixed.p69),
         'which the 4096-point window alone blurs into one block',
         `bars ${onFixed.b55}/${onFixed.b69}: ${onFixed.p55.toFixed(2)} / ${onFixed.dip.toFixed(2)} / ${onFixed.p69.toFixed(2)}`);
+
+    console.log('bars line up with the audio');
+    {
+        const { deriveBars } = bake._internals;
+        const HZ = 50.1245, hop = SR / HZ, on = 100, off = 200;
+        for (const hz of [55, 150, 1000]) {
+            const pcm = new Float32Array(Math.floor(SR * 6));
+            for (let i = Math.round(on * hop); i < Math.round(off * hop); i++) pcm[i] = 0.5 * Math.sin(2 * Math.PI * hz * i / SR);
+            const st = await computeRowStore(pcm, SR, 40, HZ);
+            const out = deriveBars(st.fine, 40, 30, 6000);
+            const bar = Math.floor(40 * Math.log(hz / 30) / Math.log(6000 / 30));
+            let peak = 0;
+            for (let k = 0; k < out.count; k++) peak = Math.max(peak, out.data[k * 40 + bar]);
+            let rise = -1, fall = -1;
+            for (let k = 0; k < out.count; k++) {
+                const v = out.data[k * 40 + bar];
+                if (rise < 0 && v >= 0.5 * peak) rise = k;
+                if (rise >= 0 && k > rise && fall < 0 && v < 0.5 * peak) fall = k;
+            }
+            const centre = (rise + fall) / 2 - (on + off) / 2;
+            check(Math.abs(centre) <= 1 && on - rise <= 7 && fall - off <= 7,
+                `${hz} Hz: centred on the tone, smeared by at most 7 rows`,
+                `rise ${rise}, fall ${fall} for frames ${on}..${off}`);
+        }
+    }
 
     console.log(failures ? `\n${failures} check(s) failed` : '\nall checks passed');
     process.exit(failures ? 1 : 0);

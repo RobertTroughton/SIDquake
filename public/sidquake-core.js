@@ -55,6 +55,8 @@ class SIDAnalyzer {
                 // non-zero count means the maps below are INCOMPLETE, not empty.
                 sid_get_init_timeouts: this.Module.cwrap('sid_get_init_timeouts', 'number', []),
                 sid_get_longest_init_cycles: this.Module.cwrap('sid_get_longest_init_cycles', 'number', []),
+                sid_get_play_timeouts: this.Module.cwrap('sid_get_play_timeouts', 'number', []),
+                sid_get_song_calls_per_frame: this.Module.cwrap('sid_get_song_calls_per_frame', 'number', ['number']),
                 sid_get_zp_address: this.Module.cwrap('sid_get_zp_address', 'number', ['number']),
                 sid_get_code_bytes: this.Module.cwrap('sid_get_code_bytes', 'number', []),
                 sid_get_data_bytes: this.Module.cwrap('sid_get_data_bytes', 'number', []),
@@ -224,19 +226,13 @@ class SIDAnalyzer {
             const modifiedAddresses = [];
             const modifiedCount = this.api.sid_get_modified_count();
             for (let i = 0; i < modifiedCount; i++) {
-                const addr = this.api.sid_get_modified_address(i);
-                if (addr !== 0xFFFF) {  // 0xFFFF is the sentinel for an empty slot
-                    modifiedAddresses.push(addr);
-                }
+                modifiedAddresses.push(this.api.sid_get_modified_address(i));
             }
 
             const zpAddresses = [];
             const zpCount = this.api.sid_get_zp_count();
             for (let i = 0; i < zpCount; i++) {
-                const addr = this.api.sid_get_zp_address(i);
-                if (addr !== 0xFF) {  // 0xFF is the sentinel for an empty slot
-                    zpAddresses.push(addr);
-                }
+                zpAddresses.push(this.api.sid_get_zp_address(i));
             }
 
             const sidWrites = new Map();
@@ -252,6 +248,11 @@ class SIDAnalyzer {
             }
 
             const numCallsPerFrame = this.api.sid_get_num_calls_per_frame();
+            // Each subtune's own rate (index 0 = song 1): the exporter bakes one
+            // subtune, and its speed bit and timer can differ from the start song's.
+            const songs = Math.min(256, Math.max(1, this.api.sid_get_header_value(4)));
+            const callsPerFrameBySong = [];
+            for (let i = 0; i < songs; i++) callsPerFrameBySong.push(this.api.sid_get_song_calls_per_frame(i));
             const ciaTimerDetected = this.api.sid_get_cia_timer_detected() ? true : false;
             const ciaTimerValue = this.api.sid_get_cia_timer_value();
             const maxCycles = this.api.sid_get_max_cycles();
@@ -272,6 +273,7 @@ class SIDAnalyzer {
                 codeBytes: this.api.sid_get_code_bytes(),
                 dataBytes: this.api.sid_get_data_bytes(),
                 numCallsPerFrame,
+                callsPerFrameBySong,
                 ciaTimerDetected,
                 ciaTimerValue,
                 maxCycles,
@@ -283,7 +285,10 @@ class SIDAnalyzer {
                 // NOT "the tune touches nothing" - and placing player routines on
                 // that assumption is what corrupts an export.
                 initTimeouts: this.api.sid_get_init_timeouts ? this.api.sid_get_init_timeouts() : 0,
-                longestInitCycles: this.api.sid_get_longest_init_cycles ? this.api.sid_get_longest_init_cycles() : 0
+                longestInitCycles: this.api.sid_get_longest_init_cycles ? this.api.sid_get_longest_init_cycles() : 0,
+                // How many subtunes' analysis stopped at a play call that never
+                // returned: the maps then hold only what came before it.
+                playTimeouts: this.api.sid_get_play_timeouts()
             };
         } finally {
             // Nothing to unwind: the run is one blocking call.

@@ -16,6 +16,8 @@ CPU core itself is in [`CPU_CORES.md`](CPU_CORES.md).
   the decoder. See `docs/CPU_CORES.md`.
 
 **`cpu6510_wasm.cpp`** - analysis bus over that core
+- The machine is the `Analyser6510` class; the `cpu_*` exports drive one
+  default instance
 - Memory access tracking (execute/read/write/jump-target flags per address)
 - SID register write capture (supports up to 32 SID chips)
 - Zero-page write tracking
@@ -31,9 +33,17 @@ CPU core itself is in [`CPU_CORES.md`](CPU_CORES.md).
 
 **`opcodes.h`** - Shared opcode table (256 entries with mnemonic, addressing mode, size, cycles)
 
-The analyser counts a SID "chip" per touched `$20` slot in `$D400-$D7FF`, so a
-tune that sweeps writes across the mirror range reports up to 8 chips. The count
-covers every subtune analysed.
+The analyser counts a SID "chip" per `$20` slot in `$D400-$D7FF` or
+`$DE00-$DFFF` that a play routine writes to, in any subtune, plus `$D400`
+always and the second and third SID addresses a v3/v4 header declares. Writes
+made by init are left out: an init that clears the whole mirror range would
+otherwise count as 32 chips. A play routine that does not return, or an init
+that times out, is counted too (`sid_get_play_timeouts`,
+`sid_get_init_timeouts`): either one means the memory maps are incomplete.
+Calls per frame are worked out per subtune from its speed bit and the CIA
+timer its init programs (`sid_get_song_calls_per_frame`); the exporter uses the
+rate of the subtune it exports, `sid_get_num_calls_per_frame` is the start
+song's.
 
 Header rules the analyser applies: an init address of 0 is the load address; a
 file claiming 0 songs is analysed as one; a play address of 0 means init hung
@@ -50,10 +60,29 @@ called that way. A load that fails any check, including "does not fit in 64K"
 - `SIDAnalyzer` class wrapping all WASM calls via `cwrap()`
 - Manages WASM heap memory allocation for file transfers
 - Provides clean JS API: `loadSID()`, `analyze()`, `updateMetadata()`, `createModifiedSID()`
+- `analyze()` returns `initTimeouts`, the number of songs whose init never
+  returned; those songs have no memory map. The Modified Memory row then reads
+  "Unknown" when nothing was traced and appends "(incomplete)" otherwise, and an
+  export with save/restore logs a console warning.
 
 **`analysis-store.js`**, **`loop-prepass.js`**, **`spectrometer-shadow-detect.js`**
 and the `spectrometer-bake*.js` family consume the analyser; the bake is
-described in `BAR_HEIGHT_METHODS.md`.
+described in `BAR_HEIGHT_METHODS.md`. The pre-pass and the shadow and VU scans
+drive the analyser CPU through **`analyser-session.js`**: `startTune()` sets up
+the C64 environment, loads the music with one `cpu_load_memory` call
+(`loadMusic()`), dropping any byte that would land past `$FFFF` as
+`sid_analyze` refuses such a tune, runs init for the subtune and returns the
+play caller and the subtune's play rate. Each play call gets the same
+20,000-cycle budget as `sid_analyze` (`PLAY_CYCLE_CAP`). They read the PSID
+header with **`psid.js`** `parseSidHeader()`; `sid-playback.js` is a classic
+script and keeps its own reader.
+
+The "these bars will be empty" warning (`analyzeVuVisibility`, run by `ui.js`
+`checkVuVisibility`) steps the song the export plays (`exportSubtuneIndex()`)
+for 1,200 raster frames, and warns when no voice is open the way the live bar
+methods look for over an audible lead-in of 3 s or more. A multispeed tune's
+play calls are converted to frames with `playTiming()` from `analyser-session.js`,
+the same per-subtune speed reading the pre-pass uses.
 
 ## Song length and loop detection
 
@@ -86,6 +115,13 @@ Driven from `ui.js`; the results land on the Studio's Song tab.
   tail (Crystalline, JCH) be found rather than reported as an ending. A hint
   the audio does not confirm is dropped and the old search carries on from
   where the render is; a tune the analyser cannot drive gets no hint at all
+- Scan results are stored across reloads (`analysis-store.js`), keyed on the
+  tune, the scan options and `ANALYSIS_VERSION` (`spectrometer-bake-core.js`),
+  which joins `LOOP_DETECT_VERSION` (`loop-detect.js`) and `PREPASS_VERSION`
+  (`loop-prepass.js`). A change that moves what the loop detection or the
+  pre-pass answers bumps the matching constant, so older results are not read
+  back; `scripts/test-analysis-version.js` hashes both on fixed inputs and
+  fails until the constant is bumped and the new hash pinned
 - Files holding several tunes (`multiSongExport`): everything that can only
   describe one tune — the song length, the forced loop, the baked spectrometer
   — is off while the export still holds all of them, and the scan does not run
@@ -104,14 +140,16 @@ documented in [`tools/songlengths/README.md`](../tools/songlengths/README.md).
   and checks the pre-pass finds HVSC's loop period to the frame.
 - `scripts/test-loop-detect.js`, `scripts/test-song-end.js`: which loop period
   `detectLoop` settles on and when `analyzeRows` may call a song ended
-  (`spectrometer-bake.js`), over synthetic bar grids.
+  (`loop-detect.js`, `spectrometer-bake.js`), over synthetic bar grids.
 - `scripts/test-vu-visibility.js`: the "these bars will be empty" warning does
   not fire on ordinary tunes (real 6510 over `SID/`).
 - `scripts/test-analyser-edge-cases.js`: the header rules above, on tunes built
   in the test (`scripts/lib/psid-asm.js`).
 - `scripts/test-shadow-detect.js`: the shadow scan reaches late store sites,
   waits out a long init and drives play-address-0 tunes; the VU warning's audio
-  check runs init.
+  check runs init; a multispeed tune's lead-in is measured in frames, not play
+  calls; music running past `$FFFF` does not wrap into zero page; a play call
+  over the cycle budget ends the VU scan.
 - `scripts/test-range-fit.js`, `scripts/test-bake-cache.js`,
   `scripts/test-baked-decoder.js`, `scripts/test-shadow-replay.js`: the bar-data
   methods (see `BAR_HEIGHT_METHODS.md`).

@@ -35,7 +35,12 @@
 // of the analysis the UI shows.
 
 import * as bake from './spectrometer-bake.js';
-import { findStateLoop } from './loop-prepass.js';
+import { findStateLoop, PREPASS_VERSION } from './loop-prepass.js';
+import { LOOP_DETECT_VERSION } from './loop-detect.js';
+
+// The versions of the loop detection and the register pre-pass a scan result
+// came from; ui.js keys stored results (analysis-store.js) on it.
+export const ANALYSIS_VERSION = `${LOOP_DETECT_VERSION}.${PREPASS_VERSION}`;
 
 export const DEFAULT_ENGINE = 'fp';
 export const ENGINES = ['resid', 'fp'];
@@ -138,8 +143,8 @@ async function renderAndAnalyze(sidBytes, loadEngine, options = {}) {
     };
 
     api.init(sampleRate);
-    // Fast sampling (method 0): the bake only reads a 40-bar spectrum up to ~5.5 kHz,
-    // so audio fidelity is irrelevant here. (No-op on an engine that ignores it.)
+    // Fast sampling (method 0): the bake only reads a 40-bar spectrum up to at
+    // most 12 kHz (FIT_MAX), so audio fidelity is irrelevant here. (No-op on an engine that ignores it.)
     try { if (api.setSampling) api.setSampling(0); } catch (e) { /* best-effort */ }
     const sidPtr = module._malloc(sidBytes.length);
     module.HEAPU8.set(sidBytes, sidPtr);

@@ -9,6 +9,8 @@
 #include <set>
 #include <string>
 #include "opcodes.h"
+#include "c64_env.h"
+#include "cpu6510_api.h"
 
 // Strip non-printable bytes and trailing spaces from a fixed-length SID header
 // field. SID header strings are Latin-1 (ISO 8859-1), so keep the printable
@@ -72,8 +74,9 @@ extern "C" {
         std::vector<uint16_t> modifiedList;
 
         uint32_t sidRegisterWrites[32];
-        // $20-byte SID slots written to by any subtune.
-        bool sidChipsUsed[32];
+        // $20-byte SID slots (see cpu_get_sid_chip_used) a play routine wrote
+        // to in any subtune, plus $D400 and the ones the header declares.
+        bool sidChipsUsed[48];
         uint16_t resolvedPlayAddress;
 
         uint32_t codeBytes;
@@ -94,6 +97,11 @@ extern "C" {
         // be treated as "this tune touches nothing" - see sid_analyze.
         uint32_t initTimeouts;
         uint32_t longestInitCycles;
+        uint32_t playTimeouts;
+        uint32_t firstPlayTimeoutFrame;
+        // Play calls per raster frame for each subtune analysed (index 0 =
+        // song 1); numCallsPerFrame is the start song's.
+        std::vector<uint8_t> callsPerFrameBySong;
     };
 
     struct {
@@ -109,26 +117,6 @@ extern "C" {
         std::string cleanCopyright;
         std::string cleanMagicID;
     } sidState;
-
-    // CPU functions imported from cpu6510_wasm.cpp.
-    extern void cpu_init();
-    extern void cpu_set_tracking(bool enabled);
-    extern void cpu_write_memory(uint16_t address, uint8_t value);
-    extern int cpu_execute_function(uint16_t address, uint32_t maxCycles);
-    extern uint8_t cpu_get_memory_access(uint16_t address);
-    extern uint32_t cpu_get_sid_writes(uint8_t reg);
-    extern uint32_t cpu_get_sid_chip_count();
-    extern uint16_t cpu_get_sid_chip_address(uint32_t index);
-    extern uint32_t cpu_get_zp_writes(uint8_t addr);
-    extern void cpu_set_record_writes(bool record);
-    extern void cpu_save_memory(uint8_t* buffer);
-    extern void cpu_restore_memory(uint8_t* buffer);
-    extern void cpu_reset_state_only();
-    extern uint32_t cpu_get_last_execution_cycles();
-    extern void cpu_setup_c64_env();
-    extern int cpu_execute_interrupt(uint16_t address, uint32_t maxCycles, bool kernalEntry);
-    extern uint32_t cpu_get_irq_handler();
-    extern bool cpu_get_sid_chip_used(uint32_t slot);
 
     // SID header values are stored big-endian on disk; the WASM host is
     // little-endian, so byte-swap after loading.
@@ -171,6 +159,9 @@ extern "C" {
         sidState.analysis.maxCycles = 0;
         sidState.analysis.initTimeouts = 0;
         sidState.analysis.longestInitCycles = 0;
+        sidState.analysis.playTimeouts = 0;
+        sidState.analysis.firstPlayTimeoutFrame = UINT32_MAX;
+        sidState.analysis.callsPerFrameBySong.clear();
 
         cpu_init();
     }
@@ -186,87 +177,40 @@ extern "C" {
     // operate on a half-parsed wreck of the rejected file.
     EMSCRIPTEN_KEEPALIVE
         int sid_load(uint8_t* data, uint32_t size) {
-        if (size < 120) {
-            return -1;
+        // The checks and the resolved addresses are the reSID engine's too
+        // (c64env::parse_psid); the analyser also refuses RSID (-3), which
+        // needs a real C64 environment it does not model.
+        c64env::Psid psid;
+        const int parsed = c64env::parse_psid(data, size, psid);
+        if (parsed < 0) {
+            return parsed;
         }
-
-        // Only copy what the file actually contains: a 120-byte v1 file is
-        // smaller than the packed struct (124 bytes with the v2+/v3/v4 tail),
-        // and copying sizeof(SIDHeader) unconditionally over-reads the input
-        // buffer. The v2+ fields are zeroed for v1 files instead.
-        SIDHeader header;
-        memset(&header, 0, sizeof(SIDHeader));
-        memcpy(&header, data, size < sizeof(SIDHeader) ? size : sizeof(SIDHeader));
-
-        // magicID has no null terminator in the file format.
-        std::string magicID(header.magicID, 4);
-
-        if (magicID != "PSID" && magicID != "RSID") {
-            return -2;
-        }
-
-        if (magicID == "RSID") {
+        if (psid.rsid) {
             return -3;
         }
 
-        header.version = swap16(header.version);
-        header.dataOffset = swap16(header.dataOffset);
-        header.loadAddress = swap16(header.loadAddress);
-        header.initAddress = swap16(header.initAddress);
-        header.playAddress = swap16(header.playAddress);
-        header.songs = swap16(header.songs);
-        header.startSong = swap16(header.startSong);
-        header.speed = swap32(header.speed);
+        // Only copy what the file actually contains: a v1 file can be smaller
+        // than the packed struct (124 bytes with the v2+/v3/v4 tail). The
+        // numeric fields are then replaced with the parsed ones.
+        SIDHeader header;
+        memset(&header, 0, sizeof(SIDHeader));
+        memcpy(&header, data, size < sizeof(SIDHeader) ? size : sizeof(SIDHeader));
+        std::string magicID(header.magicID, 4);   // no null terminator in the file
+        header.version = psid.version;
+        header.dataOffset = c64env::be16(data + 0x06);
+        header.loadAddress = psid.loadAddress;
+        header.initAddress = psid.initAddress;
+        header.playAddress = psid.playAddress;
+        header.songs = psid.songs;
+        header.startSong = psid.startSong;
+        header.speed = psid.speed;
+        header.flags = psid.flags;
+        header.secondSIDAddress = psid.secondSidByte;
+        header.thirdSIDAddress = psid.thirdSidByte;
 
-        if (header.version >= 2) {
-            header.flags = swap16(header.flags);
-        }
-
-        if (header.version < 1 || header.version > 4) {
-            return -4;
-        }
-
-        if (header.version >= 2 && size < 0x7C) {
-            return -1;
-        }
-
-        // dataOffset comes straight from the file: reject values that point
-        // before the end of the header or past the end of the file. Without
-        // this, `size - dataStart` underflows to ~4 billion and the load loop
-        // reads far out of bounds (a crafted/corrupt .sid would hang the tab).
-        const uint32_t minDataOffset = (header.version == 1) ? 0x76 : 0x7C;
-        if (header.dataOffset < minDataOffset || header.dataOffset >= size) {
-            return -5;
-        }
-
-        // If loadAddress is 0, the actual load address is encoded as the first
-        // two bytes of the data section (little-endian, like a PRG file).
-        uint32_t dataStart = header.dataOffset;
-        if (header.loadAddress == 0) {
-            if (size < dataStart + 2) {
-                return -5;
-            }
-            uint8_t lo = data[dataStart];
-            uint8_t hi = data[dataStart + 1];
-            header.loadAddress = lo | (hi << 8);
-            dataStart += 2;
-        }
-
-        // PSID: an init address of 0 means the load address.
-        if (header.initAddress == 0) {
-            header.initAddress = header.loadAddress;
-        }
-
-        uint32_t musicSize = size - dataStart;
-        uint8_t* musicData = data + dataStart;
-
-        // The tune must fit in the 64K address space at its load address.
-        // cpu_write_memory takes a uint16_t address, so an oversized tune would
-        // silently wrap and corrupt zero page / the CPU vectors rather than
-        // failing. Reject it up front.
-        if ((uint32_t)header.loadAddress + musicSize > 0x10000) {
-            return -7;
-        }
+        const uint32_t dataStart = psid.musicStart;
+        const uint32_t musicSize = psid.musicSize;
+        const uint8_t* musicData = data + dataStart;
 
         // Allocate the new file copy BEFORE freeing the old one, so even an
         // OOM here leaves the previous SID loaded.
@@ -326,6 +270,9 @@ extern "C" {
         sidState.analysis.maxCycles = 0;
         sidState.analysis.initTimeouts = 0;
         sidState.analysis.longestInitCycles = 0;
+        sidState.analysis.playTimeouts = 0;
+        sidState.analysis.firstPlayTimeoutFrame = UINT32_MAX;
+        sidState.analysis.callsPerFrameBySong.clear();
 
         // Snapshot memory after initial load so each song can start from
         // an identical baseline.
@@ -394,15 +341,13 @@ extern "C" {
         if (defaultSong < 1 || defaultSong > songsToAnalyze) {
             defaultSong = 1;
         }
+        sidState.analysis.callsPerFrameBySong.assign(songsToAnalyze, 1);
 
         for (uint16_t songNum = 1; songNum <= songsToAnalyze; songNum++) {
             cpu_restore_memory(cleanMemorySnapshot);
             cpu_reset_state_only();
 
             // PSID convention: subtune index (0-based) is passed in A, X and Y.
-            extern void cpu_set_accumulator(uint8_t value);
-            extern void cpu_set_xreg(uint8_t value);
-            extern void cpu_set_yreg(uint8_t value);
             cpu_set_accumulator(songNum - 1);
             cpu_set_xreg(songNum - 1);
             cpu_set_yreg(songNum - 1);
@@ -423,6 +368,9 @@ extern "C" {
                     sidState.analysis.longestInitCycles = initCycles;
                 }
             }
+            // Chips are counted from what play writes: an init that clears the
+            // whole $D400-$D7FF mirror range otherwise reads as 32 SIDs.
+            cpu_reset_sid_chip_usage();
 
             // A play address of 0 means init installed the play routine behind an
             // IRQ; without deriving it the loop below would "call" $0000 (BRK) and
@@ -442,13 +390,24 @@ extern "C" {
                 sidState.analysis.resolvedPlayAddress = playAddr;
             }
 
-            cpu_set_record_writes(true);
+            // Nothing here reads the write sequence, and over 30,000 frames a
+            // play routine with a few hundred SID writes a call (a $D418 digi)
+            // grew it past the heap and aborted the module. The loop pre-pass
+            // shares this CPU and may have left recording on.
+            cpu_set_record_writes(false);
 
             for (uint32_t frame = 0; frame < frameCount; frame++) {
                 int returned = playIsIrq
                     ? cpu_execute_interrupt(playAddr, 20000, playViaKernal)
                     : cpu_execute_function(playAddr, 20000);
                 if (!returned) {
+                    // The CPU is left mid-routine, so the song's analysis stops
+                    // here; everything it would have touched later is missing
+                    // from the maps, so say so (sid_get_play_timeouts).
+                    sidState.analysis.playTimeouts++;
+                    if (frame < sidState.analysis.firstPlayTimeoutFrame) {
+                        sidState.analysis.firstPlayTimeoutFrame = frame;
+                    }
                     break;
                 }
 
@@ -484,32 +443,25 @@ extern "C" {
             for (int reg = 0; reg < 32; reg++) {
                 sidState.analysis.sidRegisterWrites[reg] += cpu_get_sid_writes(reg);
             }
-            for (uint32_t slot = 0; slot < 32; slot++) {
+            for (uint32_t slot = 0; slot < 48; slot++) {
                 if (cpu_get_sid_chip_used(slot)) {
                     sidState.analysis.sidChipsUsed[slot] = true;
                 }
             }
 
-            // Multispeed (calls-per-frame) detection, keyed to the subtune the
-            // exporter actually bakes (the default/start song). PSID encodes
+            // Multispeed (calls-per-frame) detection, per subtune. PSID encodes
             // timing per subtune in the 32-bit speed field: bit set => the play
             // routine runs at the CIA-timer rate, bit clear => vsync, i.e. single
             // speed. A $DC04/05 write is only a multispeed signal when this
             // subtune's bit says CIA - trusting it unconditionally exported plain
             // vsync tunes (that poke the timer for unrelated reasons) at up to N x
-            // tempo. Subtunes past 32 share bit 31, per the PSID spec.
-            //
-            // Only the default subtune's rate is derived; the exporter can still
-            // bake a user-picked non-default subtune, which then inherits the
-            // default's rate. A fully per-subtune rate would need the export
-            // selection at analysis time - deferred; single-subtune tunes and the
-            // default export (the common cases) are exact.
-            if (songNum == defaultSong && !sidState.analysis.ciaTimerDetected) {
-                extern uint8_t cpu_get_cia_timer_lo();
-                extern uint8_t cpu_get_cia_timer_hi();
-                extern bool cpu_get_cia_timer_written();
+            // tempo. Subtunes past 32 share bit 31, per the PSID spec. The
+            // exporter takes the rate of the subtune it bakes
+            // (sid_get_song_calls_per_frame); sid_get_num_calls_per_frame is the
+            // start song's.
+            {
 
-                uint8_t speedBit = (defaultSong - 1) < 31 ? (uint8_t)(defaultSong - 1) : 31;
+                uint8_t speedBit = (songNum - 1) < 31 ? (uint8_t)(songNum - 1) : 31;
                 bool ciaSpeed = (sidState.header.speed >> speedBit) & 1u;
 
                 if (ciaSpeed && cpu_get_cia_timer_written()) {
@@ -532,15 +484,28 @@ extern "C" {
                         // The timer counts its latch down to 0 and reloads, so
                         // it fires every latch + 1 cycles.
                         double freq = cyclesPerFrame / (timerValue + 1.0);
-                        sidState.analysis.numCallsPerFrame = (uint8_t)std::min(16, std::max(1, (int)(freq + 0.5)));
-                        sidState.analysis.ciaTimerValue = timerValue;
-                        sidState.analysis.ciaTimerDetected = true;
+                        uint8_t calls = (uint8_t)std::min(16, std::max(1, (int)(freq + 0.5)));
+                        sidState.analysis.callsPerFrameBySong[songNum - 1] = calls;
+                        if (songNum == defaultSong) {
+                            sidState.analysis.numCallsPerFrame = calls;
+                            sidState.analysis.ciaTimerValue = timerValue;
+                            sidState.analysis.ciaTimerDetected = true;
+                        }
                     }
                 }
             }
         }
 
         free(cleanMemorySnapshot);
+
+        // Every C64 has a SID at $D400, and a v3/v4 header names the address of
+        // the second and third ($Dxx0, even xx in $42-$7F or $E0-$FE).
+        sidState.analysis.sidChipsUsed[0] = true;
+        for (uint8_t b : { sidState.header.secondSIDAddress, sidState.header.thirdSIDAddress }) {
+            const uint16_t addr = c64env::sid_address(b);
+            if (addr >= 0xDE00) sidState.analysis.sidChipsUsed[32 + ((addr - 0xDE00) >> 5)] = true;
+            else if (addr) sidState.analysis.sidChipsUsed[(addr - 0xD400) >> 5] = true;
+        }
 
         // Code-vs-data only matters for the SID's own loaded range.
         for (uint32_t addr = sidState.header.loadAddress;
@@ -573,7 +538,7 @@ extern "C" {
     }
 
     EMSCRIPTEN_KEEPALIVE
-        uint16_t sid_get_header_value(int field) {
+        uint32_t sid_get_header_value(int field) {
         if (!sidState.isLoaded) return 0;
 
         switch (field) {
@@ -723,7 +688,7 @@ extern "C" {
     EMSCRIPTEN_KEEPALIVE
         uint32_t sid_get_sid_chip_count() {
         uint32_t count = 0;
-        for (int i = 0; i < 32; i++) {
+        for (int i = 0; i < 48; i++) {
             if (sidState.analysis.sidChipsUsed[i]) count++;
         }
         return count;
@@ -734,9 +699,9 @@ extern "C" {
     EMSCRIPTEN_KEEPALIVE
         uint16_t sid_get_sid_chip_address(uint32_t index) {
         uint32_t count = 0;
-        for (int i = 0; i < 32; i++) {
+        for (int i = 0; i < 48; i++) {
             if (sidState.analysis.sidChipsUsed[i]) {
-                if (count == index) return 0xD400 + i * 0x20;
+                if (count == index) return i < 32 ? 0xD400 + i * 0x20 : 0xDE00 + (i - 32) * 0x20;
                 count++;
             }
         }
@@ -800,6 +765,30 @@ extern "C" {
     EMSCRIPTEN_KEEPALIVE
         uint32_t sid_get_init_timeouts() {
         return sidState.analysis.initTimeouts;
+    }
+
+    // Play calls per raster frame for subtune `song` (0-based), as its speed
+    // bit and the CIA timer its init programmed give it; 1 for a song out of
+    // range or one whose init timed out.
+    EMSCRIPTEN_KEEPALIVE
+        uint8_t sid_get_song_calls_per_frame(uint32_t song) {
+        return song < sidState.analysis.callsPerFrameBySong.size()
+            ? sidState.analysis.callsPerFrameBySong[song] : 1;
+    }
+
+    // Number of subtunes whose analysis stopped at a play call that did not
+    // return within its cycle budget. Like an init timeout, non-zero means the
+    // memory maps are incomplete: they hold only what came before that call.
+    EMSCRIPTEN_KEEPALIVE
+        uint32_t sid_get_play_timeouts() {
+        return sidState.analysis.playTimeouts;
+    }
+
+    // The earliest play call (0-based, in calls) at which any subtune's
+    // analysis stopped, or UINT32_MAX when none did.
+    EMSCRIPTEN_KEEPALIVE
+        uint32_t sid_get_first_play_timeout_frame() {
+        return sidState.analysis.firstPlayTimeoutFrame;
     }
 
     // Cycles the slowest init that DID return took - useful for spotting tunes

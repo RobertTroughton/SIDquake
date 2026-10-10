@@ -2,13 +2,24 @@
 
 The instruction set lives once, in `wasm/cpu6510_core.h`. It is a template over
 a *bus*: a type supplying the register file by reference plus `fetch`, `read`,
-`write`, `jumpTarget` and `jam`. Two bus adapters use it, for two different
-jobs:
+`write`, `dummyWrite`, `jumpTarget` and `jam`. Two bus adapters use it, for two
+different jobs:
 
 | | source | job |
 |---|---|---|
 | **analysis core** | `wasm/cpu6510_wasm.cpp` | runs init/play offline for `sid_analyze`, the spectrometer bar-data methods and `npm test`. Tracks per-address read/write/execute flags, SID and zero-page write counts, and the per-frame cycle count the exporter budgets against (`sid_get_max_cycles`). |
 | **audio core** | `wasm/sid_audio.cpp` | runs init/play to drive reSID for the song-length scan's fast option and the VU warning. Each play call runs to completion before the frame's SID cycles are clocked, so every write in a frame lands at its start; cycle counts only bound the call to its frame. |
+
+The analysis machine is the `Analyser6510` class: registers, RAM and the access
+tracking. It is its own bus, so the decoder reaches registers and RAM through
+one reference; a separate adapter struct holding references to them cost about
+9% on the analyser's hot path. The exported `cpu_*` C API (`cpu6510_api.h`)
+forwards to a single default instance, which `sid_analyze` and
+`analyser-session.js` share; native code can create as many instances as it
+needs. The reSID engine is a class too: `ResidEngine` holds the 6510, its RAM,
+the reSID chips, the loaded tune's header fields and the frame state, an
+`AudioBus` adapter is bound to one instance, and the `audio_*` exports drive a
+default instance.
 
 `wasm/sidplayfp_audio.cpp` is a third playback path but uses libsidplayfp's own
 CPU, not either of these.
@@ -20,34 +31,53 @@ data read in both: the analysis core covers the instruction stream with
 `MEM_EXECUTE`/`MEM_OPCODE` rather than `MEM_READ`, and the audio core must not
 let an instruction fetch reach reSID.
 
+Every read-modify-write instruction (`ASL`/`LSR`/`ROL`/`ROR`/`INC`/`DEC` on
+memory, `SLO`/`RLA`/`SRE`/`RRA`/`DCP`/`ISC`) writes the unmodified value back
+before the modified one, as the NMOS 6502 does, and the core hands that first
+write to the bus as `dummyWrite`. The audio adapter sends it through its normal
+write path, so reSID hears both writes of an `INC $D4xx`. The analysis adapter
+drops it: it models no write-sensitive I/O, and counting it would double every
+read-modify-write in `sidWrites`, `zpWrites` and the shadow-register write
+sequence.
+
 All 256 opcodes are decoded, illegals included.
 
-## Calling into a tune (analysis core)
+## Calling into a tune
 
-The analysis core has no ROMs and starts from zeroed RAM, so a caller builds the
-machine a PSID expects before loading the tune: `cpu_setup_c64_env` sets
-`$00/$01` to their power-on values (`$2F`/`$37`) and plants just enough KERNAL
-to call into and to leave an interrupt through: the IRQ exits at `$EA31`,
-`$EA7E` and `$EA81` (pull Y, X, A, then `RTI`), the real `$FF48` IRQ entry, an
-`RTS` at every jump-table entry, and the `$0314`/`$0318`/`$FFFA`/`$FFFE`
-vectors. The tune is loaded afterwards, so it overwrites any stub it overlaps.
-`sid_analyze`, `loop-prepass.js` and `spectrometer-shadow-detect.js` all do
-this.
+Both adapters build the machine a PSID expects, and call into it, the same way:
+`wasm/c64_env.h` holds the one PSID header parser (`parse_psid`, with the
+analyser's checks; the analyser alone then refuses RSID), the per-chip model
+and SID-address rules, the KERNAL stubs, the play-routine resolver and the call
+runner. The analysis core starts from zeroed RAM and `cpu_setup_c64_env` plants
+the stubs; the reSID engine does the same in `audio_load_sid`. The tune is
+loaded afterwards, so it overwrites any stub it overlaps. `sid_analyze` and
+`analyser-session.js` (for `loop-prepass.js` and
+`spectrometer-shadow-detect.js`) both do this.
 
-Two ways to call a routine:
+`plant_kernal` sets `$00/$01` to their power-on values (`$2F`/`$37`), CIA 1's
+timer A latch to the PAL KERNAL's `$4025`, and just enough KERNAL to call into
+and to leave an interrupt through: the IRQ exits at `$EA31`, `$EA7E` and `$EA81`
+(pull Y, X, A, then `RTI`), the real `$FF48` IRQ entry, the `$FE43` NMI entry
+(`SEI`, `JMP ($0318)`), an `RTS` at every jump-table entry, and the
+`$0314`/`$0318`/`$FFFA`/`$FFFE` vectors.
 
-- `cpu_execute_function` plants a return address and runs until the `RTS` that
-  pops it: init, and play when the header gives a play address.
-- `cpu_execute_interrupt` enters a handler the way the hardware does (PC and P
-  pushed, I set) and runs until the `RTI` that pops them. With `kernalEntry` it
-  also pushes A, X and Y, as the KERNAL's `$FF48` does before `JMP ($0314)`, so
-  a handler that leaves through `JMP $EA31` returns balanced. This is play for a
-  PSID with play address 0; `cpu_get_irq_handler` says which handler init
-  installed (`$FFFE` with the KERNAL banked out, else `$0314`, flagged in bit 16).
+`c64env::call` is the one way to run a routine:
 
-Both stop on a JAM, on the cycle cap, or on a jump to `$0000/$0001`, and compare
-the stack pointer as a signed distance so a return that wraps SP past `$FF`
-still counts.
+- as a subroutine (`cpu_execute_function`, the reSID engine's `cpu_call`): plant
+  a return address and run until the `RTS` that pops it: init, and play when the
+  header gives a play address;
+- as an interrupt handler (`cpu_execute_interrupt`): enter the way the hardware
+  does (PC and P pushed, I set, 7 cycles) and run until the `RTI` that pops
+  them. With `kernalEntry` it also pushes A, X and Y and counts the 29 cycles
+  of the KERNAL's `$FF48` entry, so a handler that leaves through `JMP $EA31`
+  returns balanced. This is play for a PSID with play address 0;
+  `irq_handler` says which handler init installed (`$FFFE` with the KERNAL
+  banked out, else `$0314`).
+
+A call ends at the matching `RTS`/`RTI` (SP back at or above where it started,
+compared as a signed distance so a wrap past `$FF` still counts), or fails on a
+JAM, on the cycle cap, or on a jump to `$0000/$0001` or `$FFFF`; a failed call
+has its stack pointer put back.
 
 ## Keeping them honest
 
@@ -65,24 +95,39 @@ still counts.
   outside opinion, the only check independent of this repo's reading of the
   hardware.
 
+It then runs `instances.cpp`, which interleaves two analysers, and two reSID
+engines, in one process and checks each ends exactly as it does run alone.
+
 Run it after touching either core; see `scripts/cpu-crosscheck/README.md`. It is
 not part of `npm test`: it needs a C++ toolchain and takes minutes.
 
+`scripts/cpu-crosscheck/singlestep.sh` checks the decoder itself against two
+outside references: Tom Harte's SingleStepTests (`6502/v1`, 10,000 cases per
+opcode, compared on registers, RAM, cycle count and the order of bus writes)
+and Klaus Dormann's functional test. Both are downloaded at run time. The
+JAM opcodes are the only exclusion, and bus reads are not compared (both are
+explained under "What is still not modelled").
+
 ## What is still not modelled
 
-- **The NMOS read-modify-write double write.** Real hardware writes the
-  unmodified value back before the modified one, which is visible on I/O
-  registers. Adding it would double every `INC`/`DEC`/shift on a tracked
-  address in `sidWrites`, `zpWrites` and the shadow-register write sequence, so
-  it needs those consumers looked at first.
-- **`ARR` (`$6B`) in decimal mode.** Both cores use the binary-mode result and
-  flags. The BCD variant needs a separate fixup.
-- **`XAA` (`$8B`) and `LAX #imm` (`$AB`) magic constants.** Both cores use the
-  common deterministic forms (`A = X & imm` and `A = X = imm`); on real hardware
-  the result depends on the analogue state of the internal bus.
-- **Bus conflicts and open-bus reads.** There is no I/O, VIC or PLA banking
-  model here at all; `$D400-$D7FF` is plain RAM in the analysis core and mapped
-  to reSID in the audio core, with no way to bank RAM in underneath it.
+- **`JAM`/`KIL` (`$x2`) locking the bus.** The core reports the halt to its
+  bus (`jam()`) and stops, rather than hanging on repeated reads, so these
+  opcodes are left out of the Harte run.
+- **Dummy reads.** The 6502 makes extra reads (the operand of an implied
+  instruction, the unfixed address of an indexed access, the stack before a
+  pull); the core does not, which only matters to read-sensitive I/O such as
+  the CIA interrupt flags. The Harte run compares bus writes, not reads.
+- **`XAA` (`$8B`) and `LAX #imm` (`$AB`) instability.** Both use the common
+  magic constant `$EE` (`A = (A | $EE) & X & imm` and
+  `A = X = (A | $EE) & imm`), as Tom Harte's tests do; on real hardware the
+  constant varies between chips. VICE and libsidplayfp use `$EF` for `XAA`.
+- **Most of the I/O chips.** `wasm/c64_io.h` is the whole model, shared by
+  both adapters: the I/O area is there only while `$01` maps it in (CHAREN,
+  and LORAM or HIRAM; otherwise `$D000-$DFFF` is RAM), the raster line in
+  `$D012` and `$D011` bit 7 runs free at PAL timing from the core's cycle count,
+  and CIA 1's `$DC0D` reads as "timer A fired", so a routine waiting on either
+  gets there. Everything else reads back the RAM underneath: no VIC, CIA or NMI
+  interrupt sources, no SID readback in the analysis core, no open bus.
 
 The `SHA`/`SHX`/`SHY`/`TAS` behaviour that *is* modelled - value is
 `reg & (pre-index high byte + 1)`, and a page-crossing index replaces the

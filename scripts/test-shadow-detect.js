@@ -14,6 +14,12 @@
  *   - The audio check behind the warning runs init for subtune 0 too.
  *   - Only executed opcodes are store sites: operand bytes that happen to read
  *     8D xx D4 are not.
+ *   - The VU check measures its lead-in in raster frames, so a multispeed
+ *     tune's several play calls per frame are not each counted as one.
+ *   - Music that would run past $FFFF is cut there, as sid_analyze refuses
+ *     it, rather than wrapping round into zero page.
+ *   - A play call gets the same cycle budget as in the analyser and the loop
+ *     pre-pass, so a call too long for a frame ends the scan in all three.
  *
  * Needs public/sidquake.wasm; no browser. Run with
  * `node scripts/test-shadow-detect.js`.
@@ -37,7 +43,8 @@ async function main() {
         wasmBinary: fs.readFileSync(path.join(ROOT, 'public/sidquake.wasm')),
         print: () => {}, printErr: () => {},
     });
-    const { analyzeShadow, soundsDuring } = await import('../public/spectrometer-shadow-detect.js');
+    const { analyzeShadow, analyzeVuVisibility, soundsDuring } = await import('../public/spectrometer-shadow-detect.js');
+    const { fingerprintTune } = await import('../public/loop-prepass.js');
 
     console.log('a store site first reached 36 s in');
     {
@@ -107,6 +114,54 @@ async function main() {
         ]);
         const bytes = psid({ play: 0x101a, code });
         check(soundsDuring(M, bytes, 0, 1) === true, 'the tune is heard');
+    }
+
+    console.log('a multispeed tune silent for its first 149 play calls');
+    {
+        // init: CIA timer latch 6551, so play runs every 6552 cycles - three
+        // calls a PAL frame. play: gate a pulse from the 150th call on.
+        const code = Uint8Array.from([
+            0xa9, 0x97, 0x8d, 0x04, 0xdc, 0xa9, 0x19, 0x8d, 0x05, 0xdc, 0x60,
+            0xee, 0x00, 0x11, 0xad, 0x00, 0x11, 0xc9, 0x96, 0x90, 0x05,
+            0xa9, 0x41, 0x8d, 0x04, 0xd4, 0x60,
+        ]);
+        const bytes = psid({ play: 0x100b, code });
+        bytes[0x15] = 1;                                // speed bit: song 1 is CIA-timed
+        const r = analyzeVuVisibility(M, bytes, { initAddress: 0x1000, playAddress: 0x100b, loadAddress: 0x1000, subtune: 0, numChips: 1, frames: 300 });
+        check(Math.abs(r.leadingSeconds - 149 / 3 / 50.1245) < 0.05, 'the lead-in is ~1 s, not 3',
+            `${r.leadingSeconds.toFixed(2)} s`);
+        check(r.frames === 300, 'it steps 300 frames, not 300 calls', `${r.frames}`);
+    }
+
+    console.log('music loaded at $FFF8 that runs 8 bytes past $FFFF');
+    {
+        const code = new Uint8Array(16).fill(0xab);
+        code[0] = 0x60; code[1] = 0x60;                 // init and play: RTS
+        const bytes = psid({ load: 0xfff8, init: 0xfff8, play: 0xfff9, code });
+        const opts = { initAddress: 0xfff8, playAddress: 0xfff9, loadAddress: 0xfff8, subtune: 0, numChips: 1, frames: 2 };
+        const rd = (a) => M._cpu_read_memory(a);
+        analyzeVuVisibility(M, bytes, opts);
+        check(rd(0xfff9) === 0x60 && rd(0xffff) === 0xab, 'VU check: the part that fits is loaded');
+        check(rd(0x0004) !== 0xab, 'VU check: nothing wraps into zero page', `$0004 = $${rd(0x0004).toString(16)}`);
+        analyzeShadow(M, bytes, opts);
+        check(rd(0x0004) !== 0xab, 'shadow scan: nothing wraps into zero page', `$0004 = $${rd(0x0004).toString(16)}`);
+        fingerprintTune(M, bytes, { maxFrames: 2 });
+        check(rd(0xfff9) === 0x60 && rd(0x0004) !== 0xab, 'loop pre-pass: loaded up to $FFFF and no further',
+            `$0004 = $${rd(0x0004).toString(16)}`);
+    }
+
+    console.log('a play call of about 31,000 cycles');
+    {
+        const code = Uint8Array.from([
+            0x60,                                       // init: RTS
+            0xa0, 0x18,                                 // play: 24 passes
+            0xa2, 0x00, 0xca, 0xd0, 0xfd,               //   of 256 x DEX/BNE
+            0x88, 0xd0, 0xf8,
+            0xa9, 0x41, 0x8d, 0x04, 0xd4, 0x60,         //   then gate a pulse
+        ]);
+        const bytes = psid({ play: 0x1001, code });
+        const r = analyzeVuVisibility(M, bytes, { initAddress: 0x1000, playAddress: 0x1001, loadAddress: 0x1000, subtune: 0, numChips: 1, frames: 10 });
+        check(r.frames === 0, 'the VU check stops at the analyser\'s play budget', `${r.frames} frame(s) ran`);
     }
 
     console.log(failures ? `\n${failures} check(s) FAILED` : '\nall checks passed');

@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# Build and run the 6510 cross-check. See README.md.
+# Build and run the 6510 cross-check and the instance-isolation test. See
+# README.md.
 #
 #   ./run.sh [iterations] [--reference /path/to/cpu.c]
 set -euo pipefail
@@ -24,8 +25,8 @@ done
 rm -rf "$out"
 mkdir -p "$out"
 cp -r "$here/stubs/." "$out/"
-cp "$wasm/sid_audio.cpp" "$wasm/cpu6510_wasm.cpp" "$wasm/cpu6510_core.h" "$wasm/opcodes.h" "$out/"
-cp "$here/shim_audio.cpp" "$here/crosscheck.cpp" "$out/"
+cp "$wasm/sid_audio.cpp" "$wasm/cpu6510_wasm.cpp" "$wasm"/*.h "$out/"
+cp "$here/shim_audio.cpp" "$here/crosscheck.cpp" "$here/instances.cpp" "$out/"
 
 cxxflags=(-O2 -w -I"$out")
 objs=()
@@ -41,5 +42,10 @@ g++ "${cxxflags[@]}" -c "$out/shim_audio.cpp" -o "$out/shim_audio.o"
 objs+=("$out/shim_audio.o")
 g++ "${cxxflags[@]}" -c "$out/crosscheck.cpp" -o "$out/crosscheck.o"
 g++ "$out/crosscheck.o" "${objs[@]}" -o "$out/crosscheck"
+g++ -O2 -w -I"$out" "$out/instances.cpp" -o "$out/instances"
 
-exec "$out/crosscheck" "$iterations"
+status=0
+"$out/crosscheck" "$iterations" || status=1
+echo
+"$out/instances" || status=1
+exit $status

@@ -12,14 +12,24 @@
  *     the ROMs banked out) and enter it the way an interrupt would, so a handler
  *     ending in JMP $EA31 or RTI counts as having returned;
  *   - a rejected load leaves the previously loaded tune in place;
- *   - the SID chip count covers every subtune, not the last one analysed;
+ *   - the SID chip count covers every subtune, not the last one analysed, and
+ *     counts the chips play writes to plus the ones the header declares (v3+,
+ *     including $DE00/$DF00), not every slot an init clears, nor a write made
+ *     while $01 has the I/O area banked out (it lands in the RAM below);
  *   - a header claiming 0 songs still analyses the one it has;
  *   - operand bytes count as code, not just opcodes;
  *   - reading memory from the host leaves no access flag behind;
  *   - the CIA 1 timer is seen through its mirrors ($DC14 is $DC04), and fires
- *     every latch + 1 cycles, which decides the rounding of calls per frame;
+ *     every latch + 1 cycles, which decides the rounding of calls per frame,
+ *     and each subtune gets its own rate;
  *   - a call that does not return reports no execution cycles, rather than the
- *     previous call's.
+ *     previous call's;
+ *   - a play routine making hundreds of SID writes a call (a $D418 digi) is
+ *     analysed over the full 30,000 frames without running out of memory;
+ *   - a play call that never returns is counted, with the frame it happened
+ *     on, rather than silently ending the analysis of that song;
+ *   - a play routine that waits on the raster ($D012, $D011 bit 7) or on the
+ *     CIA 1 interrupt flags ($DC0D) gets there, as on the machine.
  *
  * Needs public/sidquake.wasm; no browser. Run with
  * `node scripts/test-analyser-edge-cases.js`.
@@ -160,6 +170,44 @@ async function main() {
         check(a.chips === 2, `two chips when song ${second + 1} of 2 is the one using the second`, `${a.chips}`);
     }
 
+    console.log('an init clearing the SID mirrors is still one chip');
+    for (const end of [0x80, 0x00]) {
+        // init: LDX #0 / loop: STA $D400,X / STA $D500,X / STA $D600,X / STA $D700,X
+        //       INX / CPX #end / BNE loop / RTS; play: STA $D404 / RTS
+        const code = asm(0x1000, [
+            0xa9, 0x00, 0xa2, 0x00,
+            'loop:', 0x9d, 0x00, 0xd4, 0x9d, 0x00, 0xd5, 0x9d, 0x00, 0xd6, 0x9d, 0x00, 0xd7,
+            0xe8, 0xe0, end, 0xd0, 0xef, 0x60,
+            'play:', 0x8d, 0x04, 0xd4, 0x60,
+        ]);
+        check(load(psid({ play: 0x1016, code })) === 0, 'loads');
+        const a = analyze();
+        check(a.chips === 1, `one chip after clearing ${end ? '$D400-$D47F (and mirrors)' : '$D400-$D7FF'}`, `${a.chips}`);
+    }
+
+    console.log('a write with I/O banked out is not a SID write');
+    {
+        // play: LDA #$34 / STA $01 / STA $D420 / LDA #$37 / STA $01 / STA $D400 / RTS
+        const code = Uint8Array.from([0x60,
+            0xa9, 0x34, 0x85, 0x01, 0x8d, 0x20, 0xd4, 0xa9, 0x37, 0x85, 0x01, 0x8d, 0x00, 0xd4, 0x60]);
+        check(load(psid({ play: 0x1001, code })) === 0, 'loads');
+        const a = analyze();
+        check(a.chips === 1, 'the $D420 store under $01=$34 is not a second chip', `${a.chips}`);
+    }
+
+    console.log('a v3 header\'s second SID at $DE00 is a chip');
+    {
+        // init: RTS; play: STA $D400 / STA $DE00 / RTS
+        const code = Uint8Array.from([0x60, 0x8d, 0x00, 0xd4, 0x8d, 0x00, 0xde, 0x60]);
+        const bytes = psid({ play: 0x1001, code });
+        bytes[5] = 3;                                // PSID v3
+        bytes[0x7a] = 0xe0;                          // second SID at $DE00
+        check(load(bytes) === 0, 'loads');
+        const a = analyze();
+        const addr1 = sid.chips() > 1 ? M._sid_get_sid_chip_address(1) : -1;
+        check(a.chips === 2 && addr1 === 0xde00, 'two chips, the second at $DE00', `${a.chips}, ${hex(addr1)}`);
+    }
+
     console.log('a header claiming 0 songs analyses one');
     {
         const code = Uint8Array.from([0xee, 0x00, 0x11, 0x60, 0x60]);
@@ -202,6 +250,27 @@ async function main() {
             `${sid.callsPerFrame()}`);
     }
 
+    console.log('each subtune gets its own calls per frame');
+    {
+        // init: CMP #1 / BNE done / program the CIA timer for 4 calls a frame
+        // (latch 4913) / done: RTS. play: RTS. Only song 2's speed bit is set.
+        const latch = 4913;
+        const code = Uint8Array.from([
+            0xc9, 0x01, 0xd0, 0x0a,
+            0xa9, latch & 0xff, 0x8d, 0x04, 0xdc, 0xa9, latch >> 8, 0x8d, 0x05, 0xdc,
+            0x60, 0x60,
+        ]);
+        const bytes = psid({ play: 0x100f, songs: 2, code });
+        bytes[0x15] = 0x02;
+        check(load(bytes) === 0, 'loads');
+        analyze();
+        const has = typeof M._sid_get_song_calls_per_frame === 'function';
+        const per = has ? [M._sid_get_song_calls_per_frame(0), M._sid_get_song_calls_per_frame(1)] : null;
+        check(has && per[0] === 1 && per[1] === 4, 'song 1 runs once a frame, song 2 four times',
+            has ? per.join(', ') : 'sid_get_song_calls_per_frame missing');
+        check(sid.callsPerFrame() === 1, 'and the start song\'s rate is still reported', `${sid.callsPerFrame()}`);
+    }
+
     console.log('a call that does not return reports no cycles');
     {
         cpu.init();
@@ -211,6 +280,59 @@ async function main() {
             `${cpu.lastCycles()}`);
         check(cpu.exec(0x2100, 1000) === 0 && cpu.lastCycles() === 0, 'a timed-out one reports none',
             `${cpu.lastCycles()}`);
+    }
+
+    console.log('hundreds of SID writes a call, over a full-length analysis');
+    {
+        // play: LDX #160 / loop: STA $D418 / STA $D418 / DEX / BNE loop / RTS
+        const code = asm(0x1000, [
+            0x60,
+            0xa2, 160,
+            'loop:', 0x8d, 0x18, 0xd4, 0x8d, 0x18, 0xd4, 0xca, 0xd0, 0xf7,
+            0x60,
+        ]);
+        check(load(psid({ init: 0x1000, play: 0x1001, code })) === 0, 'loads');
+        let a = null, err = null;
+        try { a = analyze(30000); } catch (e) { err = e; }
+        check(!err && a && a.r === 0, '30,000 frames of 320 writes analyse', err ? String(err.message || err) : `r=${a && a.r}`);
+        let again = null;
+        try {
+            load(psid({ code: Uint8Array.from([0x60, 0x00, 0x00, 0x60]) }));
+            again = analyze().r;
+        } catch (e) { again = String(e.message || e); }
+        check(again === 0, 'and the analyser still works afterwards', `${again}`);
+    }
+
+    console.log('a play routine waiting on the raster or the CIA returns');
+    {
+        // play: w1: LDA $D011 / BPL w1 / w2: LDA $D012 / CMP #$20 / BNE w2 /
+        //       w3: LDA $DC0D / AND #$01 / BEQ w3 / INC $1100 / RTS
+        const code = Uint8Array.from([0x60,
+            0xad, 0x11, 0xd0, 0x10, 0xfb,
+            0xad, 0x12, 0xd0, 0xc9, 0x20, 0xd0, 0xf9,
+            0xad, 0x0d, 0xdc, 0x29, 0x01, 0xf0, 0xf9,
+            0xee, 0x00, 0x11, 0x60]);
+        check(load(psid({ play: 0x1001, code })) === 0, 'loads');
+        const a = analyze(50);
+        check(M._sid_get_play_timeouts() === 0 && a.mod.has(0x1100), 'every play call returns',
+            `timeouts ${M._sid_get_play_timeouts()}`);
+    }
+
+    console.log('a play call that never returns is reported');
+    {
+        // init: RTS. play: INC $1100 / LDA $1100 / CMP #11 / BEQ hang / RTS / hang: JMP hang
+        const code = asm(0x1000, [
+            0x60,
+            0xee, 0x00, 0x11, 0xad, 0x00, 0x11, 0xc9, 11, 0xf0, 0x01, 0x60,
+            'hang:', 0x4c, '<hang', '>hang',
+        ]);
+        check(load(psid({ init: 0x1000, play: 0x1001, songs: 2, code })) === 0, 'loads');
+        analyze(100);
+        const has = typeof M._sid_get_play_timeouts === 'function';
+        const timeouts = has ? M._sid_get_play_timeouts() : -1;
+        const frame = has ? M._sid_get_first_play_timeout_frame() : -1;
+        check(timeouts === 2, 'one timeout per song is counted', has ? `${timeouts}` : 'sid_get_play_timeouts missing');
+        check(frame === 10, 'on the frame it happened', `${frame}`);
     }
 
     console.log(failures ? `\n${failures} check(s) FAILED` : '\nall checks passed');

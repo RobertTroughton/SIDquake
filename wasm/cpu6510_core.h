@@ -5,12 +5,13 @@
 // how memory is reached and what gets recorded on the way. That difference is
 // the Bus template parameter, so the decoder itself exists in one place.
 //
-// A Bus supplies the register file by reference plus five operations:
+// A Bus supplies the register file by reference plus six operations:
 //
 //   uint16_t& pc;  uint8_t& sp, a, x, y, st;   // live registers
 //   uint8_t fetch(uint16_t addr)               // instruction stream read
 //   uint8_t read(uint16_t addr)                // data read
 //   void    write(uint16_t addr, uint8_t val)  // data write
+//   void    dummyWrite(uint16_t addr, uint8_t val)  // RMW write-back, below
 //   void    jumpTarget(uint16_t addr)          // JMP/JSR destination
 //   void    jam()                              // a KIL opcode executed
 //
@@ -18,6 +19,10 @@
 // reads but covers the instruction stream with its execute flags instead, and
 // because the audio core routes read()/write() through the SID chips while
 // instructions are always plain RAM.
+//
+// Every read-modify-write instruction writes the unmodified value back before
+// the modified one, as the NMOS 6502 does; dummyWrite() carries that first
+// write, so a bus can pass it to I/O without counting it as a store.
 //
 // step() runs one instruction and returns its cycle count, page-crossing and
 // branch-taken penalties included.
@@ -145,10 +150,26 @@ struct Core {
         setZN(v);
         return v;
     }
-    void rmw_asl(uint16_t a) { b.write(a, do_asl(b.read(a))); }
-    void rmw_lsr(uint16_t a) { b.write(a, do_lsr(b.read(a))); }
-    void rmw_rol(uint16_t a) { b.write(a, do_rol(b.read(a))); }
-    void rmw_ror(uint16_t a) { b.write(a, do_ror(b.read(a))); }
+    void rmw_store(uint16_t a, uint8_t old, uint8_t v) { b.dummyWrite(a, old); b.write(a, v); }
+
+    // The undocumented read-modify-write groups (SLO, RLA, SRE, RRA, DCP, ISC)
+    // share one set of addressing modes, picked by the opcode's low five bits.
+    // Sets the effective address and returns the cycle count.
+    int ea_illegal_rmw(uint8_t op, uint16_t& a) {
+        switch (op & 0x1F) {
+        case 0x07: a = ea_zp();   return 5;
+        case 0x17: a = ea_zpx();  return 6;
+        case 0x0F: a = ea_abs();  return 6;
+        case 0x1F: a = ea_absx(); return 7;
+        case 0x1B: a = ea_absy(); return 7;
+        case 0x03: a = ea_indx(); return 8;
+        default:   a = ea_indy(); return 8;
+        }
+    }
+    void rmw_asl(uint16_t a) { uint8_t o = b.read(a); rmw_store(a, o, do_asl(o)); }
+    void rmw_lsr(uint16_t a) { uint8_t o = b.read(a); rmw_store(a, o, do_lsr(o)); }
+    void rmw_rol(uint16_t a) { uint8_t o = b.read(a); rmw_store(a, o, do_rol(o)); }
+    void rmw_ror(uint16_t a) { uint8_t o = b.read(a); rmw_store(a, o, do_ror(o)); }
 
     void do_lax(uint8_t v) { b.a = v; b.x = v; setZN(v); }
 
@@ -305,14 +326,14 @@ int Core<Bus>::step() {
     }
 
     // ---- INC / DEC memory ----
-    case 0xE6: { uint16_t a = ea_zp();   uint8_t v = uint8_t(b.read(a) + 1); b.write(a, v); setZN(v); return 5; }
-    case 0xF6: { uint16_t a = ea_zpx();  uint8_t v = uint8_t(b.read(a) + 1); b.write(a, v); setZN(v); return 6; }
-    case 0xEE: { uint16_t a = ea_abs();  uint8_t v = uint8_t(b.read(a) + 1); b.write(a, v); setZN(v); return 6; }
-    case 0xFE: { uint16_t a = ea_absx(); uint8_t v = uint8_t(b.read(a) + 1); b.write(a, v); setZN(v); return 7; }
-    case 0xC6: { uint16_t a = ea_zp();   uint8_t v = uint8_t(b.read(a) - 1); b.write(a, v); setZN(v); return 5; }
-    case 0xD6: { uint16_t a = ea_zpx();  uint8_t v = uint8_t(b.read(a) - 1); b.write(a, v); setZN(v); return 6; }
-    case 0xCE: { uint16_t a = ea_abs();  uint8_t v = uint8_t(b.read(a) - 1); b.write(a, v); setZN(v); return 6; }
-    case 0xDE: { uint16_t a = ea_absx(); uint8_t v = uint8_t(b.read(a) - 1); b.write(a, v); setZN(v); return 7; }
+    case 0xE6: { uint16_t a = ea_zp();   uint8_t o = b.read(a); uint8_t v = uint8_t(o + 1); rmw_store(a, o, v); setZN(v); return 5; }
+    case 0xF6: { uint16_t a = ea_zpx();  uint8_t o = b.read(a); uint8_t v = uint8_t(o + 1); rmw_store(a, o, v); setZN(v); return 6; }
+    case 0xEE: { uint16_t a = ea_abs();  uint8_t o = b.read(a); uint8_t v = uint8_t(o + 1); rmw_store(a, o, v); setZN(v); return 6; }
+    case 0xFE: { uint16_t a = ea_absx(); uint8_t o = b.read(a); uint8_t v = uint8_t(o + 1); rmw_store(a, o, v); setZN(v); return 7; }
+    case 0xC6: { uint16_t a = ea_zp();   uint8_t o = b.read(a); uint8_t v = uint8_t(o - 1); rmw_store(a, o, v); setZN(v); return 5; }
+    case 0xD6: { uint16_t a = ea_zpx();  uint8_t o = b.read(a); uint8_t v = uint8_t(o - 1); rmw_store(a, o, v); setZN(v); return 6; }
+    case 0xCE: { uint16_t a = ea_abs();  uint8_t o = b.read(a); uint8_t v = uint8_t(o - 1); rmw_store(a, o, v); setZN(v); return 6; }
+    case 0xDE: { uint16_t a = ea_absx(); uint8_t o = b.read(a); uint8_t v = uint8_t(o - 1); rmw_store(a, o, v); setZN(v); return 7; }
 
     // ---- INX / INY / DEX / DEY ----
     case 0xE8: b.x++; setZN(b.x); return 2;
@@ -365,10 +386,12 @@ int Core<Bus>::step() {
         return 5;
     }
     case 0x20: {
-        uint16_t a = ea_abs();
-        uint16_t ret = uint16_t(b.pc - 1);
-        push(uint8_t(ret >> 8));
-        push(uint8_t(ret & 0xFF));
+        // The high operand byte is fetched after the return address is pushed,
+        // so a JSR in the stack page can overwrite its own operand.
+        uint8_t lo = fetch();
+        push(uint8_t(b.pc >> 8));
+        push(uint8_t(b.pc & 0xFF));
+        uint16_t a = uint16_t(lo | (fetch() << 8));
         b.pc = a;
         b.jumpTarget(a);
         return 6;
@@ -427,56 +450,34 @@ int Core<Bus>::step() {
 
     // DCP - DEC + CMP
     case 0xC7: case 0xD7: case 0xCF: case 0xDF: case 0xDB: case 0xC3: case 0xD3: {
-        uint16_t a; int cyc;
-        switch (op) {
-        case 0xC7: a = ea_zp();   cyc = 5; break;
-        case 0xD7: a = ea_zpx();  cyc = 6; break;
-        case 0xCF: a = ea_abs();  cyc = 6; break;
-        case 0xDF: a = ea_absx(); cyc = 7; break;
-        case 0xDB: a = ea_absy(); cyc = 7; break;
-        case 0xC3: a = ea_indx(); cyc = 8; break;
-        default:   a = ea_indy(); cyc = 8; break;
-        }
-        uint8_t v = uint8_t(b.read(a) - 1);
-        b.write(a, v);
+        uint16_t a;
+        const int cyc = ea_illegal_rmw(op, a);
+        uint8_t o = b.read(a);
+        uint8_t v = uint8_t(o - 1);
+        rmw_store(a, o, v);
         do_cmp(b.a, v);
         return cyc;
     }
 
     // ISC (ISB) - INC + SBC
     case 0xE7: case 0xF7: case 0xEF: case 0xFF: case 0xFB: case 0xE3: case 0xF3: {
-        uint16_t a; int cyc;
-        switch (op) {
-        case 0xE7: a = ea_zp();   cyc = 5; break;
-        case 0xF7: a = ea_zpx();  cyc = 6; break;
-        case 0xEF: a = ea_abs();  cyc = 6; break;
-        case 0xFF: a = ea_absx(); cyc = 7; break;
-        case 0xFB: a = ea_absy(); cyc = 7; break;
-        case 0xE3: a = ea_indx(); cyc = 8; break;
-        default:   a = ea_indy(); cyc = 8; break;
-        }
-        uint8_t v = uint8_t(b.read(a) + 1);
-        b.write(a, v);
+        uint16_t a;
+        const int cyc = ea_illegal_rmw(op, a);
+        uint8_t o = b.read(a);
+        uint8_t v = uint8_t(o + 1);
+        rmw_store(a, o, v);
         do_sbc(v);
         return cyc;
     }
 
     // SLO - ASL + ORA
     case 0x07: case 0x17: case 0x0F: case 0x1F: case 0x1B: case 0x03: case 0x13: {
-        uint16_t a; int cyc;
-        switch (op) {
-        case 0x07: a = ea_zp();   cyc = 5; break;
-        case 0x17: a = ea_zpx();  cyc = 6; break;
-        case 0x0F: a = ea_abs();  cyc = 6; break;
-        case 0x1F: a = ea_absx(); cyc = 7; break;
-        case 0x1B: a = ea_absy(); cyc = 7; break;
-        case 0x03: a = ea_indx(); cyc = 8; break;
-        default:   a = ea_indy(); cyc = 8; break;
-        }
-        uint8_t v = b.read(a);
-        setFlag(FLAG_C, (v & 0x80) != 0);
-        v = uint8_t(v << 1);
-        b.write(a, v);
+        uint16_t a;
+        const int cyc = ea_illegal_rmw(op, a);
+        uint8_t o = b.read(a);
+        setFlag(FLAG_C, (o & 0x80) != 0);
+        uint8_t v = uint8_t(o << 1);
+        rmw_store(a, o, v);
         b.a |= v;
         setZN(b.a);
         return cyc;
@@ -484,21 +485,13 @@ int Core<Bus>::step() {
 
     // RLA - ROL + AND
     case 0x27: case 0x37: case 0x2F: case 0x3F: case 0x3B: case 0x23: case 0x33: {
-        uint16_t a; int cyc;
-        switch (op) {
-        case 0x27: a = ea_zp();   cyc = 5; break;
-        case 0x37: a = ea_zpx();  cyc = 6; break;
-        case 0x2F: a = ea_abs();  cyc = 6; break;
-        case 0x3F: a = ea_absx(); cyc = 7; break;
-        case 0x3B: a = ea_absy(); cyc = 7; break;
-        case 0x23: a = ea_indx(); cyc = 8; break;
-        default:   a = ea_indy(); cyc = 8; break;
-        }
-        uint8_t v = b.read(a);
+        uint16_t a;
+        const int cyc = ea_illegal_rmw(op, a);
+        uint8_t o = b.read(a);
         bool c = testFlag(FLAG_C);
-        setFlag(FLAG_C, (v & 0x80) != 0);
-        v = uint8_t((v << 1) | (c ? 1 : 0));
-        b.write(a, v);
+        setFlag(FLAG_C, (o & 0x80) != 0);
+        uint8_t v = uint8_t((o << 1) | (c ? 1 : 0));
+        rmw_store(a, o, v);
         b.a &= v;
         setZN(b.a);
         return cyc;
@@ -506,20 +499,12 @@ int Core<Bus>::step() {
 
     // SRE - LSR + EOR
     case 0x47: case 0x57: case 0x4F: case 0x5F: case 0x5B: case 0x43: case 0x53: {
-        uint16_t a; int cyc;
-        switch (op) {
-        case 0x47: a = ea_zp();   cyc = 5; break;
-        case 0x57: a = ea_zpx();  cyc = 6; break;
-        case 0x4F: a = ea_abs();  cyc = 6; break;
-        case 0x5F: a = ea_absx(); cyc = 7; break;
-        case 0x5B: a = ea_absy(); cyc = 7; break;
-        case 0x43: a = ea_indx(); cyc = 8; break;
-        default:   a = ea_indy(); cyc = 8; break;
-        }
-        uint8_t v = b.read(a);
-        setFlag(FLAG_C, (v & 1) != 0);
-        v = uint8_t(v >> 1);
-        b.write(a, v);
+        uint16_t a;
+        const int cyc = ea_illegal_rmw(op, a);
+        uint8_t o = b.read(a);
+        setFlag(FLAG_C, (o & 1) != 0);
+        uint8_t v = uint8_t(o >> 1);
+        rmw_store(a, o, v);
         b.a ^= v;
         setZN(b.a);
         return cyc;
@@ -527,21 +512,13 @@ int Core<Bus>::step() {
 
     // RRA - ROR + ADC
     case 0x67: case 0x77: case 0x6F: case 0x7F: case 0x7B: case 0x63: case 0x73: {
-        uint16_t a; int cyc;
-        switch (op) {
-        case 0x67: a = ea_zp();   cyc = 5; break;
-        case 0x77: a = ea_zpx();  cyc = 6; break;
-        case 0x6F: a = ea_abs();  cyc = 6; break;
-        case 0x7F: a = ea_absx(); cyc = 7; break;
-        case 0x7B: a = ea_absy(); cyc = 7; break;
-        case 0x63: a = ea_indx(); cyc = 8; break;
-        default:   a = ea_indy(); cyc = 8; break;
-        }
-        uint8_t v = b.read(a);
+        uint16_t a;
+        const int cyc = ea_illegal_rmw(op, a);
+        uint8_t o = b.read(a);
         bool c = testFlag(FLAG_C);
-        setFlag(FLAG_C, (v & 1) != 0);
-        v = uint8_t((v >> 1) | (c ? 0x80 : 0));
-        b.write(a, v);
+        setFlag(FLAG_C, (o & 1) != 0);
+        uint8_t v = uint8_t((o >> 1) | (c ? 0x80 : 0));
+        rmw_store(a, o, v);
         do_adc(v);
         return cyc;
     }
@@ -562,11 +539,21 @@ int Core<Bus>::step() {
         return 2;
 
     // ARR - AND #imm then ROR A; C is bit 6 of the result, V bit 6 ^ bit 5.
-    // Decimal mode is not modelled - see docs/CPU_CORES.md.
+    // In decimal mode N, Z and V come from the rotated value and each nibble
+    // of the AND result gets an ADC-style BCD fixup, which also sets C.
     case 0x6B: {
         uint8_t t = uint8_t(b.a & fetch());
         bool c = testFlag(FLAG_C);
         b.a = uint8_t((t >> 1) | (c ? 0x80 : 0));
+        if (testFlag(FLAG_D)) {
+            setZN(b.a);
+            setFlag(FLAG_V, ((t ^ b.a) & 0x40) != 0);
+            if ((t & 0x0F) + (t & 0x01) > 5) b.a = uint8_t((b.a & 0xF0) | ((b.a + 6) & 0x0F));
+            bool hc = (t & 0xF0) + (t & 0x10) > 0x50;
+            setFlag(FLAG_C, hc);
+            if (hc) b.a = uint8_t(b.a + 0x60);
+            return 2;
+        }
         setZN(b.a);
         setFlag(FLAG_C, (b.a & 0x40) != 0);
         setFlag(FLAG_V, ((b.a ^ (b.a << 1)) & 0x40) != 0);
@@ -583,12 +570,15 @@ int Core<Bus>::step() {
         return 2;
     }
 
-    // LAX #imm (LXA/ATX): A = X = imm. Unstable on hardware; the common
-    // emulated form just loads the immediate into both registers.
-    case 0xAB: { uint8_t v = fetch(); b.a = v; b.x = v; setZN(v); return 2; }
+    // LAX #imm (LXA/ATX): A = X = (A | magic) & imm. Unstable on hardware: the
+    // magic constant varies between chips. $EE is the common value, and the
+    // one Tom Harte's tests use.
+    case 0xAB: { uint8_t v = uint8_t((b.a | 0xEE) & fetch()); b.a = v; b.x = v; setZN(v); return 2; }
 
-    // XAA #imm (ANE): A = X & imm. Highly unstable on hardware.
-    case 0x8B: b.a = uint8_t(b.x & fetch()); setZN(b.a); return 2;
+    // XAA #imm (ANE): A = (A | magic) & X & imm, with the same $EE as LXA.
+    // VICE and libsidplayfp use $EF for ANE, which VICE's notes say Spectipede
+    // and Turrican 3 need.
+    case 0x8B: b.a = uint8_t((b.a | 0xEE) & b.x & fetch()); setZN(b.a); return 2;
 
     // SHA/SHX/SHY/TAS - see do_unstable_store.
     case 0x9F: { uint16_t base = fetch16(); do_unstable_store(base, b.y, uint8_t(b.a & b.x)); return 5; }

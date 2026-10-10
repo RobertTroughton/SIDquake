@@ -14,6 +14,15 @@
  *     frame, whether it ends in RTI or JMP $EA31, and per subtune;
  *   - selecting a subtune reloads the tune and resets the frame rate, so a
  *     CIA-timed subtune's rate does not stick to the next;
+ *   - a write to $D400-$D7FF with I/O banked out ($01 = $34) is a RAM write,
+ *     not a SID one;
+ *   - a play routine waiting on the raster ($D012) gets there, once a frame;
+ *   - two or three SIDs are mixed scaled by 1/sqrt(N), as libsidplayfp mixes
+ *     them, so a 3SID tune does not clip;
+ *   - init ends at its RTS, not as soon as the stack pointer is back where it
+ *     started (an init that resets the stack with LDX #$FF / TXS carried on);
+ *   - a sampling method chosen before the tune is loaded is the one it renders
+ *     with (the song-length scan's fast option sets it first);
  *   - every tune starts on a SID in its power-on state. A reset leaves reSID's
  *     envelope counters where the last tune left them, and a gate opened on a
  *     counter at $FF freezes it at zero, so every second tune loaded into one
@@ -211,6 +220,64 @@ async function main() {
         render(2);
         const calls = peek(0x1100);
         check(Math.abs(calls - 100) <= 2, 'song 2 plays at the frame rate', `${calls} calls in 2 s`);
+    }
+
+    console.log('a sampling method set before load sticks');
+    {
+        const setSampling = cw('audio_set_sampling_method', null, ['number']);
+        const bytes = fs.readFileSync(path.join(ROOT, 'SID/JCH-Crystalline.sid'));
+        const loadWith = (before) => {
+            A.init(RATE);
+            if (before) setSampling(0);
+            const p = M._malloc(bytes.length);
+            M.HEAPU8.set(bytes, p);
+            A.load(p, bytes.length);
+            M._free(p);
+            A.subtune(0);
+            if (!before) setSampling(0);
+            return render(1);
+        };
+        const a = loadWith(true), b = loadWith(false);
+        let same = a.length === b.length;
+        for (let i = 0; same && i < a.length; i++) same = a[i] === b[i];
+        check(same, 'fast sampling set before load renders as if set after');
+    }
+
+    console.log('a SID-range write with I/O banked out stays in RAM');
+    {
+        // init: LDA #$34 / STA $01 / LDA #$AA / STA $D421 / LDA #$37 / STA $01 / RTS
+        const code = Uint8Array.from([0xa9, 0x34, 0x85, 0x01, 0xa9, 0xaa, 0x8d, 0x21, 0xd4,
+            0xa9, 0x37, 0x85, 0x01, 0x60, 0x60]);
+        start(psid({ play: 0x100e, code }));
+        check(peek(0xd421) === 0xaa && peek(0xd401) !== 0xaa, 'the RAM under $D421 holds it, chip 1\'s $D401 does not',
+            `$D421 = ${peek(0xd421)}, $D401 = ${peek(0xd401)}`);
+    }
+
+    console.log('a play routine waiting on the raster runs every frame');
+    {
+        // play: w: LDA $D012 / CMP #$80 / BNE w / INC $1100 / RTS
+        const code = Uint8Array.from([0x60, 0xad, 0x12, 0xd0, 0xc9, 0x80, 0xd0, 0xf9, 0xee, 0x00, 0x11, 0x60]);
+        start(psid({ play: 0x1001, code }));
+        render(2);
+        const calls = peek(0x1100);
+        check(Math.abs(calls - 100) <= 2, 'about 100 calls in 2 s', `${calls}`);
+    }
+
+    console.log('a 3SID tune is mixed without clipping');
+    {
+        start(new Uint8Array(fs.readFileSync(path.join(ROOT, 'SID/shogoon-cheezzytop-3SID.sid'))));
+        const x = render(60);
+        let clipped = 0;
+        for (let i = 0; i < x.length; i++) if (x[i] >= 32767 / 32768 || x[i] <= -1) clipped++;
+        check(clipped === 0, 'no clipped samples in 60 s', `${clipped}`);
+    }
+
+    console.log('init that resets the stack runs to its RTS');
+    {
+        // init: LDX #$FF / TXS / LDA #$42 / STA $1100 / RTS; play: RTS
+        const code = Uint8Array.from([0xa2, 0xff, 0x9a, 0xa9, 0x42, 0x8d, 0x00, 0x11, 0x60, 0x60]);
+        start(psid({ play: 0x1009, code }));
+        check(peek(0x1100) === 0x42, 'the store after TXS ran', `$1100 = ${peek(0x1100)}`);
     }
 
     console.log(failures ? `\n${failures} check(s) FAILED` : '\nall checks passed');

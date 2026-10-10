@@ -311,6 +311,14 @@ class UIController {
             window.loadScript('sid-player.js')
         ]);
         this.mainPlayer = new SIDPlayer(container);
+        // The chip model shows in the HVSC info panel, and the visualizer's
+        // smoothing should not carry one tune's levels into the next.
+        this.mainPlayer.onModelChange = () => {
+            if (window.hvscBrowser && window.hvscBrowser.refreshInfoPanel) window.hvscBrowser.refreshInfoPanel();
+        };
+        this.mainPlayer.onSubtuneStep = () => {
+            if (window.hvscVisualizer && window.hvscVisualizer.reset) window.hvscVisualizer.reset();
+        };
         // The tune stepped to on the transport is the tune the user means to
         // export, so the Song tab's picker follows it.
         this.mainPlayer.onSubtuneChange = (index) => this.followPlayedSubtune(index);
@@ -2898,8 +2906,9 @@ class UIController {
      * The FFT method reads the rendered audio, so it is unaffected - which makes
      * it the answer whenever this fires.
      *
-     * The answer is about the TUNE, and it costs 1,200 frames of 6510, so it is
-     * worked out once per tune and re-shown from there on every visualizer switch.
+     * The answer is about the TUNE the export plays (exportSubtuneIndex), and it
+     * costs 1,200 frames of 6510, so it is worked out once per tune and song
+     * choice and re-shown from there on every visualizer switch.
      */
     async checkVuVisibility() {
         if (!this.sidHeader || !this.analyzer || !this.analyzer.Module) return this.renderVuNotes();
@@ -2921,20 +2930,21 @@ class UIController {
                 initAddress: h.initAddress,
                 playAddress: h.playAddress,
                 loadAddress: h.loadAddress,
-                subtune: Math.max(0, (h.startSong || 1) - 1),
+                subtune: this.exportSubtuneIndex(),
                 numChips: this.analysisResults?.sidChipCount || 1,
                 frames: 1200,
             });
         } catch (e) {
             return;   // a warning that cannot be worked out is simply not shown
         }
-        if (token !== this._vuToken || tuneToken !== this._analysisToken || !res || !res.frames) return;
+        if (token !== this._vuToken || tuneToken !== this._analysisToken) return;
 
         // Only a long leading stretch the listener can actually hear. Frames with
         // every gate closed are ordinary - across the tunes in SID/ they run from
         // 26% to 95% on tunes whose bars are fine - and a tune that genuinely
-        // opens with silence has nothing wrong with it either.
-        this._vuBlind = (res.leadingSeconds >= 3 && res.leadingAudible) ? res : null;
+        // opens with silence has nothing wrong with it either. A song that could
+        // not be stepped clears the answer left by the previous song choice.
+        this._vuBlind = (res && res.frames && res.leadingSeconds >= 3 && res.leadingAudible) ? res : null;
         this._vuBlindFor = tuneToken;
         this.renderVuNotes();
     }
@@ -4238,6 +4248,18 @@ class UIController {
             countElement.textContent = '1 location';
         } else {
             countElement.textContent = `${modifiedCount} locations`;
+        }
+        // A play call that never returned stops that song's analysis there, so
+        // anything it would have touched later is missing too.
+        const playTimeouts = this.analysisResults?.playTimeouts || 0;
+        if (initTimeouts > 0 || playTimeouts > 0) {
+            const why = [];
+            if (initTimeouts > 0) why.push(`${initTimeouts} subtune(s) had an init routine that never returned`);
+            if (playTimeouts > 0) why.push(`${playTimeouts} subtune(s) had a play call that never returned`);
+            countElement.textContent += ' (incomplete)';
+            countElement.title = `${why.join(', and ')}, so the memory map may be incomplete for those ` +
+                `song(s). Exports that need this information (anything but the default player) may not ` +
+                `work for them.`;
         }
     }
 
@@ -6191,7 +6213,7 @@ class UIController {
     async _analysisCacheKey(sidBytes, o) {
         const cb = window.cacheBust || (s => s);
         try {
-            const { tuneKey } = await import(cb('./spectrometer-bake-core.js'));
+            const { tuneKey, ANALYSIS_VERSION } = await import(cb('./spectrometer-bake-core.js'));
             const base = tuneKey(sidBytes, o.subtune, 44100, o.maxSeconds, o.minLoopSeconds, o.engine);
             // v2 distinguishes a tune that faded out from one still playing where
             // the analysis stopped; v3 measures to where the music really ends
@@ -6200,8 +6222,9 @@ class UIController {
             // picked, and no longer mistakes a long silence inside a loop for the
             // tune's end; v5 stores a loop as whole keyframes plus a shortened
             // last one (lastKeyframeFrames). Older entries answer a different
-            // question, so they must not be read back.
-            return `${base}|${o.numBars}x${o.maxHeight}|${o.outputMaxSeconds || 0}|v5`;
+            // question, so they must not be read back. ANALYSIS_VERSION moves
+            // with the loop detection and the pre-pass themselves.
+            return `${base}|${o.numBars}x${o.maxHeight}|${o.outputMaxSeconds || 0}|v5|a${ANALYSIS_VERSION}`;
         } catch (e) {
             return null;   // no key, no cache - the scan still runs
         }

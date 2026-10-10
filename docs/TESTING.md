@@ -18,12 +18,17 @@ The rest:
   frame.
 - `scripts/test-range-fit.js`: feeds the bake synthetic tones and checks the
   per-song frequency span it fits.
+- `scripts/test-kmeans.js`: the bake's k-means stops early with output
+  byte-identical to running every pass (`--bench` times both).
 - `scripts/test-analyser-edge-cases.js`, `scripts/test-shadow-detect.js`: PSID
   header rules, play-address-0 tunes and the shadow scan, on tunes the tests
   build from a few bytes of 6502 (`scripts/lib/psid-asm.js`).
 - `scripts/test-loop-detect.js`, `scripts/test-song-end.js`,
   `scripts/test-bake-cache.js`, `scripts/test-vu-visibility.js`: song length,
   loop and bake decisions (see [`ANALYSIS.md`](ANALYSIS.md)).
+- `scripts/test-analysis-version.js`: the loop detection and the pre-pass
+  still answer what their version constants pinned, so stored scan results
+  are not read back across a change (see [`ANALYSIS.md`](ANALYSIS.md)).
 - `scripts/test-logo-fit.js`: the logo placement maths.
 - `scripts/test-c64-render.js`, `scripts/test-image-memory.js`: the C64 preview
   matches the export, and converted pictures keep their real memory footprint.
@@ -31,10 +36,33 @@ The rest:
   renders with: pitch, play clock, stack, play-address-0 and subtune handling.
 - `scripts/test-worklet.js`: the AudioWorklet asks again when a request comes
   back empty, keeps its queue across a pause, and hands spent blocks back.
+- `scripts/test-playback.js`: `sid-playback.js` against stubbed Web Audio
+  objects: pause, stop, a subtune change and a reload fade out before they cut,
+  and the clock counts queued audio at the speed it was rendered at.
 - `scripts/test-sidquake-core.js`: starting the page's analyser leaves the
-  `SIDquakeModule` factory callable for the other loaders.
+  `SIDquakeModule` factory callable for the other loaders, and `analyze()`
+  reports writes to `$FFFF` and zero-page `$FF`.
 - `scripts/test-zip-writer.js`, `scripts/test-share-shards.js`: the hand-written
   zip layout, and the three copies of the share-meta shard hash agree.
+- `scripts/test-render-determinism.js`: a render on either engine depends only
+  on the tune, not on what the module played before it.
+- `scripts/test-engine-contract.js`: both engines answer the shared `audio_*`
+  calls the same way for 1/2/3-SID, multi-song and "either"-model tunes: song
+  counts, chips, PAL/NTSC, header and forced chip models.
+- `scripts/test-properties.js`: seeded, generated headers corrupted from the
+  tunes in `SID/`: nothing throws, the analyser and the reSID engine accept and
+  reject the same files, `psid.js` reads every accepted one the same way, and
+  `sid_analyze` repeats itself. `--cases=N --seed=S` for a longer sweep.
+- `scripts/test-goldens.js`: the whole-tune regression. For a fast tier of
+  tunes from `SID/` it compares the `sid_analyze` results, the analyser CPU's
+  SID write trace (hashed per block of play calls), hashes of both engines'
+  output and, for three of them, of the spectrometer bake (rows, whitened rows,
+  loop poll, tune analysis, packed stream) against
+  `scripts/goldens/<tune>.json`, and names the field or trace block that moved.
+  `npm run test:goldens` runs all of `SID/`, baking every tune (under three
+  minutes; CI runs it). A change that is meant to move what the emulation produces
+  rewrites the fixtures with `--update` (`--only=<tune>,...` narrows it), and
+  its commit says why they moved.
 
 `package.json` holds the authoritative list.
 
@@ -75,15 +103,27 @@ band and hides anything that goes wrong at its bottom edge.
 
 ## Slow checks to run by hand
 
+- `scripts/native-check/run.sh [--valgrind] [resid|sidplayfp]` builds the
+  engines natively under ASan/UBSan or valgrind and checks a render does not
+  depend on what played before it; for bugs the WASM heap hides. See its
+  README.
+
 - `scripts/build-players.sh --check` after touching `SIDPlayers/`: did any
   shipped binary move?
 - `scripts/cpu-crosscheck/run.sh` after touching the 6510 decoder or either bus
-  adapter. Needs a C++ toolchain and takes minutes. See
-  [`CPU_CORES.md`](CPU_CORES.md).
+  adapter. Needs a C++ toolchain and takes minutes (`run.sh 2000` takes
+  seconds; CI runs that). See [`CPU_CORES.md`](CPU_CORES.md).
+- `scripts/cpu-crosscheck/singlestep.sh [--sample N]` after touching the 6510
+  decoder: Tom Harte's SingleStepTests and Klaus Dormann's functional test,
+  downloaded at run time (never committed). Needs `curl` and `g++`; CI runs it.
+  See [`scripts/cpu-crosscheck/README.md`](../scripts/cpu-crosscheck/README.md).
 - `scripts/bench-bake-analysis.mjs [bake-module] [tune.sid]` after an
-  optimisation in `spectrometer-bake.js`: times the per-frame analysis and
-  hashes its output, so a copy of the old module passed as `bake-module` shows
-  whether the output stayed byte-identical.
+  optimisation or refactor of the bake: times the per-frame analysis and
+  hashes its output (`hash`), then hashes the whitened rows, the loop poll,
+  `analyzeRows` and the packed bake (`bake hash`), so a copy of the old module
+  passed as `bake-module` (copied together with `bake-dsp.js` and
+  `loop-detect.js`, which it imports) shows whether the output stayed
+  byte-identical.
 - `scripts/measure-bass-resolution.mjs [bake-module] [seconds]` after changing
   the bake's bass windows: pitch spread and time smearing of the bottom bars
   over every tune in `SID/`.
