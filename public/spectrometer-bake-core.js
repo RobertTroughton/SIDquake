@@ -470,6 +470,7 @@ export function createBakeCore(loadEngine) {
                 truncated: r.truncated,
                 loopStart: r.loopStart,               // keyframes
                 numKeyframes: r.numKeyframes,
+                lastKeyframeFrames: r.lastKeyframeFrames,   // raster frames; the rest last one keyframe each
                 keyframeHz: r.keyframeHz,
                 frameHz: cache.rows.frameHz,
                 isNtsc: cache.rows.isNtsc || 0,

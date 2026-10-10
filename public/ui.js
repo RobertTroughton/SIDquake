@@ -5229,11 +5229,12 @@ class UIController {
         // A forced loop is recorded as the frame the export restarts the music on.
         const forcedFrames = (this.prgExporter && this.prgExporter.lastMusicLoopFrames) || 0;
         const fps = a.isNtsc ? 60 : 50;
-        // Keyframes are stored at one per `fpk` raster frames, so the exact frame
-        // count is keyframes * fpk - derived, never re-timed from the mm:ss figures.
+        // Keyframes are stored at one per `fpk` raster frames, the last one for
+        // lastKeyframeFrames, so the exact frame count is derived from those -
+        // never re-timed from the mm:ss figures.
         const frameHz = a.frameHz || (a.isNtsc ? 59.826 : 50.1245);
         const fpk = Math.max(1, Math.round(frameHz / (a.keyframeHz || 25)));
-        const nkFrames = (a.numKeyframes || 0) * fpk;
+        const nkFrames = a.numKeyframes ? (a.numKeyframes - 1) * fpk + (a.lastKeyframeFrames || fpk) : 0;
         let mode, storedSeconds, introSeconds, totalFrames, introFrames;
         if (a.looped) {
             mode = 'loop';
@@ -5308,14 +5309,14 @@ class UIController {
             : info.fadedOut ? 'fade'
             : info.truncated ? 'cut' : 'none';
         // One keyframe per `fpk` raster frames - the C64 cadence divisor the exporter
-        // patches - so the stream's exact frame counts are just keyframes * fpk.
+        // patches - except the last, which lasts lastKeyframeFrames.
         const fpk = Math.max(1, info.framesPerKeyframe || 2);
         el.classList.add('bt-panel');
         el.innerHTML = this._timelineHTML({
             mode,
             storedSeconds: nk / hz,
             introSeconds: loopK / hz,
-            totalFrames: nk * fpk,
+            totalFrames: (nk - 1) * fpk + (info.lastKeyframeFrames || fpk),
             introFrames: loopK * fpk,
             frameHz: hz * fpk,
             bars: true,
@@ -6197,9 +6198,10 @@ class UIController {
             // rather than to the spectrometer's stored-length cap; v4 renders the
             // selected song rather than the file's start song when song 1 is
             // picked, and no longer mistakes a long silence inside a loop for the
-            // tune's end. Older entries answer a different question, so they
-            // must not be read back.
-            return `${base}|${o.numBars}x${o.maxHeight}|${o.outputMaxSeconds || 0}|v4`;
+            // tune's end; v5 stores a loop as whole keyframes plus a shortened
+            // last one (lastKeyframeFrames). Older entries answer a different
+            // question, so they must not be read back.
+            return `${base}|${o.numBars}x${o.maxHeight}|${o.outputMaxSeconds || 0}|v5`;
         } catch (e) {
             return null;   // no key, no cache - the scan still runs
         }

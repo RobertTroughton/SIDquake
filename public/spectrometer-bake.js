@@ -1162,6 +1162,7 @@ function resolveKeyframes(store, o, out = store) {
     // Trim redundant loop repeats: store intro + one cycle, wrap to loopStart.
     const analyzedKeyframes = nk;   // keyframes analysed before any loop trim
     let loopStart = 0;
+    let lastKeyframeFrames = step;  // raster frames the stream's last keyframe lasts on the C64
     let fadedOut = false;
     let truncated = false;          // still playing where the stream had to stop
     let forcedLoop = false;         // fade path only: stream rewired to wrap to keyframe 0
@@ -1172,8 +1173,11 @@ function resolveKeyframes(store, o, out = store) {
     // grid every cycle-vs-cycle comparison is blurred by half a keyframe (~20 ms)
     // and a busy tune misses the match threshold everywhere (steel-DespaSIDo:
     // residual 4.1 on the keyframe grid vs 2.0 at frame resolution). The frame-
-    // exact result is rounded onto the keyframe grid afterwards; the worst-case
-    // half-keyframe wrap drift per cycle is imperceptible next to "no loop found".
+    // exact period is stored as ceil(P / step) keyframes with the last one
+    // shortened to whatever is left (lastKeyframeFrames, 1..step), so the C64's
+    // stored cycle lasts exactly P frames. Rounding it to whole keyframes instead
+    // moved the bars against the music on every pass, and the error adds up:
+    // a 101-frame loop at 25 fps was ~6 s out after ten minutes.
     const kfF = step === 1 ? kf : whitenQuantize(store, o.maxHeight, 1, nframes);
     const nkF = step === 1 ? nk : nframes;
     // o.loopHint: the state loop the register pre-pass found for these rows, in
@@ -1190,7 +1194,9 @@ function resolveKeyframes(store, o, out = store) {
         loopStartFrames = loop.loopStart;
         loopEndFrames = loop.loopEnd;
         loopStart = Math.min(nk - 1, Math.round(loop.loopStart / step));
-        const periodK = Math.max(1, Math.round((loop.loopEnd - loop.loopStart) / step));
+        const P = loop.loopEnd - loop.loopStart;
+        const periodK = Math.max(1, Math.ceil(P / step));
+        if (loopStart + periodK <= nk) lastKeyframeFrames = P - (periodK - 1) * step;
         nk = Math.min(nk, loopStart + periodK);
         kf = kf.subarray(0, nk * o.numBars);
     } else {
@@ -1241,7 +1247,7 @@ function resolveKeyframes(store, o, out = store) {
         }
     }
     return {
-        kf, nk, step, loopStart, looped: !!loop, fadedOut, truncated, forcedLoop, analyzedKeyframes,
+        kf, nk, step, loopStart, lastKeyframeFrames, looped: !!loop, fadedOut, truncated, forcedLoop, analyzedKeyframes,
         loopStartFrames, loopEndFrames, musicEndFrames,
     };
 }
@@ -1255,7 +1261,7 @@ export function analyzeRows(rows, options = {}) {
     o.keyframeHz = o.frameHz / (o.framesPerKeyframe || 2);
     const store = asRowStore(rows, o.numBars);
     const analyzedSeconds = options.analyzedSeconds != null ? options.analyzedSeconds : store.count / o.frameHz;
-    const { nk, loopStart, looped, fadedOut, truncated, analyzedKeyframes,
+    const { nk, loopStart, lastKeyframeFrames, looped, fadedOut, truncated, analyzedKeyframes,
             loopStartFrames, loopEndFrames, musicEndFrames } = resolveKeyframes(store, o);
     // The tune's playing length in raster frames, defined the way HVSC's
     // Songlengths counts it: everything up to the point the music repeats, i.e.
@@ -1263,7 +1269,7 @@ export function analyzeRows(rows, options = {}) {
     // is measured to where the music actually stops.
     const lengthFrames = looped ? loopEndFrames : musicEndFrames;
     return {
-        keyframeHz: o.keyframeHz, numKeyframes: nk, loopStart, looped, fadedOut, truncated,
+        keyframeHz: o.keyframeHz, numKeyframes: nk, loopStart, lastKeyframeFrames, looped, fadedOut, truncated,
         analyzedKeyframes, analyzedSeconds,
         cappedAtMaxSeconds: !looped && !!options.hitCap,
         storedSeconds: nk / o.keyframeHz,
@@ -1291,7 +1297,7 @@ function outputStore(store, o) {
 // truncated, totalBytes, reconstruct() }.
 async function bakeFromStore(store, o, analyzedSeconds, hitCap, prog) {
     const range = outputStore(store, o);
-    const { kf, nk, step, loopStart, looped, fadedOut, truncated, forcedLoop, analyzedKeyframes } =
+    const { kf, nk, step, loopStart, lastKeyframeFrames, looped, fadedOut, truncated, forcedLoop, analyzedKeyframes } =
         resolveKeyframes(store, o, range.out);
 
     // --- Split (product) vector quantization -------------------------------
@@ -1353,6 +1359,9 @@ async function bakeFromStore(store, o, analyzedSeconds, hitCap, prog) {
         keyframeHz: o.keyframeHz, numKeyframes: nk, loopStart,
         // raster frames per keyframe (1/2/3): the C64 cadence divisor the exporter patches
         framesPerKeyframe: Math.max(1, Math.round(o.frameHz / o.keyframeHz)),
+        // raster frames the last keyframe lasts (1..framesPerKeyframe), so a looped
+        // stream's cycle is exactly the tune's period: the exporter patches it too
+        lastKeyframeFrames,
         // Loop / timing info for the UI: whether a repeat was detected, how many
         // keyframes were analysed before trimming, and whether the analysis hit
         // the maxSeconds cap (tune longer than we looked at).

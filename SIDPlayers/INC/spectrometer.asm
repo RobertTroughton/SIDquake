@@ -882,6 +882,14 @@ InitializeBarArrays:
 //;   bakedLoopStart     ($56/$57)  keyframe to wrap to at end of stream
 //;   bakedNumSegments   ($58)      segment count (1,2,4,5)
 //;   bakedSegWidth      ($59)      bars per segment (= 40 / bakedNumSegments)
+//;   bakedLastKfFrames  ($75)      raster frames the LAST keyframe lasts before
+//;                                 the wrap (1..bakedFrameDivisor; 0 = the divisor).
+//;                                 A tune's loop is a whole number of frames but
+//;                                 not always of keyframes, so the exporter stores
+//;                                 ceil(period / divisor) keyframes and shortens
+//;                                 the last one: each pass of the stored cycle
+//;                                 then lasts exactly the tune's period and the
+//;                                 bars never drift against the music.
 //;
 //; The bars of a segment all share that segment's index; the page just steps by one
 //; per bar.
@@ -913,6 +921,7 @@ bakedLoopBaseHi:  .byte $00
 bakedSegCtr:      .byte $00              //; current segment (0..segments-1) during decode
 bakedBarsLeft:    .byte $00              //; bars remaining in the current segment
 bakedFrameCtr:    .byte $00              //; frames until the next keyframe (see TickBakedFrame)
+bakedKfFrames:    .byte $00              //; frames the keyframe being shown lasts (divisor, or bakedLastKfFrames for the last)
 bakedJustLooped:  .byte $00              //; set to 1 on the frame the last keyframe shows; player consumes it
 bakedWrapPending: .byte $00              //; the decode ran ahead over the wrap; promoted to bakedJustLooped next keyframe
 segIdx:           .fill BAKED_MAX_SEGMENTS, $00
@@ -944,12 +953,16 @@ tweenAcc:         .byte $00, $00, $00
 
 //; Call once per frame. Every bakedFrameDivisor frames the keyframe decoded
 //; ahead becomes the target and the next one is decoded; the frames between
-//; step the target toward that next keyframe.
+//; step the target toward that next keyframe. The last keyframe of the stream
+//; lasts bakedLastKfFrames instead; when that is shorter, the walk toward the
+//; loop keyframe is cut short and the column lands on it a frame or two early.
 TickBakedFrame:
     lda bakedFrameCtr
     bne !tween+
-    jsr AdvanceBakedKeyframe
     lda bakedFrameDivisor
+    sta bakedKfFrames
+    jsr AdvanceBakedKeyframe             //; sets bakedKfFrames when it shows the last keyframe
+    lda bakedKfFrames
     sta bakedFrameCtr
     dec bakedFrameCtr
     rts
@@ -988,6 +1001,9 @@ AdvanceBakedKeyframe:
     sta bakedWrapPending
     lda #$01
     sta bakedJustLooped
+    lda bakedLastKfFrames
+    beq !noWrap+                         //; 0: the last keyframe lasts the divisor like the rest
+    sta bakedKfFrames
 !noWrap:
 
     jsr DecodeBakedFrame

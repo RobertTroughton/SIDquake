@@ -1722,6 +1722,11 @@ class SIDquakePRGExporter {
         if (layout.bakedFrameDivisorAddress) {
             this.builder.addComponent(byte(baked.framesPerKeyframe || 2), parseInt(layout.bakedFrameDivisorAddress), 'Spectrometer config');
         }
+        // How long the last keyframe lasts, so a looped stream wraps after exactly
+        // the tune's period rather than a whole number of keyframes.
+        if (layout.bakedLastKfFramesAddress) {
+            this.builder.addComponent(byte(baked.lastKeyframeFrames || 0), parseInt(layout.bakedLastKfFramesAddress), 'Spectrometer config');
+        }
         // On-screen clock: loop-point time (the timer re-syncs here on a wrap, so it
         // tracks true position past an intro) and the song length (shown only when a
         // loop gave us a real one). The player's clock counts raster FRAMES, so the
@@ -1731,13 +1736,14 @@ class SIDquakePRGExporter {
         // the display against the stream. MM clamps to the 99:59 the timer shows.
         const fpk = baked.framesPerKeyframe || 2;
         const fps = Math.max(1, Math.round((baked.keyframeHz || 25) * fpk));
-        const triple = (keyframes) => {
-            const frames = Math.max(0, (keyframes || 0) * fpk);
+        const triple = (frames) => {
+            frames = Math.max(0, frames || 0);
             const tot = Math.floor(frames / fps);
             return { m: Math.min(99, Math.floor(tot / 60)), s: Math.min(59, tot % 60), rem: frames % fps };
         };
-        const loopT = triple(baked.loopStart);
-        const lenT = triple(baked.numKeyframes);
+        const loopT = triple((baked.loopStart || 0) * fpk);
+        // The stream's length in frames: every keyframe lasts fpk except the last.
+        const lenT = triple(Math.max(0, (baked.numKeyframes || 0) - 1) * fpk + (baked.lastKeyframeFrames || fpk));
         // Song length is only meaningful when the export is one tune: a program the
         // user can switch tunes in would show a length belonging to whichever one
         // was baked, so it keeps the timer alone. A multi-tune file locked to one
@@ -1772,6 +1778,7 @@ class SIDquakePRGExporter {
         this.lastBakeInfo = {
             keyframeHz: baked.keyframeHz,
             numKeyframes: baked.numKeyframes,
+            lastKeyframeFrames: baked.lastKeyframeFrames,
             loopStart: baked.loopStart,
             looped: baked.looped,
             fadedOut: baked.fadedOut,
@@ -2451,7 +2458,8 @@ class SIDquakePRGExporter {
         // A measured loop wins over a typed one - the user can clear the field if
         // they disagree with it.
         const loopEndFrames = forced ? forcedLoopFrames
-            : looped ? Math.max(0, Math.round((tuneAnalysis.numKeyframes || 0) * step))
+            : looped ? Math.max(0, Math.round(Math.max(0, (tuneAnalysis.numKeyframes || 0) - 1) * step
+                + (tuneAnalysis.lastKeyframeFrames || step)))
                 : manualSeconds * fps;
         const loopStartFrames = (forced || (manual && !looped)) ? 0
             : Math.max(0, Math.round(((tuneAnalysis && tuneAnalysis.loopStart) || 0) * step));

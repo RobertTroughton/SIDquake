@@ -42,5 +42,6 @@ bakedLoopStart:     .word $0000         //; $0810
 bakedNumSegments:   .byte $00           //; $0812
 bakedSegWidth:      .byte $00           //; $0813
 bakedFrameDivisor:  .byte $00           //; $0814
+bakedLastKfFrames:  .byte $00           //; $0815
 
 #import "../INC/spectrometer.asm"

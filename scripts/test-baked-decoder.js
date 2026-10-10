@@ -18,7 +18,9 @@
 // player's 8.8 fixed-point walk from one keyframe to the next. It also checks the
 // end-of-stream wrap back to loopStart, including the bakedJustLooped flag the
 // player uses to re-sync its timer (it must fire on the frame the LAST keyframe
-// shows, even though the decoder runs a keyframe ahead).
+// shows, even though the decoder runs a keyframe ahead), and that the last
+// keyframe lasts bakedLastKfFrames rather than the divisor, so a loop that is
+// not a whole number of keyframes still wraps after exactly its own period.
 //
 // Usage: node scripts/test-baked-decoder.js
 // Requires java (KickAss) and public/sidquake.wasm. Exits non-zero on failure.
@@ -103,11 +105,21 @@ async function run() {
         { segments: 1, nk: 300, loopStart: 128, seed: 0x4567, divisor: 2 },   // > 256 keyframes: high byte of the counter
         { segments: 5, nk: 3, loopStart: 2, seed: 0x5678, divisor: 3 },       // wraps almost immediately
         { segments: 5, nk: 12, loopStart: 4, seed: 0x6789, divisor: 3 },
+        // A last keyframe shorter than the divisor: a 101-frame loop at 2 frames
+        // per keyframe is 51 keyframes, the last one lasting 1 frame; 251 frames
+        // at 3 is 84 keyframes, the last lasting 2.
+        { segments: 5, nk: 51, loopStart: 0, seed: 0x789A, divisor: 2, last: 1 },
+        { segments: 5, nk: 90, loopStart: 6, seed: 0x89AB, divisor: 3, last: 2 },
+        { segments: 4, nk: 20, loopStart: 3, seed: 0x9ABC, divisor: 3, last: 1 },
+        { segments: 5, nk: 10, loopStart: 2, seed: 0xABCD, divisor: 3, last: 3 },
+        { segments: 2, nk: 7, loopStart: 6, seed: 0xBCDE, divisor: 2, last: 1 },   // one-keyframe loop
     ];
 
     for (const spec of cases) {
         const c = buildCase(spec);
         const d = spec.divisor;
+        const last = spec.last || 0;               // 0 = the last keyframe lasts d frames too
+        const len = (k) => (k === c.nk - 1 && last) ? last : d;
         m._cpu_init();
         writeMem(m, 0x0800, bin);
         writeMem(m, CODEBOOK_BASE, c.codebook);
@@ -116,7 +128,7 @@ async function run() {
         writeMem(m, 0x080C, word(INDEX_BASE));
         writeMem(m, 0x080E, word(c.nk));
         writeMem(m, 0x0810, word(c.loopStart));
-        writeMem(m, 0x0812, new Uint8Array([c.segments, c.segW, d]));
+        writeMem(m, 0x0812, new Uint8Array([c.segments, c.segW, d, last]));
 
         const initAddr = m._cpu_read_memory(0x0801) | (m._cpu_read_memory(0x0802) << 8);
         const tickAddr = m._cpu_read_memory(0x0804) | (m._cpu_read_memory(0x0805) << 8);
@@ -130,9 +142,10 @@ async function run() {
 
         // Play past the end of the stream so the wrap is exercised at least twice.
         const keyframes = c.nk + (c.nk - c.loopStart) * 2 + 3;
-        const frames = keyframes * d;
-        let k = 0, bad = 0;
-        const label = `seg=${c.segments} div=${d}`;
+        let frames = 0;
+        for (let i = 0, kk = 0; i < keyframes; i++, kk = (kk + 1) >= c.nk ? c.loopStart : kk + 1) frames += len(kk);
+        let k = 0, sub = 0, bad = 0;
+        const label = `seg=${c.segments} div=${d}${last ? ` last=${last}` : ''}`;
         for (let f = 0; f < frames; f++) {
             m._cpu_write_memory(justLooped, 0);
             if (!m._cpu_execute_function(tickAddr, 200000)) {
@@ -140,7 +153,6 @@ async function run() {
                 failures++; bad = -1; break;
             }
             const got = readMem(m, targets, NUM_BARS);
-            const sub = f % d;
             const next = (k + 1) >= c.nk ? c.loopStart : k + 1;
             const want = sub === 0 ? c.expect(k) : tweenColumn(c.expect(k), c.expect(next), d, sub);
             checked++;
@@ -161,10 +173,10 @@ async function run() {
                 console.error(`  FAIL ${label}: bakedJustLooped=${flag} at frame ${f} (keyframe ${k}), want ${wantFlag}`);
                 failures++;
             }
-            if (sub === d - 1) k = next;
+            if (++sub === len(k)) { k = next; sub = 0; }
             if (bad < 0) break;
         }
-        if (bad === 0) console.log(`  ok  segments=${c.segments} width=${c.segW} keyframes=${c.nk} loopStart=${c.loopStart} divisor=${d} (${frames} frames)`);
+        if (bad === 0) console.log(`  ok  segments=${c.segments} width=${c.segW} keyframes=${c.nk} loopStart=${c.loopStart} divisor=${d}${last ? ` last=${last}` : ''} (${frames} frames)`);
     }
 
     console.log(`${failures === 0 ? 'PASS' : 'FAIL'}: ${checked} shown columns checked, ${failures} failure(s)`);

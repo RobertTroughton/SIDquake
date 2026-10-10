@@ -78,6 +78,9 @@ songNameColor:
     .byte $01                           // Song name text color (default: white)
 artistNameColor:
     .byte $0f                           // Artist name text color (default: light grey)
+    .fill DATA_ADDRESS + $75 - *, $00
+bakedLastKfFrames:
+    .byte $00                           // $75: frames the baked stream's last keyframe lasts (0 = bakedFrameDivisor)
     .fill DATA_ADDRESS + $80 - *, $00   // Pad to data-block offset $80
 barGradientColors:                      // $80-$A7: per-bar colours (colorEffectMode 2, injected at export)
     .fill NUM_FREQUENCY_BARS, $00

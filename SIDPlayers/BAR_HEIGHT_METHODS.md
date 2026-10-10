@@ -99,6 +99,17 @@ keyframe count at the chosen rate, so a two-minute loop that only fits 2×20 at
 `scripts/test-baked-decoder.js` drives the assembled player frame by frame
 against it.
 
+A looped stream wraps after exactly the tune's period. The loop is found in
+raster frames, and a period P is usually not a whole number of keyframes, so
+the bake stores `ceil(P / divisor)` keyframes and the last one lasts only what
+is left (`bakedLastKfFrames`, data-block `$75`, 1..divisor; 0 means the divisor).
+`TickBakedFrame` holds the last keyframe for that many frames, so the walk
+toward the loop keyframe is cut short there and lands a frame or two early.
+Rounding the period to whole keyframes instead moved the bars against the music
+by up to half a keyframe on every pass: a 101-frame loop at 25 Hz was about 6 s
+out after ten minutes, and the clock, which re-syncs on the stream's wrap,
+drifted with it.
+
 Things measured and not done, for the record: consecutive keyframes take a
 different index on 78–94% of keyframes at 25 Hz, so a changed-segment bitmask
 would cost more than it saves; a single 256×8 codebook shared by all five

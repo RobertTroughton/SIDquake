@@ -602,7 +602,7 @@ decoder agree.
 
 1. Land the regression harness (below) first. Most fixes here move output, so
    they need goldens to show what moved and why.
-2. The high-severity bugs: the analyser abort, render determinism, loop drift.
+2. The high-severity bugs: the analyser abort and render determinism.
 3. Fold the duplicated C64 environment and call harness, which is where several
    of the medium bugs came from.
 
@@ -671,18 +671,6 @@ decoder agree.
   `sidplayfp`/`ReSIDfpBuilder` per load; for reSID zero the accumulators and
   find the remainder, or construct fresh `reSID::SID` objects. Test: render,
   reload, render in one module, equal. [WASM]
-- **Looped spectrometer bars drift against the music.** The loop period P is
-  exact in frames, but it is stored as `round(P/step)` keyframes
-  (`spectrometer-bake.js:1192-1194`) and the C64 wraps every `periodK*step`
-  frames (`spectrometer.asm` `DecodeBakedFrame`). When P is not a multiple of
-  the step the error accumulates: P=101 at 25 fps is ~5.9 s off after 10 min.
-  About half of loops at 25 fps and two thirds at 16.66 fps are affected, and
-  `ResetTimerToLoop` resyncs the clock to the bars, so it drifts too. The
-  comment at 1175-1176 calls it imperceptible. Fix: export the frame count of
-  the last keyframe and load it into `bakedFrameCtr` at the wrap (a data-block
-  contract change: `common.asm` + `prg-builder.js`); or, with no decoder change,
-  bake looped tunes at 1 frame per keyframe when `P % step != 0`. Test: odd-P
-  wraps through the assembled decoder in `test-baked-decoder.js`. [asm]
 
 ### Medium
 

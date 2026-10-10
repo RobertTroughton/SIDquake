@@ -114,6 +114,21 @@ function analyse(bake, rows, outputMaxSeconds, extra = {}) {
         'a repeating tune is neither of those',
         JSON.stringify({ faded: looped.fadedOut, cut: looped.truncated, looped: looped.looped }));
 
+    // --- a loop that is not a whole number of keyframes ---------------------
+    // The C64 wraps the stored cycle after (keyframes - 1) * fpk frames plus the
+    // last keyframe's own length. Unless that adds up to the detected period
+    // exactly, every pass of the loop moves the bars against the music.
+    for (const P of [101, 250, 251]) {
+        for (const fpk of [2, 3]) {
+            const r = analyse(bake, makeLoopingRows(P / FRAME_HZ, 6, P), 600, { framesPerKeyframe: fpk });
+            const last = r.lastKeyframeFrames;
+            const cycle = (r.numKeyframes - 1 - r.loopStart) * fpk + last;
+            check(r.looped && r.loopFrames === P && last >= 1 && last <= fpk && cycle === P,
+                `a ${P}-frame loop at ${fpk} frames per keyframe wraps after exactly ${P} frames`,
+                JSON.stringify({ found: r.loopFrames, keyframes: r.numKeyframes, loopStart: r.loopStart, last, cycle }));
+        }
+    }
+
     // --- an option passed as undefined is an option left out ---------------
     // The bake core forwards its caller's options field by field, so a caller
     // that leaves maxHeight out hands analyzeRows maxHeight: undefined - which
