@@ -93,6 +93,9 @@ has its stack pointer put back.
   outside opinion, the only check independent of this repo's reading of the
   hardware.
 
+It then runs `instances.cpp`, which interleaves two analysers, and two reSID
+engines, in one process and checks each ends exactly as it does run alone.
+
 Run it after touching either core; see `scripts/cpu-crosscheck/README.md`. It is
 not part of `npm test`: it needs a C++ toolchain and takes minutes.
 

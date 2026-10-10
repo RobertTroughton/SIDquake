@@ -29,6 +29,16 @@ quarter of the cases deliberately aim the operand at the instruction's own bytes
 so read-modify-write self-modification is covered, and one case in eight runs
 the instruction from zero page so zero-page addressing can alias it.
 
+## Instance isolation
+
+`instances.cpp` checks that the machines keep their state in the instance:
+two `Analyser6510`s, and two `ResidEngine`s (reSID stubbed, see `stubs/`), run
+different programs with their work interleaved, one of each pair being the
+default instance behind the exported C API, and each must end up exactly as
+the same program run alone on a fresh instance: registers, cycles, all of RAM,
+the access tracking or SID registers, and the stub's sample output. It also
+checks that a JAM on one analyser leaves another's calls returning.
+
 ## Running
 
 ```sh
@@ -36,7 +46,8 @@ scripts/cpu-crosscheck/run.sh                # 20000 cases per opcode
 scripts/cpu-crosscheck/run.sh 2000           # quicker
 ```
 
-Exit status is non-zero if anything diverges. Needs only `gcc`/`g++`; it does
+This runs the cross-check, then the instance-isolation test. Exit status is
+non-zero if anything diverges. Needs only `gcc`/`g++`; it does
 not touch emsdk or any committed `.wasm`.
 
 ## Instruction-level tests (Harte, Klaus Dormann)
