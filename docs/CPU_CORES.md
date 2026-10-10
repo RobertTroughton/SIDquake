@@ -14,7 +14,10 @@ The analysis machine is the `Analyser6510` class: registers, RAM and the access
 tracking, with an `AnalysisBus` bound to one instance. The exported `cpu_*` C
 API (`cpu6510_api.h`) forwards to a single default instance, which
 `sid_analyze` and `analyser-session.js` share; native code can create as many
-instances as it needs.
+instances as it needs. The reSID engine is the same shape: `ResidEngine` holds
+the 6510, its RAM, the reSID chips, the loaded tune's header fields and the
+frame state, its `AudioBus` is bound to one instance, and the `audio_*` exports
+drive a default instance.
 
 `wasm/sidplayfp_audio.cpp` is a third playback path but uses libsidplayfp's own
 CPU, not either of these.

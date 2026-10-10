@@ -26,7 +26,8 @@ real C64 environment: a playback bus over `cpu6510_core.h`, a minimal KERNAL,
 init once and play once per frame (entered as an interrupt for play address 0).
 Selecting a subtune reloads the tune and powers the SID chips on afresh, so
 nothing carries over from the previous tune; `scripts/test-resid-engine.js`
-covers it.
+covers it. The engine is a `ResidEngine` class; the `audio_*` exports drive one
+default instance.
 
 Timing is PAL-only throughout.
 
