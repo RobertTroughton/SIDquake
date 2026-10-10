@@ -55,8 +55,9 @@ extern "C" {
         uint32_t sidWrites[32];  // Count writes to each SID register
         uint32_t totalSidWrites;
 
-        // Multi-SID chip tracking ($D400-$D7FF, 32 possible SID slots)
-        bool sidChipsUsed[32];   // Track which SID chips have been written to
+        // Multi-SID chip tracking: $20-byte slots, 0-31 for $D400-$D7FF and
+        // 32-47 for $DE00-$DFFF (the I/O areas a second or third SID sits in)
+        bool sidChipsUsed[48];   // Track which SID chips have been written to
 
         // Zero page write tracking
         uint32_t zpWrites[256];   // Count writes to each zero page location
@@ -172,6 +173,9 @@ extern "C" {
                 if (cpu.recordWrites) {
                     cpu.writeSequence.push_back(address);
                 }
+            }
+            else if (address >= 0xDE00 && address <= 0xDFFF) {
+                cpu.sidChipsUsed[32 + ((address - 0xDE00) >> 5)] = true;
             }
 
 			// Track CIA 1 timer A writes, through the register mirrors too: CIA 1
@@ -428,17 +432,25 @@ extern "C" {
         return cpu.totalSidWrites;
     }
 
-    // Whether the $20-byte SID slot at $D400 + slot * $20 was written to.
+    // Whether $20-byte SID slot `slot` was written to: $D400 + slot * $20 for
+    // slots 0-31, $DE00 + (slot - 32) * $20 for 32-47.
     EMSCRIPTEN_KEEPALIVE
         bool cpu_get_sid_chip_used(uint32_t slot) {
-        return slot < 32 && cpu.sidChipsUsed[slot];
+        return slot < 48 && cpu.sidChipsUsed[slot];
+    }
+
+    // Forget which SID slots have been written to, so a caller can count
+    // only the writes that follow (sid_analyze: play, not init).
+    EMSCRIPTEN_KEEPALIVE
+        void cpu_reset_sid_chip_usage() {
+        memset(cpu.sidChipsUsed, 0, sizeof(cpu.sidChipsUsed));
     }
 
     // Get the number of SID chips used (based on which $20-byte groups were written to)
     EMSCRIPTEN_KEEPALIVE
         uint32_t cpu_get_sid_chip_count() {
         uint32_t count = 0;
-        for (int i = 0; i < 32; i++) {
+        for (int i = 0; i < 48; i++) {
             if (cpu.sidChipsUsed[i]) {
                 count++;
             }
@@ -451,10 +463,10 @@ extern "C" {
     EMSCRIPTEN_KEEPALIVE
         uint16_t cpu_get_sid_chip_address(uint32_t index) {
         uint32_t count = 0;
-        for (int i = 0; i < 32; i++) {
+        for (int i = 0; i < 48; i++) {
             if (cpu.sidChipsUsed[i]) {
                 if (count == index) {
-                    return 0xD400 + (i * 0x20);
+                    return i < 32 ? 0xD400 + (i * 0x20) : 0xDE00 + ((i - 32) * 0x20);
                 }
                 count++;
             }

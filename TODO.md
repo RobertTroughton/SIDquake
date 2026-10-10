@@ -635,13 +635,6 @@ is where several of the medium bugs came from.
 - **A partial init timeout is never surfaced.** `ui.js:4227` warns only when
   `initTimeouts > 0 && modifiedCount === 0`, and `prg-builder.js` never reads
   it. Fix: warn on any timeout; refuse or warn on save/restore exports.
-- **SID chip count is inflated by init sweeps and blind to `$DE00`/`$DF00`.**
-  Any write marks a `$20` slot (`cpu6510_wasm.cpp:163-170`): an init clearing
-  `$D400-$D47F` reports 4 chips, one clearing `$D400-$D7FF` reports 32. The
-  header's second/third SID addresses are parsed but unused. `numChips` feeds
-  the shadow replay (`prg-builder.js:1821`) and the VU check. Fix: count from
-  play-phase writes, prefer v3/v4 header addresses; correct `docs/ANALYSIS.md`
-  and `.claude/rules/sound-analysis.md`, which say "up to 8". [WASM]
 - **`sidquake-core.js` drops real addresses as "sentinels".** `:217` drops
   `$FFFF` and `:226` drops ZP `$FF`, but the loops only run to `count`, so the
   C++ never returns a sentinel. Save/restore then skips `$FFFF`. Fix: remove

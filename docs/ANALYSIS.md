@@ -31,9 +31,13 @@ CPU core itself is in [`CPU_CORES.md`](CPU_CORES.md).
 
 **`opcodes.h`** - Shared opcode table (256 entries with mnemonic, addressing mode, size, cycles)
 
-The analyser counts a SID "chip" per touched `$20` slot in `$D400-$D7FF`, so a
-tune that sweeps writes across the mirror range reports up to 8 chips. The count
-covers every subtune analysed.
+The analyser counts a SID "chip" per `$20` slot in `$D400-$D7FF` or
+`$DE00-$DFFF` that a play routine writes to, in any subtune, plus `$D400`
+always and the second and third SID addresses a v3/v4 header declares. Writes
+made by init are left out: an init that clears the whole mirror range would
+otherwise count as 32 chips. A play routine that does not return, or an init
+that times out, is counted too (`sid_get_play_timeouts`,
+`sid_get_init_timeouts`): either one means the memory maps are incomplete.
 
 Header rules the analyser applies: an init address of 0 is the load address; a
 file claiming 0 songs is analysed as one; a play address of 0 means init hung

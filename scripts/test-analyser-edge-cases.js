@@ -12,7 +12,9 @@
  *     the ROMs banked out) and enter it the way an interrupt would, so a handler
  *     ending in JMP $EA31 or RTI counts as having returned;
  *   - a rejected load leaves the previously loaded tune in place;
- *   - the SID chip count covers every subtune, not the last one analysed;
+ *   - the SID chip count covers every subtune, not the last one analysed, and
+ *     counts the chips play writes to plus the ones the header declares (v3+,
+ *     including $DE00/$DF00), not every slot an init clears;
  *   - a header claiming 0 songs still analyses the one it has;
  *   - operand bytes count as code, not just opcodes;
  *   - reading memory from the host leaves no access flag behind;
@@ -162,6 +164,34 @@ async function main() {
         check(load(psid({ play: 0x1004, songs: 2, code })) === 0, `loads (chip 2 on song ${second + 1})`);
         const a = analyze();
         check(a.chips === 2, `two chips when song ${second + 1} of 2 is the one using the second`, `${a.chips}`);
+    }
+
+    console.log('an init clearing the SID mirrors is still one chip');
+    for (const end of [0x80, 0x00]) {
+        // init: LDX #0 / loop: STA $D400,X / STA $D500,X / STA $D600,X / STA $D700,X
+        //       INX / CPX #end / BNE loop / RTS; play: STA $D404 / RTS
+        const code = asm(0x1000, [
+            0xa9, 0x00, 0xa2, 0x00,
+            'loop:', 0x9d, 0x00, 0xd4, 0x9d, 0x00, 0xd5, 0x9d, 0x00, 0xd6, 0x9d, 0x00, 0xd7,
+            0xe8, 0xe0, end, 0xd0, 0xef, 0x60,
+            'play:', 0x8d, 0x04, 0xd4, 0x60,
+        ]);
+        check(load(psid({ play: 0x1016, code })) === 0, 'loads');
+        const a = analyze();
+        check(a.chips === 1, `one chip after clearing ${end ? '$D400-$D47F (and mirrors)' : '$D400-$D7FF'}`, `${a.chips}`);
+    }
+
+    console.log('a v3 header\'s second SID at $DE00 is a chip');
+    {
+        // init: RTS; play: STA $D400 / STA $DE00 / RTS
+        const code = Uint8Array.from([0x60, 0x8d, 0x00, 0xd4, 0x8d, 0x00, 0xde, 0x60]);
+        const bytes = psid({ play: 0x1001, code });
+        bytes[5] = 3;                                // PSID v3
+        bytes[0x7a] = 0xe0;                          // second SID at $DE00
+        check(load(bytes) === 0, 'loads');
+        const a = analyze();
+        const addr1 = sid.chips() > 1 ? M._sid_get_sid_chip_address(1) : -1;
+        check(a.chips === 2 && addr1 === 0xde00, 'two chips, the second at $DE00', `${a.chips}, ${hex(addr1)}`);
     }
 
     console.log('a header claiming 0 songs analyses one');

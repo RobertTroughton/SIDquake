@@ -72,8 +72,9 @@ extern "C" {
         std::vector<uint16_t> modifiedList;
 
         uint32_t sidRegisterWrites[32];
-        // $20-byte SID slots written to by any subtune.
-        bool sidChipsUsed[32];
+        // $20-byte SID slots (see cpu_get_sid_chip_used) a play routine wrote
+        // to in any subtune, plus $D400 and the ones the header declares.
+        bool sidChipsUsed[48];
         uint16_t resolvedPlayAddress;
 
         uint32_t codeBytes;
@@ -429,6 +430,10 @@ extern "C" {
                     sidState.analysis.longestInitCycles = initCycles;
                 }
             }
+            // Chips are counted from what play writes: an init that clears the
+            // whole $D400-$D7FF mirror range otherwise reads as 32 SIDs.
+            extern void cpu_reset_sid_chip_usage();
+            cpu_reset_sid_chip_usage();
 
             // A play address of 0 means init installed the play routine behind an
             // IRQ; without deriving it the loop below would "call" $0000 (BRK) and
@@ -501,7 +506,7 @@ extern "C" {
             for (int reg = 0; reg < 32; reg++) {
                 sidState.analysis.sidRegisterWrites[reg] += cpu_get_sid_writes(reg);
             }
-            for (uint32_t slot = 0; slot < 32; slot++) {
+            for (uint32_t slot = 0; slot < 48; slot++) {
                 if (cpu_get_sid_chip_used(slot)) {
                     sidState.analysis.sidChipsUsed[slot] = true;
                 }
@@ -558,6 +563,20 @@ extern "C" {
         }
 
         free(cleanMemorySnapshot);
+
+        // Every C64 has a SID at $D400, and a v3/v4 header names the address of
+        // the second and third ($Dxx0, even xx in $42-$7F or $E0-$FE).
+        sidState.analysis.sidChipsUsed[0] = true;
+        uint8_t declared[2] = {
+            sidState.header.version >= 3 ? sidState.header.secondSIDAddress : (uint8_t)0,
+            sidState.header.version >= 4 ? sidState.header.thirdSIDAddress : (uint8_t)0,
+        };
+        for (uint8_t b : declared) {
+            if (b & 1) continue;
+            uint16_t addr = 0xD000 | (b << 4);
+            if (b >= 0x42 && b <= 0x7F) sidState.analysis.sidChipsUsed[(addr - 0xD400) >> 5] = true;
+            else if (b >= 0xE0 && b <= 0xFE) sidState.analysis.sidChipsUsed[32 + ((addr - 0xDE00) >> 5)] = true;
+        }
 
         // Code-vs-data only matters for the SID's own loaded range.
         for (uint32_t addr = sidState.header.loadAddress;
@@ -740,7 +759,7 @@ extern "C" {
     EMSCRIPTEN_KEEPALIVE
         uint32_t sid_get_sid_chip_count() {
         uint32_t count = 0;
-        for (int i = 0; i < 32; i++) {
+        for (int i = 0; i < 48; i++) {
             if (sidState.analysis.sidChipsUsed[i]) count++;
         }
         return count;
@@ -751,9 +770,9 @@ extern "C" {
     EMSCRIPTEN_KEEPALIVE
         uint16_t sid_get_sid_chip_address(uint32_t index) {
         uint32_t count = 0;
-        for (int i = 0; i < 32; i++) {
+        for (int i = 0; i < 48; i++) {
             if (sidState.analysis.sidChipsUsed[i]) {
-                if (count == index) return 0xD400 + i * 0x20;
+                if (count == index) return i < 32 ? 0xD400 + i * 0x20 : 0xDE00 + (i - 32) * 0x20;
                 count++;
             }
         }
