@@ -32,7 +32,8 @@ The rest:
 - `scripts/test-worklet.js`: the AudioWorklet asks again when a request comes
   back empty, keeps its queue across a pause, and hands spent blocks back.
 - `scripts/test-sidquake-core.js`: starting the page's analyser leaves the
-  `SIDquakeModule` factory callable for the other loaders.
+  `SIDquakeModule` factory callable for the other loaders, and `analyze()`
+  reports writes to `$FFFF` and zero-page `$FF`.
 - `scripts/test-zip-writer.js`, `scripts/test-share-shards.js`: the hand-written
   zip layout, and the three copies of the share-meta shard hash agree.
 

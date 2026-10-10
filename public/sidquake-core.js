@@ -224,19 +224,13 @@ class SIDAnalyzer {
             const modifiedAddresses = [];
             const modifiedCount = this.api.sid_get_modified_count();
             for (let i = 0; i < modifiedCount; i++) {
-                const addr = this.api.sid_get_modified_address(i);
-                if (addr !== 0xFFFF) {  // 0xFFFF is the sentinel for an empty slot
-                    modifiedAddresses.push(addr);
-                }
+                modifiedAddresses.push(this.api.sid_get_modified_address(i));
             }
 
             const zpAddresses = [];
             const zpCount = this.api.sid_get_zp_count();
             for (let i = 0; i < zpCount; i++) {
-                const addr = this.api.sid_get_zp_address(i);
-                if (addr !== 0xFF) {  // 0xFF is the sentinel for an empty slot
-                    zpAddresses.push(addr);
-                }
+                zpAddresses.push(this.api.sid_get_zp_address(i));
             }
 
             const sidWrites = new Map();
