@@ -8,6 +8,8 @@
 #include <cstdint>
 #include <cstring>
 #include <cmath>
+#include <cstdlib>
+#include <new>
 #include "resid/sid.h"
 #include "cpu6510_core.h"
 
@@ -59,6 +61,7 @@ static struct {
     bool     playRoutineActive;
     uint64_t totalCycles;      // SID cycles rendered since play started
     int      chipModel;        // 6581 or 8580
+    reSID::chip_model chipModels[MAX_SID_CHIPS];   // per chip, as last set
 
     // The play routine audio_set_subtune resolved: the header's address, or
     // with play address 0 the interrupt handler init installed.
@@ -76,16 +79,30 @@ static struct {
     uint8_t  loadedMemory[65536];
 } S;
 
-// Put a chip in its power-on state. reSID's reset() leaves the envelope
+static reSID::sampling_method resid_sampling(int method) {
+    switch (method) {
+        case 1:  return reSID::SAMPLE_INTERPOLATE;
+        case 2:  return reSID::SAMPLE_RESAMPLE;
+        default: return reSID::SAMPLE_FAST;
+    }
+}
+
+// Put chip i in its power-on state: a newly constructed reSID::SID with this
+// engine's model and sampling. reset() is not enough. It leaves the envelope
 // counters where the last tune left them (as the RES line does on hardware),
-// and a gate opened on a counter at $FF flips it to 0 and freezes it there, so
-// a tune that followed one ending in a sustained note played silent. Each tune
-// here starts on a freshly powered chip instead.
-static void sid_power_on(reSID::SID& sid) {
-    sid.reset();
-    reSID::SID::State st = sid.read_state();
-    for (int v = 0; v < 3; v++) st.envelope_counter[v] = 0;
-    sid.write_state(st);
+// and a gate opened on a counter at $FF freezes it at zero, so a tune that
+// followed a sustained note played silent; it also leaves the oscillator
+// accumulators, so a tune rendered after another came out different from the
+// same tune on a fresh module. The model tables are built once per process,
+// so constructing a chip is cheap. The 8580 filter fills its noise table from
+// rand() as it is constructed, so the generator is seeded per chip first: a
+// chip's noise is then the same whatever was constructed before it.
+static void sid_power_on(int i) {
+    S.sid[i].~SID();
+    srand(1 + i);
+    new (&S.sid[i]) reSID::SID();
+    S.sid[i].set_chip_model(S.chipModels[i]);
+    S.sid[i].set_sampling_parameters(S.clockFreq, resid_sampling(S.samplingMethod), S.sampleRate);
 }
 
 // A write is only pipelined (and so needs flushing) with SAMPLE_FAST on an 8580.
@@ -273,6 +290,7 @@ void audio_init(double sampleRate) {
     S.playRoutineActive = false;
     S.totalCycles = 0;
     S.chipModel = 6581;
+    for (int i = 0; i < MAX_SID_CHIPS; i++) S.chipModels[i] = reSID::MOS6581;
     S.playRoutine = 0;
     S.playIsIrq = S.playViaKernal = false;
     S.samplingMethod = 1;
@@ -417,20 +435,16 @@ int audio_load_sid(const uint8_t* data, int length) {
 
     reSID::chip_model model = (S.chipModel == 8580) ? reSID::MOS8580 : reSID::MOS6581;
     S.samplingMethod = 1;
-    for (int i = 0; i < S.sidCount; i++) {
-        sid_power_on(S.sid[i]);
-        S.sid[i].set_chip_model(model);
-        S.sid[i].set_sampling_parameters(S.clockFreq, reSID::SAMPLE_INTERPOLATE, S.sampleRate);
-    }
+    for (int i = 0; i < S.sidCount; i++) S.chipModels[i] = model;
 
     // PSID v2+ flag bits 6-7 select the second chip's model independently.
     if (version >= 2) {
         uint8_t model2bits = (S.flags >> 6) & 0x03;
         if (S.sidCount > 1 && model2bits >= 2) {
-            // Only the model differs; the sampling set above applies to every chip.
-            S.sid[1].set_chip_model(reSID::MOS8580);
+            S.chipModels[1] = reSID::MOS8580;
         }
     }
+    for (int i = 0; i < S.sidCount; i++) sid_power_on(i);
 
     S.loaded = true;
     S.totalCycles = 0;
@@ -443,7 +457,7 @@ void audio_set_subtune(int subtune) {
     S.currentSubtune = subtune;
 
     for (int i = 0; i < S.sidCount; i++) {
-        sid_power_on(S.sid[i]);
+        sid_power_on(i);
         S.flushedCycles[i] = 0;
     }
 
@@ -560,18 +574,14 @@ void audio_set_model(int model) {
     S.chipModel = model;
     reSID::chip_model m = (model == 8580) ? reSID::MOS8580 : reSID::MOS6581;
     for (int i = 0; i < S.sidCount; i++) {
+        S.chipModels[i] = m;
         S.sid[i].set_chip_model(m);
     }
 }
 
 EMSCRIPTEN_KEEPALIVE
 void audio_set_sampling_method(int method) {
-    reSID::sampling_method m;
-    switch (method) {
-        case 1:  m = reSID::SAMPLE_INTERPOLATE; break;
-        case 2:  m = reSID::SAMPLE_RESAMPLE; break;
-        default: m = reSID::SAMPLE_FAST; break;
-    }
+    reSID::sampling_method m = resid_sampling(method);
     S.samplingMethod = method == 1 || method == 2 ? method : 0;
     for (int i = 0; i < S.sidCount; i++) {
         S.sid[i].set_sampling_parameters(S.clockFreq, m, S.sampleRate);

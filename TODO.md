@@ -600,52 +600,30 @@ decoder agree.
 
 ### Suggested order
 
-1. Land the regression harness (below) first. Most fixes here move output, so
-   they need goldens to show what moved and why.
-2. The high-severity bugs: the analyser abort and render determinism.
-3. Fold the duplicated C64 environment and call harness, which is where several
-   of the medium bugs came from.
+The regression harness and the render-determinism fix have landed
+(`scripts/test-goldens.js`, `scripts/test-render-determinism.js`, CI job
+`wasm`). Next: the analyser abort, then folding the duplicated C64 environment
+and call harness, which is where several of the medium bugs came from.
 
 ### Regression harness
 
-- **Golden corpus test** — `scripts/test-goldens.js` with fixtures in
-  `scripts/goldens/<tune>.json`, over the `SID/` corpus (68 tunes, already
-  committed under `SID/README.md`'s terms), up to 4 subtunes each:
-  - `sid_analyze` result (every `sid_get_*` value, sorted address lists);
-  - a hash of the per-frame `(frame, reg, value)` SID write trace, plus the
-    first 64 writes so a failure names the first differing write. The current
-    `cpu_get_write_sequence_*` is address-only, so this needs a value variant
-    or a `$D400+` read after each frame;
-  - a hash of 10 s of `audio_generate` output per engine, each from a **fresh
-    module** (see determinism below);
-  - a hash of the baked stream (codebook, indices, segments, loopStart) and the
-    `findStateLoop` intro/period — `scripts/bench-bake-analysis.mjs` already
-    hashes these but is manual.
-  `--update` rewrites the fixtures; CI never passes it, and a commit that moves
-  a golden says why. Run a ~15-tune fast tier in `npm test` (target < 10 s,
-  `worker_threads`) and the full corpus as `npm run test:goldens` in CI.
 - **Native C++ build of the engines** — `cpu6510_wasm.cpp`, `sid_processor.cpp`,
   `sid_audio.cpp` and `resid/*.cc` (minus `filter.cc`, as the build script does)
   compile with plain g++ in ~5 s given a one-line `emscripten/emscripten.h`
-  stub. A `scripts/native-test/` driver emitting the same golden JSON lets CI
-  test a C++ edit before anyone rebuilds the `.wasm`; today every test runs the
-  committed binary, so a `wasm/*.cpp` change is untested until then. Integer
-  outputs should match the wasm byte for byte; audio may not (float/FMA), so
-  keep audio goldens wasm-only.
-- **WASM build in CI** — emsdk pinned to 5.0.7 (the build script warns 6.0
-  breaks the node loader), build, then `npm test` against the fresh `.wasm`.
-  Whether the build is deterministic enough for a `--check` diff is not
-  confirmed.
+  stub, and libsidplayfp does too (add `simpleMixer.cpp`). Useful mainly for
+  valgrind/ASan runs; the WASM build itself is reproducible and fast (~6 s and
+  ~30 s), so goldens run against the real `.wasm`.
+- **Bake goldens** — a hash of the baked stream (codebook, indices, segments,
+  loopStart) and the `findStateLoop` intro/period per tune;
+  `scripts/bench-bake-analysis.mjs` already hashes these but is manual.
 - **Instruction-level CPU suite** — promote the audit's runners into
   `scripts/cpu-crosscheck/`: fetch Klaus Dormann's binary (GPL-3, so fetched,
   never committed) and Tom Harte's `6502/v1` JSON (MIT, 1.1 GB, ~1 min) at run
   time, with explicit exclusions for JAM, ANE/LXA magic, ARR with D=1 and RMW
   write sequences until those are fixed. Add `cpu-crosscheck/run.sh 2000`
   (~5 s) to CI.
-- **Targeted tests to add with each fix below**, named per item.
 - **Property tests** (`scripts/test-properties.js`, seeded): header parsers never
   read out of bounds on fuzzed input and agree with each other;
-  `audio_set_subtune(k)` after any other subtune equals a fresh load;
   `sid_analyze` is order-independent across subtunes.
 
 ### High
@@ -658,20 +636,6 @@ decoder agree.
   `$D418` digi in play is enough). Fix: don't record in `sid_analyze`, or cap
   the buffer. Test: 300+ writes/call over 30,000 frames in
   `test-analyser-edge-cases.js`. [WASM]
-- **Renders are reproducible only on a fresh module, in both engines.** Loading
-  the same tune twice in one module gives different audio (Flex-Lundia: 435k of
-  441k samples differ). sidplayfp: reSIDfp's `WaveformGenerator::reset` keeps
-  the oscillator accumulators and the mixer's dither LCG is seeded once
-  (`libsidplayfp/src/mixer.h:189`). reSID: `sid_power_on`
-  (`sid_audio.cpp:84-89`) leaves `accumulator` alone; zeroing it cuts the
-  difference to ~23–50 LSB, with a remainder not yet traced. The bake worker
-  caches one module per engine (`spectrometer-bake-worker.js:36-54`), so every
-  bake after the first in a worker differs, against the stated intent of
-  pinning `powerOnDelay` (`sidplayfp_audio.cpp:91-99`). Fix: recreate the
-  `sidplayfp`/`ReSIDfpBuilder` per load; for reSID zero the accumulators and
-  find the remainder, or construct fresh `reSID::SID` objects. Test: render,
-  reload, render in one module, equal. [WASM]
-
 ### Medium
 
 - **reSID `cpu_call` returns as soon as SP climbs back to its start**

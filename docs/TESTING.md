@@ -35,6 +35,16 @@ The rest:
   `SIDquakeModule` factory callable for the other loaders.
 - `scripts/test-zip-writer.js`, `scripts/test-share-shards.js`: the hand-written
   zip layout, and the three copies of the share-meta shard hash agree.
+- `scripts/test-render-determinism.js`: a render on either engine depends only
+  on the tune, not on what the module played before it.
+- `scripts/test-goldens.js`: the whole-tune regression. For a fast tier of
+  tunes from `SID/` it compares the `sid_analyze` results, the analyser CPU's
+  SID write trace (hashed per block of play calls) and hashes of both engines'
+  output against `scripts/goldens/<tune>.json`, and names the field or trace
+  block that moved. `npm run test:goldens` runs all of `SID/` (about a minute;
+  CI runs it). A change that is meant to move what the emulation produces
+  rewrites the fixtures with `--update` (`--only=<tune>,...` narrows it), and
+  its commit says why they moved.
 
 `package.json` holds the authoritative list.
 

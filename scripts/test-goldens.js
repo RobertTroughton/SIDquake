@@ -16,9 +16,9 @@
  *   resid      a hash of the reSID engine's output (sidquake.wasm);
  *   sidplayfp  a hash of the libsidplayfp engine's output (sidplayfp.wasm).
  *
- * Every audio render starts from a freshly instantiated module: renders are
- * only reproducible that way (see TODO.md, "Renders are reproducible only on a
- * fresh module").
+ * One module per engine renders every tune in turn, so a render that depends
+ * on what the engine played before it fails here too
+ * (scripts/test-render-determinism.js covers that directly).
  *
  * Fixtures live in scripts/goldens/<tune>.json. A deliberate change to what the
  * emulation produces is recorded with --update, and the commit that moves a
@@ -172,8 +172,7 @@ async function traceGolden(M, bytes, subtune) {
     return { calls, writes, blocks };
 }
 
-async function audioGolden(engine, bytes, subtune) {
-    const M = await instantiate(engine);
+async function audioGolden(M, bytes, subtune) {
     const c = (n, r, a) => M.cwrap(n, r, a || []);
     c('audio_init', null, ['number'])(RATE);
     if (withBytes(M, bytes, (p) => c('audio_load_sid', 'number', ['number', 'number'])(p, bytes.length)) < 0) {
@@ -194,19 +193,15 @@ async function audioGolden(engine, bytes, subtune) {
     return `${n}:${hash(new Uint8Array(out.buffer, 0, n * 2))}`;
 }
 
-async function goldenFor(file) {
+async function goldenFor(file, engines) {
     const bytes = new Uint8Array(fs.readFileSync(file));
     const subtunes = Math.min(MAX_SUBTUNES, header(bytes).songs);
-    // The analyser starts from cpu_init / sid_load every time, so one module
-    // serves every analysis and trace of a tune. (Instantiating sidquake.wasm
-    // costs ~0.6 s, so the audio renders are the only ones that pay it.)
-    const analyser = await instantiate('sidquake');
-    const out = { analysis: await analysisGolden(analyser, bytes), subtunes: [] };
+    const out = { analysis: await analysisGolden(engines.analyser, bytes), subtunes: [] };
     for (let s = 0; s < subtunes; s++) {
         out.subtunes.push({
-            trace: await traceGolden(analyser, bytes, s),
-            resid: await audioGolden('sidquake', bytes, s),
-            sidplayfp: await audioGolden('sidplayfp', bytes, s),
+            trace: await traceGolden(engines.analyser, bytes, s),
+            resid: await audioGolden(engines.resid, bytes, s),
+            sidplayfp: await audioGolden(engines.sidplayfp, bytes, s),
         });
     }
     return out;
@@ -233,10 +228,17 @@ async function main() {
 
     let failures = 0;
     const t0 = Date.now();
+    // The analyser and the reSID engine live in the same sidquake.wasm but
+    // share no state; separate instances keep the two independent anyway.
+    const engines = {
+        analyser: await instantiate('sidquake'),
+        resid: await instantiate('sidquake'),
+        sidplayfp: await instantiate('sidplayfp'),
+    };
     for (const name of names) {
         const file = path.join(SID_DIR, `${name}.sid`);
         if (!fs.existsSync(file)) { console.log(`  FAIL ${name}: no such tune in SID/`); failures++; continue; }
-        const got = await goldenFor(file);
+        const got = await goldenFor(file, engines);
         const gfile = path.join(GOLDEN_DIR, `${name}.json`);
         if (UPDATE) {
             fs.writeFileSync(gfile, JSON.stringify(got, null, 1) + '\n');

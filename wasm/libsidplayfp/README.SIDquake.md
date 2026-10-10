@@ -27,6 +27,12 @@ Hardware-SID builders and file-based utilities that make no sense in WASM:
    on `std::thread`s; Emscripten here is single-threaded (no pthreads, so we
    don't require SharedArrayBuffer/COOP/COEP headers on the site), so the same
    lambdas run sequentially under `#ifdef __EMSCRIPTEN__`.
+2. `src/builders/residfp-builder/residfp/FilterModelConfig.h`: adds
+   `rewindDither()`. The filter-model singletons hand every newly built filter
+   a value from one process-wide dither sequence, so a SID created after
+   another got different constants. `sidplayfp_audio.cpp` builds a new engine
+   for every load and subtune and rewinds the sequence first, which makes a
+   render depend only on the tune (`scripts/test-render-determinism.js`).
 
 ## Generated headers (hand-maintained, normally produced by autotools)
 

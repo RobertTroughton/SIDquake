@@ -53,6 +53,23 @@ public:
         static constexpr int value = mixer_offset<i - 1>::value + ((i - 1) << 16);
     };
 
+#ifdef __EMSCRIPTEN__
+    // SIDquake: put the dither sequence back where it stood once the tables
+    // were built. Every new filter draws from this process-wide sequence, so
+    // without it a SID created after another got different constants and
+    // rendered differently from the same tune on a fresh module.
+    void rewindDither() const
+    {
+        if (ditherMark < 0) ditherMark = rnd.position();
+        else rnd.seek(ditherMark);
+    }
+
+private:
+    mutable int ditherMark = -1;
+
+public:
+#endif
+
 protected:
     static inline unsigned short to_ushort_dither(double x, double d_noise)
     {
@@ -91,6 +108,10 @@ private:
                 buffer[i] = unif(re);
         }
         double getNoise() const { index = (index + 1) & 0x3ff; return buffer[index]; }
+#ifdef __EMSCRIPTEN__
+        int position() const { return index; }
+        void seek(int i) const { index = i; }
+#endif
     };
 
 protected:

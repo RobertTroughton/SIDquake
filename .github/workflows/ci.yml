@@ -38,3 +38,25 @@ jobs:
         with:
           node-version: '20'
       - run: npm test
+
+  # The committed .wasm files are built from wasm/ with emscripten 5.0.7, and that
+  # build is reproducible byte for byte. Rebuilding them here checks they still
+  # match their source, then the whole SID/ corpus is run against its goldens.
+  wasm:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: mymindstorm/setup-emsdk@v14
+        with:
+          version: 5.0.7
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Rebuild the WASM modules
+        run: |
+          bash scripts/build-sidquake-wasm.sh
+          bash scripts/build-sidplayfp-wasm.sh
+      - name: Committed WASM matches the source
+        run: git diff --exit-code -- public/sidquake.wasm public/sidquake.js public/sidplayfp.wasm public/sidplayfp.js
+      - name: Every tune in SID/ matches its golden
+        run: npm run test:goldens

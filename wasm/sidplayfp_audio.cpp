@@ -20,6 +20,8 @@
 #include <sidplayfp/SidTune.h>
 #include <sidplayfp/SidTuneInfo.h>
 #include "residfp.h"
+#include "FilterModelConfig6581.h"
+#include "FilterModelConfig8580.h"
 
 #include "roms_data.h"
 
@@ -131,6 +133,41 @@ void applySpeed() {
     }
 }
 
+// Replace the engine and builder with new ones. libsidplayfp keeps state
+// across loads that a reset does not clear: reSIDfp's WaveformGenerator::reset
+// leaves the oscillator accumulators alone, and the mixer's dither generator
+// is seeded once, at construction. So a tune played after another, or the
+// same subtune selected twice, rendered differently from the same tune on a
+// fresh module, and a bake is only reproducible if every render starts from a
+// fresh engine. The filter model tables are process-wide singletons, so this
+// costs little; the dither sequence they hand new filters is rewound so each
+// engine's filters get the same constants (vendored patch, see README).
+bool newEngine() {
+    if (S.engine && S.tune) S.engine->load(nullptr);
+    delete S.engine;  S.engine = nullptr;
+    delete S.builder; S.builder = nullptr;
+    try {
+        S.engine = new sidplayfp();
+        S.engine->setRoms(ROM_KERNAL, ROM_BASIC, ROM_CHARGEN);
+        S.builder = new ReSIDfpBuilder("SIDquake");
+        // One chip at a time, each from the rewound dither sequence, so every
+        // chip gets the same filter constants. The builder keeps its chips in
+        // a set ordered by address, so which one becomes chip 0 depends on
+        // the heap, and with constants that differed per chip a tune rendered
+        // differently depending on what the module had loaded before.
+        for (unsigned int i = 0; i < S.engine->info().maxsids(); i++) {
+            reSIDfp::FilterModelConfig6581::getInstance()->rewindDither();
+            reSIDfp::FilterModelConfig8580::getInstance()->rewindDither();
+            S.builder->create(1);
+        }
+        return true;
+    } catch (...) {
+        delete S.builder; S.builder = nullptr;
+        delete S.engine;  S.engine = nullptr;
+        return false;
+    }
+}
+
 } // namespace
 
 extern "C" {
@@ -139,19 +176,7 @@ EMSCRIPTEN_KEEPALIVE
 void audio_init(double sampleRate) {
     S.sampleRate = sampleRate > 0 ? sampleRate : 48000.0;
 
-    if (!S.engine) {
-        try {
-            S.engine = new sidplayfp();
-            S.engine->setRoms(ROM_KERNAL, ROM_BASIC, ROM_CHARGEN);
-
-            S.builder = new ReSIDfpBuilder("SIDquake");
-            S.builder->create(S.engine->info().maxsids());
-        } catch (...) {
-            delete S.builder; S.builder = nullptr;
-            delete S.engine;  S.engine = nullptr;
-            return;
-        }
-    }
+    if (!S.engine && !newEngine()) return;
 
     applyConfig();
 }
@@ -195,6 +220,7 @@ int audio_load_sid(const uint8_t* data, int length) {
         S.isNTSC    = (info->clockSpeed() == SidTuneInfo::CLOCK_NTSC);
         S.headerModel = (info->sidModel(0) == SidTuneInfo::SIDMODEL_8580) ? 8580 : 6581;
 
+        if (!newEngine()) return -3;
         if (!applyConfig()) return -4;
         if (!S.engine->load(S.tune)) return -4;
         applySpeed();
@@ -213,7 +239,10 @@ void audio_set_subtune(int subtune) {
     if (!S.loaded || !S.tune) return;
     try {
         S.tune->selectSong((unsigned int)(subtune + 1));
-        S.engine->load(S.tune);  // re-init the C64 with the selected song
+        // A fresh engine for every start, so selecting a song always begins
+        // from the same machine state (see newEngine).
+        if (!newEngine() || !applyConfig()) { S.loaded = false; return; }
+        if (!S.engine->load(S.tune)) { S.loaded = false; return; }
         applySpeed();
     } catch (...) {
         // keep previous state
