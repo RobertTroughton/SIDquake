@@ -19,7 +19,8 @@
  *   - operand bytes count as code, not just opcodes;
  *   - reading memory from the host leaves no access flag behind;
  *   - the CIA 1 timer is seen through its mirrors ($DC14 is $DC04), and fires
- *     every latch + 1 cycles, which decides the rounding of calls per frame;
+ *     every latch + 1 cycles, which decides the rounding of calls per frame,
+ *     and each subtune gets its own rate;
  *   - a call that does not return reports no execution cycles, rather than the
  *     previous call's;
  *   - a play routine making hundreds of SID writes a call (a $D418 digi) is
@@ -234,6 +235,27 @@ async function main() {
         analyze();
         check(sid.callsPerFrame() === calls, `latch ${latch} at $${base.toString(16).toUpperCase()} gives ${calls} calls a frame`,
             `${sid.callsPerFrame()}`);
+    }
+
+    console.log('each subtune gets its own calls per frame');
+    {
+        // init: CMP #1 / BNE done / program the CIA timer for 4 calls a frame
+        // (latch 4913) / done: RTS. play: RTS. Only song 2's speed bit is set.
+        const latch = 4913;
+        const code = Uint8Array.from([
+            0xc9, 0x01, 0xd0, 0x0a,
+            0xa9, latch & 0xff, 0x8d, 0x04, 0xdc, 0xa9, latch >> 8, 0x8d, 0x05, 0xdc,
+            0x60, 0x60,
+        ]);
+        const bytes = psid({ play: 0x100f, songs: 2, code });
+        bytes[0x15] = 0x02;
+        check(load(bytes) === 0, 'loads');
+        analyze();
+        const has = typeof M._sid_get_song_calls_per_frame === 'function';
+        const per = has ? [M._sid_get_song_calls_per_frame(0), M._sid_get_song_calls_per_frame(1)] : null;
+        check(has && per[0] === 1 && per[1] === 4, 'song 1 runs once a frame, song 2 four times',
+            has ? per.join(', ') : 'sid_get_song_calls_per_frame missing');
+        check(sid.callsPerFrame() === 1, 'and the start song\'s rate is still reported', `${sid.callsPerFrame()}`);
     }
 
     console.log('a call that does not return reports no cycles');

@@ -97,6 +97,9 @@ extern "C" {
         uint32_t longestInitCycles;
         uint32_t playTimeouts;
         uint32_t firstPlayTimeoutFrame;
+        // Play calls per raster frame for each subtune analysed (index 0 =
+        // song 1); numCallsPerFrame is the start song's.
+        std::vector<uint8_t> callsPerFrameBySong;
     };
 
     struct {
@@ -176,6 +179,7 @@ extern "C" {
         sidState.analysis.longestInitCycles = 0;
         sidState.analysis.playTimeouts = 0;
         sidState.analysis.firstPlayTimeoutFrame = UINT32_MAX;
+        sidState.analysis.callsPerFrameBySong.clear();
 
         cpu_init();
     }
@@ -333,6 +337,7 @@ extern "C" {
         sidState.analysis.longestInitCycles = 0;
         sidState.analysis.playTimeouts = 0;
         sidState.analysis.firstPlayTimeoutFrame = UINT32_MAX;
+        sidState.analysis.callsPerFrameBySong.clear();
 
         // Snapshot memory after initial load so each song can start from
         // an identical baseline.
@@ -401,6 +406,7 @@ extern "C" {
         if (defaultSong < 1 || defaultSong > songsToAnalyze) {
             defaultSong = 1;
         }
+        sidState.analysis.callsPerFrameBySong.assign(songsToAnalyze, 1);
 
         for (uint16_t songNum = 1; songNum <= songsToAnalyze; songNum++) {
             cpu_restore_memory(cleanMemorySnapshot);
@@ -512,26 +518,22 @@ extern "C" {
                 }
             }
 
-            // Multispeed (calls-per-frame) detection, keyed to the subtune the
-            // exporter actually bakes (the default/start song). PSID encodes
+            // Multispeed (calls-per-frame) detection, per subtune. PSID encodes
             // timing per subtune in the 32-bit speed field: bit set => the play
             // routine runs at the CIA-timer rate, bit clear => vsync, i.e. single
             // speed. A $DC04/05 write is only a multispeed signal when this
             // subtune's bit says CIA - trusting it unconditionally exported plain
             // vsync tunes (that poke the timer for unrelated reasons) at up to N x
-            // tempo. Subtunes past 32 share bit 31, per the PSID spec.
-            //
-            // Only the default subtune's rate is derived; the exporter can still
-            // bake a user-picked non-default subtune, which then inherits the
-            // default's rate. A fully per-subtune rate would need the export
-            // selection at analysis time - deferred; single-subtune tunes and the
-            // default export (the common cases) are exact.
-            if (songNum == defaultSong && !sidState.analysis.ciaTimerDetected) {
+            // tempo. Subtunes past 32 share bit 31, per the PSID spec. The
+            // exporter takes the rate of the subtune it bakes
+            // (sid_get_song_calls_per_frame); sid_get_num_calls_per_frame is the
+            // start song's.
+            {
                 extern uint8_t cpu_get_cia_timer_lo();
                 extern uint8_t cpu_get_cia_timer_hi();
                 extern bool cpu_get_cia_timer_written();
 
-                uint8_t speedBit = (defaultSong - 1) < 31 ? (uint8_t)(defaultSong - 1) : 31;
+                uint8_t speedBit = (songNum - 1) < 31 ? (uint8_t)(songNum - 1) : 31;
                 bool ciaSpeed = (sidState.header.speed >> speedBit) & 1u;
 
                 if (ciaSpeed && cpu_get_cia_timer_written()) {
@@ -554,9 +556,13 @@ extern "C" {
                         // The timer counts its latch down to 0 and reloads, so
                         // it fires every latch + 1 cycles.
                         double freq = cyclesPerFrame / (timerValue + 1.0);
-                        sidState.analysis.numCallsPerFrame = (uint8_t)std::min(16, std::max(1, (int)(freq + 0.5)));
-                        sidState.analysis.ciaTimerValue = timerValue;
-                        sidState.analysis.ciaTimerDetected = true;
+                        uint8_t calls = (uint8_t)std::min(16, std::max(1, (int)(freq + 0.5)));
+                        sidState.analysis.callsPerFrameBySong[songNum - 1] = calls;
+                        if (songNum == defaultSong) {
+                            sidState.analysis.numCallsPerFrame = calls;
+                            sidState.analysis.ciaTimerValue = timerValue;
+                            sidState.analysis.ciaTimerDetected = true;
+                        }
                     }
                 }
             }
@@ -836,6 +842,15 @@ extern "C" {
     EMSCRIPTEN_KEEPALIVE
         uint32_t sid_get_init_timeouts() {
         return sidState.analysis.initTimeouts;
+    }
+
+    // Play calls per raster frame for subtune `song` (0-based), as its speed
+    // bit and the CIA timer its init programmed give it; 1 for a song out of
+    // range or one whose init timed out.
+    EMSCRIPTEN_KEEPALIVE
+        uint8_t sid_get_song_calls_per_frame(uint32_t song) {
+        return song < sidState.analysis.callsPerFrameBySong.size()
+            ? sidState.analysis.callsPerFrameBySong[song] : 1;
     }
 
     // Number of subtunes whose analysis stopped at a play call that did not
