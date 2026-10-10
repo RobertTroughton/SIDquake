@@ -2,8 +2,8 @@
 
 The instruction set lives once, in `wasm/cpu6510_core.h`. It is a template over
 a *bus*: a type supplying the register file by reference plus `fetch`, `read`,
-`write`, `jumpTarget` and `jam`. Two bus adapters use it, for two different
-jobs:
+`write`, `dummyWrite`, `jumpTarget` and `jam`. Two bus adapters use it, for two
+different jobs:
 
 | | source | job |
 |---|---|---|
@@ -19,6 +19,15 @@ writes through the SID chips. Instruction fetch is a separate operation from
 data read in both: the analysis core covers the instruction stream with
 `MEM_EXECUTE`/`MEM_OPCODE` rather than `MEM_READ`, and the audio core must not
 let an instruction fetch reach reSID.
+
+Every read-modify-write instruction (`ASL`/`LSR`/`ROL`/`ROR`/`INC`/`DEC` on
+memory, `SLO`/`RLA`/`SRE`/`RRA`/`DCP`/`ISC`) writes the unmodified value back
+before the modified one, as the NMOS 6502 does, and the core hands that first
+write to the bus as `dummyWrite`. The audio adapter sends it through its normal
+write path, so reSID hears both writes of an `INC $D4xx`. The analysis adapter
+drops it: it models no write-sensitive I/O, and counting it would double every
+read-modify-write in `sidWrites`, `zpWrites` and the shadow-register write
+sequence.
 
 All 256 opcodes are decoded, illegals included.
 
@@ -77,18 +86,26 @@ has its stack pointer put back.
 Run it after touching either core; see `scripts/cpu-crosscheck/README.md`. It is
 not part of `npm test`: it needs a C++ toolchain and takes minutes.
 
+`scripts/cpu-crosscheck/singlestep.sh` checks the decoder itself against two
+outside references: Tom Harte's SingleStepTests (`6502/v1`, 10,000 cases per
+opcode, compared on registers, RAM, cycle count and the order of bus writes)
+and Klaus Dormann's functional test. Both are downloaded at run time. The
+JAM opcodes are the only exclusion, and bus reads are not compared (both are
+explained under "What is still not modelled").
+
 ## What is still not modelled
 
-- **The NMOS read-modify-write double write.** Real hardware writes the
-  unmodified value back before the modified one, which is visible on I/O
-  registers. Adding it would double every `INC`/`DEC`/shift on a tracked
-  address in `sidWrites`, `zpWrites` and the shadow-register write sequence, so
-  it needs those consumers looked at first.
-- **`ARR` (`$6B`) in decimal mode.** Both cores use the binary-mode result and
-  flags. The BCD variant needs a separate fixup.
-- **`XAA` (`$8B`) and `LAX #imm` (`$AB`) magic constants.** Both cores use the
-  common deterministic forms (`A = X & imm` and `A = X = imm`); on real hardware
-  the result depends on the analogue state of the internal bus.
+- **`JAM`/`KIL` (`$x2`) locking the bus.** The core reports the halt to its
+  bus (`jam()`) and stops, rather than hanging on repeated reads, so these
+  opcodes are left out of the Harte run.
+- **Dummy reads.** The 6502 makes extra reads (the operand of an implied
+  instruction, the unfixed address of an indexed access, the stack before a
+  pull); the core does not, which only matters to read-sensitive I/O such as
+  the CIA interrupt flags. The Harte run compares bus writes, not reads.
+- **`XAA` (`$8B`) and `LAX #imm` (`$AB`) instability.** Both use the common
+  magic constant `$EE` (`A = (A | $EE) & X & imm` and
+  `A = X = (A | $EE) & imm`), as Tom Harte's tests do; on real hardware the
+  constant varies between chips. VICE and libsidplayfp use `$EF` for `XAA`.
 - **Most of the I/O chips.** `wasm/c64_io.h` is the whole model, shared by
   both adapters: the I/O area is there only while `$01` maps it in (CHAREN,
   and LORAM or HIRAM; otherwise `$D000-$DFFF` is RAM), the raster line in

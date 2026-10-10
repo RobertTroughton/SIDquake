@@ -191,6 +191,7 @@ struct AudioBus {
     uint8_t fetch(uint16_t addr) { return S.memory[addr]; }
     uint8_t read(uint16_t addr) { return mem_read(addr); }
     void write(uint16_t addr, uint8_t val) { mem_write(addr, val); }
+    void dummyWrite(uint16_t addr, uint8_t val) { mem_write(addr, val); }
     void jumpTarget(uint16_t) {}
     void jam() { cpuJammed = true; }
 

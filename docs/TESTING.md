@@ -94,8 +94,12 @@ band and hides anything that goes wrong at its bottom edge.
 - `scripts/build-players.sh --check` after touching `SIDPlayers/`: did any
   shipped binary move?
 - `scripts/cpu-crosscheck/run.sh` after touching the 6510 decoder or either bus
-  adapter. Needs a C++ toolchain and takes minutes. See
-  [`CPU_CORES.md`](CPU_CORES.md).
+  adapter. Needs a C++ toolchain and takes minutes (`run.sh 2000` takes
+  seconds; CI runs that). See [`CPU_CORES.md`](CPU_CORES.md).
+- `scripts/cpu-crosscheck/singlestep.sh [--sample N]` after touching the 6510
+  decoder: Tom Harte's SingleStepTests and Klaus Dormann's functional test,
+  downloaded at run time (never committed). Needs `curl` and `g++`; CI runs it.
+  See [`scripts/cpu-crosscheck/README.md`](../scripts/cpu-crosscheck/README.md).
 - `scripts/bench-bake-analysis.mjs [bake-module] [tune.sid]` after an
   optimisation in `spectrometer-bake.js`: times the per-frame analysis and
   hashes its output, so a copy of the old module passed as `bake-module` shows
