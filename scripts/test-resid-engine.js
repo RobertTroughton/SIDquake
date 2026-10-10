@@ -14,6 +14,8 @@
  *     frame, whether it ends in RTI or JMP $EA31, and per subtune;
  *   - selecting a subtune reloads the tune and resets the frame rate, so a
  *     CIA-timed subtune's rate does not stick to the next;
+ *   - init ends at its RTS, not as soon as the stack pointer is back where it
+ *     started (an init that resets the stack with LDX #$FF / TXS carried on);
  *   - every tune starts on a SID in its power-on state. A reset leaves reSID's
  *     envelope counters where the last tune left them, and a gate opened on a
  *     counter at $FF freezes it at zero, so every second tune loaded into one
@@ -211,6 +213,14 @@ async function main() {
         render(2);
         const calls = peek(0x1100);
         check(Math.abs(calls - 100) <= 2, 'song 2 plays at the frame rate', `${calls} calls in 2 s`);
+    }
+
+    console.log('init that resets the stack runs to its RTS');
+    {
+        // init: LDX #$FF / TXS / LDA #$42 / STA $1100 / RTS; play: RTS
+        const code = Uint8Array.from([0xa2, 0xff, 0x9a, 0xa9, 0x42, 0x8d, 0x00, 0x11, 0x60, 0x60]);
+        start(psid({ play: 0x1009, code }));
+        check(peek(0x1100) === 0x42, 'the store after TXS ran', `$1100 = ${peek(0x1100)}`);
     }
 
     console.log(failures ? `\n${failures} check(s) FAILED` : '\nall checks passed');

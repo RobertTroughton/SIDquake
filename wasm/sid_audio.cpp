@@ -231,7 +231,7 @@ static void cpu_call(uint16_t addr, uint32_t maxCycles, bool irq = false, bool v
         cyclesRun += cpu_step();
 
         if (cpuJammed) break;  // KIL opcode; the CPU would never come back
-        if ((int8_t)(S.sp - initialSP) >= 0 && (!irq || opcode == 0x40)) {
+        if ((int8_t)(S.sp - initialSP) >= 0 && opcode == (irq ? 0x40 : 0x60)) {
             return;  // matching RTS / RTI executed
         }
         if (S.pc == 0 || S.pc == 0xFFFF) break;  // BRK or sentinel landing

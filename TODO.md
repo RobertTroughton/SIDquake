@@ -628,12 +628,6 @@ is where several of the medium bugs came from.
 
 ### Medium
 
-- **reSID `cpu_call` returns as soon as SP climbs back to its start**
-  (`sid_audio.cpp:217`), not on a matching RTS: an init doing `LDX #$FF; TXS`
-  stops right after the TXS. The analyser requires `opcode == 0x60`
-  (`cpu6510_wasm.cpp:264`), so the two disagree on when init ends. Fix: require
-  RTS on the non-IRQ path. Test: `TXS` and `PLA; PLA; JMP` inits run to
-  completion in `test-resid-engine.js`. [WASM]
 - **A play call that never returns ends the analysis silently**
   (`sid_processor.cpp:447-453` just `break`s); the memory map is then missing
   every later write, so save/restore misses them. Fix: count `playTimeouts` and
