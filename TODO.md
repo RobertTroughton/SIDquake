@@ -636,7 +636,6 @@ is where several of the medium bugs came from.
 - The analyser doesn't reject a load address below `$07E8`, which the PSID spec
   forbids. Left as is: nothing breaks for such a tune, and refusing it would
   only stop a file that works.
-- reSID 3SID mix sums without attenuation and clips (`sid_audio.cpp`). [WASM]
 - sidplayfp: 2SID/3SID are mono only (`SidConfig::MONO`); `digiBoost` never set,
   so 8580 `$D418` digis are near-silent; `audio_set_subtune` ignores
   `engine->load()`'s result.

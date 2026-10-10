@@ -17,6 +17,8 @@
  *   - a write to $D400-$D7FF with I/O banked out ($01 = $34) is a RAM write,
  *     not a SID one;
  *   - a play routine waiting on the raster ($D012) gets there, once a frame;
+ *   - two or three SIDs are mixed scaled by 1/sqrt(N), as libsidplayfp mixes
+ *     them, so a 3SID tune does not clip;
  *   - init ends at its RTS, not as soon as the stack pointer is back where it
  *     started (an init that resets the stack with LDX #$FF / TXS carried on);
  *   - a sampling method chosen before the tune is loaded is the one it renders
@@ -259,6 +261,15 @@ async function main() {
         render(2);
         const calls = peek(0x1100);
         check(Math.abs(calls - 100) <= 2, 'about 100 calls in 2 s', `${calls}`);
+    }
+
+    console.log('a 3SID tune is mixed without clipping');
+    {
+        start(new Uint8Array(fs.readFileSync(path.join(ROOT, 'SID/shogoon-cheezzytop-3SID.sid'))));
+        const x = render(60);
+        let clipped = 0;
+        for (let i = 0; i < x.length; i++) if (x[i] >= 32767 / 32768 || x[i] <= -1) clipped++;
+        check(clipped === 0, 'no clipped samples in 60 s', `${clipped}`);
     }
 
     console.log('init that resets the stack runs to its RTS');

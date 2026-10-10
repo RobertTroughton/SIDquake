@@ -403,17 +403,24 @@ int audio_generate(int16_t* buffer, int numSamples) {
         int generated = S.sid[0].clock(delta, buffer + totalGenerated, remaining);
         int cyclesConsumed = S.remainingCycles - delta;
 
-        // Mix any additional SID chips into the same output buffer with saturation.
-        for (int chip = 1; chip < S.sidCount; chip++) {
-            int owed = cyclesConsumed - S.flushedCycles[chip];
-            S.flushedCycles[chip] = owed < 0 ? -owed : 0;
-            reSID::cycle_count delta2 = owed > 0 ? owed : 0;
-            int gen2 = S.sid[chip].clock(delta2, mixBuf, generated);
-            for (int s = 0; s < gen2; s++) {
-                int mixed = (int)buffer[totalGenerated + s] + mixBuf[s];
-                if (mixed > 32767) mixed = 32767;
-                if (mixed < -32768) mixed = -32768;
-                buffer[totalGenerated + s] = (int16_t)mixed;
+        // Mix any additional SID chips into the same output buffer, each scaled
+        // by 1/sqrt(chips) as libsidplayfp's mono mixer does, with saturation.
+        if (S.sidCount > 1) {
+            const int32_t scale = S.sidCount == 2 ? 46341 : 37837;   // 65536 / sqrt(2), / sqrt(3)
+            for (int s = 0; s < generated; s++) {
+                buffer[totalGenerated + s] = (int16_t)((buffer[totalGenerated + s] * scale) >> 16);
+            }
+            for (int chip = 1; chip < S.sidCount; chip++) {
+                int owed = cyclesConsumed - S.flushedCycles[chip];
+                S.flushedCycles[chip] = owed < 0 ? -owed : 0;
+                reSID::cycle_count delta2 = owed > 0 ? owed : 0;
+                int gen2 = S.sid[chip].clock(delta2, mixBuf, generated);
+                for (int s = 0; s < gen2; s++) {
+                    int mixed = (int)buffer[totalGenerated + s] + ((mixBuf[s] * scale) >> 16);
+                    if (mixed > 32767) mixed = 32767;
+                    if (mixed < -32768) mixed = -32768;
+                    buffer[totalGenerated + s] = (int16_t)mixed;
+                }
             }
         }
 
