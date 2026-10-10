@@ -14,7 +14,8 @@
  *   - a rejected load leaves the previously loaded tune in place;
  *   - the SID chip count covers every subtune, not the last one analysed, and
  *     counts the chips play writes to plus the ones the header declares (v3+,
- *     including $DE00/$DF00), not every slot an init clears;
+ *     including $DE00/$DF00), not every slot an init clears, nor a write made
+ *     while $01 has the I/O area banked out (it lands in the RAM below);
  *   - a header claiming 0 songs still analyses the one it has;
  *   - operand bytes count as code, not just opcodes;
  *   - reading memory from the host leaves no access flag behind;
@@ -180,6 +181,16 @@ async function main() {
         check(load(psid({ play: 0x1016, code })) === 0, 'loads');
         const a = analyze();
         check(a.chips === 1, `one chip after clearing ${end ? '$D400-$D47F (and mirrors)' : '$D400-$D7FF'}`, `${a.chips}`);
+    }
+
+    console.log('a write with I/O banked out is not a SID write');
+    {
+        // play: LDA #$34 / STA $01 / STA $D420 / LDA #$37 / STA $01 / STA $D400 / RTS
+        const code = Uint8Array.from([0x60,
+            0xa9, 0x34, 0x85, 0x01, 0x8d, 0x20, 0xd4, 0xa9, 0x37, 0x85, 0x01, 0x8d, 0x00, 0xd4, 0x60]);
+        check(load(psid({ play: 0x1001, code })) === 0, 'loads');
+        const a = analyze();
+        check(a.chips === 1, 'the $D420 store under $01=$34 is not a second chip', `${a.chips}`);
     }
 
     console.log('a v3 header\'s second SID at $DE00 is a chip');

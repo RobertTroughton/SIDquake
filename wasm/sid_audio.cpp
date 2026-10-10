@@ -112,7 +112,21 @@ static inline bool writesPipelined() {
 
 // ---- Memory access with SID register interception ----
 
+// Whether the processor port at $01 maps the I/O area in: CHAREN set, and
+// LORAM or HIRAM set. Otherwise $D000-$DFFF is RAM (or character ROM).
+static inline bool io_visible() {
+    uint8_t port = S.memory[0x01];
+    return (port & 0x03) && (port & 0x04);
+}
+
+// The SIDs sit in $D400-$D7FF and $DE00-$DFFF; everything outside that, and
+// everything when I/O is banked out, is plain RAM.
+static inline bool sid_area(uint16_t addr) {
+    return addr >= 0xD400 && addr <= 0xDFFF && io_visible();
+}
+
 static inline uint8_t mem_read(uint16_t addr) {
+    if (!sid_area(addr)) return S.memory[addr];
     // Primary SID reads
     if (addr >= 0xD400 && addr <= 0xD41F) {
         return S.sid[0].read(addr & 0x1F);
@@ -128,6 +142,7 @@ static inline uint8_t mem_read(uint16_t addr) {
 
 static inline void mem_write(uint16_t addr, uint8_t val) {
     S.memory[addr] = val;
+    if (!sid_area(addr)) return;
 
     // Primary SID at $D400
     if (addr >= 0xD400 && addr <= 0xD41F) {

@@ -108,6 +108,10 @@ extern "C" {
         cpu.lastExecutionCycles = 0;
 
         memset(cpu.memory, 0, sizeof(cpu.memory));
+        // The processor port as the KERNAL leaves it: I/O mapped in, so SID
+        // and CIA writes are seen as such until the code banks it out.
+        cpu.memory[0x00] = 0x2F;
+        cpu.memory[0x01] = 0x37;
         memset(cpu.memoryAccess, 0, sizeof(cpu.memoryAccess));
         memset(cpu.sidWrites, 0, sizeof(cpu.sidWrites));
         memset(cpu.sidChipsUsed, 0, sizeof(cpu.sidChipsUsed));
@@ -160,33 +164,40 @@ extern "C" {
                 cpu.totalZpWrites++;
             }
 
-            // Track SID writes (full SID range $D400-$D7FF)
-            if (address >= 0xD400 && address <= 0xD7FF) {
-                uint8_t reg = address & 0x1F;
-                cpu.sidWrites[reg]++;
-                cpu.totalSidWrites++;
+            // I/O is only there when the processor port maps it in (CHAREN
+            // set, and LORAM or HIRAM); otherwise a write here is to RAM.
+            const uint8_t port = cpu.memory[0x01];
+            const bool io = (port & 0x03) && (port & 0x04);
 
-                // Track which SID chip is being used (each chip is $20 bytes)
-                uint8_t sidChipIndex = (address - 0xD400) >> 5;  // Divide by 32
-                cpu.sidChipsUsed[sidChipIndex] = true;
+            if (io) {
+                // Track SID writes (full SID range $D400-$D7FF)
+                if (address >= 0xD400 && address <= 0xD7FF) {
+                    uint8_t reg = address & 0x1F;
+                    cpu.sidWrites[reg]++;
+                    cpu.totalSidWrites++;
 
-                if (cpu.recordWrites) {
-                    cpu.writeSequence.push_back(address);
+                    // Track which SID chip is being used (each chip is $20 bytes)
+                    uint8_t sidChipIndex = (address - 0xD400) >> 5;  // Divide by 32
+                    cpu.sidChipsUsed[sidChipIndex] = true;
+
+                    if (cpu.recordWrites) {
+                        cpu.writeSequence.push_back(address);
+                    }
                 }
-            }
-            else if (address >= 0xDE00 && address <= 0xDFFF) {
-                cpu.sidChipsUsed[32 + ((address - 0xDE00) >> 5)] = true;
-            }
+                else if (address >= 0xDE00 && address <= 0xDFFF) {
+                    cpu.sidChipsUsed[32 + ((address - 0xDE00) >> 5)] = true;
+                }
 
-			// Track CIA 1 timer A writes, through the register mirrors too: CIA 1
-            // repeats every 16 bytes across $DC00-$DCFF.
-            if ((address & 0xFF0F) == 0xDC04) {
-                cpu.ciaTimerLo = value;
-                cpu.ciaTimerWritten = true;
-            }
-            else if ((address & 0xFF0F) == 0xDC05) {
-                cpu.ciaTimerHi = value;
-                cpu.ciaTimerWritten = true;
+                // Track CIA 1 timer A writes, through the register mirrors too: CIA 1
+                // repeats every 16 bytes across $DC00-$DCFF.
+                if ((address & 0xFF0F) == 0xDC04) {
+                    cpu.ciaTimerLo = value;
+                    cpu.ciaTimerWritten = true;
+                }
+                else if ((address & 0xFF0F) == 0xDC05) {
+                    cpu.ciaTimerHi = value;
+                    cpu.ciaTimerWritten = true;
+                }
             }
         }
     }

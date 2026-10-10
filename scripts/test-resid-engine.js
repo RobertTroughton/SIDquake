@@ -14,6 +14,8 @@
  *     frame, whether it ends in RTI or JMP $EA31, and per subtune;
  *   - selecting a subtune reloads the tune and resets the frame rate, so a
  *     CIA-timed subtune's rate does not stick to the next;
+ *   - a write to $D400-$D7FF with I/O banked out ($01 = $34) is a RAM write,
+ *     not a SID one;
  *   - init ends at its RTS, not as soon as the stack pointer is back where it
  *     started (an init that resets the stack with LDX #$FF / TXS carried on);
  *   - a sampling method chosen before the tune is loaded is the one it renders
@@ -236,6 +238,16 @@ async function main() {
         let same = a.length === b.length;
         for (let i = 0; same && i < a.length; i++) same = a[i] === b[i];
         check(same, 'fast sampling set before load renders as if set after');
+    }
+
+    console.log('a SID-range write with I/O banked out stays in RAM');
+    {
+        // init: LDA #$34 / STA $01 / LDA #$AA / STA $D421 / LDA #$37 / STA $01 / RTS
+        const code = Uint8Array.from([0xa9, 0x34, 0x85, 0x01, 0xa9, 0xaa, 0x8d, 0x21, 0xd4,
+            0xa9, 0x37, 0x85, 0x01, 0x60, 0x60]);
+        start(psid({ play: 0x100e, code }));
+        check(peek(0xd421) === 0xaa && peek(0xd401) !== 0xaa, 'the RAM under $D421 holds it, chip 1\'s $D401 does not',
+            `$D421 = ${peek(0xd421)}, $D401 = ${peek(0xd401)}`);
     }
 
     console.log('init that resets the stack runs to its RTS');

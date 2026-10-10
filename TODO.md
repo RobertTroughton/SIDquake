@@ -628,10 +628,6 @@ is where several of the medium bugs came from.
 
 ### Medium
 
-- **No processor-port banking for I/O.** `$D400-$D7FF` always reaches reSID
-  (`sid_audio.cpp:98-139`) or counts as a SID write (`cpu6510_wasm.cpp:163`),
-  whatever `$01` says, so a depacker writing under I/O with `$01=$34` hits the
-  SID and inflates the chip count. Fix: route only when I/O is visible. [WASM]
 - **No interrupt sources or I/O reads.** No CIA/VIC/NMI sources, and `$D012`,
   `$DC0D`, `$D019`, `$D41B` read back RAM, so a play routine polling `$D012`
   hits the cycle cap (and then stops that song's analysis, now counted). Minimal fix: a
@@ -691,9 +687,6 @@ is where several of the medium bugs came from.
   `sidplayfp.wasm` in the AudioWorkletGlobalScope would drop that dependency and
   the queue; meanwhile, write float32 from C++ or convert in the worklet
   (`sid-playback.js:234-236`).
-- `mem_read`/`mem_write` loop over extra SIDs on every access
-  (`sid_audio.cpp:98-139`); gate on the `$D4-$DF` page first. Minor.
-
 ### Design
 
 The core/bus split is right: one decoder, `cpu6510::Core<Bus>`, two adapters.
