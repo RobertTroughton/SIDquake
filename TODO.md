@@ -628,8 +628,11 @@ is where several of the medium bugs came from.
 - sidplayfp: 2SID/3SID are mono only (`SidConfig::MONO`); a stereo option would
   be a feature. `digiBoost` is left off, so 8580 `$D418` digis are near-silent,
   as on an unmodified 8580; turning it on is a product choice, not a fix.
-- CIA speed bit with no timer write in init reports 1 call per frame while
-  sidplayfp uses its default CIA rate (*suspected*).
+- A tune whose speed bit says CIA but whose init never programs the timer runs
+  at the KERNAL's rate (latch `$4025`, about 60 calls a second) on sidplayfp
+  and now on the reSID engine, but exports at one call a frame (50 a second):
+  the players only call play a whole number of times a frame. Worth a warning
+  in the UI if it turns up in practice.
 - Bake timing offset is never chosen on purpose: windows centre ~2.3 frames
   after the row's frame, so bars rise 3–6 frames early and fall 2–5 late
   (`spectrometer-bake.js:528`, `629-633`). Pick the offset and pin it with an
@@ -642,9 +645,6 @@ is where several of the medium bugs came from.
   each reloading and re-initing. One C++ pass could produce the memory map,
   per-call fingerprints and write orders; `sid_analyze` could also stop once the
   state loop is found and no new access flags appear. [WASM]
-- Per-write JS↔WASM calls in the pre-pass and shadow fingerprinting
-  (`loop-prepass.js`, `spectrometer-shadow-detect.js`): add a
-  `cpu_fingerprint_last_call()`.
 - Playback renders on the main thread with 0.37–0.74 s queued. Running
   `sidplayfp.wasm` in the AudioWorkletGlobalScope would drop that dependency and
   the queue; meanwhile, write float32 from C++ or convert in the worklet
