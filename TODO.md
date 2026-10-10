@@ -625,17 +625,15 @@ is where several of the medium bugs came from.
 - The analyser doesn't reject a load address below `$07E8`, which the PSID spec
   forbids. Left as is: nothing breaks for such a tune, and refusing it would
   only stop a file that works.
-- sidplayfp: 2SID/3SID are mono only (`SidConfig::MONO`); `digiBoost` never set,
-  so 8580 `$D418` digis are near-silent; `audio_set_subtune` ignores
-  `engine->load()`'s result.
+- sidplayfp: 2SID/3SID are mono only (`SidConfig::MONO`); a stereo option would
+  be a feature. `digiBoost` is left off, so 8580 `$D418` digis are near-silent,
+  as on an unmodified 8580; turning it on is a product choice, not a fix.
 - CIA speed bit with no timer write in init reports 1 call per frame while
   sidplayfp uses its default CIA rate (*suspected*).
 - Bake timing offset is never chosen on purpose: windows centre ~2.3 frames
   after the row's frame, so bars rise 3–6 frames early and fall 2–5 late
   (`spectrometer-bake.js:528`, `629-633`). Pick the offset and pin it with an
   onset test.
-- `analysis-store.js` cache key is the hand-bumped `|v4` (`ui.js:6202`); changes
-  to the pre-pass or `detectLoop` don't invalidate it.
 
 ### Performance
 
@@ -667,19 +665,10 @@ ranked by value against effort:
    share one CPU. `window.SIDquakeModuleInstance` is also shared with
    `prg-builder.js:899`. An `Analyser`/`ResidEngine` with a handle-based C
    layer (keeping a default instance) allows multiple instances and testing.
-5. **Shared JS analyser session** — `makeApi`, the play caller and load/init are
-   near-verbatim in `loop-prepass.js:73-114` and
-   `spectrometer-shadow-detect.js:18-80`, `:280-293`; PSID parsing is in C++,
-   `parseSidHeader`, inline twice in shadow-detect and in `sid-playback.js`.
-   One `analyser-session.js` plus one `psid.js`.
-6. **Split `spectrometer-bake.js`** — `bake-dsp.js` (FFT, bands, whitening,
-   range fit), `loop-detect.js` (`detectLoop`, `resolveKeyframes`), and the
-   remainder (VQ, packing, C64 format) as the one place the decoder contract
-   lives. Fold the duplicated whitening maths (`:703-733`/`:738-760`) and
-   histogram percentile (`:337-347`/`:496-509`).
 7. **Playback as modules** — `sid-player.js:131`, `:397` call
    `window.hvscBrowser`/`window.hvscVisualizer`; inject callbacks instead and
-   make `sid-playback.js`/`sid-player.js` ES modules. A shared `audio_*`
+   make `sid-playback.js`/`sid-player.js` ES modules (which would also let
+   `sid-playback.js` use `psid.js` instead of its own header parser). A shared `audio_*`
    contract header and one Node conformance test over both engines would stop
    the engine drift listed under Low. `ui.js` hanging `sidHeader` and
    `analysisResults` on the analyser for `prg-builder` to read should become
