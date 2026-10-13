@@ -54,7 +54,7 @@ bakedCodebookPtr:
 bakedIndexStart:
     .word $0000                         // $52/$53: index-stream base address
 bakedNumKeyframes:
-    .word $0000                         // $54/$55: number of 25 Hz keyframes
+    .word $0000                         // $54/$55: number of keyframes
 bakedLoopStart:
     .word $0000                         // $56/$57: keyframe to loop back to at end
 bakedNumSegments:
@@ -78,7 +78,7 @@ colorEffectMode:
 lineGradientColors:
     .fill TOP_SPECTRUM_HEIGHT + BOTTOM_SPECTRUM_HEIGHT, $0b  // Bytes 97-107 ($61-$6B): Line gradient colors
 songNameColor:
-    .byte $01                           // Song name text color (default: white)
+    .byte $01                           // $6C: Song name text color (default: white)
 spectrometerBgColor:
     .byte $00                           // Byte ($6D): Spectrometer background color (user-editable)
     .fill DATA_ADDRESS + $75 - *, $00
@@ -99,7 +99,7 @@ barGradientColors:                      // $80-$A7: per-bar colours (colorEffect
 //; assembles the code apart from the graphics (so it escapes the "packed below the
 //; bitmap" ceiling that leaves this player with no room for a timer), and the
 //; exporter places the two blobs independently. The classic build derives the bank
-//; from the load address, so its output is unchanged. CODE_ONLY takes an optional
+//; from the load address. CODE_ONLY takes an optional
 //; :gfxBank= override so the reloc tooling can shift the graphics bank on its own.
 #if CODE_ONLY
 .var GFX_BANK = cmdLineVars.containsKey("gfxBank") ? cmdLineVars.get("gfxBank").asNumber() : 1
@@ -133,11 +133,11 @@ barGradientColors:                      // $80-$A7: per-bar colours (colorEffect
 .const DD00Value                        = 3 - VIC_BANK
 .const DD02Value                        = 60 + VIC_BANK
 
-.const SCREEN0_BANK						= 12	//; $7000-$73FF
-.const SCREEN1_BANK						= 13	//; $7400-$77FF
-.const CHARSET_BANK						= 7		//; $7800-$7EFF and $7F00-7FFF
-.const BITMAP_BANK						= 1		//; $6000-$6DBF
-.const SPRITE_BASE_INDEX				= $B9	//; $6E40-$6FFF (7 sprites); 128-byte gap above is reused for the color table
+.const SCREEN0_BANK						= 12	//; +$3000-$33FF
+.const SCREEN1_BANK						= 13	//; +$3400-$37FF
+.const CHARSET_BANK						= 7		//; +$3800-$3EFF and +$3F00-$3FFF
+.const BITMAP_BANK						= 1		//; +$2000-$2DBF
+.const SPRITE_BASE_INDEX				= $B9	//; +$2E40-$2FFF (7 sprites); the 128-byte gap below is reused for the color table
 
 //; Calculated addresses
 .const BITMAP_ADDRESS					= VIC_BANK_ADDRESS + (BITMAP_BANK * $2000)
@@ -245,7 +245,7 @@ barGradientColors:                      // $80-$A7: per-bar colours (colorEffect
 
 //; Bias up one line (SPLIT_RASTERLINE - 2, not - 1): the curtain sprite renders
 //; one line below its Y, and the split IRQ's VIC write lands ~1 line late from IRQ
-//; latency, so both sat 1px low. CURTAIN_TOP_BLOCK_LINE drives the sprite Y AND
+//; latency, so - 1 would leave both 1px low. CURTAIN_TOP_BLOCK_LINE drives the sprite Y AND
 //; the split IRQ's $d012 (armed with CURTAIN_TOP_BLOCK_LINE below), so moving it
 //; shifts the block and the switch together - the sprite keeps hiding the switch.
 .const CURTAIN_TOP_BLOCK_LINE			= SPLIT_RASTERLINE - 2
@@ -258,14 +258,13 @@ barGradientColors:                      // $80-$A7: per-bar colours (colorEffect
 //; It is a raster event of its own because the arming has a DEADLINE the frame's
 //; work cannot be trusted to meet: the VIC compares sprite Y once per line, so
 //; the sprites must be back on curtain duty before CURTAIN_SPRITE_Y. Riding on
-//; the tail of FrameCall they were not - behind the play call and
-//; UpdateBarColors' colour-RAM sweep, and skipped entirely when the dispatcher's
-//; overload guard drops a frame call - so at the switch the sprites were still
-//; on water duty on 15% of frames (46 of 300, measured with
-//; scripts/seam-latency.js --watch=curtain), leaving it written in the open: a
-//; two-line smear across the seam, on any logo whose artwork reaches the bottom
-//; of the band. An event of its own owes nothing to how long the frame's work
-//; takes.
+//; the tail of FrameCall - behind the play call and UpdateBarColors' colour-RAM
+//; sweep, and skipped entirely when the dispatcher's overload guard drops a frame
+//; call - they would often still be on water duty at the switch, leaving it
+//; written in the open: a two-line smear across the seam, on any logo whose
+//; artwork reaches the bottom of the band (scripts/seam-latency.js
+//; --watch=curtain measures this). An event of its own owes nothing to how long
+//; the frame's work takes.
 .const CURTAIN_ARM_LINE					= REFLECTION_SPRITES_YVAL + 23
 
 .import source "../INC/common.asm"
@@ -273,8 +272,8 @@ barGradientColors:                      // $80-$A7: per-bar colours (colorEffect
 .import source "../INC/musicplayback.asm"
 .import source "../INC/multicallirq.asm"
 
-//; Sprite animation sine (half-resolution: the 0-127 phase advances as before
-//; but two phases share an entry, lookup uses phase/2). Defined HERE - before
+//; Sprite animation sine (half-resolution: the phase runs 0-127 but two phases
+//; share an entry, lookup uses phase/2). Defined HERE - before
 //; stablerastersetup's .align 128 - so these 64 data bytes fill alignment
 //; padding instead of pushing the post-align code tail into the bitmap; the
 //; packed full builds need that headroom for the fast-forward handling.
@@ -421,8 +420,8 @@ Initialize:
 !setFlush:
 	stx timerAlone
 	jsr InitTimer
-	//; Draw "/MM:SS" when a length was found (bakedHasLength) - for realtime and
-	//; shadow exports too, not just baked; DrawSongLength itself no-ops with no
+	//; Draw "/MM:SS" when a length was found (bakedHasLength; realtime, shadow
+	//; and baked exports alike); DrawSongLength itself no-ops with no
 	//; length, leaving the timer flush-right.
 	jsr DrawSongLength
 #endif
@@ -659,7 +658,6 @@ FrameCall:
 	rts
 
 UpdateBarColors:
-	//; Only colorEffectMode 0 (Height) updates colour RAM dynamically
 #if SPECTROMETER_BAKED
 	//; Baked builds have no per-voice waveform data; only mode 0 is dynamic
 	lda colorEffectMode
@@ -879,15 +877,14 @@ ApplyWaterSprites:
 	lsr
 	lsr
 	and #$07
-	cmp #$06							//; 6 frames now (slot 7 is the curtain)
+	cmp #$06							//; 6 water frames (slot 7 is the curtain)
 	bcc !noClamp+
 	sbc #$06							//; 6,7 -> 0,1 (carry set by cmp)
 !noClamp:
 	//; ADD, not ORA. The base is $B9 here (the curtain took the slot above the six
-	//; water frames) and its low bit is already set, so ORA folded frames 0/1, 2/3
-	//; and 4/5 onto one pointer each: three of the six ever showed, each for twice
-	//; as long, and the shimmer jumped two rows at a time instead of drifting one -
-	//; the reflection blinked rather than moved. Carry is clear on the bcc path and
+	//; water frames) and its low bit is already set, so ORA would fold frames 0/1,
+	//; 2/3 and 4/5 onto one pointer each: only three of the six would show, and the
+	//; reflection would blink rather than drift. Carry is clear on the bcc path and
 	//; set after the sbc, so it has to be cleared here.
 	clc
 	adc #SPRITE_BASE_INDEX

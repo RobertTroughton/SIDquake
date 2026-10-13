@@ -50,7 +50,7 @@ bakedCodebookPtr:
 bakedIndexStart:
     .word $0000                         // $52/$53: index-stream base address
 bakedNumKeyframes:
-    .word $0000                         // $54/$55: number of 25 Hz keyframes
+    .word $0000                         // $54/$55: number of keyframes
 bakedLoopStart:
     .word $0000                         // $56/$57: keyframe to loop back to at end
 bakedNumSegments:
@@ -93,8 +93,8 @@ barGradientColors:                      // $80-$A7: per-bar colours (colorEffect
 
 //; Graphics VIC bank, decoupled from the code load address so a CODE_ONLY build
 //; can assemble the code apart from the graphics (exporter places them
-//; independently). Classic build derives it from the load address - output
-//; unchanged; CODE_ONLY takes an optional :gfxBank= for the reloc tooling.
+//; independently). Classic build derives it from the load address; CODE_ONLY
+//; takes an optional :gfxBank= for the reloc tooling.
 #if CODE_ONLY
 .var GFX_BANK = cmdLineVars.containsKey("gfxBank") ? cmdLineVars.get("gfxBank").asNumber() : 1
 #else
@@ -129,7 +129,7 @@ barGradientColors:                      // $80-$A7: per-bar colours (colorEffect
 .const SCREEN0_ADDRESS					= VIC_BANK_ADDRESS + (SCREEN0_BANK * $400)
 .const SCREEN1_ADDRESS					= VIC_BANK_ADDRESS + (SCREEN1_BANK * $400)
 .const CHARSET_ADDRESS					= VIC_BANK_ADDRESS + (CHARSET_BANK * $800)
-.const COLOR_TABLE_ADDRESS				= VIC_BANK_ADDRESS + $2E00 //; $6E00-6E7F
+.const COLOR_TABLE_ADDRESS				= VIC_BANK_ADDRESS + $2E00 //; +$2E00-$2E7F
 
 .const D018_VALUE_0						= (SCREEN0_BANK * 16) + (CHARSET_BANK * 2)
 .const D018_VALUE_1						= (SCREEN1_BANK * 16) + (CHARSET_BANK * 2)
@@ -148,7 +148,7 @@ barGradientColors:                      // $80-$A7: per-bar colours (colorEffect
 //; 1x2 font. When a song length is known we show "MM:SS/MM:SS" centred (timer col 14,
 //; '/' 19, length 20); without one the timer sits centred alone at col 17. The movable
 //; timer + "/length" is CODE_ONLY (the shipped export path); the classic full build
-//; keeps the old centred timer, so it stays byte-for-byte unchanged.
+//; shows only the centred timer.
 .const TIMER_SCREEN0 = SCREEN0_ADDRESS
 .const TIMER_SCREEN1 = SCREEN1_ADDRESS
 .const TIMER_DOUBLE_HEIGHT = 1
@@ -514,7 +514,6 @@ FrameCall:
 	jmp UpdateTimer
 
 UpdateBarColors:
-	//; Only colorEffectMode 0 (Height) updates colour RAM dynamically
 #if SPECTROMETER_BAKED
 	//; Baked builds have no per-voice waveform data; only mode 0 is dynamic
 	lda colorEffectMode
@@ -794,7 +793,7 @@ barCharacterMap:
 //; GRAPHICS (VIC) ASSETS - charset, bar chars, colour table (heightColorTable),
 //; screens. A CODE_ONLY build omits these (the exporter places them in a VIC bank);
 //; the code resolves heightColorTable via the address label (a gfx-ref, patched to
-//; the chosen bank). Classic builds emit them here, byte-for-byte as before.
+//; the chosen bank). Classic builds emit them here.
 //; =============================================================================
 
 .label heightColorTable = COLOR_TABLE_ADDRESS

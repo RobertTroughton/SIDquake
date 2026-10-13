@@ -39,7 +39,7 @@ JustPlayMusic:
 // MusicLoopFrames (data block $D0-$D2, see common.asm) is a 24-bit raster
 // frame count after which the tune is restarted from the beginning. The web
 // exporter sets it for tunes that fade to silence and stop instead of looping
-// (0 = disabled, the default, so existing exports behave exactly as before).
+// (0 = disabled, the default).
 //
 // Live (realtime/shadow) players tick CheckMusicLoop once per frame from the
 // shared IRQ scheduler (INC/multicallirq.asm) and from their fast-forward
@@ -250,5 +250,5 @@ PlayMusicShadow:
 PlayMusicWithAnalysis:
     jsr JustPlayMusic
     jmp AnalyseMusic
-#endif // INCLUDE_MUSIC_ANALYSIS
+#endif // INCLUDE_MUSIC_ANALYSIS && !SPECTROMETER_BAKED && !SPECTROMETER_SHADOW
 #endif // !GFX_DONOR

@@ -64,8 +64,8 @@
 // relocate the code (incl. the logo screen/colour tables and font source, all
 // CPU-read) to any free page, while the screen + two charset RAMs (the only parts the
 // VIC must fetch from a 16 KB bank) are reserved in their own bank by the exporter.
-// The classic single-blob build derives the bank from the load address (output
-// unchanged); CODE_ONLY takes an optional :gfxBank= for the reloc tooling.
+// The classic single-blob build derives the bank from the load address; CODE_ONLY
+// takes an optional :gfxBank= for the reloc tooling.
 #if CODE_ONLY
 .var VIC_BANK           = cmdLineVars.containsKey("gfxBank") ? cmdLineVars.get("gfxBank").asNumber() : 1
 #else
@@ -111,7 +111,7 @@
 
 // Bias up one line (SPLIT_RASTERLINE - 2, not - 1): the curtain sprite renders
 // one line below its Y, and the split IRQ's VIC write lands ~1 line late from IRQ
-// latency, so both sat 1px low over the info line. CURTAIN_TOP_BLOCK_LINE drives
+// latency, so - 1 would leave both 1px low over the info line. CURTAIN_TOP_BLOCK_LINE drives
 // the sprite Y AND the SplitIRQ $d012 (SetNextRasterEvent below), so moving it
 // shifts the block and the switch together - the sprite keeps hiding the switch.
 .const CURTAIN_TOP_BLOCK_LINE       = SPLIT_RASTERLINE - 2        // first of the 2 blocked lines
@@ -345,9 +345,8 @@ Initialize:
     // Copy logo color data to color RAM (rows 0-8)
     jsr CopyLogoColors
 
-    // If a custom 1x1 font has been injected, copy it into VIC-bank-0 RAM at
-    // $2000 and switch the info-area $d018 value over to it. Otherwise leave
-    // the SplitIRQ defaults pointing at the lowercase ROM charset.
+    // If a custom 1x1 font has been injected, overlay it on INFO_CHARSET_RAM.
+    // Otherwise the info charset stays the lowercase ROM copy made above.
     jsr SetupCharset
 
     // Set initial D018 for logo area

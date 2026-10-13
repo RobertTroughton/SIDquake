@@ -89,7 +89,7 @@ Forever:
 
 !ffCallLoop:
     jsr SIDPlay
-    inc $d020  // Visual feedback
+    inc $d020  // border flicker while fast-forwarding
     dec FFCallCounter
     lda FFCallCounter
     bne !ffCallLoop-

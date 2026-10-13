@@ -12,7 +12,7 @@
 //   +$3800-$3FFF : CharSet (MC mode)
 //   +$3000-$33FF : Screen 0
 //   +$3400-$37FF : Screen 1 (double buffer)
-//   +$2000-$22FF : 1x1 text font (RAM, only when a custom font is injected)
+//   +$2000-$22FF : 1x1 text font (RAM, injected by the exporter)
 //   +$2400-$27FF : Scroll text (injected; the song line scrolls it after ~3s)
 //   +$2800-$29FF : Top-border text sprites (8 x 64 bytes: Artist + Song Name)
 //   +$2C00-$2C77 : Upper char lookup table
@@ -66,7 +66,7 @@ lineGradientColors:
     .fill TOP_SPECTRUM_HEIGHT + BOTTOM_SPECTRUM_HEIGHT, $0b  // Bytes 97+: Line gradient colors
     .fill $71 - $61 - (TOP_SPECTRUM_HEIGHT + BOTTOM_SPECTRUM_HEIGHT), $00   // pad to $71
 fontMode:
-    .byte $00                           // $71: 0 = text from C64 ROM font, 1 = injected RAM font
+    .byte $00                           // $71: 0 = ROM font, 1 = injected font; not read (text always uses the RAM font)
 songNameColor:
     .byte $01                           // $72: Song name text colour (also the scroller colour)
 artistNameColor:
@@ -119,8 +119,8 @@ artistNameColor:
 .const SONG_ROW_OFFSET              = 13 * 3                 // byte offset of the Song line (row 13)
 .const SCROLLER_START_FRAME         = 150                    // ~3s at 50 Hz before the song line scrolls
 
-// 1x1 text font. ROM by default (read via the $01 banking trick); a custom font
-// is injected into RAM at RAM_CHARSET_ADDRESS (3 pages: codes 0-31/32-63/64-95).
+// 1x1 text font, injected into RAM at RAM_CHARSET_ADDRESS (3 pages: codes
+// 0-31/32-63/64-95).
 .const RAM_CHARSET_ADDRESS          = VIC_BANK_ADDRESS + $2000
 .const RAM_CHARSET_BASE_HI          = >RAM_CHARSET_ADDRESS
 
@@ -380,7 +380,7 @@ ScreenIRQ:
     // sprites are read by the VIC at lines 29-49; by line 50 they are done and
     // SetBottomSprites has just re-pointed the sprites at the bottom filler, so
     // the text-sprite data is free to rewrite for the rest of the frame. Doing
-    // the ROL in the CIA-timed music call chased the beam and glitched.
+    // the ROL in the CIA-timed music call would chase the beam and glitch.
     lda scrollActive
     cmp #1
     bne !noScroll+
@@ -465,9 +465,8 @@ SetBottomSprites:
 // TOP-BORDER TEXT (Artist + Song) + SCROLLER
 //
 // The 8 sprites hold a 24-column (8x3) text band: Artist glyph in rows 0-7,
-// a 5px gap, Song glyph in rows 13-20 (SONG_ROW_OFFSET). Glyphs come from a
-// 1x1 font - the C64 ROM font by default (banked in via $01 for the reads) or
-// an injected RAM font at RAM_CHARSET_ADDRESS. After ~3s the Song line becomes
+// a 5px gap, Song glyph in rows 13-20 (SONG_ROW_OFFSET). Glyphs come from the
+// injected 1x1 RAM font at RAM_CHARSET_ADDRESS. After ~3s the Song line becomes
 // a bit-ROL scroller: an 8-byte off-screen feed buffer (scrollFeed, one per
 // row) is ROLled into the rightmost sprite byte one pixel-column per frame, so
 // characters roll in smoothly with no popping; a new char loads every 8 frames.
@@ -817,14 +816,13 @@ InitializeColors:
     iny
     bne !colLoop-
 
-    // Row 24 (colour RAM $DBC0-$DBE7). The three voice bands above cover only
-    // rows 0-23; row 24 (DisplayRow25's decorative $0e/$0f line) was left
-    // uninitialised. In MC text mode a colour-RAM value with bit 3 CLEAR renders
-    // the cell in hires, not multicolour, so the row's $55/$02 chars come out
-    // striped instead of solid - and the SIDquake intro leaves its watermark
-    // cells (row 24, cols 30-38) = $00 (bit 3 clear), which corrupted them. Set the whole row
-    // to $09 (bit 3 set -> MC; matches the lowest band) so it renders correctly
-    // regardless of what the intro or the loader left behind.
+    // Row 24 (colour RAM $DBC0-$DBE7), DisplayRow25's decorative $0e/$0f line,
+    // is not covered by the three voice bands above (rows 0-23). In MC text
+    // mode a colour-RAM value with bit 3 CLEAR renders the cell in hires, not
+    // multicolour, so the row's $55/$02 chars would come out striped instead of
+    // solid - and the SIDquake intro leaves its watermark cells (row 24, cols
+    // 30-38) at $00 (bit 3 clear). Set the whole row to $09 (bit 3 set -> MC;
+    // matches the lowest band) regardless of what the intro or the loader left.
     ldy #39
     lda #$09
 !row24:
@@ -868,11 +866,10 @@ SetupMusic:
 // Reads from columnBuffer (3 x 20 bytes) via convtable
 // Writes character codes to screen RAM
 //
-// Restructured from one fully unrolled single-screen routine into a
-// column-looped (rows still unrolled) section macro, instantiated once per
-// screen buffer - this is what makes double buffering affordable: two full
-// renderers cost ~0.8KB instead of ~12KB. Same chars, same carry trick:
-// the second char of each 2-wide column is first char + 1.
+// A column-looped (rows still unrolled) section macro, instantiated once per
+// screen buffer. Two renderers cost ~0.8KB where fully unrolled ones would cost
+// ~12KB, which is what makes double buffering affordable. The second char of
+// each 2-wide column is the first char + 1.
 // =============================================================================
 
 // Render one 8-row section of 20 two-char-wide columns.
@@ -1480,13 +1477,13 @@ heightToColor:              .fill COLOR_TABLE_SIZE, $0b
 // -----------------------------------------------------------------------------
 // Top-border text: font, scroll text, and the 8 rendered text sprites. These are
 // VIC-bank-relative, so they relocate with the graphics bank. The font and scroll
-// text are filled by the exporter (font is used only when fontMode != 0; an empty
-// scroll text leaves this zeroed and the scroller stays off); the text sprites are
+// text are filled by the exporter (an empty scroll text leaves this zeroed and
+// the scroller stays off); the text sprites are
 // rendered at runtime by RenderTextSprites.
 // -----------------------------------------------------------------------------
 
 * = RAM_CHARSET_ADDRESS "Text Font"
-    .fill $300, $00                 // injected 1x1 font (96 chars), when fontMode != 0
+    .fill $300, $00                 // injected 1x1 font (96 chars)
 
 * = SCROLLTEXT_ADDR "Scroll Text"
     .fill $400, $00                 // injected, null-terminated; empty = no scroller

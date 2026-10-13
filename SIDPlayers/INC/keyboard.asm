@@ -12,9 +12,9 @@
 // This module works in ASCII: the key-matrix table, the special-key codes
 // ($0d Return, $14 Delete, ...) and every char-literal comparison assume ASCII
 // ordering ('0'<'9'<'A'<'Z'<'a'<'z'). KickAss's default encoding is
-// screencode_mixed, where 'a'..'z' are 1..26 - BELOW the digits - which made
-// the song-select letter keys fall through the '1' range-check and do nothing.
-// Force ASCII here; restored to the project default at the end of the file.
+// screencode_mixed, where 'a'..'z' are 1..26 - BELOW the digits - so the
+// song-select letter keys would fall through the '1' range-check. Force ASCII
+// here; restored to the project default at the end of the file.
 .encoding "ascii"
 
 // CIA#1 Port registers (keyboard matrix scan)
@@ -230,8 +230,8 @@ InitKeyboard:
 #if INCLUDE_SPACE_FASTFORWARD
 CheckSpaceKey:
     lda #%01111111
-    sta $DC00
-    lda $DC01
+    sta CIA1_PRA
+    lda CIA1_PRB
     and #%00010000
     eor #%00010000
     sta FastForwardActive
@@ -241,8 +241,8 @@ CheckSpaceKey:
 #if INCLUDE_F1_SHOWRASTERTIMINGBAR
 CheckF1Key:
     lda #%11111110
-    sta $DC00
-    lda $DC01
+    sta CIA1_PRA
+    lda CIA1_PRB
     and #%00010000
     eor #%00010000
     sta F1KeyPressed
@@ -252,8 +252,8 @@ CheckF1Key:
 #if INCLUDE_PLUS_MINUS_SONGCHANGE
 CheckPlusKey:
     lda #%11011111
-    sta $DC00
-    lda $DC01
+    sta CIA1_PRA
+    lda CIA1_PRB
     and #%00000001
     eor #%00000001
     sta PlusKeyPressed
@@ -261,8 +261,8 @@ CheckPlusKey:
 
 CheckMinusKey:
     lda #%11011111
-    sta $DC00
-    lda $DC01
+    sta CIA1_PRA
+    lda CIA1_PRB
     and #%00001000
     eor #%00001000
     sta MinusKeyPressed
@@ -525,7 +525,7 @@ KeyMatrixTable:
 
 // =============================================================================
 // Convert matrix position to ASCII/special key code
-// Input: A = matrix position (column * 8 + row)
+// Input: A = matrix position (row * 8 + column)
 // Output: A = ASCII or special key code
 // =============================================================================
 ConvertMatrixToASCII:
@@ -563,12 +563,11 @@ GetKeyWithShift:
     cmp #'z'+1
     bcs !notLowercase+
 
-    and #$df            // PETSCII a..z to A..Z (clear bit 5)
+    and #$df            // ASCII a..z to A..Z (clear bit 5)
     rts
     
 !notLowercase:
-    // Number to shifted-symbol conversion via table (compact vs a per-digit
-    // compare chain).
+    // Digit to shifted symbol via table
     cmp #'0'
     bcc !noSymbol+
     cmp #'9' + 1

@@ -18,7 +18,7 @@ imageD023:
 imageD024:
     .byte $00                           // ECM background 4
 fontMode:
-    .byte $00                           // 0 = scroller reads C64 ROM, 1 = scroller reads injected RAM charset
+    .byte $00                           // 0 = ROM font, 1 = injected charset; not read (the scroller always uses the RAM charset)
 scrollSpeed:
     .byte $02                           // sprite pixels per frame; exporter offers 1 or 2
     .fill $100 - $76, $00
@@ -228,8 +228,8 @@ MusicCall_Frame:
 MusicCall_Other:
     jmp JustPlayMusic
 
-// The scroller now advances once per frame regardless of how many music
-// calls the tune needs, so the scroll speed no longer depends on the tune.
+// The scroller advances once per frame regardless of how many music calls
+// the tune needs, so the scroll speed is independent of the tune.
 // Skipped entirely when no scroll text was supplied (just a static bitmap).
 FrameCall:
     lda scrollEnabled
@@ -448,10 +448,9 @@ VICConfigEnd:
 // =============================================================================
 // CHARSET SETUP
 //
-// The scroller always reads the injected RAM charset (RAM_CHARSET_ADDRESS); the
-// C64 ROM font is no longer used (it can return later as a normal 1x1 font).
-// Nothing to patch at runtime, so this is a no-op kept only so the init call
-// site is stable.
+// The scroller always reads the injected RAM charset (RAM_CHARSET_ADDRESS), so
+// there is nothing to patch at runtime: this is a no-op that keeps the init
+// call site stable.
 // =============================================================================
 
 SetupCharset:

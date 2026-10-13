@@ -35,7 +35,7 @@
 // "SIDquake2": S I D (uppercase, $41-based) + q u a k e (lowercase, $01-based)
 //             + 2 ($32).
 EffectText:             .byte $53, $49, $44, $11, $15, $01, $0b, $05, $32
-// Colour ramp swept across the 8 chars: black lead, quick fade up to white,
+// Colour ramp swept across the 9 chars: black lead, quick fade up to white,
 // a short hold, fade back down, then black. One column advances per frame, so
 // this is a ~0.7s roll at 50 fps. Terminated by $ff (a negative byte).
 ColourFadeValues:       .fill EFFECT_WIDTH, $00
@@ -95,7 +95,7 @@ ClrSt:
     lda EffectText,x
 TxtL:
     sta ScreenAddress + EFFECT_OFFSET,x
-    lda #0              // Start with black (invisible)
+    lda #0
     sta VIC_COLOURMEMORY + EFFECT_OFFSET,x
     dex
     bpl !txt-
@@ -137,7 +137,7 @@ OuterLoop:
     dex
     bpl !loop-
 
-    inc OuterLoop + 1
+    inc OuterLoop + 1           // advance the ramp start (self-modifies ldy #$00)
 
     lda ColourFadeValues, y
     bpl OuterLoop
@@ -147,6 +147,7 @@ OuterLoop:
     sta $d011
     jmp VSync
 
+// Unreachable: nothing branches to !continue.
 !continue:
     jmp !loop-
 

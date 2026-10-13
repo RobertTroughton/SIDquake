@@ -5,10 +5,11 @@
 
 #importonce
 
-// Graphics-donor builds (-define GFX_DONOR) carry no code: the full-bank
-// bins only donate the VIC assets to the relocating exporter.
+//; SID attack times (ms) per attack nibble; see attackRateLo/Hi below.
 .var attackMs = List().add(2, 8, 16, 24, 38, 56, 68, 80, 100, 250, 500, 800, 1000, 3000, 5000, 8000)
 
+// Graphics-donor builds (-define GFX_DONOR) carry no code: the full-bank
+// bins only donate the VIC assets to the relocating exporter.
 #if !GFX_DONOR
 
 //; Required constants that must be defined before including this file:
@@ -240,7 +241,7 @@ AnalyzeSIDChip:
     inc zpRegPtr + 1
 !nc2:
     inc zpVoiceIdx
-    jmp AnalyzeSingleVoice  // Tail call - no need for JSR/RTS
+    jmp AnalyzeSingleVoice  // tail call
 
 //; =============================================================================
 //; Single Voice Analysis Routine
@@ -591,7 +592,7 @@ AnalyzeSingleVoice:
     tax
 
 !gotBar:
-    // X now contains the bar index
+    // X = bar index
     // Get ADSR register (offset 6) for release rate
     ldy #6
     lda (zpRegPtr), y
@@ -994,7 +995,7 @@ AdvanceBakedKeyframe:
     bpl !show-
 
     //; The wrap the decode ran into last time lands now, with the last keyframe
-    //; on show - the same frame the held decoder flagged it on.
+    //; on show.
     lda bakedWrapPending
     beq !noWrap+
     lda #$00
@@ -1210,8 +1211,6 @@ bakedRead:
     lda bakedSegCtr
     cmp bakedNumSegments
     bne !segLoop-
-
-    //; (the per-segment read pointers were stepped as they were read, above)
 
     //; advance keyframe counter; wrap back to the loop point at end of stream
     inc bakedKfCountLo

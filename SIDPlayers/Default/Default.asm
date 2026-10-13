@@ -60,9 +60,9 @@ bakedLoopEndFrameRem:
 // The VIC bank is decoupled from the code load address so a CODE_ONLY build can
 // relocate the code to any free page while the screen + charset RAM (the only thing
 // that must live in a 16 KB VIC bank) is placed in its own bank by the exporter. The
-// classic single-blob build derives the bank from the load address (output
-// unchanged); CODE_ONLY takes an optional :gfxBank= so the reloc tooling can shift the
-// graphics bank independently of the code page.
+// classic single-blob build derives the bank from the load address; CODE_ONLY takes
+// an optional :gfxBank= so the reloc tooling can shift the graphics bank independently
+// of the code page.
 #if CODE_ONLY
 .var VIC_BANK           = cmdLineVars.containsKey("gfxBank") ? cmdLineVars.get("gfxBank").asNumber() : 1
 #else
@@ -637,8 +637,8 @@ UpdateDynamicInfo:
 #if CODE_ONLY
     //; Song length "/MM:SS" right after the elapsed time when a real length is known
     //; (single-song only; the exporter leaves bakedHasLength 0 otherwise). Dimmer
-    //; colour so it reads as secondary to the clock. CODE_ONLY only: the relocatable
-    //; code blob has the room, the fixed-bank fallback stays byte-for-byte as it was.
+    //; colour so it reads as secondary to the clock. CODE_ONLY (relocatable) build
+    //; only.
     lda bakedHasLength
     beq !noLength+
     ldx #$0b
@@ -980,8 +980,8 @@ SetupCharset:
 
 //; Font source (copied into CHARSET_RAM at runtime by SetupCharset). It lives in the
 //; CODE blob - the CPU reads it, the VIC never does - so it relocates with the code.
-//; One page later than the classic $0D00 so the code (which grows a little in a
-//; CODE_ONLY build to draw the song length) has headroom below it; the config's
+//; At LOAD+$0E00 so the code (which grows a little in a CODE_ONLY build to draw
+//; the song length) has headroom below it; the config's
 //; charsetAddress tracks this offset, and the exporter injects a custom font there.
 * = LOAD_ADDRESS + $0E00 "Embedded Charset"
 EmbeddedCharset:

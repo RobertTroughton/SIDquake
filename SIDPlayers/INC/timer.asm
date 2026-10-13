@@ -12,8 +12,9 @@
 //   TIMER_POS                     : byte offset within a screen of the top-left
 //                                   digit (line * 40 + column)
 //   TIMER_COLOR                   : colour (0-15) written to $D800 for the digits
-//   TIMER_DOUBLE_HEIGHT           : 1 for the 1x2 (double-height) bar fonts, where
-//                                   the bottom row is char|$80; 0 for a 1x1 font
+//   TIMER_DOUBLE_HEIGHT           : 1 for the 1x2 (double-height) bar fonts. Not
+//                                   read: DrawTimer always draws the bottom row
+//                                   (char | TIMER_BOTTOM_OFFSET), see the note there
 //   TIMER_FPS                     : frames per second (50 PAL / 60 NTSC); optional,
 //                                   defaults to 50
 //
@@ -48,7 +49,7 @@ timerChars:    .fill 5, $00        // MM:SS screen codes
 //; "/MM:SS" song length is shown to its right it shifts to TIMER_POS. The player sets
 //; timerAlone (1 = no length -> TIMER_POS_ALONE, 0 = length present -> TIMER_POS)
 //; before calling InitTimer. Both positions are fixed constants, so we just branch to
-//; the right pair of stores - no self-modify.
+//; the right pair of stores.
 timerAlone: .byte $01
 #endif
 
@@ -224,7 +225,7 @@ DrawTimer:
     sta timerChars + 4
 
     //; Plot the 5 digits into both screen buffers. Colour is static (set in
-    //; InitTimer). 1x2 font: top glyph = code, bottom glyph = code+$40. The
+    //; InitTimer). 1x2 font: top glyph = code, bottom = code | TIMER_BOTTOM_OFFSET. The
     //; bottom row is unconditional - KickAss #if runs before .const exists, so
     //; a .const height flag would never be seen; every timer user is 1x2.
 #if TIMER_MOVABLE

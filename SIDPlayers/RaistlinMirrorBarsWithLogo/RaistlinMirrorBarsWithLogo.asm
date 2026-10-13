@@ -54,7 +54,7 @@ bakedCodebookPtr:
 bakedIndexStart:
     .word $0000                         // $52/$53: index-stream base address
 bakedNumKeyframes:
-    .word $0000                         // $54/$55: number of 25 Hz keyframes
+    .word $0000                         // $54/$55: number of keyframes
 bakedLoopStart:
     .word $0000                         // $56/$57: keyframe to loop back to at end
 bakedNumSegments:
@@ -97,8 +97,8 @@ barGradientColors:                      // $80-$A7: per-bar colours (colorEffect
 
 //; Graphics VIC bank, decoupled from the code load address so a CODE_ONLY build
 //; can assemble the code apart from the graphics (exporter places them
-//; independently). Classic build derives it from the load address - output
-//; unchanged; CODE_ONLY takes an optional :gfxBank= for the reloc tooling.
+//; independently). Classic build derives it from the load address; CODE_ONLY
+//; takes an optional :gfxBank= for the reloc tooling.
 #if CODE_ONLY
 .var GFX_BANK = cmdLineVars.containsKey("gfxBank") ? cmdLineVars.get("gfxBank").asNumber() : 1
 #else
@@ -125,10 +125,10 @@ barGradientColors:                      // $80-$A7: per-bar colours (colorEffect
 
 .eval setSeed(55378008)
 
-.const SCREEN0_BANK						= 12 //; $7000-$73FF
-.const SCREEN1_BANK						= 13 //; $7400-$77FF
-.const CHARSET_BANK						= 7 //; $7800-$7FFF
-.const BITMAP_BANK						= 1 //; $6000-$7F3F
+.const SCREEN0_BANK						= 12 //; +$3000-$33FF
+.const SCREEN1_BANK						= 13 //; +$3400-$37FF
+.const CHARSET_BANK						= 7 //; +$3800-$3FFF
+.const BITMAP_BANK						= 1 //; +$2000-$3F3F
 
 .const BITMAP_ADDRESS					= VIC_BANK_ADDRESS + (BITMAP_BANK * $2000)
 .const SCREEN0_ADDRESS					= VIC_BANK_ADDRESS + (SCREEN0_BANK * $400)
@@ -171,8 +171,8 @@ barGradientColors:                      // $80-$A7: per-bar colours (colorEffect
 //; Bottom line: song name flush-left; on the right the elapsed timer, then (when a
 //; length is known) a "/" and the length flush-right - "MM:SS/MM:SS" in cols 29..39.
 //; The movable timer + "/length" layout is CODE_ONLY (the shipped export path); the
-//; legacy full-binary builds keep the old flush-right timer / length-at-29 layout, so
-//; the tight full build below the bitmap is byte-for-byte unchanged. 1x2 font.
+//; classic full-binary build uses a fixed flush-right timer with the length at col 29.
+//; 1x2 font.
 .const TIMER_SCREEN0 = SCREEN0_ADDRESS
 .const TIMER_SCREEN1 = SCREEN1_ADDRESS
 .const TIMER_DOUBLE_HEIGHT = 1
@@ -234,7 +234,7 @@ barGradientColors:                      // $80-$A7: per-bar colours (colorEffect
 
 //; Bias up one line (SPLIT_RASTERLINE - 2, not - 1): the curtain sprite renders
 //; one line below its Y, and the split IRQ's VIC write lands ~1 line late from IRQ
-//; latency, so both sat 1px low. CURTAIN_TOP_BLOCK_LINE drives the sprite Y AND
+//; latency, so - 1 would leave both 1px low. CURTAIN_TOP_BLOCK_LINE drives the sprite Y AND
 //; the split IRQ's $d012 (armed with CURTAIN_TOP_BLOCK_LINE below), so moving it
 //; shifts the block and the switch together - the sprite keeps hiding the switch.
 .const CURTAIN_TOP_BLOCK_LINE			= SPLIT_RASTERLINE - 2
@@ -271,7 +271,7 @@ barGradientColors:                      // $80-$A7: per-bar colours (colorEffect
 #if CODE_ONLY
 //; Static "MM:SS" song length, drawn once at init. In the CODE_ONLY export it sits
 //; flush-right with a "/" separator to the timer's right; the legacy full builds draw
-//; it just left of the flush-right timer (old layout). Only shown when the analysis
+//; it just left of the flush-right timer. Only shown when the analysis
 //; found a real length (bakedHasLength). The '/' is screen code 47 (the font maps
 //; ASCII 32..63 straight through, so it carries that glyph).
 lengthChars: .fill 5, $00
@@ -381,8 +381,8 @@ Initialize:
 	stx timerAlone
 #endif
 	jsr InitTimer
-	//; Draw "/MM:SS" when a length was found (bakedHasLength) - for realtime and
-	//; shadow exports too, not just baked; DrawSongLength no-ops with no length.
+	//; Draw "/MM:SS" when a length was found (bakedHasLength; realtime, shadow
+	//; and baked exports alike); DrawSongLength no-ops with no length.
 #if CODE_ONLY
 	jsr DrawSongLength
 #endif
@@ -608,7 +608,6 @@ FrameCall:
 	rts
 
 UpdateBarColors:
-	//; Only colorEffectMode 0 (Height) updates colour RAM dynamically
 #if SPECTROMETER_BAKED
 	//; Baked builds have no per-voice waveform data; only mode 0 is dynamic
 	lda colorEffectMode
@@ -922,7 +921,7 @@ barCharacterMap:
 //; A CODE_ONLY build omits the emitted bytes (the exporter places them into a VIC
 //; bank) while the code keeps resolving heightColorTable / attackRate* via these
 //; address labels (gfx-refs, patched to the chosen bank). Classic builds emit them
-//; here, byte-for-byte as before.
+//; here.
 //; =============================================================================
 
 .label heightColorTable = COLOR_TABLE_ADDRESS

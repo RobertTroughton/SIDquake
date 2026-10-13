@@ -51,7 +51,7 @@ bakedCodebookPtr:
 bakedIndexStart:
     .word $0000                         // $52/$53: index-stream base address
 bakedNumKeyframes:
-    .word $0000                         // $54/$55: number of 25 Hz keyframes
+    .word $0000                         // $54/$55: number of keyframes
 bakedLoopStart:
     .word $0000                         // $56/$57: keyframe to loop back to at end
 bakedNumSegments:
@@ -75,9 +75,9 @@ colorEffectMode:
 lineGradientColors:
     .fill TOP_SPECTRUM_HEIGHT + BOTTOM_SPECTRUM_HEIGHT, $0b  // Bytes 97-113 ($61-$71): Line gradient colors
 songNameColor:
-    .byte $01                           // Song name text color (default: white)
+    .byte $01                           // $72: Song name text color (default: white)
 artistNameColor:
-    .byte $0f                           // Artist name text color (default: light grey)
+    .byte $0f                           // $73: Artist name text color (default: light grey)
     .fill DATA_ADDRESS + $75 - *, $00
 bakedLastKfFrames:
     .byte $00                           // $75: frames the baked stream's last keyframe lasts (0 = bakedFrameDivisor)
@@ -94,8 +94,8 @@ barGradientColors:                      // $80-$A7: per-bar colours (colorEffect
 
 //; Graphics VIC bank. Decoupled from the code load address: the code blob can be
 //; assembled (and relocated) anywhere, while the VIC assets live in their own
-//; bank. The classic single-blob build derives it from the load address (so the
-//; output is unchanged); a CODE_ONLY build assembles the code apart from the
+//; bank. The classic single-blob build derives it from the load address; a
+//; CODE_ONLY build assembles the code apart from the
 //; graphics and pins the bank explicitly, which is what lets the code escape the
 //; "packed below the bitmap" ceiling.
 #if CODE_ONLY
@@ -131,16 +131,16 @@ barGradientColors:                      // $80-$A7: per-bar colours (colorEffect
 
 .eval setSeed(55378008)
 
-.const SCREEN0_BANK						= 12 //; $7000-$73FF
-.const SCREEN1_BANK						= 13 //; $7400-$77FF
-.const CHARSET_BANK						= 7 //; $7800-$7FFF
-.const SPRITE_BASE_INDEX				= $b8 //; $6E00-6FFF for water sprites
+.const SCREEN0_BANK						= 12 //; +$3000-$33FF
+.const SCREEN1_BANK						= 13 //; +$3400-$37FF
+.const CHARSET_BANK						= 7 //; +$3800-$3FFF
+.const SPRITE_BASE_INDEX				= $b8 //; +$2E00-$2FFF for water sprites
 
 .const SCREEN0_ADDRESS					= VIC_BANK_ADDRESS + (SCREEN0_BANK * $400)
 .const SCREEN1_ADDRESS					= VIC_BANK_ADDRESS + (SCREEN1_BANK * $400)
 .const CHARSET_ADDRESS					= VIC_BANK_ADDRESS + (CHARSET_BANK * $800)
 .const SPRITES_ADDRESS					= VIC_BANK_ADDRESS + (SPRITE_BASE_INDEX * $40)
-.const COLOR_TABLE_ADDRESS				= VIC_BANK_ADDRESS + $2D80 //; $6D80-6DFF
+.const COLOR_TABLE_ADDRESS				= VIC_BANK_ADDRESS + $2D80 //; +$2D80-$2DFF
 .const SPRITE_POINTERS_0				= SCREEN0_ADDRESS + $3F8
 .const SPRITE_POINTERS_1				= SCREEN1_ADDRESS + $3F8
 
@@ -168,8 +168,8 @@ barGradientColors:                      // $80-$A7: per-bar colours (colorEffect
 //; (from line 5), centred on line 2. 1x2 font, double-buffered. When a song length
 //; is known we show "MM:SS/MM:SS" centred (timer col 14, '/' 19, length 20); without
 //; one the timer sits centred alone at col 17. The movable timer + "/length" is
-//; CODE_ONLY (the shipped export path); the classic full build keeps the old centred
-//; timer, so it stays byte-for-byte unchanged.
+//; CODE_ONLY (the shipped export path); the classic full build shows only the
+//; centred timer.
 .const TIMER_SCREEN0					= SCREEN0_ADDRESS
 .const TIMER_SCREEN1					= SCREEN1_ADDRESS
 .const TIMER_DOUBLE_HEIGHT				= 1
@@ -902,8 +902,8 @@ spriteSineTable:			.fill 128, 11.5 + 11.5*sin(toRadians(i*360/128))
 //; These are the only parts that must live in a 16 KB VIC bank. A CODE_ONLY build
 //; omits them entirely (the exporter synthesises/places them from the PNGs,
 //; palettes and static maps), so the assembled blob is just code + CPU-read
-//; tables and is no longer pinned below the graphics - it relocates to any page.
-//; The classic single-blob build still emits them here, byte-for-byte as before.
+//; tables and is not pinned below the graphics - it relocates to any page.
+//; The classic single-blob build emits them here.
 //; =============================================================================
 
 #if !CODE_ONLY

@@ -128,10 +128,10 @@
 //; changes no colour registers.
 //; Both the curtain sprite (its first data row shows one line below its Y) and
 //; the NameIRQ VIC switch (IRQ latency delays the $d011 write) land ~1 line late,
-//; so the seam sat 1px low over the song name; CURTAIN_TOP_BLOCK_LINE biases the
-//; block up one line (NAME_SPLIT_RASTER - 2) to compensate.
+//; which would put the seam 1px low over the song name; CURTAIN_TOP_BLOCK_LINE
+//; biases the block up one line (NAME_SPLIT_RASTER - 2) to compensate.
 //; The IRQ line is decoupled from the sprite: fired AT the block line, the VIC
-//; switch still landed one line ABOVE the sprite rows (visible glitch, and a
+//; switch would land one line ABOVE the sprite rows (visible glitch, and a
 //; logo line lost early). Arming one line below the block top
 //; (CURTAIN_IRQ_LINE) puts the switch inside the curtained pair and lets the
 //; bitmap keep that extra line.
@@ -157,8 +157,8 @@
 
 //; Graphics VIC bank, decoupled from the code load address so a CODE_ONLY build
 //; can assemble the code apart from the graphics (exporter places them
-//; independently). Classic build derives it from the load address - output
-//; unchanged; CODE_ONLY takes an optional :gfxBank= for the reloc tooling.
+//; independently). Classic build derives it from the load address; CODE_ONLY
+//; takes an optional :gfxBank= for the reloc tooling.
 #if CODE_ONLY
 .var GFX_BANK = cmdLineVars.containsKey("gfxBank") ? cmdLineVars.get("gfxBank").asNumber() : 1
 #else
@@ -459,7 +459,7 @@ FormatTime:
     rts
 
 //; Both elapsed-time columns are fixed constants, so the two stores are just
-//; branched to - no self-modify (the same shape as INC/timer.asm's timerAlone).
+//; branched to (the same shape as INC/timer.asm's timerAlone).
 DrawSongTimer:
     lda TimerMinutes
     sta fmtMin
@@ -721,15 +721,15 @@ BottomIRQ:
 
     //; Arm the seam IRQ FIRST, then open up, then do the frame's work.
     //;
-    //; It used to be armed at the END of this handler, behind the play call,
-    //; AnalyseMusic and UpdateBars, with I set throughout. A frame whose work
-    //; ran past raster CURTAIN_IRQ_LINE armed $d012 after the beam had already
-    //; passed it, so NameIRQ did not fire that frame - and because each handler
-    //; in the chain arms the next, the whole chain skipped: no song-name window
-    //; (the row displayed as bitmap - a visible flash across the song name on a
-    //; bitmap-logo export) and no play call either. Armed up here it cannot be
-    //; missed, and the cli lets the seam IRQ interrupt the work and land on its
-    //; raster instead of waiting for the work to finish.
+    //; Armed at the END of this handler instead (behind the play call,
+    //; AnalyseMusic and UpdateBars, with I set throughout), a frame whose work
+    //; ran past raster CURTAIN_IRQ_LINE would arm $d012 after the beam had
+    //; already passed it, so NameIRQ would not fire that frame - and because
+    //; each handler in the chain arms the next, the whole chain would skip: no
+    //; song-name window (the row displayed as bitmap - a visible flash across
+    //; the song name on a bitmap-logo export) and no play call either. Armed up
+    //; here it cannot be missed, and the cli lets the seam IRQ interrupt the
+    //; work and land on its raster instead of waiting for the work to finish.
     jsr ArmSeamIRQ
     cli
 
