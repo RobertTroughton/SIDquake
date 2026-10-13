@@ -29,6 +29,8 @@ is committed (`.github/workflows/ci.yml`, job `wasm`).
 fixed-bank `*.bin`, `public/*.wasm` and their emscripten JS glue
 (`sidquake.js`, `sidplayfp.js`, `exomizer.js`), `public/hvsc-random-pool.json`
 and `SIDPlayers/INC/FreqTable*.bin`. Regenerate rather than patch.
+`python3 FreqTableGen.py` (run from the repo root) writes all three
+FreqTable files: 20, 40 and 80 bars.
 
 A player blob and its reloc table must come from the same build.
 `build-players.sh` and `0-build.bat` always emit both; see

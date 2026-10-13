@@ -107,14 +107,11 @@ def write_binary_file(filename, data):
         f.write(bytes(data))
 
 def main():
-    import os
-    
-    generate_freq_lookups("SIDPlayers/INC/FreqTable.bin", 40)
-    print(f"\nGenerated frequency lookup table: SIDPlayers/INC/FreqTable.bin")
-
-    print()
-    generate_freq_lookups("SIDPlayers/INC/FreqTable80.bin", 80)
-    print(f"\nGenerated frequency lookup table: SIDPlayers/INC/FreqTable80.bin")
+    for path, bars in (("SIDPlayers/INC/FreqTable20.bin", 20),
+                       ("SIDPlayers/INC/FreqTable.bin", 40),
+                       ("SIDPlayers/INC/FreqTable80.bin", 80)):
+        generate_freq_lookups(path, bars)
+        print(f"\nGenerated frequency lookup table: {path}\n")
 
 if __name__ == "__main__":
     main()
