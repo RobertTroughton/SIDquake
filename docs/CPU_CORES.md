@@ -81,7 +81,7 @@ and to leave an interrupt through: the IRQ exits at `$EA31`, `$EA7E` and `$EA81`
 
 A call ends at the matching `RTS`/`RTI` (SP back at or above where it started,
 compared as a signed distance so a wrap past `$FF` still counts), or fails on a
-JAM, on the cycle cap, or on a jump to `$0000/$0001` or `$FFFF`; a failed call
+JAM, on the cycle cap, or when the PC lands on `$0000/$0001` or `$FFFF`; a failed call
 has its stack pointer put back.
 
 ## Keeping them honest
@@ -128,11 +128,33 @@ explained under "What is still not modelled").
   constant varies between chips. VICE and libsidplayfp use `$EF` for `XAA`.
 - **Most of the I/O chips.** `wasm/c64_io.h` is the whole model, shared by
   both adapters: the I/O area is there only while `$01` maps it in (CHAREN,
-  and LORAM or HIRAM; otherwise `$D000-$DFFF` is RAM), the raster line in
+  and LORAM or HIRAM; otherwise `$D000-$DFFF` is RAM, or character ROM on
+  hardware), the raster line in
   `$D012` and `$D011` bit 7 runs free at PAL timing from the core's cycle count,
   and CIA 1's `$DC0D` reads as "timer A fired", so a routine waiting on either
   gets there. Everything else reads back the RAM underneath: no VIC, CIA or NMI
-  interrupt sources, no SID readback in the analysis core, no open bus.
+  interrupt sources, no SID readback in the analysis core, no open bus. The
+  raster line comes from total cycles with no idle time between calls, so
+  where play starts in the frame drifts from call to call; a play routine
+  that waits on `$D012` takes a different time each frame, which can inflate
+  `sid_get_max_cycles` by up to a frame.
+- **Interrupts.** No IRQ or NMI is ever taken, so the I flag has no effect and
+  `CLI` changes nothing visible. An init that enables an interrupt and waits
+  for its handler to run hits the cycle cap.
+- **ROMs.** KERNAL, BASIC and character ROM are not mapped: with them banked
+  in, a read returns the RAM underneath. Only the stubs `plant_kernal` writes
+  exist.
+- **The 6510 port.** `$01` starts at `$37` before every init and play in both
+  cores. libsidplayfp picks it from the call address instead (`$36` for
+  `$A000-$CFFF`, `$34` for `$D000-$DFFF`, `$35` from `$E000`), so a tune whose
+  code sits under I/O sees I/O here where it sees RAM in playback. The data
+  direction register at `$00` is ignored and a read of `$01` returns the
+  latch.
+- **Register values at a KERNAL-path handler entry.** Through `$FF48` the
+  hardware enters the `$0314` handler with A = `$00` and X = SP (from `AND
+  #$10` and `TSX`); `c64env::call` enters it with the caller's A and X.
+- **SID mirrors in the reSID engine.** Writes to `$D420-$D7FF` reach chip 0
+  when no other chip sits there; reads there return RAM, not the chip.
 
 The `SHA`/`SHX`/`SHY`/`TAS` behaviour that *is* modelled - value is
 `reg & (pre-index high byte + 1)`, and a page-crossing index replaces the

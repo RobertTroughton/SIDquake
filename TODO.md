@@ -595,6 +595,47 @@ golden tier, `npm run test:goldens` all of `SID/`, and CI rebuilds the WASM and
 checks it against what is committed; see `docs/TESTING.md`). Below is what is
 left: known limits, product choices and larger pieces of work.
 
+### From the 6510 and SID audit (all `[WASM]` unless marked)
+
+Each changes what the emulation produces, so each moves goldens and needs a
+rebuild. `docs/CPU_CORES.md` "What is still not modelled" has the detail.
+
+- CIA-speed tunes whose init never programs the timer (see Low, below) turn up
+  in the repo's own fixtures: `SID/robhubbard-humanrace.sid` previews at
+  about 60 Hz and exports and bakes at 50 Hz, about 16.5% slow. Move this out
+  of Low.
+- Raster drift between play calls: `$D012` follows total cycles, so a play
+  routine that waits on a raster line takes a different time each call and can
+  inflate `sid_get_max_cycles` by up to a frame. Fix: start each play call at
+  a fixed line.
+- Set `$01` from the call address as libsidplayfp's `psiddrv::iomap` does,
+  in both the analyser and the reSID engine, so a tune under I/O sees RAM in
+  analysis as it does in playback.
+- No SID readback in the analyser: `$D41B`/`$D41C` (OSC3/ENV3) read RAM, so a
+  player that draws random numbers or vibrato from OSC3 diverges from playback
+  in analysis, loop detection and the shadow check.
+- XAA (`$8B`) uses `$EE` in the analyser and `$EF` in libsidplayfp, so a tune
+  using it can analyse differently from how it plays.
+- An init that resets the stack (`LDX #$FF / TXS`) and then calls a
+  subroutine ends at that subroutine's `RTS`. Broken on hardware too; low.
+- `opcodes.h` gives the JAM opcodes 0 cycles where the core returns 2. Cosmetic
+  (the disassembler is the only reader); the cross-check skips JAM.
+- `sidplayfp_audio.cpp` refuses a file shorter than `$7C` bytes, so a v1 PSID
+  with under 6 data bytes fails there although `parse_psid` accepts it.
+- `[asm]` Spectrometer envelope model: decay/release use a hand-tuned
+  1-70 frame table, not the SID's 6 ms-24 s rates, sustain 0 maps to MAX/6,
+  release is linear, and decay "holds" when sustain is raised above the
+  level (the chip keeps falling). Fine as styling; the comments in
+  `freqtable*.asm`/`spectrometer*.asm` should say it is styling. TEST=1 sends
+  a voice into the visual release although the chip's envelope runs on, and
+  `spectrometer3channel.asm`/`spectrometerpervoice.asm` ignore waveform 0
+  where `spectrometer.asm` and `analyzeVuVisibility` check it.
+  `releaseRateLo` skips `RELEASE_RATE_SCALE`, which `releaseRateHi` applies
+  (no effect at 1.0).
+- `[JS]` `psid.js` accepts any non-zero second/third SID byte; `parse_psid`
+  follows the spec (even `$42-$7F`, `$E0-$FE`).
+- `[JS]` The export timer counts 50 fps; PAL is 50.1245 (about 9 s an hour).
+
 ### Low
 
 - The analyser doesn't reject a load address below `$07E8`, which the PSID spec
