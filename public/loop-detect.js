@@ -29,10 +29,10 @@ export const LOOP_DETECT_VERSION = 1;
 // modes have to be avoided: (1) locking a SUB-HARMONIC - a riff shorter than the
 // full loop that recurs on its own; (2) accepting a MARGINAL near-threshold
 // match that only holds for a few seconds. Confirming a candidate against just
-// the tail (the old approach) let both through, so we validate every candidate
-// lag against the whole stream and take the fundamental of the deepest.
+// the tail lets both through, so every candidate lag is validated against the
+// whole stream and the fundamental of the deepest is taken.
 // `kf` is a quantized column matrix on ANY uniform time grid with `keyframeHz`
-// rows per second; callers now pass the full FRAME-rate grid (see resolveKeyframes:
+// rows per second; callers pass the full FRAME-rate grid (see resolveKeyframes:
 // SID loop periods are integral in frames, not keyframes) and map the result back.
 //
 // `hint`, when given, is the STATE loop the register pre-pass found for this tune
@@ -46,7 +46,7 @@ export const LOOP_DETECT_VERSION = 1;
 // out returns null, and the caller falls back to the full search.
 export function detectLoop(kf, nk, numBars, maxHeight, keyframeHz = 25, minLoopSeconds = 2, hint = null) {
     // Windows are wall-clock spans, scaled to the grid rate so the detector
-    // behaves the same at any rows-per-second (at 25 Hz these are the original 100/50/12).
+    // behaves the same at any rows-per-second (at 25 Hz: 100/50/12 rows).
     const W = Math.max(8, Math.round(4.0 * keyframeHz));    // tail confirm window (~4 s)
     // Shortest loop we accept (~minLoopSeconds, an Advanced setting): a smaller
     // value lets tight riffs count as the loop, a larger one forces a longer
@@ -89,7 +89,7 @@ export function detectLoop(kf, nk, numBars, maxHeight, keyframeHz = 25, minLoopS
     // genuinely differs from itself one period later.
     //
     // Judged over a WINDOW rather than a single column. Taking the last lone
-    // column above REJECT made the whole intro hostage to one transient: on
+    // column above REJECT makes the whole intro hostage to one transient: on
     // The_Mighty_Bulldozer/Wonderful_Tunes_and_Graphics_tune_7, exactly 4 columns
     // of 15,180 crossed the threshold - two of them adjacent, everything either
     // side reading ~0 - and that one blip reported a 220 s intro on a tune that
@@ -194,13 +194,13 @@ export function detectLoop(kf, nk, numBars, maxHeight, keyframeHz = 25, minLoopS
     };
 
     // Candidate periods: EVERY lag whose last ~4 s recur one period earlier, not
-    // just the first one found. Taking the first (the old approach) assumed it was
-    // either the loop or a sub-harmonic of it, so walking its harmonic series would
-    // reach the truth. A decoy lag breaks that assumption outright: Miranda
-    // (Mitch & Dane) repeats a phrase 38.3 s before its tail, and 38.3 s neither
-    // divides nor is divided by its real 71.8 s loop, so the walk had nowhere to go
-    // and a 20-minute scan reported no loop at all. Matching lags come in blocks, so
-    // skip a note's width past each hit rather than logging the same period twice.
+    // just the first one found. Taking only the first assumes it is either the
+    // loop or a sub-harmonic of it, so that walking its harmonic series reaches
+    // the truth. A decoy lag breaks that outright: Miranda (Mitch & Dane) repeats
+    // a phrase 38.3 s before its tail, and 38.3 s neither divides nor is divided
+    // by its real 71.8 s loop, so such a walk has nowhere to go and a 20-minute
+    // scan reports no loop at all. Matching lags come in blocks, so skip a note's
+    // width past each hit rather than logging the same period twice.
     const CAND_MAX = 48;
     const cands = [];
     for (let c = Pmin; c <= Pmax && cands.length < CAND_MAX; c++) {
@@ -220,9 +220,9 @@ export function detectLoop(kf, nk, numBars, maxHeight, keyframeHz = 25, minLoopS
     P = refine(P);
 
     // Confirm the chosen period against the whole stream, not just the tail: a
-    // genuine loop matches everywhere (bar the small intro). This rejects the
-    // marginal tail-only matches the old check let through - better a safe "no
-    // loop" (store the full stream) than a wrong period the C64 wraps out of sync.
+    // genuine loop matches everywhere (bar the small intro). This rejects
+    // marginal tail-only matches - better a safe "no loop" (store the full
+    // stream) than a wrong period the C64 wraps out of sync.
     if (residual(P) > MATCH) return null;
 
     const I = introFor(P);
@@ -267,8 +267,8 @@ export function resolveKeyframes(store, o, out = store) {
     // exact period is stored as ceil(P / step) keyframes with the last one
     // shortened to whatever is left (lastKeyframeFrames, 1..step), so the C64's
     // stored cycle lasts exactly P frames. Rounding it to whole keyframes instead
-    // moved the bars against the music on every pass, and the error adds up:
-    // a 101-frame loop at 25 fps was ~6 s out after ten minutes.
+    // moves the bars against the music on every pass, and the error adds up:
+    // a 101-frame loop at 25 fps is ~6 s out after ten minutes.
     const kfF = step === 1 ? kf : whitenQuantize(store, o.maxHeight, 1, nframes);
     const nkF = step === 1 ? nk : nframes;
     // o.loopHint: the state loop the register pre-pass found for these rows, in
@@ -296,8 +296,8 @@ export function resolveKeyframes(store, o, out = store) {
         const budgetKf = o.budgetBytes - 256 * NB;
         // o.measureOnly: nothing is being stored, so neither the stored-length
         // choice nor the C64 RAM budget has any say in how far the music is
-        // followed. Capping a MEASUREMENT with them reported a tune that plays
-        // past the cap as ending exactly there.
+        // followed. Capping a MEASUREMENT with them would report a tune that
+        // plays past the cap as ending exactly there.
         const capKf = o.measureOnly ? nk : Math.max(1, Math.min(
             Math.floor((o.outputMaxSeconds || o.maxSeconds) * o.keyframeHz), budgetKf));
         const lastKf = Math.min(nk, capKf);

@@ -5,7 +5,7 @@
 // with rendering the page, so the work has to hand control back constantly just to
 // keep the UI alive - which is what yieldToEventLoop() in spectrometer-bake.js is
 // for, along with its MessageChannel-instead-of-setTimeout workaround for background
-// tab throttling. In here none of that is load-bearing any more: the worker owns its
+// tab throttling. In here none of that is load-bearing: the worker owns its
 // thread, so the page stays responsive no matter how long the bake runs, and a
 // backgrounded tab cannot throttle it.
 //
@@ -17,8 +17,7 @@
 // core on the main thread.
 //
 // The worker holds the render cache, so the analyse pass and the later export bake
-// for the same tune share one render - the same arrangement the page used to get
-// from a global.
+// for the same tune share one render.
 
 /* eslint-env worker */
 

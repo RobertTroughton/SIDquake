@@ -2,6 +2,13 @@
 // Receives Float32 audio samples from the main thread via MessagePort
 // and outputs them in the audio thread's process() callback.
 
+// Ask the page for more below this many queued samples: ~0.37 s at 44.1 kHz,
+// slack for heavy main-thread work (re-renders, GC, layout).
+const LOW_WATER_SAMPLES = 16384;
+// While a request has come back empty, ask again after this many 128-sample
+// render quanta (~0.2 s) rather than wait forever.
+const STARVED_RETRY_QUANTA = 64;
+
 class SIDWorkletProcessor extends AudioWorkletProcessor {
     constructor() {
         super();
@@ -76,18 +83,16 @@ class SIDWorkletProcessor extends AudioWorkletProcessor {
             output[i] = 0;
         }
 
-        // Request more samples when the buffer runs low. The threshold gives
-        // the main thread ~0.37s of slack (heavy re-renders, GC, layout) and
-        // the fill level is reported so it tops up to its high-water mark.
+        // Request more samples when the buffer runs low, reporting the fill
+        // level so the page tops up to its high-water mark.
         //
         // A request can come back with nothing (the engine rendered no samples
-        // that once), and no answer means no next request: while the queue is
-        // empty, ask again every 64 quanta (~0.2 s) rather than wait forever.
-        if (this._requested && this._totalSamples === 0 && ++this._starved >= 64) {
+        // that once), and no answer means no next request, hence the retry.
+        if (this._requested && this._totalSamples === 0 && ++this._starved >= STARVED_RETRY_QUANTA) {
             this._requested = false;
             this._starved = 0;
         }
-        if (this._totalSamples < 16384 && !this._requested) {
+        if (this._totalSamples < LOW_WATER_SAMPLES && !this._requested) {
             this._requested = true;
             this.port.postMessage({ type: 'need-samples', buffered: this._totalSamples });
         }

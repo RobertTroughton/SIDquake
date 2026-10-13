@@ -8,8 +8,8 @@
 
 // ---- constants taken from hvsc-visualizer.js's bar target (the `t` value in
 // step(), BEFORE the slow release smoothing - that raw target is what we hand
-// to the C64). MAX_DB has since been raised here (see below), so the baked bar
-// heights no longer match the on-screen spectrum exactly ----
+// to the C64). MAX_DB here is higher than the visualizer's (see below), so the
+// baked bar heights do not match the on-screen spectrum exactly ----
 const N = 4096;                 // fftSize (matches AnalyserNode)
 const BINS = N / 2;             // frequencyBinCount
 // Frequency span the bars cover when no per-song range is fitted (loop
@@ -26,8 +26,8 @@ export const F_MIN = 40, F_MAX = 5500;
 // least NORM_DEAD_FRAC of the busiest band's) as the range. Measured over the
 // SID/ fixtures, SID bass reaches down to 30-60 Hz on every tune while the top
 // of the live range runs from ~3 kHz (a filtered lead) to ~6.5 kHz (noise
-// drums), so a fixed 5.5 kHz ceiling was leaving up to ten bars dead on some
-// tunes and clipping others. The fitted range is clamped to FIT_MIN..FIT_MAX
+// drums), so a fixed 5.5 kHz ceiling leaves up to ten bars dead on some tunes
+// and clips others. The fitted range is clamped to FIT_MIN..FIT_MAX
 // and widened to at least FIT_MIN_OCTAVES so a narrow tune does not get bars
 // finer than the FFT can resolve.
 export const FIT_MIN = 30, FIT_MAX = 12000, FIT_MIN_OCTAVES = 4;
@@ -55,7 +55,7 @@ const BAR_FRACTION = 0.12;             // a two-semitone bar's width as a fracti
 const FLOOR = 0.07, SLOPE = 0.6, GAMMA = 1.5, AVG_WEIGHT = 0.65;
 // MAX_DB is the level that maps to full bar height. At -12 dB, sustained SID bass
 // bins clamp to the ceiling and lose all variation - the low/mid bars then pin to
-// max in a flat white block. Raising it gives that loud end headroom so it varies
+// max in a flat white block. -3 dB gives that loud end headroom so it varies
 // instead of clipping.
 const MIN_DB = -90, MAX_DB = -3, SMOOTH = 0.55;
 
@@ -76,7 +76,7 @@ function softKnee(x) {
 // that carries signal uses the full bar height. Temporal dynamics (a band getting
 // louder/quieter over time) are preserved; only the fixed frequency tilt is
 // removed. Bands that are dead the whole tune stay low (gated by a global floor).
-//   NORM_STRENGTH: 0 = raw spectrum (old look), 1 = full whitening (flattest)
+//   NORM_STRENGTH: 0 = raw spectrum, 1 = full whitening (flattest)
 //   NORM_PCTL    : per-band percentile used as the "busy level" reference
 //   NORM_DEAD_FRAC: bands whose busy level is below this fraction of the loudest
 //                   band's are treated as dead and not boosted to full height
@@ -334,19 +334,18 @@ export function deriveBars(fine, numBars, fMin, fMax) {
 
 // Growable store for the analyzer's per-frame rows.
 //
-// The rows used to be an array of one Float64Array(numBars) per frame. A 10-minute
-// analysis is ~30k frames, so that is ~30k separate little heap objects scattered
-// across memory, and every later pass (whitening, quantizing) walks all of them.
-// One flat, geometrically-grown Float32Array instead keeps the whole set contiguous
-// and halves its footprint (9.6 MB -> 4.8 MB at 10 minutes): the values are 0..1 and
-// end up quantized to 0..111, so float32's ~7 digits are far more than enough.
+// One flat, geometrically-grown Float32Array rather than one Float64Array(numBars)
+// per frame: a 10-minute analysis is ~30k frames, and every later pass (whitening,
+// quantizing) walks all of them, so keeping the set contiguous matters, and float32
+// halves the footprint (9.6 MB -> 4.8 MB at 10 minutes). The values are 0..1 and end
+// up quantized to 0..111, so float32's ~7 digits are far more than enough.
 //
 // The store also carries a per-band histogram of the raw values, updated one row at
 // a time as frames arrive. That is what makes the whitening percentile cheap: see
-// bandRefs(). Sorting each band's column instead (the old approach) cost
-// O(numBars * n log n) AND read the column with a numBars-wide stride, i.e. a fresh
-// cache line for every single element - and the incremental render repeats the whole
-// thing at every loop poll, so it was quadratic in the tune's length.
+// bandRefs(). Sorting each band's column instead costs O(numBars * n log n) AND reads
+// the column with a numBars-wide stride, i.e. a fresh cache line for every element -
+// and the incremental render repeats the whole thing at every loop poll, which makes
+// it quadratic in the tune's length.
 export function createRowStore(numBars) {
     return {
         numBars,
@@ -385,9 +384,9 @@ export function asRowStore(rows, numBars) {
 }
 
 // The NORM_PCTL percentile of the `n` values counted in one band's histogram,
-// hist[base .. base + buckets) over [0, 1]: the same rank the old col.sort() +
-// index picked, resolved through cumulative bucket counts, with the bucket's
-// centre standing in for the exact sample.
+// hist[base .. base + buckets) over [0, 1]: the rank a sort of the column would
+// pick, resolved through cumulative bucket counts, with the bucket's centre
+// standing in for the exact sample.
 function histPercentile(hist, base, buckets, n) {
     const rank = Math.min(n - 1, Math.floor(n * NORM_PCTL));
     let cum = 0, bucket = buckets - 1;
@@ -422,9 +421,9 @@ export function bandRefs(store) {
 //
 // Fractional hop, rounded per frame (no accumulation): the C64 advances one
 // keyframe every 1, 2 or 3 raster frames (framesPerKeyframe), so the grid must
-// sit on the true raster rate
-// (PAL 50.1245 / NTSC 59.826), not a round 50 - a round-50 hop is ~0.25% slow and
-// drifts the bars ~0.2 s per loop.
+// sit on the true raster rate (PAL 50.1245 / NTSC 59.826), not a round 50 - a
+// round-50 hop is ~0.25% slow and drifts the bars ~0.2 s per loop.
+//
 // A frame's windows are all centred on the same instant, the middle of its
 // 4096-point window; the long decimated window reaches (LONG_N / 2) * DEC
 // samples past that, so a frame can only be computed once this many samples
@@ -618,11 +617,10 @@ function whitened(raw, denom) {
 // bass->treble ramp; a global floor keeps genuinely dead bands low.
 //
 // Fusing matters because the loop poll runs this over the whole stream every ~15 s of
-// audio. Separately, the old shape allocated a Float64Array(frames*numBars) - 9.6 MB
-// at 10 minutes - handed it to quantizeGrid, which allocated the byte grid on top,
-// and did both the percentile gather and the normalize pass with a numBars-wide
-// stride (one cache line per element). This walks the rows in memory order, reads the
-// percentiles off the store's histogram, and writes bytes into a caller-owned buffer.
+// audio: whitening into an intermediate Float64Array(frames*numBars) (9.6 MB at 10
+// minutes) and quantizing that into a second grid would allocate both per poll. This
+// walks the rows in memory order, reads the percentiles off the store's histogram,
+// and writes bytes into a caller-owned buffer.
 //
 // `stride` decimates (1 = the full frame grid, `step` = the keyframe grid); `nRows`
 // is how many output rows to write; `out`, if given, is reused instead of allocated.
@@ -644,8 +642,8 @@ export function whitenQuantize(store, maxHeight, stride, nRows, out) {
 }
 
 // Whitened per-frame targets as a flat Float64Array[frames*numBars]. Only the offline
-// harness and the tests want the un-quantized values now; the live paths all go
-// through whitenQuantize above.
+// harness and the tests want the un-quantized values; the live paths all go through
+// whitenQuantize above.
 export function whitenRows(rows, numBars) {
     const store = asRowStore(rows, numBars);
     const nb = store.numBars, n = store.count;

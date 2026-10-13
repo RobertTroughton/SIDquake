@@ -6,7 +6,7 @@
 //   - normally, in a Web Worker (spectrometer-bake-worker.js), so a multi-minute
 //     bake never blocks the page;
 //   - if Workers, dynamic import() inside one, or importScripts() are unavailable,
-//     on the main thread instead, exactly as before.
+//     on the main thread instead.
 //
 // Both paths return the same shapes, so callers (ui.js, prg-builder.js) don't care
 // which one ran.
@@ -203,7 +203,7 @@ export function pickBakeResult(r) {
 }
 
 // ---------------------------------------------------------------------------
-// Public API (unchanged for callers)
+// Public API
 
 // sidBytes: Uint8Array of a valid .sid file (e.g. analyzer.createModifiedSID()).
 // options: { subtune, sampleRate=44100, maxSeconds, outputMaxSeconds, numBars,

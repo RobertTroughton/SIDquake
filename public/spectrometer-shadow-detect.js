@@ -4,8 +4,8 @@
 // The shadow method avoids the double-play: the C64 redirects the play routine's
 // $D4xx writes into a shadow buffer, runs play once, then replays the shadow to
 // the real SID in a fixed order and reuses those values for the bars. That needs
-// two things this module works out (and verifies) offline, using only existing
-// exports in sidquake.wasm (no rebuild):
+// two things this module works out (and verifies) offline on the sidquake.wasm
+// analyser:
 //   1) the per-frame write ORDER, which is baked as the replay order when it is
 //      consistent enough to trust and replaced by a safe fallback when it isn't;
 //   2) every SID write comes from a patchable STA $D4xx instruction, so
@@ -13,10 +13,19 @@
 //      the only check that can disqualify a tune.
 
 import { parseSidHeader } from './psid.js';
-import { PLAY_CYCLE_CAP, makeAnalyserApi, startTune } from './analyser-session.js';
+import { PAL_FRAME_HZ, PLAY_CYCLE_CAP, makeAnalyserApi, startTune } from './analyser-session.js';
 
 const MEM_WRITE = 1 << 2;
 const MEM_OPCODE = 1 << 4;   // the first byte of an executed instruction
+
+const SID_BASE = 0xD400;
+const SID_BASE_HI = SID_BASE >> 8;
+const VOICE_CONTROL_REGS = [0x04, 0x0B, 0x12];   // one per voice
+const MODE_VOLUME_REG = 0x18;
+// Voice control register bits.
+const CTRL_GATE = 0x01;
+const CTRL_TEST = 0x08;
+const CTRL_WAVEFORMS = 0xF0;    // triangle, sawtooth, pulse, noise
 
 // How long the shadow scan steps a tune: the song-length scan's whole window,
 // 20 minutes. Store sites are found in the code that RUNS, so a site the scan
@@ -24,7 +33,7 @@ const MEM_OPCODE = 1 << 4;   // the first byte of an executed instruction
 // then replaced by the mirror's stale value when the player replays the mirror.
 // Some players only reach a store half a minute or two minutes in. Both passes
 // together cost well under a second at this length.
-export const SHADOW_SCAN_FRAMES = Math.round(20 * 60 * 50.1245);
+export const SHADOW_SCAN_FRAMES = Math.round(20 * 60 * PAL_FRAME_HZ);
 
 // The header's music placement and speed, with the addresses the caller gives
 // (the analyser's view of the tune) taking precedence.
@@ -50,8 +59,8 @@ function loadAndRun(module, api, sidBytes, opts, patches) {
         const len = api.seqLen();
         const seen = new Set(), order = [];
         for (let i = 0; i < len; i++) {
-            const reg = api.seqItem(i) - 0xD400;
-            if (reg < 0 || reg > 0x7f) continue;
+            const reg = api.seqItem(i) - SID_BASE;
+            if (reg < 0 || reg >= MAX_SHADOW_CHIPS * CHIP_STRIDE) continue;
             if (!seen.has(reg)) { seen.add(reg); order.push(reg); }
         }
         orders.push(order);
@@ -71,7 +80,7 @@ function dominantOrder(orders) {
 // $20*N + $00..$18 - the same offsets the C64 uses to index both the mirror page
 // and $D400 (see PlayMusicShadow in INC/musicplayback.asm).
 const CHIP_STRIDE = 0x20;
-const REGS_PER_CHIP = 25;          // $00-$18
+const REGS_PER_CHIP = MODE_VOLUME_REG + 1;   // $00-$18
 export const MAX_SHADOW_CHIPS = 4; // the mirror page covers $D400-$D478
 
 // Safe fallback replay order: registers descending from $18 down to $00, chips
@@ -80,7 +89,7 @@ export const MAX_SHADOW_CHIPS = 4; // the mirror page covers $D400-$D478
 // replay a full 25 per chip.
 function fallbackOrder(numChips) {
     const o = [];
-    for (let c = 0; c < numChips; c++) for (let r = 0x18; r >= 0x00; r--) o.push(c * CHIP_STRIDE + r);
+    for (let c = 0; c < numChips; c++) for (let r = MODE_VOLUME_REG; r >= 0x00; r--) o.push(c * CHIP_STRIDE + r);
     return o;
 }
 const ORDER_CONSISTENCY_MIN = 0.60;
@@ -89,6 +98,8 @@ const ORDER_CONSISTENCY_MIN = 0.60;
 // last register, $60 + $18. Matches SIDMIRROR_SIZE in SIDPlayers/INC/common.asm.
 const MIRROR_BYTES = (MAX_SHADOW_CHIPS - 1) * CHIP_STRIDE + REGS_PER_CHIP;
 
+const SHADOW_BYTES = 0x200;        // the redirect target: two whole pages
+
 // Two consecutive pages the tune never reads, writes or executes, searched from
 // the top of RAM down (below the $D000 I/O block). Returns the first page's high
 // byte, or null if the tune leaves no such pair. Reads the access map left by the
@@ -96,7 +107,7 @@ const MIRROR_BYTES = (MAX_SHADOW_CHIPS - 1) * CHIP_STRIDE + REGS_PER_CHIP;
 function pickShadowPage(api) {
     for (let page = 0xCE; page >= 0x02; page--) {
         let used = false;
-        for (let off = 0; off < 0x200 && !used; off++) used = api.access(((page << 8) + off) & 0xffff) !== 0;
+        for (let off = 0; off < SHADOW_BYTES && !used; off++) used = api.access(((page << 8) + off) & 0xffff) !== 0;
         if (!used) return page;
     }
     return null;
@@ -157,7 +168,7 @@ export function analyzeShadow(module, sidBytes, opts) {
     for (let a = loadAddress; a < loadAddress + musicLen - 2; a++) {
         if (!(api.access(a) & MEM_OPCODE)) continue;
         if (!STORE_OPS.has(api.rd(a))) continue;
-        if (api.rd(a + 2) === 0xD4) storeSites.push((a + 2 - loadAddress));
+        if (api.rd(a + 2) === SID_BASE_HI) storeSites.push((a + 2 - loadAddress));
     }
 
     // Simulation shadow page (the exporter picks the real one). It has to be two
@@ -174,14 +185,14 @@ export function analyzeShadow(module, sidBytes, opts) {
     // Write counts are kept per register ($00-$1F), pooled across every chip in
     // $D400-$D7FF - so any chip's leaked write shows up here whatever its address.
     let leaked = 0;
-    for (let reg = 0; reg < 0x20; reg++) leaked += api.sidWrites(reg);
+    for (let reg = 0; reg < CHIP_STRIDE; reg++) leaked += api.sidWrites(reg);
 
     // Indexed stores (STA $D4xx,X/Y) can reach past the last register the player's
     // mirror covers - a redirected write beyond MIRROR_BYTES lands on whatever the
     // player put after the mirror (the replay-order table, for a start). Nothing in
     // the leak count catches that, since such a write never touches $D400-$D7FF.
     let overflowWrites = 0;
-    for (let off = MIRROR_BYTES; off < 0x200; off++) {
+    for (let off = MIRROR_BYTES; off < SHADOW_BYTES; off++) {
         if (api.access(((shadowHi << 8) + off) & 0xffff) & MEM_WRITE) overflowWrites++;
     }
     const redirectComplete = leaked === 0 && overflowWrites === 0;
@@ -230,7 +241,7 @@ export function analyzeShadow(module, sidBytes, opts) {
 export function analyzeVuVisibility(module, sidBytes, opts) {
     const api = makeAnalyserApi(module);
     const numChips = Math.min(Math.max(opts.numChips || 1, 1), MAX_SHADOW_CHIPS);
-    const frameHz = opts.frameHz || 50.1245;
+    const frameHz = opts.frameHz || PAL_FRAME_HZ;
     const { subtune = 0, frames = 1500 } = opts;
 
     // `frames` and every count returned are raster frames; a multispeed tune
@@ -241,8 +252,8 @@ export function analyzeVuVisibility(module, sidBytes, opts) {
     // Control register per voice, per chip. Chips are $20 apart in $D400-$D7FF.
     const controls = [];
     for (let chip = 0; chip < numChips; chip++) {
-        const base = 0xD400 + chip * 0x20;
-        controls.push(base + 0x04, base + 0x0B, base + 0x12);
+        const base = SID_BASE + chip * CHIP_STRIDE;
+        for (const reg of VOICE_CONTROL_REGS) controls.push(base + reg);
     }
 
     let ran = 0, quiet = 0, leading = 0, stillLeading = true;
@@ -252,8 +263,7 @@ export function analyzeVuVisibility(module, sidBytes, opts) {
         let audible = false;
         for (const addr of controls) {
             const ctrl = api.rd(addr);
-            // bit 0 GATE, bit 3 TEST, bits 4-7 the waveform select.
-            if ((ctrl & 0x01) && !(ctrl & 0x08) && (ctrl & 0xF0)) { audible = true; break; }
+            if ((ctrl & CTRL_GATE) && !(ctrl & CTRL_TEST) && (ctrl & CTRL_WAVEFORMS)) { audible = true; break; }
         }
         if (audible) { stillLeading = false; continue; }
         quiet++;
@@ -317,7 +327,8 @@ export function soundsDuring(module, sidBytes, subtune, seconds) {
     }
 }
 
-// Back-compat: just the order-consistency check.
+// Just the order-consistency check. Dead: nothing calls it; analyzeShadow
+// makes the same check as part of the full analysis.
 export function detectWriteOrder(module, sidBytes, opts) {
     const api = makeAnalyserApi(module);
     const ord = dominantOrder(loadAndRun(module, api, sidBytes, opts) || []);

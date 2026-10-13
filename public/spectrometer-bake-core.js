@@ -37,6 +37,7 @@
 import * as bake from './spectrometer-bake.js';
 import { findStateLoop, PREPASS_VERSION } from './loop-prepass.js';
 import { LOOP_DETECT_VERSION } from './loop-detect.js';
+import { PAL_FRAME_HZ, NTSC_FRAME_HZ } from './analyser-session.js';
 
 // The versions of the loop detection and the register pre-pass a scan result
 // came from; ui.js keys stored results (analysis-store.js) on it.
@@ -60,25 +61,28 @@ export function abortError() {
 const HEADER_TEXT_FROM = 0x16;
 const HEADER_TEXT_TO = 0x76;   // exclusive
 
+const FNV_OFFSET = 0x811c9dc5;
+const FNV_PRIME = 0x01000193;
+
 // Cheap FNV-1a content hash so a fresh Uint8Array of the same tune still hits.
 // The title/author/release strings are skipped: the bytes come from
-// createModifiedSID(), so hashing them meant typing in the title threw away a
-// finished render and started the whole thing again. Everything else in the
+// createModifiedSID(), so hashing them would throw away a finished render
+// every time the title is edited. Everything else in the
 // header - load/init/play addresses, song count, speed flags, the v2 chip
 // fields - does change the audio, so it stays in.
 export function tuneKey(bytes, subtune, sampleRate, maxSeconds, minLoopSeconds, engine) {
-    let h = 0x811c9dc5;
+    let h = FNV_OFFSET;
     for (let i = 0; i < bytes.length; i++) {
         if (i >= HEADER_TEXT_FROM && i < HEADER_TEXT_TO) continue;
-        h ^= bytes[i]; h = Math.imul(h, 0x01000193);
+        h ^= bytes[i]; h = Math.imul(h, FNV_PRIME);
     }
     // minLoopSeconds (x10 -> integer) is part of the key: it changes the render's
     // loop early-exit point, so a different threshold must re-render, not reuse.
     // The engine is in the key because the two SID cores render different audio.
     for (const e of [subtune, sampleRate, maxSeconds, bytes.length, Math.round((minLoopSeconds || 2) * 10)]) {
-        h ^= (e | 0); h = Math.imul(h, 0x01000193);
+        h ^= (e | 0); h = Math.imul(h, FNV_PRIME);
     }
-    for (let i = 0; i < engine.length; i++) { h ^= engine.charCodeAt(i); h = Math.imul(h, 0x01000193); }
+    for (let i = 0; i < engine.length; i++) { h ^= engine.charCodeAt(i); h = Math.imul(h, FNV_PRIME); }
     return (h >>> 0).toString(16);
 }
 
@@ -115,6 +119,8 @@ export function loopConfirmSeconds(loopStartSeconds, period, firstSeen) {
     return Math.max(cycles, persist);
 }
 
+const INT16_SCALE = 32768;
+
 // Shortest render we'll accept before calling an engine's attempt at a tune a
 // failure. The silence stop needs 10 s of quiet on top of whatever played, so a
 // render that ends this early made essentially no music at all.
@@ -144,22 +150,21 @@ async function renderAndAnalyze(sidBytes, loadEngine, options = {}) {
 
     api.init(sampleRate);
     // Fast sampling (method 0): the bake only reads a 40-bar spectrum up to at
-    // most 12 kHz (FIT_MAX), so audio fidelity is irrelevant here. (No-op on an engine that ignores it.)
+    // most 12 kHz (FIT_MAX), so audio fidelity is irrelevant here.
     try { if (api.setSampling) api.setSampling(0); } catch (e) { /* best-effort */ }
     const sidPtr = module._malloc(sidBytes.length);
     module.HEAPU8.set(sidBytes, sidPtr);
     const loaded = api.load(sidPtr, sidBytes.length);
     if (module._free) module._free(sidPtr);
     if (loaded < 0) throw new Error(`spectrometer bake: audio_load_sid failed (${loaded})`);
-    // Always select: `subtune` is a 0-based index, and skipping the call for 0
-    // left the engine on the file's own start song, so song 1 of a tune that
-    // starts on song 3 was rendered as song 3.
+    // Always select, subtune 0 (song 1) included: without the call the engine
+    // stays on the file's own start song.
     api.setSubtune(subtune || 0);
     // PAL vs NTSC decides the raster grid the bars are baked on (the C64 replays
     // one keyframe per 2 raster frames): PAL 50.1245 Hz, NTSC 59.826 Hz - not a
     // round 50, or the bars drift ~0.2 s per loop.
     const isNtsc = api.isNtsc() ? 1 : 0;
-    const frameHz = isNtsc ? 59.826 : 50.1245;
+    const frameHz = isNtsc ? NTSC_FRAME_HZ : PAL_FRAME_HZ;
 
     const session = bake.createBakeSession(sampleRate, { numBars, maxHeight, frameHz, maxSeconds, minLoopSeconds });
 
@@ -181,7 +186,7 @@ async function renderAndAnalyze(sidBytes, loadEngine, options = {}) {
         });
         if (pre) hint = { intro: pre.introFrames, period: pre.periodFrames };
     } catch (e) {
-        hint = null;          // the analyser could not drive this tune; search the audio as before
+        hint = null;          // the analyser could not drive this tune; search the audio alone
     }
     if (hint) {
         onProgress('Possible loop found — checking it holds', 0,
@@ -219,13 +224,11 @@ async function renderAndAnalyze(sidBytes, loadEngine, options = {}) {
     const SILENCE_LEVEL = 0.004;                // |sample| under this ~= silence (~-48 dB)
     const SILENCE_STOP = Math.floor(sampleRate * 10);
     // A tune that has not made a sound YET is a different case from one that has
-    // stopped, and it used to be handled by not handling it: the stop below was
-    // gated on sawSignal, so a render that was silent from the first sample never
-    // ended early, never qualified as a dead render, and never triggered the
-    // libsidplayfp rescue. It burned the whole scan budget and then reported a
-    // length of zero. Give it its own, more patient threshold - a tune really can
-    // open with a long quiet passage, and if we cut one short the rescue re-scans
-    // it on the accurate engine anyway.
+    // stopped. Without a stop of its own, a render silent from the first sample
+    // would burn the whole scan budget, never count as a dead render, and never
+    // reach the libsidplayfp rescue. Its threshold is more patient - a tune really
+    // can open with a long quiet passage, and if one is cut short the rescue
+    // re-scans it on the accurate engine anyway.
     const NEVER_SOUNDED_STOP = SILENCE_STOP * 2;
     let rendered = 0, sinceYield = 0, sinceCheck = 0, foundLoop = false;
     let silentRun = 0, sawSignal = false, stoppedOnSilence = false;
@@ -245,7 +248,7 @@ async function renderAndAnalyze(sidBytes, loadEngine, options = {}) {
             }
             let peak = 0;
             for (let i = 0; i < got; i++) {
-                const s = view[i] / 32768;
+                const s = view[i] / INT16_SCALE;
                 chunk[i] = s;
                 const a = s < 0 ? -s : s;
                 if (a > peak) peak = a;
@@ -256,8 +259,8 @@ async function renderAndAnalyze(sidBytes, loadEngine, options = {}) {
             // rather than where it has got to: 'maybe' for a candidate loop still
             // being checked, 'found' for something settled. The UI keeps those on
             // their own line instead of letting them flash through the counter.
-            // Long-silence early exit (only after the tune has actually made sound).
-            // While a state loop is pending, silence shorter than its period is
+            //
+            // Long-silence early exit. While a state loop is pending, silence shorter than its period is
             // part of the tune - a loop can hold a quiet tail before it comes
             // round - so only silence outlasting the period ends the render.
             // Bounded, so a player that idles through a long silent cycle after
@@ -394,8 +397,8 @@ export function createBakeCore(loadEngine) {
     // cache.rows : { key, numBars, engine, rows, frameHz, isNtsc, renderedSeconds, hitCap }
     // cache.bakes: Map geometryKey -> bake result, for the rows currently loaded
     //
-    // `slots` is a small LRU of finished renders, keyed by tune+geometry. A
-    // single slot meant A -> B -> A re-rendered A from scratch, which is the
+    // `slots` is a small LRU of finished renders, keyed by tune+geometry. With a
+    // single slot, A -> B -> A would re-render A from scratch, and that is the
     // most common thing anyone does while comparing two tunes. Rows are the
     // expensive part (~90% of a bake), so a handful of them is worth the memory:
     // a 12-minute tune at 50 Hz is about 13 MB (40 float bars plus two bytes per

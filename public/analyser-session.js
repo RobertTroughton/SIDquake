@@ -8,6 +8,9 @@
 
 const PAL_CYCLES_PER_FRAME = 19656;    // 312 lines * 63 cycles
 const NTSC_CYCLES_PER_FRAME = 17095;   // 263 lines * 65 cycles
+// Raster frame rates the bar grid and the scan windows are timed on.
+export const PAL_FRAME_HZ = 50.1245;
+export const NTSC_FRAME_HZ = 59.826;
 const MAX_CALLS_PER_FRAME = 16;
 // Init's cycle budget: sid_analyze's per-song ceiling, ~20 s of C64 time.
 // Julian_Jaymz/Slanted's init alone takes 2,040,135 cycles.

@@ -101,8 +101,8 @@ class SIDPlayer {
         this.els.prevBtn.addEventListener('click', () => this.prevSubtune());
         this.els.nextBtn.addEventListener('click', () => this.nextSubtune());
 
-        // Restore sampling quality (persisted; falls back to the old
-        // session-only key from before settings were persistent)
+        // Restore sampling quality (getSavedQuality also reads the legacy
+        // session-only key)
         const savedQuality = SIDPlayer.getSavedQuality();
         this.els.qualitySelect.value = savedQuality !== null ? savedQuality : '1';
 

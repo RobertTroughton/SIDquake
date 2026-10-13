@@ -46,6 +46,10 @@ function withDefaults(options) {
     return o;
 }
 
+// Entries per segment codebook: the index is one byte, and the codebook is stored
+// as one 256-byte page per bar.
+const CODEBOOK_ENTRIES = 256;
+
 const DEFAULTS = {
     numBars: 40,          // RaistlinBars NUM_FREQUENCY_BARS
     maxHeight: 111,       // RaistlinBars MAX_BAR_HEIGHT (0..111, one byte, no runtime scaling)
@@ -80,13 +84,11 @@ const DEFAULTS = {
 // actually hold at the chosen rate: the most segments whose index fits the RAM
 // budget next to the fixed codebook. A lower frame rate stores fewer keyframes,
 // so it buys back spectral detail - a two-minute loop that only fits 2x20 at
-// 50 fps gets the full 5x8 split at 25 fps. (The split used to be chosen from
-// the 50 fps count at every rate, so the memory readout was monotonic in fps;
-// that spent the bytes a lower rate saved on nothing. Now that the C64
-// interpolates between keyframes, 25 fps already animates smoothly, and the
-// detail is worth more than a monotonic readout.)
+// 50 fps gets the full 5x8 split at 25 fps. The memory readout is therefore not
+// monotonic in fps; since the C64 interpolates between keyframes, 25 fps already
+// animates smoothly, and the detail is worth more than a monotonic readout.
 function chooseSegments(o, keyframes) {
-    const codebookBytes = 256 * o.numBars;         // fixed regardless of segment count
+    const codebookBytes = CODEBOOK_ENTRIES * o.numBars;   // fixed regardless of segment count
     for (const cand of o.segmentChoices) {
         if (o.numBars % cand === 0 && codebookBytes + cand * keyframes <= o.budgetBytes) return cand;
     }
@@ -241,9 +243,8 @@ export function createBakeSession(sampleRate, options = {}) {
     const an = createFftAnalyzer(sampleRate, o.numBars, o.frameHz, o.fMin, o.fMax);
     let fedSamples = 0;
     // Scratch grid reused by every poll. It only ever grows, so after the first few
-    // polls a poll allocates nothing at all - previously each one threw away a
-    // Float64Array(frames*numBars) (9.6 MB at 10 minutes) plus a fresh byte grid,
-    // ~80 times over a full 20-minute scan.
+    // polls a poll allocates nothing at all, where a fresh grid per poll would be
+    // ~80 allocations of several MB over a full 20-minute scan.
     let pollGrid = null;
     return {
         feed(chunk) { an.feed(chunk); fedSamples += chunk.length; },
@@ -317,7 +318,7 @@ async function bakeFromStore(store, o, analyzedSeconds, hitCap, prog) {
     // each group with its OWN 256-entry codebook + own index. Because the segments
     // are quantized (and later replayed) independently, a slowly-drifting part of the
     // spectrum keeps getting fresh indices even while another part holds - so the
-    // whole column no longer freezes on one shared prototype the moment the nearest
+    // whole column does not freeze on one shared prototype the moment the nearest
     // full-column shape stops changing. Total codebook size is unchanged
     // (SEG * 256 * segW == 256 * numBars); the index costs SEG bytes per keyframe.
     //
@@ -331,10 +332,10 @@ async function bakeFromStore(store, o, analyzedSeconds, hitCap, prog) {
     // budget for this tune's length. Looped tunes store one short cycle so they always
     // land on the full 5-way split; a long non-looping tune drops to 4/2/1 segments so
     // it animates the whole way through instead of freezing at the cap.
-    const codebookBytes = 256 * o.numBars;         // fixed regardless of segment count
+    const codebookBytes = CODEBOOK_ENTRIES * o.numBars;   // unused here: chooseSegments works it out itself
     const SEG = chooseSegments(o, nk);
     const segW = o.numBars / SEG;
-    const SEGK = 256;                              // entries per segment (= one page per bar)
+    const SEGK = CODEBOOK_ENTRIES;                 // entries per segment (= one page per bar)
     const codebook = new Uint8Array(o.numBars * SEGK);   // numBars bar-pages of 256
     // PLANAR index: segment s owns the whole run [s*nk .. s*nk+nk-1], so its index
     // for keyframe k is at s*nk + k. Interleaving one record per keyframe put five
@@ -404,7 +405,7 @@ async function bakeFromStore(store, o, analyzedSeconds, hitCap, prog) {
 // Estimate the packed size of a bake at a chosen keyframe rate, without baking.
 // Drives the fps memory display (#4): the stored duration is fps-independent, so a
 // single analysis at any rate gives `durationSeconds`, and this reports what each
-// rate would cost. Mirrors bakeFromStore' segment-count choice so the figure
+// rate would cost. Mirrors bakeFromStore's segment-count choice so the figure
 // matches an actual export.
 //   durationSeconds  : stored length (intro+loop for a looped tune, else the
 //                      fade-capped length).
@@ -418,7 +419,7 @@ export function estimateBakeBytes(durationSeconds, options = {}) {
     const fpk = Math.max(1, Math.round(options.framesPerKeyframe || 2));
     const keyframeHz = o.frameHz / fpk;
     const keyframes = Math.max(1, Math.round(durationSeconds * keyframeHz));
-    const codebookBytes = 256 * o.numBars;             // fixed regardless of segment count
+    const codebookBytes = CODEBOOK_ENTRIES * o.numBars;   // fixed regardless of segment count
     const segments = chooseSegments(o, keyframes);
     const indexBytes = segments * keyframes;
     const bytes = codebookBytes + indexBytes;

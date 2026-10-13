@@ -27,7 +27,7 @@
 // handful of divisors at one known lag rather than every lag against the tail
 // (loop-detect.js, detectLoop's `hint`). A tune whose audio does not
 // repeat where its state does - a player reading a timer the analyser does not
-// model, say - fails that check and gets the full audio search as before.
+// model, say - fails that check and gets the full audio search.
 //
 // Nothing here is trusted on its own: a state loop that the audio does not
 // confirm is discarded, and a tune this cannot drive (an init that never
@@ -43,6 +43,12 @@ import { PLAY_CYCLE_CAP, makeAnalyserApi, startTune } from './analyser-session.j
 // analyser-session.js moves what findStateLoop answers;
 // scripts/test-analysis-version.js fails until it is bumped.
 export const PREPASS_VERSION = 1;
+
+const FNV_OFFSET = 0x811c9dc5;
+const FNV_PRIME = 0x01000193;
+const SID_REG_MASK = 0x1f;        // register within its chip's $20 slot
+const MODE_VOLUME_REG = 0x18;
+const MODE_BITS = 0xf0;           // filter mode and voice 3 off; the low nybble is volume
 
 // Load the tune into the analyser's RAM, run init for `subtune`, and fingerprint
 // `maxFrames` worth of play calls: one FNV-1a hash per call over the addresses
@@ -67,19 +73,19 @@ export function fingerprintTune(module, sidBytes, { subtune = 0, maxFrames, isNt
     for (; calls < maxCalls; calls++) {
         api.record(1);
         if (!play(PLAY_CYCLE_CAP)) return null;
-        let x = 0x811c9dc5;
+        let x = FNV_OFFSET;
         const len = api.seqLen();
         for (let i = 0; i < len; i++) {
             const addr = api.seqItem(i);
-            x ^= addr; x = Math.imul(x, 0x01000193);
+            x ^= addr; x = Math.imul(x, FNV_PRIME);
             // The master volume nibble is left out: a player that fades at the
             // end of its loop tends to carry the fade counter into the next
             // pass, so $D418 comes round one step different every time and the
             // state never repeats at all (Blue_Earth_Turned_into_Grey, Elysoun)
             // although the music does. A level that genuinely differs between
             // passes still fails the audio check, which is what decides.
-            const mask = (addr & 0x1f) === 0x18 ? 0xf0 : 0xff;
-            x ^= api.rd(addr) & mask; x = Math.imul(x, 0x01000193);
+            const mask = (addr & SID_REG_MASK) === MODE_VOLUME_REG ? MODE_BITS : 0xff;
+            x ^= api.rd(addr) & mask; x = Math.imul(x, FNV_PRIME);
         }
         hashes[calls] = x >>> 0;
     }

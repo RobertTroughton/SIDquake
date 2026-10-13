@@ -168,19 +168,20 @@ class SIDAnalyzer {
                 throw new Error(errors[result] || `Unknown error: ${result}`);
             }
 
+            const S = SIDAnalyzer.HEADER_STRING, V = SIDAnalyzer.HEADER_VALUE;
             return {
-                name: this._readLatin1(this.api.sid_get_header_string(0)),
-                author: this._readLatin1(this.api.sid_get_header_string(1)),
-                copyright: this._readLatin1(this.api.sid_get_header_string(2)),
-                format: this._readLatin1(this.api.sid_get_header_string(3)),
-                version: this.api.sid_get_header_value(0),
-                loadAddress: this.api.sid_get_header_value(1),
-                initAddress: this.api.sid_get_header_value(2),
-                playAddress: this.api.sid_get_header_value(3),
-                songs: this.api.sid_get_header_value(4),
-                startSong: this.api.sid_get_header_value(5),
-                flags: this.api.sid_get_header_value(6),
-                fileSize: this.api.sid_get_header_value(7),
+                name: this._readLatin1(this.api.sid_get_header_string(S.NAME)),
+                author: this._readLatin1(this.api.sid_get_header_string(S.AUTHOR)),
+                copyright: this._readLatin1(this.api.sid_get_header_string(S.COPYRIGHT)),
+                format: this._readLatin1(this.api.sid_get_header_string(S.FORMAT)),
+                version: this.api.sid_get_header_value(V.VERSION),
+                loadAddress: this.api.sid_get_header_value(V.LOAD_ADDRESS),
+                initAddress: this.api.sid_get_header_value(V.INIT_ADDRESS),
+                playAddress: this.api.sid_get_header_value(V.PLAY_ADDRESS),
+                songs: this.api.sid_get_header_value(V.SONGS),
+                startSong: this.api.sid_get_header_value(V.START_SONG),
+                flags: this.api.sid_get_header_value(V.FLAGS),
+                fileSize: this.api.sid_get_header_value(V.FILE_SIZE),
                 clockType: this.api.sid_get_clock_type(),
                 sidModel: this.api.sid_get_sid_model()
             };
@@ -210,11 +211,10 @@ class SIDAnalyzer {
         let callbackPtr = 0;
 
         // sid_analyze is one synchronous WASM call: it holds the main thread for
-        // its whole run, so nothing here can report progress while it works and
-        // a Cancel button would be unclickable. This used to tick a setInterval
-        // that the browser could not deliver until the call had already
-        // finished, so the readout sat at 0% and then jumped. Report the start
-        // and the finish, and let the caller say what is happening in between.
+        // its whole run, so nothing here can report progress while it works
+        // (a timer would not fire until the call had finished) and a Cancel
+        // button would be unclickable. Report the start and the finish, and let
+        // the caller say what is happening in between.
         if (progressCallback) progressCallback(0, frameCount);
         try {
             const result = this.api.sid_analyze(frameCount, callbackPtr);
@@ -236,7 +236,7 @@ class SIDAnalyzer {
             }
 
             const sidWrites = new Map();
-            for (let reg = 0; reg < 0x20; reg++) {
+            for (let reg = 0; reg < SIDAnalyzer.REGS_PER_SID_SLOT; reg++) {
                 const count = this.api.sid_get_sid_writes(reg);
                 if (count > 0) {
                     sidWrites.set(reg, count);
@@ -250,7 +250,7 @@ class SIDAnalyzer {
             const numCallsPerFrame = this.api.sid_get_num_calls_per_frame();
             // Each subtune's own rate (index 0 = song 1): the exporter bakes one
             // subtune, and its speed bit and timer can differ from the start song's.
-            const songs = Math.min(256, Math.max(1, this.api.sid_get_header_value(4)));
+            const songs = Math.min(256, Math.max(1, this.api.sid_get_header_value(SIDAnalyzer.HEADER_VALUE.SONGS)));
             const callsPerFrameBySong = [];
             for (let i = 0; i < songs; i++) callsPerFrameBySong.push(this.api.sid_get_song_calls_per_frame(i));
             const ciaTimerDetected = this.api.sid_get_cia_timer_detected() ? true : false;
@@ -305,14 +305,15 @@ class SIDAnalyzer {
             return false;
         }
 
+        const S = SIDAnalyzer.HEADER_STRING;
         const fields = {
-            'name': 0,
-            'author': 1,
-            'copyright': 2
+            'name': S.NAME,
+            'author': S.AUTHOR,
+            'copyright': S.COPYRIGHT
         };
 
         if (field in fields) {
-            const ptr = this._writeLatin1(value.substring(0, 31));
+            const ptr = this._writeLatin1(value.substring(0, SIDAnalyzer.HEADER_STRING_MAX));
             try {
                 this.api.sid_set_header_string(fields[field], ptr);
             } finally {
@@ -375,5 +376,17 @@ class SIDAnalyzer {
         }
     }
 }
+
+// Field indices for sid_get_header_string / sid_get_header_value
+// (sid_processor.cpp).
+SIDAnalyzer.HEADER_STRING = Object.freeze({ NAME: 0, AUTHOR: 1, COPYRIGHT: 2, FORMAT: 3 });
+SIDAnalyzer.HEADER_VALUE = Object.freeze({
+    VERSION: 0, LOAD_ADDRESS: 1, INIT_ADDRESS: 2, PLAY_ADDRESS: 3,
+    SONGS: 4, START_SONG: 5, FLAGS: 6, FILE_SIZE: 7,
+});
+// A header string is 32 bytes: 31 characters and a NUL.
+SIDAnalyzer.HEADER_STRING_MAX = 31;
+// Write counters per register, one $20 slot of SID address space.
+SIDAnalyzer.REGS_PER_SID_SLOT = 0x20;
 
 window.SIDAnalyzer = SIDAnalyzer;

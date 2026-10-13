@@ -77,16 +77,16 @@ class FreshFloatingNotes {
         ];
         const anim = animations[Math.floor(Math.random() * animations.length)];
 
-        note.style.animation = anim + ' 7s ease-in-out forwards';
+        note.style.animation = `${anim} ${FreshFloatingNotes.NOTE_SECONDS}s ease-in-out forwards`;
 
         this.container.appendChild(note);
 
-        // Remove a little after the 7s animation completes to avoid DOM buildup.
+        // Remove a second after the animation completes to avoid DOM buildup.
         setTimeout(() => {
             if (note.parentNode) {
                 note.parentNode.removeChild(note);
             }
-        }, 8000);
+        }, (FreshFloatingNotes.NOTE_SECONDS + 1) * 1000);
 
         return note;
     }
@@ -144,6 +144,8 @@ class FreshFloatingNotes {
         }
     }
 }
+
+FreshFloatingNotes.NOTE_SECONDS = 7;   // one note's drift animation
 
 // Initialise when the browser is idle so the decorative effect never delays
 // first paint or audio bring-up. This script is loaded dynamically after DOMContentLoaded.

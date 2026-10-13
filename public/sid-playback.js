@@ -26,7 +26,9 @@ class SIDPlayback {
         // audio thread. The worklet reports its fill level with each request
         // and we top up to the high-water mark, at most a few chunks per
         // task so the UI stays responsive even at high fast-forward speeds.
-        this.bufferLowWater = 16384;    // samples (~0.37s @ 44.1kHz): worklet asks below this
+        // Not read: the worklet holds the threshold it asks below
+        // (LOW_WATER_SAMPLES in sid-worklet-processor.js); this mirrors it.
+        this.bufferLowWater = 16384;    // samples (~0.37s @ 44.1kHz)
         this.bufferHighWater = 32768;   // samples (~0.74s): fill target
         this._fillPending = false;
         this._workletBuffered = 0;
@@ -136,7 +138,6 @@ class SIDPlayback {
             if (navigator.audioSession) navigator.audioSession.type = 'playback';
         } catch (e) { /* ok */ }
 
-        // Create audio context
         const AC = window.AudioContext || window.webkitAudioContext;
         this.audioCtx = new AC();
 
@@ -146,13 +147,11 @@ class SIDPlayback {
             if (this._onAudioState) this._onAudioState(this.audioCtx.state);
         });
 
-        // Init the WASM audio engine with the browser's sample rate
         this.api.audio_init(this.audioCtx.sampleRate);
 
-        // Allocate a persistent WASM buffer for audio samples (int16)
+        // A persistent WASM buffer the engine renders int16 samples into.
         this.wasmBufferPtr = this.module._malloc(this.bufferSize * 2);
 
-        // Register AudioWorklet processor and create node
         await this.audioCtx.audioWorklet.addModule('sid-worklet-processor.js');
         this.workletNode = new AudioWorkletNode(this.audioCtx, 'sid-worklet-processor');
 
@@ -171,7 +170,6 @@ class SIDPlayback {
             }
         };
 
-        // Gain node for volume control
         this.gainNode = this.audioCtx.createGain();
         this.gainNode.gain.value = this.volume;
         this.workletNode.connect(this.gainNode);
@@ -240,7 +238,7 @@ class SIDPlayback {
         const ab = this._bufferPool.pop() || new ArrayBuffer(this.bufferSize * 4);
         const floatSamples = new Float32Array(ab, 0, generated);
         for (let i = 0; i < generated; i++) {
-            floatSamples[i] = int16View[i] / 32768.0;
+            floatSamples[i] = int16View[i] / SIDPlayback.INT16_SCALE;
         }
 
         this._postedChunks.push({ samples: generated, speed: this.speed || 1 });
@@ -309,11 +307,9 @@ class SIDPlayback {
 
         const data = new Uint8Array(arrayBuffer);
 
-        // Allocate WASM memory and copy SID file data
         const ptr = this.module._malloc(data.length);
         this.module.HEAPU8.set(data, ptr);
 
-        // Load the SID file
         const result = this.api.audio_load_sid(ptr, data.length);
         this.module._free(ptr);
 
@@ -321,10 +317,8 @@ class SIDPlayback {
             throw new Error(`Failed to load SID file (error ${result})`);
         }
 
-        // Parse addresses from SID header (big-endian)
         this._parseSIDHeader(data);
 
-        // Cache metadata
         this._title = this._readLatin1(this.api.audio_get_title());
         this._author = this._readLatin1(this.api.audio_get_author());
         this._copyright = this._readLatin1(this.api.audio_get_copyright());
@@ -415,11 +409,11 @@ class SIDPlayback {
             this.workletNode.port.postMessage({ type: 'start' });
         }
 
-        // Fade in from silence to mask any transition click (~85ms)
+        // Fade in from silence to mask any transition click.
         const now = this.audioCtx.currentTime;
         this.gainNode.gain.cancelScheduledValues(now);
         this.gainNode.gain.setValueAtTime(0, now);
-        this.gainNode.gain.linearRampToValueAtTime(this.volume, now + 0.085);
+        this.gainNode.gain.linearRampToValueAtTime(this.volume, now + SIDPlayback.FADE_IN_SECONDS);
 
         // Route through the analyser so it's on the path to the destination and
         // therefore actually fed samples (a dead-end analyser reads silence in
@@ -537,13 +531,14 @@ class SIDPlayback {
     }
 
     _parseSIDHeader(data) {
+        const H = SIDPlayback.PSID;
         this._headerModel = 6581;
-        if (data.length < 0x76) return;
-        const be16 = (hi, lo) => (data[hi] << 8) | data[lo];
-        const dataOffset = be16(0x06, 0x07);
-        let loadAddr = be16(0x08, 0x09);
-        this._initAddress = be16(0x0A, 0x0B);
-        this._playAddress = be16(0x0C, 0x0D);
+        if (data.length < H.V1_HEADER_SIZE) return;
+        const be16 = (o) => (data[o] << 8) | data[o + 1];
+        const dataOffset = be16(H.DATA_OFFSET);
+        let loadAddr = be16(H.LOAD);
+        this._initAddress = be16(H.INIT);
+        this._playAddress = be16(H.PLAY);
         const musicData = data.subarray(dataOffset);
         let musicLen = data.length - dataOffset;
         if (loadAddr === 0 && musicLen >= 2) {
@@ -557,10 +552,10 @@ class SIDPlayback {
         // v2+ flags word: bits 4-5 are the first chip's model (00 unknown,
         // 01 6581, 10 8580, 11 either). Same mapping the engines use - only an
         // explicit 8580 is one; unknown and "either" play as a 6581.
-        const version = be16(0x04, 0x05);
-        if (version >= 2 && data.length >= 0x78) {
-            const flags = be16(0x76, 0x77);
-            if (((flags >> 4) & 3) === 2) this._headerModel = 8580;
+        const version = be16(H.VERSION);
+        if (version >= 2 && data.length >= H.FLAGS + 2) {
+            const flags = be16(H.FLAGS);
+            if (((flags >> H.MODEL_SHIFT) & H.MODEL_MASK) === H.MODEL_8580) this._headerModel = 8580;
         }
     }
 
@@ -616,6 +611,17 @@ class SIDPlayback {
 }
 
 SIDPlayback.FADE_OUT_SECONDS = 0.015;
+SIDPlayback.FADE_IN_SECONDS = 0.085;
+SIDPlayback.INT16_SCALE = 32768;
+
+// PSID/RSID header field offsets (big-endian words) and the first chip's
+// model field in the v2+ flags word. Class statics, not top-level consts: this is
+// a classic script, and those would share the page's global scope.
+SIDPlayback.PSID = Object.freeze({
+    VERSION: 0x04, DATA_OFFSET: 0x06, LOAD: 0x08, INIT: 0x0A, PLAY: 0x0C,
+    FLAGS: 0x76, V1_HEADER_SIZE: 0x76,
+    MODEL_SHIFT: 4, MODEL_MASK: 3, MODEL_8580: 2,
+});
 
 // Shared singleton: only one AudioContext / SID engine in the page.
 var _sharedSIDPlayback = null;
