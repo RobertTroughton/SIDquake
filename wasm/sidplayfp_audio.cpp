@@ -7,8 +7,7 @@
 // code and the nonlinear 6581 filter work correctly.
 //
 // Built as a SEPARATE wasm module (public/sidplayfp.wasm) - see
-// scripts/build-sidplayfp-wasm.sh and 0-build.bat. The export/analysis engine
-// (sid_processor.cpp + cpu6510_wasm.cpp) is untouched.
+// scripts/build-sidplayfp-wasm.sh and 0-build.bat.
 
 #include <emscripten/emscripten.h>
 #include <cstdint>
@@ -27,13 +26,25 @@
 
 namespace {
 
+constexpr double DEFAULT_SAMPLE_RATE = 48000.0;
+constexpr int    MAX_SPEED = 32;
+
+// audio_set_sampling_method's values.
+enum SamplingMethod { SAMPLING_FAST = 0, SAMPLING_INTERPOLATE = 1, SAMPLING_RESAMPLE = 2 };
+
+// A v2+ PSID header: the shortest file audio_load_sid accepts.
+constexpr int PSID_V2_HEADER_SIZE = 0x7C;
+
+// A fixed C64 power-on delay, at most MAX_POWER_ON_DELAY. See applyConfig.
+constexpr uint_least16_t POWER_ON_DELAY = 0x1000;
+
 struct EngineState {
     sidplayfp*      engine   = nullptr;
     ReSIDfpBuilder* builder  = nullptr;
     SidTune*        tune     = nullptr;
 
-    double sampleRate     = 48000.0;
-    int    samplingMethod = 1;      // 0=fast, 1=interpolate, 2=resample
+    double sampleRate     = DEFAULT_SAMPLE_RATE;
+    int    samplingMethod = SAMPLING_INTERPOLATE;
     int    forcedModel    = 0;      // 0 = follow tune header, else 6581/8580
     int    speed          = 1;      // fast-forward multiplier (1 = realtime)
     bool   loaded         = false;
@@ -72,9 +83,9 @@ bool applyConfig() {
     cfg.sidEmulation = S.builder;
 
     switch (S.samplingMethod) {
-        case 2:  cfg.samplingMethod = SidConfig::RESAMPLE_INTERPOLATE; cfg.fastSampling = false; break;
-        case 0:  cfg.samplingMethod = SidConfig::INTERPOLATE;          cfg.fastSampling = true;  break;
-        default: cfg.samplingMethod = SidConfig::INTERPOLATE;          cfg.fastSampling = false; break;
+        case SAMPLING_RESAMPLE: cfg.samplingMethod = SidConfig::RESAMPLE_INTERPOLATE; cfg.fastSampling = false; break;
+        case SAMPLING_FAST:     cfg.samplingMethod = SidConfig::INTERPOLATE;          cfg.fastSampling = true;  break;
+        default:                cfg.samplingMethod = SidConfig::INTERPOLATE;          cfg.fastSampling = false; break;
     }
 
     if (S.forcedModel == 6581) {
@@ -92,13 +103,13 @@ bool applyConfig() {
 
     // Deterministic renders. libsidplayfp defaults powerOnDelay to
     // DEFAULT_POWER_ON_DELAY (> MAX_POWER_ON_DELAY), which makes player.cpp
-    // randomise it from an RNG seeded with wall-clock time - so every render
-    // starts the C64 at a different phase and the FFT bake (and realtime
-    // playback) comes out slightly different each time. VQ then amplifies that
-    // into a wholly different codebook, so exports were never reproducible.
-    // Pin it to a fixed, representative value (<= MAX_POWER_ON_DELAY skips the
-    // random branch); the engine still adds its ~8000-cycle settling base.
-    cfg.powerOnDelay = 0x1000;
+    // randomise it from an RNG seeded with wall-clock time, so every render
+    // would start the C64 at a different phase and the FFT bake (and realtime
+    // playback) come out slightly different each time; VQ amplifies that into
+    // a wholly different codebook. A fixed value at most MAX_POWER_ON_DELAY
+    // skips the random branch; the engine still adds its ~8000-cycle settling
+    // base.
+    cfg.powerOnDelay = POWER_ON_DELAY;
 
     try {
         return S.engine->config(cfg);
@@ -174,7 +185,7 @@ extern "C" {
 
 EMSCRIPTEN_KEEPALIVE
 void audio_init(double sampleRate) {
-    S.sampleRate = sampleRate > 0 ? sampleRate : 48000.0;
+    S.sampleRate = sampleRate > 0 ? sampleRate : DEFAULT_SAMPLE_RATE;
 
     if (!S.engine && !newEngine()) return;
 
@@ -187,7 +198,7 @@ void audio_init(double sampleRate) {
 EMSCRIPTEN_KEEPALIVE
 int audio_load_sid(const uint8_t* data, int length) {
     if (!S.engine) return -3;
-    if (length < 0x7C) return -1;
+    if (length < PSID_V2_HEADER_SIZE) return -1;
     if (memcmp(data, "PSID", 4) != 0 && memcmp(data, "RSID", 4) != 0) return -2;
 
     S.loaded = false;
@@ -287,7 +298,7 @@ void audio_set_model(int model) {
 EMSCRIPTEN_KEEPALIVE
 void audio_set_speed(int multiplier) {
     if (multiplier < 1) multiplier = 1;
-    if (multiplier > 32) multiplier = 32;
+    if (multiplier > MAX_SPEED) multiplier = MAX_SPEED;
     S.speed = multiplier;
     applySpeed();
 }

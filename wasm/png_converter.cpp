@@ -9,10 +9,32 @@
 #include <map>
 #include <algorithm>
 
-// C64 Palette Structure
+static const int PALETTE_SIZE = 16;
+
+// The bitmap screen: 320x200 pixels in 40x25 cells of 8x8.
+static const int SCREEN_WIDTH  = 320;
+static const int SCREEN_HEIGHT = 200;
+static const int CELL_COLUMNS  = 40;
+static const int CELL_ROWS     = 25;
+static const int BITMAP_BYTES  = CELL_COLUMNS * CELL_ROWS * 8;
+static const int CELL_COUNT    = CELL_COLUMNS * CELL_ROWS;   // screen and color RAM bytes
+
+// Colors one 8x8 cell can hold: background, two screen RAM nibbles and color
+// RAM in multicolor; the two screen RAM nibbles in hires.
+static const size_t MC_COLORS_PER_CELL    = 4;
+static const size_t HIRES_COLORS_PER_CELL = 2;
+
+// A VICE screenshot is 384x272, the display area at (32, 35) inside the border.
+static const int VICE_SCREENSHOT_WIDTH  = 384;
+static const int VICE_SCREENSHOT_HEIGHT = 272;
+static const int VICE_DISPLAY_LEFT      = 32;
+static const int VICE_DISPLAY_TOP       = 35;
+
+static const uint16_t BITMAP_LOAD_ADDRESS = 0x6000;
+
 struct C64Palette {
     const char* name;
-    uint32_t colors[16]; // RGB values as 0xRRGGBB
+    uint32_t colors[PALETTE_SIZE]; // RGB values as 0xRRGGBB
 };
 
 // Available C64 palettes. Index 0 is the default for distance matching.
@@ -138,7 +160,6 @@ static const C64Palette AVAILABLE_PALETTES[] = {
 static const size_t NUM_PALETTES = sizeof(AVAILABLE_PALETTES) / sizeof(AVAILABLE_PALETTES[0]);
 static const C64Palette* CURRENT_PALETTE = &AVAILABLE_PALETTES[0];
 
-// Helper function to extract RGB components
 inline void getRGB(uint32_t color, uint8_t& r, uint8_t& g, uint8_t& b) {
     r = (color >> 16) & 0xFF;
     g = (color >> 8) & 0xFF;
@@ -158,7 +179,7 @@ private:
     // Color matching statistics
     int exactMatches;
     int distanceMatches;
-    std::map<uint8_t, int> colorUsage;
+    std::map<uint8_t, int> colorUsage;   // unused: findBestBackgroundColor counts into a local of the same name
 
     // Calculate color distance using Euclidean distance in RGB space
     double colorDistance(uint8_t r1, uint8_t g1, uint8_t b1, uint8_t r2, uint8_t g2, uint8_t b2) {
@@ -175,7 +196,7 @@ private:
     uint8_t findClosestC64Color(uint8_t r, uint8_t g, uint8_t b) {
         for (size_t paletteIdx = 0; paletteIdx < NUM_PALETTES; paletteIdx++) {
             const C64Palette& palette = AVAILABLE_PALETTES[paletteIdx];
-            for (int colorIdx = 0; colorIdx < 16; colorIdx++) {
+            for (int colorIdx = 0; colorIdx < PALETTE_SIZE; colorIdx++) {
                 uint8_t pr, pg, pb;
                 getRGB(palette.colors[colorIdx], pr, pg, pb);
                 if (pr == r && pg == g && pb == b) {
@@ -190,7 +211,7 @@ private:
         getRGB(CURRENT_PALETTE->colors[0], cr, cg, cb);
         double minDistance = colorDistance(r, g, b, cr, cg, cb);
 
-        for (int i = 1; i < 16; i++) {
+        for (int i = 1; i < PALETTE_SIZE; i++) {
             getRGB(CURRENT_PALETTE->colors[i], cr, cg, cb);
             double distance = colorDistance(r, g, b, cr, cg, cb);
             if (distance < minDistance) {
@@ -203,7 +224,6 @@ private:
         return closest;
     }
 
-    // Get pixel color index from image data
     uint8_t getPixelColor(int x, int y) {
         if (x >= width || y >= height) return 0;
 
@@ -235,8 +255,7 @@ private:
             }
         }
 
-        // C64 multicolor mode allows max 4 colors per 8x8 char
-        return colors.size() <= 4;
+        return colors.size() <= MC_COLORS_PER_CELL;
     }
 
     // Pick the most-used color that can serve as the global background while
@@ -244,8 +263,8 @@ private:
     uint8_t findBestBackgroundColor() {
         std::map<uint8_t, int> colorUsage;
 
-        for (int charY = 0; charY < 25; charY++) {
-            for (int charX = 0; charX < 40; charX++) {
+        for (int charY = 0; charY < CELL_ROWS; charY++) {
+            for (int charX = 0; charX < CELL_COLUMNS; charX++) {
                 std::set<uint8_t> cellColors;
                 if (!analyzeCharCell(charX, charY, cellColors)) {
                     continue;
@@ -264,8 +283,8 @@ private:
             bool canUseAsBg = true;
             int score = candidate.second;
 
-            for (int charY = 0; charY < 25 && canUseAsBg; charY++) {
-                for (int charX = 0; charX < 40 && canUseAsBg; charX++) {
+            for (int charY = 0; charY < CELL_ROWS && canUseAsBg; charY++) {
+                for (int charX = 0; charX < CELL_COLUMNS && canUseAsBg; charX++) {
                     std::set<uint8_t> cellColors;
                     if (!analyzeCharCell(charX, charY, cellColors)) {
                         canUseAsBg = false;
@@ -275,13 +294,13 @@ private:
                     // Cells without the background color get only 3 free slots;
                     // cells that do use it get the full 4-colors-per-cell budget.
                     if (cellColors.find(bgColor) == cellColors.end()) {
-                        if (cellColors.size() > 3) {
+                        if (cellColors.size() > MC_COLORS_PER_CELL - 1) {
                             canUseAsBg = false;
                             break;
                         }
                     }
                     else {
-                        if (cellColors.size() > 4) {
+                        if (cellColors.size() > MC_COLORS_PER_CELL) {
                             canUseAsBg = false;
                             break;
                         }
@@ -314,15 +333,15 @@ private:
 
         std::vector<uint8_t> colors(cellColors.begin(), cellColors.end());
 
-        if (colors.size() > 3) {
-            colors.resize(3);
+        if (colors.size() > MC_COLORS_PER_CELL - 1) {
+            colors.resize(MC_COLORS_PER_CELL - 1);
         }
 
-        while (colors.size() < 3) {
+        while (colors.size() < MC_COLORS_PER_CELL - 1) {
             colors.push_back(bgColor);
         }
 
-        int screenIndex = charY * 40 + charX;
+        int screenIndex = charY * CELL_COLUMNS + charX;
         scrData[screenIndex] = (colors[0] << 4) | colors[1];
         colData[screenIndex] = colors[2];
 
@@ -352,7 +371,7 @@ private:
                 bitmapByte |= (colorIndex << (6 - x));
             }
 
-            int bitmapIndex = (charY * 40 + charX) * 8 + y;
+            int bitmapIndex = (charY * CELL_COLUMNS + charX) * 8 + y;
             mapData[bitmapIndex] = bitmapByte;
         }
     }
@@ -366,7 +385,7 @@ private:
         colors.clear();
 
         for (int y = 0; y < 8; y++) {
-            for (int x = 0; x < 8; x++) { // Step by 1 for hires single pixels
+            for (int x = 0; x < 8; x++) {
                 int pixelX = charX * 8 + x;
                 int pixelY = charY * 8 + y;
                 uint8_t color = getPixelColor(pixelX, pixelY);
@@ -374,14 +393,13 @@ private:
             }
         }
 
-        // C64 hires mode allows max 2 colors per 8x8 char
-        return colors.size() <= 2;
+        return colors.size() <= HIRES_COLORS_PER_CELL;
     }
 
-    // Test if all character cells are valid for hires mode
+    // Whether every cell fits hires mode.
     bool testConversionHires() {
-        for (int charY = 0; charY < 25; charY++) {
-            for (int charX = 0; charX < 40; charX++) {
+        for (int charY = 0; charY < CELL_ROWS; charY++) {
+            for (int charX = 0; charX < CELL_COLUMNS; charX++) {
                 std::set<uint8_t> cellColors;
                 if (!analyzeCharCellHires(charX, charY, cellColors)) {
                     return false;
@@ -396,16 +414,15 @@ private:
         std::set<uint8_t> cellColors;
         analyzeCharCellHires(charX, charY, cellColors);
 
-        // Convert set to vector for indexing
         std::vector<uint8_t> colors(cellColors.begin(), cellColors.end());
 
-        while (colors.size() < 2) {
+        while (colors.size() < HIRES_COLORS_PER_CELL) {
             colors.push_back(0);
         }
 
         // Hires screen RAM byte: (foreground << 4) | background — bit=1 selects
         // foreground, bit=0 selects background. Color RAM is unused in hires.
-        int screenIndex = charY * 40 + charX;
+        int screenIndex = charY * CELL_COLUMNS + charX;
         scrData[screenIndex] = (colors[1] << 4) | colors[0];
         colData[screenIndex] = 0x00;
 
@@ -423,7 +440,7 @@ private:
                 }
             }
 
-            int bitmapIndex = (charY * 40 + charX) * 8 + y;
+            int bitmapIndex = (charY * CELL_COLUMNS + charX) * 8 + y;
             mapData[bitmapIndex] = bitmapByte;
         }
     }
@@ -441,8 +458,8 @@ private:
         // $D021 is unused by hires bitmap mode but kept for sane init.
         backgroundColor = 0;
 
-        for (int charY = 0; charY < 25; charY++) {
-            for (int charX = 0; charX < 40; charX++) {
+        for (int charY = 0; charY < CELL_ROWS; charY++) {
+            for (int charX = 0; charX < CELL_COLUMNS; charX++) {
                 convertCharCellHires(charX, charY);
             }
         }
@@ -453,9 +470,9 @@ private:
 
 public:
     PNGToC64Converter() : imageData(nullptr), width(0), height(0), backgroundColor(0), isHiresBitmap(false), exactMatches(0), distanceMatches(0) {
-        mapData.resize(8000);  // 40x25 chars x 8 bytes = bitmap RAM
-        scrData.resize(1000);  // 40x25 screen RAM
-        colData.resize(1000);  // 40x25 color RAM
+        mapData.resize(BITMAP_BYTES);
+        scrData.resize(CELL_COUNT);
+        colData.resize(CELL_COUNT);
     }
 
     ~PNGToC64Converter() {
@@ -465,10 +482,10 @@ public:
     }
 
     bool extractWithOffset(uint8_t* data, int offsetX, int offsetY) {
-        for (int y = 0; y < 200; y++) {
-            for (int x = 0; x < 320; x++) {
-                int srcIndex = ((y + offsetY) * 384 + (x + offsetX)) * 4;
-                int dstIndex = (y * 320 + x) * 4;
+        for (int y = 0; y < SCREEN_HEIGHT; y++) {
+            for (int x = 0; x < SCREEN_WIDTH; x++) {
+                int srcIndex = ((y + offsetY) * VICE_SCREENSHOT_WIDTH + (x + offsetX)) * 4;
+                int dstIndex = (y * SCREEN_WIDTH + x) * 4;
                 imageData[dstIndex] = data[srcIndex];
                 imageData[dstIndex + 1] = data[srcIndex + 1];
                 imageData[dstIndex + 2] = data[srcIndex + 2];
@@ -476,19 +493,16 @@ public:
             }
         }
 
-        // Test if this offset works
-        if (testConversion()) {
-            return true;
-        }
-        return false;
+        return testConversion();
     }
-    
-    // Try different offsets for 384x272 VICE screenshots
+
+    // Search the 8x8 offsets from the usual display position of a VICE
+    // screenshot for one whose cells all convert.
     bool tryDifferentOffsets(uint8_t* data, int w, int h) {
         for (int offsetY = 0; offsetY < 8; offsetY++) {
-            int ypos = offsetY + 35;
+            int ypos = offsetY + VICE_DISPLAY_TOP;
             for (int offsetX = 0; offsetX < 8; offsetX++) {
-                int xpos = offsetX + 32;
+                int xpos = offsetX + VICE_DISPLAY_LEFT;
                 if (extractWithOffset(data, xpos, ypos)) {
                     return true;
                 }
@@ -498,10 +512,9 @@ public:
     }
 
     bool testConversion() {
-        // Test multicolor first
         bool mcValid = true;
-        for (int charY = 0; charY < 25 && mcValid; charY++) {
-            for (int charX = 0; charX < 40 && mcValid; charX++) {
+        for (int charY = 0; charY < CELL_ROWS && mcValid; charY++) {
+            for (int charX = 0; charX < CELL_COLUMNS && mcValid; charX++) {
                 std::set<uint8_t> cellColors;
                 if (!analyzeCharCell(charX, charY, cellColors)) {
                     mcValid = false;
@@ -510,7 +523,6 @@ public:
         }
         if (mcValid) return true;
 
-        // If MC fails, test hires
         return testConversionHires();
     }
 
@@ -520,19 +532,19 @@ public:
             delete[] imageData;
         }
 
-        width = 320;
-        height = 200;
+        width = SCREEN_WIDTH;
+        height = SCREEN_HEIGHT;
         int dataSize = width * height * 4;  // RGBA
         imageData = new uint8_t[dataSize];
 
-        if (w == 320 && h == 200) {
+        if (w == SCREEN_WIDTH && h == SCREEN_HEIGHT) {
             for (int i = 0; i < dataSize; i++) {
                 imageData[i] = data[i];
             }
             return true;
         }
-        else if (w == 384 && h == 272) {
-            if (!extractWithOffset(data, 32, 35)) {
+        else if (w == VICE_SCREENSHOT_WIDTH && h == VICE_SCREENSHOT_HEIGHT) {
+            if (!extractWithOffset(data, VICE_DISPLAY_LEFT, VICE_DISPLAY_TOP)) {
                 if (!tryDifferentOffsets(data, w, h)) {
                     delete[] imageData;
                     imageData = nullptr;
@@ -560,8 +572,8 @@ public:
         backgroundColor = findBestBackgroundColor();
 
         bool mcValid = true;
-        for (int charY = 0; charY < 25 && mcValid; charY++) {
-            for (int charX = 0; charX < 40 && mcValid; charX++) {
+        for (int charY = 0; charY < CELL_ROWS && mcValid; charY++) {
+            for (int charX = 0; charX < CELL_COLUMNS && mcValid; charX++) {
                 std::set<uint8_t> cellColors;
                 if (!analyzeCharCell(charX, charY, cellColors)) {
                     mcValid = false;
@@ -569,12 +581,12 @@ public:
                 }
 
                 if (cellColors.find(backgroundColor) == cellColors.end()) {
-                    if (cellColors.size() > 3) {
+                    if (cellColors.size() > MC_COLORS_PER_CELL - 1) {
                         mcValid = false;
                     }
                 }
                 else {
-                    if (cellColors.size() > 4) {
+                    if (cellColors.size() > MC_COLORS_PER_CELL) {
                         mcValid = false;
                     }
                 }
@@ -582,8 +594,8 @@ public:
         }
 
         if (mcValid) {
-            for (int charY = 0; charY < 25; charY++) {
-                for (int charX = 0; charX < 40; charX++) {
+            for (int charY = 0; charY < CELL_ROWS; charY++) {
+                for (int charX = 0; charX < CELL_COLUMNS; charX++) {
                     convertCharCell(charX, charY, backgroundColor);
                 }
             }
@@ -602,10 +614,10 @@ public:
     //   $2713  mode byte: 0 = multicolor, 1 = hires
     std::vector<uint8_t> createC64BitmapFile() {
         std::vector<uint8_t> bitmapData;
-        bitmapData.reserve(10004);
+        bitmapData.reserve(2 + BITMAP_BYTES + 2 * CELL_COUNT + 2);
 
-        bitmapData.push_back(0x00);
-        bitmapData.push_back(0x60);
+        bitmapData.push_back(BITMAP_LOAD_ADDRESS & 0xFF);
+        bitmapData.push_back(BITMAP_LOAD_ADDRESS >> 8);
 
         bitmapData.insert(bitmapData.end(), mapData.begin(), mapData.end());
         bitmapData.insert(bitmapData.end(), scrData.begin(), scrData.end());
@@ -617,14 +629,12 @@ public:
         return bitmapData;
     }
 
-    // Get individual components
     const std::vector<uint8_t>& getMapData() const { return mapData; }
     const std::vector<uint8_t>& getScrData() const { return scrData; }
     const std::vector<uint8_t>& getColData() const { return colData; }
     uint8_t getBackgroundColor() const { return backgroundColor; }
     bool getIsHires() const { return isHiresBitmap; }
 
-    // Get color matching statistics
     void getColorMatchingStats(int& exact, int& distance) {
         exact = exactMatches;
         distance = distanceMatches;
@@ -635,7 +645,6 @@ public:
 extern "C" {
     static PNGToC64Converter* converter = nullptr;
 
-    // Initialize converter
     int png_converter_init() {
         if (converter) {
             delete converter;
@@ -644,19 +653,16 @@ extern "C" {
         return 1;
     }
 
-    // Set image data
     int png_converter_set_image(uint8_t* data, int width, int height) {
         if (!converter) return 0;
         return converter->setImageData(data, width, height) ? 1 : 0;
     }
 
-    // Convert image
     int png_converter_convert() {
         if (!converter) return 0;
         return converter->convert() ? 1 : 0;
     }
 
-    // Create c64 bitmap file
     int png_converter_create_c64_bitmap(uint8_t* output) {
         if (!converter) return 0;
 
@@ -667,19 +673,17 @@ extern "C" {
         return c64BitmapData.size();
     }
 
-    // Get background color that was selected
     int png_converter_get_background_color() {
         if (!converter) return 0;
         return converter->getBackgroundColor();
     }
 
-    // Get bitmap mode (0 = multicolor, 1 = hires)
+    // 0 = multicolor, 1 = hires
     int png_converter_get_bitmap_mode() {
         if (!converter) return 0;
         return converter->getIsHires() ? 1 : 0;
     }
 
-    // Get component data
     int png_converter_get_map_data(uint8_t* output) {
         if (!converter) return 0;
         const auto& data = converter->getMapData();
@@ -707,7 +711,6 @@ extern "C" {
         return data.size();
     }
 
-    // Get color matching statistics
     int png_converter_get_color_stats(int* exactMatches, int* distanceMatches) {
         if (!converter) {
             *exactMatches = 0;
@@ -718,21 +721,18 @@ extern "C" {
         return 1;
     }
 
-    // Set palette by index
     int png_converter_set_palette(int paletteIndex) {
         if (paletteIndex < 0 || paletteIndex >= (int)NUM_PALETTES) {
-            return 0; // Invalid palette index
+            return 0;
         }
         CURRENT_PALETTE = &AVAILABLE_PALETTES[paletteIndex];
         return 1;
     }
 
-    // Get number of available palettes
     int png_converter_get_palette_count() {
         return (int)NUM_PALETTES;
     }
 
-    // Get palette name by index
     const char* png_converter_get_palette_name(int paletteIndex) {
         if (paletteIndex < 0 || paletteIndex >= (int)NUM_PALETTES) {
             return nullptr;
@@ -740,19 +740,17 @@ extern "C" {
         return AVAILABLE_PALETTES[paletteIndex].name;
     }
 
-    // Get current palette index
     int png_converter_get_current_palette() {
         for (size_t i = 0; i < NUM_PALETTES; i++) {
             if (CURRENT_PALETTE == &AVAILABLE_PALETTES[i]) {
                 return (int)i;
             }
         }
-        return 0; // Fallback to first palette
+        return 0;
     }
 
-    // Get color RGB value from current palette
     int png_converter_get_palette_color(int colorIndex, int* r, int* g, int* b) {
-        if (colorIndex < 0 || colorIndex >= 16) {
+        if (colorIndex < 0 || colorIndex >= PALETTE_SIZE) {
             return 0;
         }
         uint8_t cr, cg, cb;
@@ -763,7 +761,6 @@ extern "C" {
         return 1;
     }
 
-    // Cleanup
     void png_converter_cleanup() {
         if (converter) {
             delete converter;

@@ -21,6 +21,22 @@ static const double NTSC_CLOCK = 1022730.0;
 static const int PAL_CYCLES_PER_FRAME  = 19656;
 static const int NTSC_CYCLES_PER_FRAME = 17095;
 static const int MAX_SID_CHIPS = 3;
+static const double DEFAULT_SAMPLE_RATE = 48000.0;
+
+// A generous init budget, ~20 s of C64 time. A typical player's init returns in
+// a few hundred cycles, but one that unpacks or builds tables needs far more
+// (Julian_Jaymz/Slanted.sid: 2,040,135 cycles), and a truncated init leaves the
+// tune half-built so it plays silent or garbled. Emulating 2 M cycles costs
+// ~14 ms, so the budget is only a backstop against an init that never returns.
+static const uint32_t INIT_CYCLES_MAX = 20000000;
+
+// Each chip's share of the mono mix, 65536 / sqrt(chips), as libsidplayfp's
+// mono mixer scales it.
+static const int32_t MIX_SCALE_2SID = 46341;
+static const int32_t MIX_SCALE_3SID = 37837;
+
+// audio_set_sampling_method's values.
+enum SamplingMethod { SAMPLING_FAST = 0, SAMPLING_INTERPOLATE = 1, SAMPLING_RESAMPLE = 2 };
 
 // ---- Playback state ----
 // One engine: the 6510, its RAM, the reSID chips and the tune loaded into
@@ -104,9 +120,9 @@ struct ResidEngine {
 
 static reSID::sampling_method resid_sampling(int method) {
     switch (method) {
-        case 1:  return reSID::SAMPLE_INTERPOLATE;
-        case 2:  return reSID::SAMPLE_RESAMPLE;
-        default: return reSID::SAMPLE_FAST;
+        case SAMPLING_INTERPOLATE: return reSID::SAMPLE_INTERPOLATE;
+        case SAMPLING_RESAMPLE:    return reSID::SAMPLE_RESAMPLE;
+        default:                   return reSID::SAMPLE_FAST;
     }
 }
 
@@ -130,7 +146,7 @@ void ResidEngine::sidPowerOn(int i) {
 
 // A write is only pipelined (and so needs flushing) with SAMPLE_FAST on an 8580.
 inline bool ResidEngine::writesPipelined(int chip) const {
-    return samplingMethod == 0 && chipModels[chip] == reSID::MOS8580;
+    return samplingMethod == SAMPLING_FAST && chipModels[chip] == reSID::MOS8580;
 }
 
 // ---- Memory access with SID register interception ----
@@ -138,21 +154,19 @@ inline bool ResidEngine::writesPipelined(int chip) const {
 // The SIDs sit in $D400-$D7FF and $DE00-$DFFF; everything outside that, and
 // everything when I/O is banked out, is plain RAM.
 inline bool ResidEngine::sidArea(uint16_t addr) const {
-    return addr >= 0xD400 && addr <= 0xDFFF && c64io::io_visible(memory[0x01]);
+    return addr >= c64io::SID_BASE && addr <= c64io::IO_LAST && c64io::io_visible(memory[c64io::CPU_PORT]);
 }
 
 inline uint8_t ResidEngine::memRead(uint16_t addr) {
     uint8_t io;
     if (c64io::read(addr, memory, totalCycles + callCycles, io)) return io;
     if (!sidArea(addr)) return memory[addr];
-    // Primary SID reads
-    if (addr >= 0xD400 && addr <= 0xD41F) {
-        return sid[0].read(addr & 0x1F);
+    if (addr >= c64io::SID_BASE && addr < c64io::SID_BASE + c64io::SID_REGISTERS) {
+        return sid[0].read(addr & c64io::SID_REGISTER_MASK);
     }
-    // Multi-SID reads
     for (int i = 1; i < sidCount; i++) {
-        if (addr >= sidAddress[i] && addr < sidAddress[i] + 0x20) {
-            return sid[i].read(addr & 0x1F);
+        if (addr >= sidAddress[i] && addr < sidAddress[i] + c64io::SID_REGISTERS) {
+            return sid[i].read(addr & c64io::SID_REGISTER_MASK);
         }
     }
     return memory[addr];
@@ -163,28 +177,25 @@ inline void ResidEngine::memWrite(uint16_t addr, uint8_t val) {
     c64io::write(memory, addr, val);
     if (!sidArea(addr)) return;
 
-    // Primary SID at $D400
-    if (addr >= 0xD400 && addr <= 0xD41F) {
-        sid[0].write(addr & 0x1F, val);
-        // Flush MOS8580 write pipeline: with SAMPLE_FAST + MOS8580, reSID
-        // defers writes to a single-slot pipeline (only the LAST write is
-        // stored). Clock 1 cycle to apply each write immediately, and count it
-        // against the frame.
+    if (addr >= c64io::SID_BASE && addr < c64io::SID_BASE + c64io::SID_REGISTERS) {
+        sid[0].write(addr & c64io::SID_REGISTER_MASK, val);
+        // reSID with SAMPLE_FAST on an 8580 keeps a single-slot write pipeline
+        // (only the last write is stored), so clock one cycle to apply each
+        // write at once, and count that cycle against the frame.
         if (writesPipelined(0)) { sid[0].clock(); flushedCycles[0]++; }
         return;
     }
-    // Multi-SID chips
     for (int i = 1; i < sidCount; i++) {
-        if (addr >= sidAddress[i] && addr < sidAddress[i] + 0x20) {
-            sid[i].write(addr & 0x1F, val);
+        if (addr >= sidAddress[i] && addr < sidAddress[i] + c64io::SID_REGISTERS) {
+            sid[i].write(addr & c64io::SID_REGISTER_MASK, val);
             if (writesPipelined(i)) { sid[i].clock(); flushedCycles[i]++; }
             return;
         }
     }
-    // SID mirror range ($D420-$D7FF) - mirror to chip 0 if no multi-SID mapped
-    if (addr >= 0xD420 && addr < 0xD800) {
-        memory[0xD400 | (addr & 0x1F)] = val;
-        sid[0].write(addr & 0x1F, val);
+    // $D420-$D7FF not claimed by another chip mirrors the first.
+    if (addr >= c64io::SID_BASE + c64io::SID_REGISTERS && addr <= c64io::SID_MIRROR_LAST) {
+        memory[c64io::SID_BASE | (addr & c64io::SID_REGISTER_MASK)] = val;
+        sid[0].write(addr & c64io::SID_REGISTER_MASK, val);
         if (writesPipelined(0)) { sid[0].clock(); flushedCycles[0]++; }
     }
 }
@@ -247,13 +258,13 @@ void ResidEngine::init(double rate) {
         sidAddress[i] = 0;
         sid[i].reset();
     }
-    sidAddress[0] = 0xD400;
+    sidAddress[0] = c64io::SID_BASE;
     loadAddress = 0; initAddress = 0; playAddress = 0;
     songs = 0; startSong = 0; speed = 0;
     name[0] = 0; author[0] = 0; copyright[0] = 0;
     flags = 0; secondSIDAddr = 0; thirdSIDAddr = 0;
     clockFreq = PAL_CLOCK;
-    sampleRate = rate > 0 ? rate : 48000.0;
+    sampleRate = rate > 0 ? rate : DEFAULT_SAMPLE_RATE;
     cyclesPerFrame = PAL_CYCLES_PER_FRAME;
     currentSubtune = 0;
     isNTSC = false;
@@ -266,7 +277,7 @@ void ResidEngine::init(double rate) {
     for (int i = 0; i < MAX_SID_CHIPS; i++) chipModels[i] = reSID::MOS6581;
     playRoutine = 0;
     playIsIrq = playViaKernal = false;
-    samplingMethod = 1;
+    samplingMethod = SAMPLING_INTERPOLATE;
     for (int i = 0; i < MAX_SID_CHIPS; i++) flushedCycles[i] = 0;
 }
 
@@ -296,7 +307,7 @@ int ResidEngine::loadSid(const uint8_t* data, int length) {
     cyclesPerFrame = isNTSC ? NTSC_CYCLES_PER_FRAME : PAL_CYCLES_PER_FRAME;
 
     sidCount = 1;
-    sidAddress[0] = 0xD400;
+    sidAddress[0] = c64io::SID_BASE;
     for (uint8_t b : { secondSIDAddr, thirdSIDAddr }) {
         const uint16_t addr = c64env::sid_address(b);
         if (addr) sidAddress[sidCount++] = addr;
@@ -304,7 +315,7 @@ int ResidEngine::loadSid(const uint8_t* data, int length) {
 
     // The KERNAL stubs first, then the tune over them, so a tune that occupies
     // any of those addresses keeps its own bytes.
-    memset(memory, 0, 65536);
+    memset(memory, 0, sizeof(memory));
     c64env::plant_kernal(memory);
     memcpy(&memory[loadAddress], data + h.musicStart, h.musicSize);
     memcpy(loadedMemory, memory, sizeof(memory));
@@ -333,25 +344,17 @@ void ResidEngine::setSubtune(int subtune) {
     }
 
     memcpy(memory, loadedMemory, sizeof(memory));
-    memory[0x01] = 0x37;
+    memory[c64io::CPU_PORT] = c64io::PORT_DEFAULT;
     cyclesPerFrame = isNTSC ? NTSC_CYCLES_PER_FRAME : PAL_CYCLES_PER_FRAME;
 
-    // PSID convention: the subtune index (0-based) is passed in A — and also in
-    // X and Y. Some tunes read the song number from X or Y (e.g. an init doing
-    // "LDA songtable,X") rather than A; passing all three matches how a real
-    // driver and SIDquake's own export engine call init, so playback and export
-    // stay consistent (fixes multi-song tunes that sounded corrupt on preview).
+    // The subtune index (0-based) goes in A, X and Y: some inits read it from
+    // X or Y ("LDA songtable,X"), and a real driver and SIDquake's export
+    // engine pass it in all three.
     cpuInit(initAddress);
     a = x = y = subtune;
     totalCycles = 0;
 
-    // Init gets a generous cycle budget - ~20 s of C64 time. A typical player's
-    // init returns in a few hundred cycles, but a tune that unpacks or builds
-    // tables in init needs far more (Julian_Jaymz/Slanted.sid: 2,040,135 cycles),
-    // and a truncated init leaves the tune half-built so playback comes out silent
-    // or garbled. Emulating 2 M cycles costs ~14 ms, so the budget is only a
-    // backstop against a tune that never returns at all.
-    cpuCall(initAddress, 20000000);
+    cpuCall(initAddress, INIT_CYCLES_MAX);
     for (int i = 0; i < sidCount; i++) flushedCycles[i] = 0;
 
     // CIA-driven tunes (speed bit set) latch the play period in $DC04/$DC05.
@@ -359,7 +362,8 @@ void ResidEngine::setSubtune(int subtune) {
     if (speed & (1u << (subtune < 31 ? subtune : 31))) {
         // The timer counts its latch down to 0 and reloads: it fires every
         // latch + 1 cycles.
-        uint16_t timerVal = memory[0xDC04] | (memory[0xDC05] << 8);
+        uint16_t timerVal = memory[c64io::CIA1_BASE + c64io::CIA_TIMER_A_LO]
+                          | (memory[c64io::CIA1_BASE + c64io::CIA_TIMER_A_HI] << 8);
         if (timerVal > 0) {
             cyclesPerFrame = timerVal + 1;
         }
@@ -382,6 +386,7 @@ int ResidEngine::generate(int16_t* buffer, int numSamples) {
     if (!loaded || numSamples <= 0) return 0;
 
     int16_t mixBuf[8192];  // scratch buffer for additional SID chips
+    const int mixBufSamples = (int)(sizeof(mixBuf) / sizeof(mixBuf[0]));
     int totalGenerated = 0;
 
     int loopGuard = 0;
@@ -398,22 +403,20 @@ int ResidEngine::generate(int16_t* buffer, int numSamples) {
             flushedCycles[0] = 0;
         }
 
+        // No more per iteration than mixBuf holds, or the multi-SID pass would
+        // overflow it; a larger request takes more iterations.
         int remaining = numSamples - totalGenerated;
-        // Never generate more per iteration than mixBuf can hold: the
-        // multi-SID mix pass writes up to `generated` samples into it, so a
-        // larger chunk would overflow the stack buffer. Larger requests are
-        // simply produced across multiple loop iterations.
-        if (remaining > (int)(sizeof(mixBuf) / sizeof(mixBuf[0]))) {
-            remaining = (int)(sizeof(mixBuf) / sizeof(mixBuf[0]));
+        if (remaining > mixBufSamples) {
+            remaining = mixBufSamples;
         }
         reSID::cycle_count delta = remainingCycles;
         int generated = sid[0].clock(delta, buffer + totalGenerated, remaining);
         int cyclesConsumed = remainingCycles - delta;
 
-        // Mix any additional SID chips into the same output buffer, each scaled
-        // by 1/sqrt(chips) as libsidplayfp's mono mixer does, with saturation.
+        // Mix any further chips into the same output buffer, each scaled by
+        // 1/sqrt(chips), with saturation.
         if (sidCount > 1) {
-            const int32_t scale = sidCount == 2 ? 46341 : 37837;   // 65536 / sqrt(2), / sqrt(3)
+            const int32_t scale = sidCount == 2 ? MIX_SCALE_2SID : MIX_SCALE_3SID;
             for (int s = 0; s < generated; s++) {
                 buffer[totalGenerated + s] = (int16_t)((buffer[totalGenerated + s] * scale) >> 16);
             }
@@ -458,7 +461,7 @@ void ResidEngine::setModel(int model) {
 
 void ResidEngine::setSamplingMethod(int method) {
     reSID::sampling_method m = resid_sampling(method);
-    samplingMethod = method == 1 || method == 2 ? method : 0;
+    samplingMethod = method == SAMPLING_INTERPOLATE || method == SAMPLING_RESAMPLE ? method : SAMPLING_FAST;
     for (int i = 0; i < sidCount; i++) {
         sid[i].set_sampling_parameters(clockFreq, m, sampleRate);
     }
