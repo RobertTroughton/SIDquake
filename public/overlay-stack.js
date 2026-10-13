@@ -1,12 +1,11 @@
 // overlay-stack.js - which overlay currently owns the keyboard.
 //
 // The Studio and the tool page both trap Tab and act on Escape, and both must
-// stand down when another overlay is layered above them. That used to be a
-// hardcoded list of element ids in each file, which drifted: ui.js's copy was
-// already missing the logo placement tool, so Escape there closed the wrong
-// thing.
+// stand down when another overlay is layered above them. A hardcoded list of
+// element ids in each file drifts, and a missing entry makes Escape close the
+// wrong thing.
 //
-// The contract is now in the markup. Every overlay carries `data-overlay` and
+// So the contract is in the markup. Every overlay carries `data-overlay` and
 // shows itself by adding `.visible`; anything asking "is something above me?"
 // asks this instead of keeping its own list. Loaded as a classic script before
 // ui.js (see the loader in index.html).

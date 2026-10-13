@@ -179,10 +179,9 @@ class StudioModal {
     // ---------------------------------------------------------------------
 
     tabList() {
-        // How the bars are worked out is a tab again, straight after the card it
-        // modifies - but only for the players that offer the choice. Folded
-        // under the grid it read as gone, and people took the spectrometer with
-        // it.
+        // How the bars are worked out gets its own tab, straight after the card
+        // it modifies - but only for the players that offer the choice. Folded
+        // under the grid it reads as gone, spectrometer and all.
         const bars = this.ui?.hasMethodChoice?.()
             ? [{ id: 'method', label: 'Bars', icon: 'fa-wave-square' }] : [];
         return [
@@ -211,7 +210,7 @@ class StudioModal {
             `<button type="button" class="studio-nav-btn prev" data-go="${prev.id}">`
             + `<i class="fas fa-chevron-left"></i> Previous</button>`);
         // Narrow screens drop the tab rail and navigate with these buttons
-        // alone, so the position the rail used to show comes with them.
+        // alone, so they carry the position the rail would show.
         // The rail - and with it every tab's status tick - is hidden below 720px,
         // which on a 1440px monitor is exactly 200% browser zoom. Carry the
         // current tab's status here so that information does not simply vanish.
@@ -225,10 +224,10 @@ class StudioModal {
         nav.querySelectorAll('[data-go]').forEach(b =>
             b.addEventListener('click', () => this.activate(b.dataset.go)));
 
-        // Generate PRG is available from every tab. Everything has a working
-        // default from the moment a SID loads, so there is no reason to make
-        // someone walk to the end of the wizard to reach the button - and a user
-        // who only changed one thing should be one click from a file.
+        // No Generate button here: it is available from every tab. Everything
+        // has a working default from the moment a SID loads, so there is no
+        // reason to make someone walk to the end of the wizard to reach it - and
+        // a user who only changed one thing should be one click from a file.
     }
 
     // Group a visualizer config's inputs/options into derived tabs.
@@ -561,7 +560,7 @@ class StudioModal {
 
     renderManifest() {
         // Resolved lazily as well as in the constructor: a missing element here
-        // silently disables the whole summary, which is how it went unnoticed.
+        // silently disables the whole summary.
         if (!this.manifestEl) this.manifestEl = document.getElementById('exportManifest');
         if (!this.manifestEl) return;
         const ui = this.ui;
@@ -603,7 +602,7 @@ class StudioModal {
             ? ui.visualizerNeedsTuneAnalysis() : true;
         const loopToggle = document.getElementById('forceLoopToggle');
         const wantLoop = !!(loopToggle && loopToggle.checked);
-        const lmmss = s => { const t = Math.round(s || 0), m = Math.floor(t / 60), sec = t % 60; return `${m}:${String(sec).padStart(2, '0')}`; };
+        const lmmss = s => ui._mmss(s);
         // Song length: what the C64 will actually show, since it can be measured,
         // typed, still being measured, or deliberately left off.
         if (header.songs <= 1) {

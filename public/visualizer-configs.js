@@ -25,7 +25,6 @@ class VisualizerConfig {
 
             const config = await response.json();
 
-            // Process inputs to merge galleries
             if (config.inputs) {
                 for (const input of config.inputs) {
                     if (input.galleryFiles || input.gallery) {
@@ -48,7 +47,6 @@ class VisualizerConfig {
         const mergedGallery = [];
         const seenFiles = new Set();
 
-        // Load external gallery files
         for (const galleryFile of galleryFiles) {
             try {
                 const items = await this.loadGalleryFile(galleryFile);
@@ -63,7 +61,6 @@ class VisualizerConfig {
             }
         }
 
-        // Add inline gallery items
         for (const item of inlineGallery) {
             if (!seenFiles.has(item.file)) {
                 mergedGallery.push(item);
@@ -120,6 +117,7 @@ class VisualizerConfig {
         }
     }
 
+    // Dead: nothing in the app calls this.
     extractMemoryRegions(fileData, memoryConfig) {
         const regions = [];
 
@@ -143,6 +141,7 @@ class VisualizerConfig {
         return regions;
     }
 
+    // Dead: nothing in the app calls this.
     clearGalleryCache() {
         this.galleryCache.clear();
     }

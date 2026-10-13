@@ -282,15 +282,13 @@ class ErrorModal {
             this._dismissHandler = () => this.hide();
         }
 
-        // ARIA: mark the dialog and point AT its title/message. Must-acknowledge
-        // modals (duration 0: error/confirm) are alertdialogs; transient toasts
-        // are plain dialogs. Only capture the prior focus on a fresh open, so
-        // re-showing over an already-open modal keeps the original anchor.
-        // A self-dismissing toast is NOT a dialog. Announcing one as a modal and
-        // moving focus into it interrupts a screen reader mid-sentence, drags it
-        // in, and drags it back out two seconds later - and it steals the caret
-        // from anyone typing. Only a must-acknowledge modal (duration 0: error or
-        // confirm) is a dialog and takes focus; the rest are polite status.
+        // ARIA: mark the dialog and point AT its title/message. Only a
+        // must-acknowledge modal (duration 0: error or confirm) is an alertdialog
+        // and takes focus. A self-dismissing toast is polite status: announcing
+        // it as a modal and moving focus into it interrupts a screen reader
+        // mid-sentence, drags it in and back out two seconds later, and steals
+        // the caret from anyone typing. Only capture the prior focus on a fresh
+        // open, so re-showing over an already-open modal keeps the original anchor.
         const transient = options.duration > 0;
         const content = this.modalElement.querySelector('.modal-content');
         if (content) {
@@ -326,7 +324,7 @@ class ErrorModal {
             }
         }
 
-        if (options.duration > 0) {
+        if (transient) {
             this.timeoutId = setTimeout(() => {
                 this.hide();
             }, options.duration);
@@ -334,7 +332,7 @@ class ErrorModal {
 
         // Allow click-outside dismissal only for transient (auto-dismiss) modals;
         // errors/confirms must be acknowledged explicitly.
-        this.dismissOnBackdrop = options.duration > 0;
+        this.dismissOnBackdrop = transient;
     }
 
     /** Hide the modal. */

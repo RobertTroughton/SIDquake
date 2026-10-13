@@ -13,7 +13,6 @@ const VISUALIZERS = [
     {
         id: 'DefaultWithLogo',
         name: 'Default player with Logo',
-        // The scene name, kept as a credit line on the card.
         sceneName: 'Default With Logo',
         description: 'The same information, with your own logo across the top.',
         preview: 'prg/defaultwithlogo.png',
@@ -22,12 +21,10 @@ const VISUALIZERS = [
     {
         id: 'RaistlinBars',
         // What a first-time visitor lands on. Picked deliberately: the grid is
-        // sorted by name, so index 0 was whatever happened to sort first - which
-        // for a long time was the text-only player, i.e. a visualizer tool
-        // opening on no visualizer.
+        // sorted by name, so index 0 is whatever happens to sort first - the
+        // text-only player, i.e. a visualizer tool opening on no visualizer.
         defaultPick: true,
         name: 'Bars',
-        // The scene name, kept as a credit line on the card.
         sceneName: 'Raistlin Bars',
         description: 'A row of bars that dance to the music.',
         preview: 'prg/raistlinbars.png',
@@ -50,7 +47,6 @@ const VISUALIZERS = [
     {
         id: 'RaistlinBarsWithLogo',
         name: 'Bars with a picture',
-        // The scene name, kept as a credit line on the card.
         sceneName: 'Raistlin Bars With Logo',
         description: 'Dancing bars beneath your own logo.',
         preview: 'prg/raistlinbarswithlogo.png',
@@ -73,7 +69,6 @@ const VISUALIZERS = [
     {
         id: 'RaistlinMirrorBars',
         name: 'Mirrored bars',
-        // The scene name, kept as a credit line on the card.
         sceneName: 'Raistlin Mirror Bars',
         description: 'Bars that grow out from the middle of the screen, both ways.',
         preview: 'prg/raistlinmirrorbars.png',
@@ -96,7 +91,6 @@ const VISUALIZERS = [
     {
         id: 'RaistlinMirrorBarsWithLogo',
         name: 'Mirrored bars with a picture',
-        // The scene name, kept as a credit line on the card.
         sceneName: 'Raistlin Mirror Bars With Logo',
         description: 'Bars growing both ways, beneath your own logo.',
         preview: 'prg/raistlinmirrorbarswithlogo.png',
@@ -119,7 +113,6 @@ const VISUALIZERS = [
     {
         id: 'MusicalBlobs',
         name: 'Colour blobs',
-        // The scene name, kept as a credit line on the card.
         sceneName: 'Musical Blobs',
         description: 'Each voice painted as drifting columns of colour, under a logo.',
         preview: 'prg/musicalblobs.png',
@@ -128,7 +121,6 @@ const VISUALIZERS = [
     {
         id: 'SimpleBitmapWithScroller',
         name: 'Full-screen picture',
-        // The scene name, kept as a credit line on the card.
         sceneName: 'Simple Bitmap',
         description: 'One full-screen image, with an optional message scrolling across it.',
         preview: 'prg/simplebitmap.png',
@@ -140,7 +132,6 @@ const VISUALIZERS = [
     {
         id: 'SimpleRaster',
         name: 'Coloured stripes',
-        // The scene name, kept as a credit line on the card.
         sceneName: 'Simple Raster',
         description: 'Bands of colour rolling down the screen. The classic C64 look.',
         preview: 'prg/simpleraster.png',
@@ -149,7 +140,6 @@ const VISUALIZERS = [
     {
         id: 'ScrapColumns',
         name: '3D columns',
-        // The scene name, kept as a credit line on the card.
         sceneName: 'Scrap Columns',
         description: 'A spectrum drawn as columns receding into the distance.',
         preview: 'prg/scrapcolumns.png',

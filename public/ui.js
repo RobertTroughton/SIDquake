@@ -2,7 +2,7 @@
 
 // C64 hardware palette (16 colors). Index matches the C64 color number.
 // The swatches, colour pickers and palette editors all draw from the shared
-// table in c64-palette.js - see the note there about why there used to be two.
+// table in c64-palette.js.
 const C64_COLORS = window.C64_PALETTE;
 
 class UIController {
@@ -269,15 +269,13 @@ class UIController {
 
         // While the browser is open it owns the keyboard: Escape closes it and
         // Tab is trapped inside so focus can't fall through to the covered page.
-        // Defer when another modal is layered above (that modal owns the keyboard).
-        // This list used to be maintained by hand here and had already drifted -
-        // overlay-stack.js reads it off the overlays actually on screen instead.
+        // Defer when another modal is layered above (that modal owns the keyboard);
+        // overlay-stack.js reads that off the overlays actually on screen.
         document.addEventListener('keydown', (e) => {
             if (!document.getElementById('hvscModal')?.classList.contains('visible')) return;
             if (window.overlayAbove && window.overlayAbove('hvscModal')) return;
             if (e.key === 'Escape') closeHVSCModal();
             else if (e.key === 'Tab') this._trapHvscTab(e);
-            return;
         });
 
         // The drifting background notes: an off switch of their own, because
@@ -577,10 +575,10 @@ class UIController {
         });
 
         // ...but the file load is handled at the document level so a drop
-        // ANYWHERE loads the tune. Previously a drop a few px outside the zone -
-        // or anywhere while the Studio modal was open (the zone isn't even
-        // visible then) - hit the browser default and NAVIGATED the tab to the
-        // .sid file, silently discarding the loaded tune and all Studio settings.
+        // ANYWHERE loads the tune. Otherwise a drop a few px outside the zone -
+        // or anywhere while the Studio modal is open (the zone isn't visible
+        // then) - hits the browser default and NAVIGATES the tab to the .sid
+        // file, silently discarding the loaded tune and all Studio settings.
         // A dragenter/leave counter drives a whole-window "drop to load" cue
         // without the flicker a naive dragleave (fired crossing child elements)
         // would cause. processFile validates the extension, so non-SID drops are
@@ -618,11 +616,10 @@ class UIController {
         });
     }
 
-    // Title / Author / Copyright. Real inputs: they were contenteditable spans
-    // with role="button" and an aria-label that overrode their contents, so a
-    // screen reader announced "Edit title, button" and never the title. This is
-    // a form, and the text goes on the C64 screen, so it says how much room is
-    // left and warns when a character cannot survive the trip.
+    // Title / Author / Copyright. Real inputs, so a screen reader announces the
+    // title itself rather than an overriding label. The text goes on the C64
+    // screen, so the form says how much room is left and warns when a character
+    // cannot survive the trip.
     setupEditableFields() {
         for (const field of [this.elements.sidTitle, this.elements.sidAuthor, this.elements.sidCopyright]) {
             if (!field) continue;
@@ -665,12 +662,13 @@ class UIController {
 
     /** Characters left in each 31-char header field, and what the C64 can't show. */
     updateMetadataCounts() {
+        const HEADER_FIELD_CHARS = 31;
         const fields = [this.elements.sidTitle, this.elements.sidAuthor, this.elements.sidCopyright];
         const lost = new Set();
         for (const field of fields) {
             if (!field) continue;
             const count = document.getElementById(field.id + 'Count');
-            const left = 31 - field.value.length;
+            const left = HEADER_FIELD_CHARS - field.value.length;
             if (count) {
                 count.textContent = left <= 8 ? `${left} left` : '';
                 count.classList.toggle('is-low', left <= 3);
@@ -688,8 +686,8 @@ class UIController {
     }
 
     // Which characters of `text` the PETSCII conversion would silently replace.
-    // prg-builder sanitises metadata with reportUnknown off, so this was only
-    // ever discovered by looking at the exported PRG in an emulator.
+    // prg-builder sanitises metadata with reportUnknown off, so nothing else
+    // reports them.
     unrepresentableChars(text) {
         if (!text || typeof PETSCIISanitizer === 'undefined') return [];
         try {
@@ -828,9 +826,9 @@ class UIController {
     // for the picture slot the chosen look has.
     //
     // Once per look, not once per picture slot: the slot is remembered across
-    // visualizers (and across sessions), so keying on it meant the first look
-    // picked was the only one that ever asked - every other look silently
-    // inherited whatever that one ended on. Closing the gallery is still an
+    // visualizers (and across sessions), so keying on it would let the first
+    // look picked be the only one that ever asks - every other look silently
+    // inheriting whatever that one ended on. Closing the gallery is still an
     // answer, and coming back to a look already asked about is not re-asked.
     async quickChooseImage() {
         try { await this._optionsReady; } catch (e) { return; }
@@ -856,8 +854,7 @@ class UIController {
 
     // One or many SIDs, from the picker or a drop. The first is loaded as
     // always; the rest wait in a queue that can be exported with whatever
-    // settings the user then chooses. Dropping a folder of tunes used to load
-    // one and silently discard the others.
+    // settings the user then chooses.
     async acceptFiles(fileList) {
         const all = [...(fileList || [])];
         // A settings file dropped on the page applies itself. It carries no
@@ -1241,10 +1238,10 @@ class UIController {
         });
     }
 
-    // The tune selector is song metadata, so it sits on the Song tab - the
-    // export manifest's "Music -> edit" has always pointed there, at a panel
-    // that did not have it. The Spectrometer's multi-tune caveat is about the
-    // visualizer choice instead, so it stays on the Visualizer tab.
+    // The tune selector is song metadata, so it sits on the Song tab, where the
+    // export manifest's "Music -> edit" points. The Spectrometer's multi-tune
+    // caveat is about the visualizer choice instead, so it stays on the
+    // Visualizer tab.
     addSongSelector() {
         const mount = document.getElementById('songSelectorMount');
         const noteMount = document.getElementById('fftMultiSongMount');
@@ -1407,8 +1404,8 @@ class UIController {
     }
 
     async loadAllVisualizerConfigs() {
-        // Fetch all configs concurrently - loading them one at a time made
-        // the visualizer grid wait for N sequential round-trips.
+        // Fetch all configs concurrently, so the visualizer grid does not wait
+        // for N sequential round-trips.
         await Promise.all(VISUALIZERS.filter(viz => viz.config).map(async (viz) => {
             try {
                 const config = await this.visualizerConfig.loadConfig(viz.id);
@@ -1431,6 +1428,7 @@ class UIController {
         grid.setAttribute('role', 'radiogroup');
         grid.setAttribute('aria-label', 'Visualizer');
 
+        // Unused here: the call-rate gate is applied per card in createVisualizerCard.
         const requiredCalls = this.analysisResults?.numCallsPerFrame || 1;
 
         const compatible = [];
@@ -1569,14 +1567,14 @@ class UIController {
         <div class="visualizer-selected-badge"><i class="fas fa-check" aria-hidden="true"></i> Selected</div>
     `;
 
-        // Radio semantics rather than a blanket aria-label: the label used to
-        // override the card's contents, so neither the description nor the
-        // "Selected" state was ever spoken.
+        // Radio semantics rather than a blanket aria-label, which would override
+        // the card's contents so neither the description nor the "Selected"
+        // state is spoken.
         card.setAttribute('role', 'radio');
         card.setAttribute('aria-checked', 'false');
         if (isDisabled) {
-            // Reachable, and it says why. Skipping it entirely left the user
-            // asking a question the interface refused to answer.
+            // Reachable, so it can say why it is disabled rather than leaving
+            // the user asking a question the interface refuses to answer.
             card.tabIndex = -1;
             card.setAttribute('aria-disabled', 'true');
         } else {
@@ -1794,9 +1792,7 @@ class UIController {
     }
 
     // What the user gets after Generate: the file, what it is, and how to run it.
-    // A .prg means nothing to someone six weeks into the C64, and "run it with
-    // SYS 16640" was the entire previous explanation, arriving in a dialog that
-    // dismissed itself.
+    // A .prg means nothing to someone six weeks into the C64.
     renderExportDone(info) {
         const el = document.getElementById('exportDone');
         if (!el) return;
@@ -1833,7 +1829,8 @@ class UIController {
         // Disk blocks, because that is the unit a release is budgeted in - a .d64
         // side holds 664. 254 usable bytes per block, plus the two-byte load
         // address the PRG carries.
-        const blocks = info.bytes ? Math.ceil(info.bytes / 254) : null;
+        const BLOCK_DATA_BYTES = 254;
+        const blocks = info.bytes ? Math.ceil(info.bytes / BLOCK_DATA_BYTES) : null;
         const hex = (n) => '$' + n.toString(16).toUpperCase().padStart(4, '0');
         const facts = [`${esc(info.sizeKB)} KB`];
         if (blocks) facts.push(`${blocks} disk block${blocks === 1 ? '' : 's'}`);
@@ -2356,9 +2353,9 @@ class UIController {
     // The SID engine the tune ANALYSIS renders with. Deliberately not part of
     // createFrameRateOptionHTML: every visualizer runs the analysis, not just the
     // spectrometer ones - players with a timer show the song length from it, and a
-    // detected fade-out is what unlocks the Song Looping option. Keeping this knob
-    // inside the spectrometer-only block meant the setting still applied everywhere
-    // but could only be reached from an FFT player.
+    // detected fade-out is what unlocks the Song Looping option. Inside the
+    // spectrometer-only block it would still apply everywhere but only be
+    // reachable from an FFT player.
     createAnalysisEngineOptionHTML() {
         const a = this.getAdvancedSettings();
         return `
@@ -2395,25 +2392,24 @@ class UIController {
         const save = () => {
             try { localStorage.setItem('sidquakeAdvanced', JSON.stringify(this._advanced)); } catch (e) { /* storage blocked */ }
         };
+        const edit = (apply) => {
+            const cur = this._advanced || {};
+            apply(cur);
+            this._advanced = cur;
+        };
         const fps = document.getElementById('advFps');
         if (fps) fps.addEventListener('change', () => {
-            const cur = this._advanced || {};
-            cur.framesPerKeyframe = fps.value === 'best' ? 'best' : (parseInt(fps.value, 10) || 2);
-            this._advanced = cur;
+            edit(cur => { cur.framesPerKeyframe = fps.value === 'best' ? 'best' : (parseInt(fps.value, 10) || 2); });
             save();
         });
         const len = document.getElementById('advStoredLen');
         if (len) len.addEventListener('change', () => {
-            const cur = this._advanced || {};
-            cur.storedSeconds = parseInt(len.value, 10) || 480;
-            this._advanced = cur;
+            edit(cur => { cur.storedSeconds = parseInt(len.value, 10) || 480; });
             save();
         });
         const details = document.getElementById('advancedSettings');
         if (details) details.addEventListener('toggle', () => {
-            const cur = this._advanced || {};
-            cur.open = details.open;
-            this._advanced = cur;
+            edit(cur => { cur.open = details.open; });
             save();
         });
         // The scan window and the shortest-loop threshold are both part of the
@@ -2434,36 +2430,32 @@ class UIController {
         };
         const scanLen = document.getElementById('advScanLen');
         if (scanLen) scanLen.addEventListener('change', () => {
-            const cur = this._advanced || {};
-            // Kept as typed: getAdvancedSettings parses it, and blank means
-            // "use the caller's own default" rather than zero.
-            cur.scanLenText = this._parseMMSS(scanLen.value) ? scanLen.value.trim() : '';
-            scanLen.value = cur.scanLenText;
-            this._advanced = cur;
+            edit(cur => {
+                // Kept as typed: getAdvancedSettings parses it, and blank means
+                // "use the caller's own default" rather than zero.
+                cur.scanLenText = this._parseMMSS(scanLen.value) ? scanLen.value.trim() : '';
+                scanLen.value = cur.scanLenText;
+            });
             rescan();
         });
         const minLoop = document.getElementById('advMinLoop');
         if (minLoop) minLoop.addEventListener('change', () => {
-            const cur = this._advanced || {};
-            cur.minLoopSeconds = Math.min(60, Math.max(1, parseInt(minLoop.value, 10) || 2));
-            minLoop.value = cur.minLoopSeconds;
-            this._advanced = cur;
+            edit(cur => {
+                cur.minLoopSeconds = Math.min(60, Math.max(1, parseInt(minLoop.value, 10) || 2));
+                minLoop.value = cur.minLoopSeconds;
+            });
             rescan();
         });
         const bank = document.getElementById('advGfxBank');
         if (bank) bank.addEventListener('change', () => {
-            const cur = this._advanced || {};
-            cur.preferredGfxBank = parseInt(bank.value, 10) || 0;
-            this._advanced = cur;
+            edit(cur => { cur.preferredGfxBank = parseInt(bank.value, 10) || 0; });
             save();
             // Placement is decided at build time, so nothing to re-analyse.
         });
         const reserved = document.getElementById('advReserved');
         if (reserved) reserved.addEventListener('change', () => {
-            const cur = this._advanced || {};
             const parsed = UIController.parseReservedRanges(reserved.value);
-            cur.reservedText = reserved.value.trim();
-            this._advanced = cur;
+            edit(cur => { cur.reservedText = reserved.value.trim(); });
             save();
             const note = document.getElementById('advReservedNote');
             if (note) {
@@ -2481,9 +2473,7 @@ class UIController {
         });
         const eng = document.getElementById('advBakeEngine');
         if (eng) eng.addEventListener('change', () => {
-            const cur = this._advanced || {};
-            cur.bakeEngine = eng.value === 'resid' ? 'resid' : 'fp';
-            this._advanced = cur;
+            edit(cur => { cur.bakeEngine = eng.value === 'resid' ? 'resid' : 'fp'; });
             // The rendered rows are engine-specific, so a previous analysis of this
             // tune no longer describes what an export would bake - and a scan still
             // running is rendering with the old engine.
@@ -2580,7 +2570,7 @@ class UIController {
 
     // Everything that decides what an export looks like, in one JSON. A music
     // disk wants every tune built the same way, and a release ought to be
-    // rebuildable next year - neither was possible when the settings existed
+    // rebuildable next year - neither is possible while the settings exist
     // only as live DOM state in one browser tab.
     //
     // A custom uploaded image can only be referenced by name: the file itself is
@@ -3146,7 +3136,6 @@ class UIController {
             // Image grid for bar styles - render as clickable thumbnails
             html += this.createBarStyleGridHTML(config);
         } else if (config.type === 'select') {
-            // Regular select dropdown
             const selectClass = 'select-input';
             html += `
             <label class="option-label" for="${config.id}">${config.label}</label>
@@ -3189,7 +3178,6 @@ class UIController {
             </div>
         `;
         } else if (config.type === 'colorPicker') {
-            // Color picker using color slider UI
             html += this.createColorSliderHTML(config);
         } else if (config.type === 'paletteEditor') {
             // Editable colour fade / column palette with presets + Load/Save
@@ -3225,9 +3213,9 @@ class UIController {
                     </button>`;
                 }).join('')}</div>`;
 
-        // Fade presets shown as clickable preview icons (replaces the old
-        // dropdown). Each icon's thumbnail is drawn later from the preset's own
-        // colours, so it always shows exactly what that preset produces.
+        // Fade presets shown as clickable preview icons. Each icon's thumbnail
+        // is drawn later from the preset's own colours, so it always shows
+        // exactly what that preset produces.
         const selectedPreset = presets.length ? this._matchFadePreset(values, presets) : -1;
         const presetGrid = presets.length ? `
             <div class="palette-presets" role="group" aria-label="Fade presets">
@@ -3359,10 +3347,9 @@ class UIController {
     }
 
     /**
-     * Redraw the fade editor's own preview from the values currently in it. The
-     * presets have always shown what they produce; the colours the user then
-     * edits by hand did not, so fine-tuning was done against six flat swatches
-     * with no idea what the bars would look like.
+     * Redraw the fade editor's own preview from the values currently in it, so
+     * hand-edited colours are judged against the bars they produce rather than
+     * six flat swatches.
      */
     _drawLivePalette(editor) {
         if (!editor || editor.dataset.kind !== 'fade') return;
@@ -3564,7 +3551,6 @@ class UIController {
                     const thumbnailDataUrl = await FONT_DATA.generateFontThumbnail(fontPath);
                     img.src = thumbnailDataUrl;
                 } catch (e) {
-                    // Show placeholder on error
                     div.classList.add('placeholder');
                     img.style.display = 'none';
                     const fontId = div.dataset.fontId || div.dataset.value;
@@ -3598,12 +3584,9 @@ class UIController {
     createBarStyleGridHTML(config) {
         const defaultValue = config.default || 0;
 
-        // Generate thumbnails for each style option
         const thumbnailsHTML = config.values.map(v => {
             const isSelected = v.value === defaultValue;
-            // Use custom image path from config if available, otherwise use bar-style convention
             const imagePath = v.image || `prg/bar-styles/style-${v.value}.png`;
-            // Use shortLabel if available, otherwise extract first word from label
             const displayLabel = v.shortLabel || v.label.split(' - ')[0] || v.label;
 
             return `
@@ -3650,13 +3633,11 @@ class UIController {
             }
         }
 
-        // Lazy-load and initialize image preview manager if not already created
         if (!window.imagePreviewManager) {
             await window.loadScript('image-preview-manager.js');
             window.imagePreviewManager = new ImagePreviewManager();
         }
 
-        // Set up image previews for image inputs
         if (config && config.inputs) {
             config.inputs.forEach(inputConfig => {
                 const isImageInput = inputConfig.accept && (inputConfig.accept.includes('image/') || inputConfig.accept.includes('.png'));
@@ -3694,7 +3675,6 @@ class UIController {
                         window.petsciiSanitizer = new PETSCIISanitizer();
                     }
 
-                    // Add warning display element if it doesn't exist
                     if (!document.getElementById(`${optionConfig.id}-warnings`)) {
                         const warningDiv = document.createElement('div');
                         warningDiv.id = `${optionConfig.id}-warnings`;
@@ -3712,7 +3692,6 @@ class UIController {
                         textarea.parentNode.appendChild(warningDiv);
                     }
 
-                    // Add character counter if maxLength is specified
                     if (optionConfig.maxLength) {
                         const counterDiv = document.createElement('div');
                         counterDiv.id = `${optionConfig.id}-counter`;
@@ -3726,20 +3705,17 @@ class UIController {
                         textarea.parentNode.appendChild(counterDiv);
                     }
 
-                    // Real-time validation function
                     const validateTextarea = () => {
                         const text = textarea.value;
                         const warningDiv = document.getElementById(`${optionConfig.id}-warnings`);
                         const counterDiv = document.getElementById(`${optionConfig.id}-counter`);
 
-                        // Sanitize the text
                         const result = window.petsciiSanitizer.sanitize(text, {
                             maxLength: optionConfig.maxLength,
                             preserveNewlines: false,
                             reportUnknown: true
                         });
 
-                        // Update character counter
                         if (counterDiv && optionConfig.maxLength) {
                             const remaining = optionConfig.maxLength - text.length;
                             counterDiv.textContent = `${text.length} / ${optionConfig.maxLength} characters`;
@@ -3753,7 +3729,6 @@ class UIController {
                             }
                         }
 
-                        // Show warnings
                         if (result.hasWarnings && warningDiv) {
                             let warningHTML = '<strong><i class="fas fa-exclamation-triangle"></i> Character compatibility issues:</strong><br>';
 
@@ -3777,7 +3752,6 @@ class UIController {
                         }
                     };
 
-                    // Attach event listeners
                     textarea.addEventListener('input', () => {
                         validateTextarea();
                         // Some options (e.g. font/scroll colour) only show when this has text.
@@ -3790,7 +3764,6 @@ class UIController {
                         }, 10); // Small delay to let paste complete
                     });
 
-                    // Initial validation if there's default text
                     if (textarea.value) {
                         validateTextarea();
                     }
@@ -3831,7 +3804,6 @@ class UIController {
 
         // Color slider handlers
         panel.querySelectorAll('.color-slider').forEach(slider => {
-            // Handle slider input changes (for programmatic changes)
             slider.addEventListener('input', (e) => {
                 if (e.isTrusted) {
                     delete e.target.dataset.imageInferred;
@@ -3852,14 +3824,13 @@ class UIController {
         // Handle direct clicks on color segments
         panel.querySelectorAll('.color-segment').forEach(segment => {
             segment.addEventListener('click', (e) => {
-                e.stopPropagation(); // Prevent event bubbling
+                e.stopPropagation();
                 const value = parseInt(e.target.dataset.value);
                 const slider = e.target.closest('.slider-wrapper').querySelector('.color-slider');
                 if (slider) {
                     delete slider.dataset.imageInferred;
                     slider.dataset.userSelected = 'true';
                     slider.value = value;
-                    // Trigger the input event manually
                     const event = new Event('input', { bubbles: true });
                     slider.dispatchEvent(event);
                 }
@@ -3868,7 +3839,7 @@ class UIController {
 
         // Bar style / colour effect / font grids. They are radio groups: one tab
         // stop for the whole grid, arrows to move (so a 30-font grid costs one
-        // Tab, not thirty), and the value lives in the hidden input as before.
+        // Tab, not thirty), and the value lives in the hidden input.
         panel.querySelectorAll('.bar-style-grid').forEach(grid => {
             grid.addEventListener('click', (e) => {
                 const thumbnail = e.target.closest('.bar-style-thumbnail');
@@ -3915,7 +3886,6 @@ class UIController {
             if (grid) grid.addEventListener('click', () => this.updateFontPreview(configId, fontType));
         });
 
-        // Initial update of conditional visibility
         this.updateConditionalVisibility();
 
         // Textarea load/save handlers
@@ -4136,12 +4106,10 @@ class UIController {
     }
 
     updateConditionalVisibility() {
-        // Find all option rows with showWhen conditions
         document.querySelectorAll('.option-row[data-show-when]').forEach(row => {
             const showWhen = JSON.parse(row.dataset.showWhen);
             let shouldShow = true;
 
-            // Evaluate each condition in showWhen
             for (const [dependsOnId, condition] of Object.entries(showWhen)) {
                 const dependsOnElement = document.getElementById(dependsOnId);
                 if (dependsOnElement) {
@@ -4162,7 +4130,6 @@ class UIController {
                 }
             }
 
-            // Toggle visibility
             row.style.display = shouldShow ? '' : 'none';
         });
     }
@@ -4207,10 +4174,8 @@ class UIController {
 
         const modifiedCount = filtered.length;
 
-        // Check if the row already exists
         let modifiedRow = document.getElementById('modifiedMemoryRow');
         if (!modifiedRow) {
-            // Create the row if it doesn't exist
             const infoPanels = document.getElementById('infoPanels');
             const technicalPanel = infoPanels.querySelector('.panel:nth-child(2)'); // Technical Details panel
 
@@ -4222,12 +4187,11 @@ class UIController {
             <span class="info-value" id="modifiedMemoryCount">-</span>
         `;
 
-            // Insert before Clock Type row (which is third from last)
+            // Insert before the Clock Type row.
             const clockRow = technicalPanel.querySelector('#clockType').closest('.info-row');
             technicalPanel.insertBefore(modifiedRow, clockRow);
         }
 
-        // Update the value
         const countElement = document.getElementById('modifiedMemoryCount');
         // An init routine that never returned means its subtune was skipped, so we
         // have NO memory map for it. Saying "None" there is actively misleading -
@@ -4304,10 +4268,8 @@ class UIController {
             return;
         }
 
-        // Sort addresses
         const sorted = [...zpAddresses].sort((a, b) => a - b);
 
-        // Group into ranges
         const ranges = [];
         let currentRange = { start: sorted[0], end: sorted[0] };
 
@@ -4321,7 +4283,6 @@ class UIController {
         }
         ranges.push(currentRange);
 
-        // Format ranges
         const formatted = ranges.map(r => {
             if (r.start === r.end) {
                 return this.formatHex(r.start, 2);
@@ -4352,7 +4313,6 @@ class UIController {
             const count = sidChipCount || 1;
 
             if (count <= 1 || !sidChipAddresses || sidChipAddresses.length <= 1) {
-                // Single SID - just show "1"
                 this.elements.sidChipCount.textContent = '1';
             } else {
                 // Multiple SIDs - show count and list extra SID addresses
@@ -4557,11 +4517,9 @@ class UIController {
         // makes the builder pick the first bank that doesn't overlap the SID.
         const selectedLayoutKey = null;
 
-        // Get the selected compression type from radio buttons
         const compressionRadio = document.querySelector('input[name="compression-type"]:checked');
         const compressionType = compressionRadio ? compressionRadio.value : 'exomizer';
 
-        // Show busy overlay
         this.showBusy('Creating PRG File', 'Preparing components...');
 
         // Get the selected song (default to startSong if selector doesn't exist)
@@ -4571,16 +4529,17 @@ class UIController {
         try {
             const baseName = this.exportBaseName();
 
-            // Update progress
             this.updateBusy('Loading Visualizer', 'Reading configuration...');
 
             // Load the visualizer config to get the SYS address
             const vizConfig = await this.visualizerConfig.loadConfig(this.selectedVisualizer.id);
-            let visualizerSysAddress = 0x4100; // default fallback
+            const FALLBACK_SYS_ADDRESS = 0x4100;
+            let visualizerSysAddress = FALLBACK_SYS_ADDRESS;
 
+            // Dead while selectedLayoutKey is always null (the builder picks the
+            // bank); the address actually used comes from lastSysAddress below.
             if (selectedLayoutKey && vizConfig && vizConfig.layouts[selectedLayoutKey]) {
                 const layout = vizConfig.layouts[selectedLayoutKey];
-                // Use sysAddress if available, otherwise fall back to baseAddress + 0x100
                 if (layout.sysAddress) {
                     visualizerSysAddress = parseInt(layout.sysAddress);
                 } else if (layout.baseAddress) {
@@ -4593,7 +4552,7 @@ class UIController {
                 sidInitAddress: this.sidHeader.initAddress,
                 sidPlayAddress: this.sidHeader.playAddress,
                 visualizerFile: this.selectedVisualizer.binary,
-                visualizerLoadAddress: visualizerSysAddress,  // Use the actual address
+                visualizerLoadAddress: visualizerSysAddress,
                 compressionType: compressionType,
                 visualizerId: this.selectedVisualizer.id,
                 selectedSong: selectedSong - 1,
@@ -4613,9 +4572,8 @@ class UIController {
                 // Forced song loop (Song tab toggle): restart fade-out tunes when
                 // they end. The exporter applies it to single-song tunes only.
                 forceSongLoop: forceSongLoop,
-                // Every option's value as it stands now. The builder used to read
-                // the DOM as each option came up, so anything that changed
-                // mid-build would land half-applied - and it is what a caller
+                // Every option's value as it stands now, so a control changed
+                // mid-build cannot land half-applied - and it is what a caller
                 // without a page would have to supply.
                 optionValues: this._captureOptionValues(),
                 // Soft VIC-bank preference (Advanced settings). Ignored when the
@@ -4626,7 +4584,7 @@ class UIController {
                 // a length the user typed rather than one the scan measured.
                 showSongLength: needsTuneAnalysis && this.showSongLength(),
                 manualLengthSeconds: needsTuneAnalysis ? this.manualSongLengthSeconds() : 0,
-                // Frame rate + loop-search window chosen in the spectrometer export modal.
+                // Frame rate + loop-search window resolved above from Advanced settings.
                 bakeParams: bakeParams,
                 // Progress for the visualisation build (the slow analysis is already
                 // done and cached by this point, so this stage is quick - keep it simple).
@@ -4635,11 +4593,9 @@ class UIController {
                 }
             };
 
-            // Ensure PRG exporter is loaded
             this.updateBusy('Building PRG', 'Loading export components...');
             await this.ensurePRGExporter();
 
-            // Update progress
             this.updateBusy('Building PRG', 'Assembling components...');
 
             const exportResult = await this.prgExporter.createPRG(options);
@@ -4656,7 +4612,6 @@ class UIController {
             // Loop/timing info from the baked FFT stream (null for non-FFT exports).
             const bakeInfo = this.prgExporter.lastBakeInfo;
 
-            // Update progress for compression if needed
             if (compressionType !== 'none') {
                 this.updateBusy('Compressing', `Applying ${compressionType.toUpperCase()} compression...`);
                 // Small delay to show the message
@@ -4664,7 +4619,7 @@ class UIController {
             }
 
             // The builder auto-picks the bank, so use the SYS address it actually
-            // chose (not the 0x4100 UI fallback) for the filename and memory map.
+            // chose (not FALLBACK_SYS_ADDRESS) for the filename and memory map.
             const realSysAddress = this.prgExporter.lastSysAddress || visualizerSysAddress;
 
             // Generate filename based on the ACTUAL compression state: a crunched
@@ -4674,10 +4629,8 @@ class UIController {
             let filename;
 
             if (isCompressed) {
-                // Compressed: just songname.prg
                 filename = `${baseName}.prg`;
             } else {
-                // Uncompressed: songname-sys{decimal_address}.prg
                 filename = `${baseName}-sys${realSysAddress}.prg`;
             }
 
@@ -4686,7 +4639,6 @@ class UIController {
 
             this.downloadFile(prgData, filename);
 
-            // Hide busy overlay
             this.hideBusy();
 
             const sizeKB = (prgData.length / 1024).toFixed(2);
@@ -4705,7 +4657,7 @@ class UIController {
 
             // The file is the result, so say what it is and what to do with it on
             // the page rather than in a dialog that dismisses itself after two
-            // seconds. (It used to do both, for one event.)
+            // seconds.
             this._lastExportOk = true;
             if (exportedBeforeLength) {
                 // Remembered against this tune, so the scan landing can say the
@@ -4788,16 +4740,6 @@ class UIController {
         }
     }
 
-    // -------------------------------------------------------------------------
-    // Memory map: draw the runtime C64 layout of the PRG we just built, so it's
-    // easy to see where the SID, player code+graphics, spectrometer data and free
-    // RAM all ended up. Reads the (uncompressed) component list the builder placed.
-    // -------------------------------------------------------------------------
-    /**
-     * Option ids that describe the tune currently open, not the session. They
-     * come out of _captureOptionValues because it sweeps the whole panel, but
-     * they must never be carried into a new session.
-     */
     /**
      * Parse "keep this memory free" as the user types it: a comma or
      * space-separated list of `$C000-$CFFF` style ranges. Hex with or without
@@ -4834,10 +4776,20 @@ class UIController {
      */
     static get MAX_SCAN_WINDOW() { return 3600; }
 
+    /**
+     * Option ids that describe the tune currently open, not the session. They
+     * come out of _captureOptionValues because it sweeps the whole panel, but
+     * they must never be carried into a new session.
+     */
     static get PER_TUNE_OPTION_IDS() {
         return new Set(['sidTitle', 'sidAuthor', 'sidCopyright', 'songSelector', 'songLengthManual']);
     }
 
+    // -------------------------------------------------------------------------
+    // Memory map: draw the runtime C64 layout of the PRG we just built, so it's
+    // easy to see where the SID, player code+graphics, spectrometer data and free
+    // RAM all ended up. Reads the (uncompressed) component list the builder placed.
+    // -------------------------------------------------------------------------
     static get MEMMAP_CATEGORIES() {
         return {
             sid:         { label: 'SID music',            color: '#4fc3f7' },
@@ -4869,10 +4821,9 @@ class UIController {
     // Forced song loop (Song tab): status line + one-time fade-out prompt.
     // ---------------------------------------------------------------------
 
+    // Dead: the later _mmss in this class replaces this one (same output).
     _mmss(s) { const t = Math.round(s || 0), m = Math.floor(t / 60), sec = t % 60; return `${m}:${String(sec).padStart(2, '0')}`; }
 
-    // Keep the Song tab's "Song Looping" panel truthful for the current tune:
-    // what we know about how the song ends, and whether the toggle can apply.
     /** The typed song length in whole seconds, or 0 when the field is empty/invalid. */
     manualSongLengthSeconds() {
         const el = document.getElementById('songLengthManual');
@@ -4918,8 +4869,8 @@ class UIController {
     }
 
     /**
-     * Why a scan came back with no loop. Running out of window used to read as
-     * "this tune has no loop" when it only meant "we did not look far enough".
+     * Why a scan came back with no loop. Running out of window must not read as
+     * "this tune has no loop" when it only means "we did not look far enough".
      */
     _scanEndedBecause(a) {
         const scanned = this._mmss(a.analyzedSeconds);
@@ -4929,6 +4880,8 @@ class UIController {
         return `No repeat or fade-out found in ${scanned} of scanning`;
     }
 
+    // Keep the Song tab's "Song Looping" panel truthful for the current tune:
+    // what we know about how the song ends, and whether the toggle can apply.
     updateSongLoopStatus() {
         const status = document.getElementById('songLoopStatus');
         const toggle = document.getElementById('forceLoopToggle');
@@ -5069,7 +5022,7 @@ class UIController {
     // Song timeline panel, shared by every export path. The baked-FFT players
     // describe the exact stored stream; everyone else describes the analysed tune.
     // Both render the SAME graphic, so "how does this tune end?" is always shown
-    // and always looks the same - it used to appear only for the spectrometer.
+    // and always looks the same.
     //
     // d = { mode, storedSeconds, introSeconds, title, subtitle, bars,
     //       analyzedSeconds, cappedAtMaxSeconds }
@@ -5084,7 +5037,7 @@ class UIController {
     //        'none'   - nothing conclusive; the whole stored span replays
     //   bars - true when the stream also drives baked FFT bars (wording differs).
     _timelineHTML(d) {
-        const mmss = s => { const t = Math.round(s || 0), m = Math.floor(t / 60), sec = t % 60; return `${m}:${String(sec).padStart(2, '0')}`; };
+        const mmss = s => this._mmss(s);
         const storedSec = Math.max(0, d.storedSeconds || 0);
         const introSec = Math.max(0, Math.min(storedSec, d.introSeconds || 0));
         const loopSec = storedSec - introSec;
@@ -5254,7 +5207,8 @@ class UIController {
         // Keyframes are stored at one per `fpk` raster frames, the last one for
         // lastKeyframeFrames, so the exact frame count is derived from those -
         // never re-timed from the mm:ss figures.
-        const frameHz = a.frameHz || (a.isNtsc ? 59.826 : 50.1245);
+        const PAL_FRAME_HZ = 50.1245, NTSC_FRAME_HZ = 59.826;
+        const frameHz = a.frameHz || (a.isNtsc ? NTSC_FRAME_HZ : PAL_FRAME_HZ);
         const fpk = Math.max(1, Math.round(frameHz / (a.keyframeHz || 25)));
         const nkFrames = a.numKeyframes ? (a.numKeyframes - 1) * fpk + (a.lastKeyframeFrames || fpk) : 0;
         let mode, storedSeconds, introSeconds, totalFrames, introFrames;
@@ -5359,9 +5313,9 @@ class UIController {
 
     /**
      * Say where this tune and player will land, before the user commits to an
-     * export. The map that already exists is only drawn on success, so until now
-     * the only way to find out which VIC bank a tune forced, or what the SYS
-     * address would be, was to export and look.
+     * export. The memory map is only drawn after a successful export, so
+     * without this the only way to find out which VIC bank a tune forces, or
+     * what the SYS address will be, is to export and look.
      *
      * This is deliberately a plan and says so: the data block, the player stub
      * and any bitmaps are placed later, so the span here is a floor, not the
@@ -5417,14 +5371,13 @@ class UIController {
     /**
      * The three metadata lines as the C64 will show them: the same case
      * conversion, PETSCII substitution, 32-column centring and font the export
-     * applies, drawn with the selected charset. Typing a title with a character
-     * the machine has no glyph for, or one that will not fit, used to be
-     * invisible until the export.
+     * applies, drawn with the selected charset, so a character the machine has
+     * no glyph for, or a line that will not fit, shows before the export.
      */
-    // DEAD: the "On screen" row it drew into was removed from the File
-    // Information panel - three lines of C64 text squeezed into a 256x24 canvas
-    // read as overlapping mush, and the export's own text preview covers the
-    // same ground properly. Everything below no-ops on the missing element.
+    // DEAD: index.html has no "On screen" row (#textPreviewRow) for this to
+    // draw into - three lines of C64 text squeezed into a 256x24 canvas read as
+    // overlapping mush, and the export's own text preview covers the same
+    // ground properly. Everything below no-ops on the missing element.
     async renderTextPreview() {
         const row = document.getElementById('textPreviewRow');
         const canvas = document.getElementById('textPreview');
@@ -5455,16 +5408,16 @@ class UIController {
         }
         if (token !== this._textPreviewToken || !charset) { row.hidden = true; return; }
 
+        const COLS = 32, CELL = 8;
         const ex = this.prgExporter;
         const lines = ['name', 'author', 'copyright'].map((f) => {
             let str = this.sidHeader[f] || '';
             if (typeof FONT_DATA !== 'undefined' && caseType !== undefined) {
                 str = FONT_DATA.convertTextForFont(str, caseType);
             }
-            return ex.stringToPETSCII(ex.centerString(str, 32), 32);
+            return ex.stringToPETSCII(ex.centerString(str, COLS), COLS);
         });
 
-        const COLS = 32, CELL = 8;
         canvas.width = COLS * CELL;
         canvas.height = lines.length * CELL;
         const pal = window.C64_PALETTE_RGB;
@@ -5489,7 +5442,7 @@ class UIController {
             // Say when a line was trimmed to fit, since the preview alone shows
             // the result without saying why.
             const tooLong = [['name', 'Title'], ['author', 'Author'], ['copyright', 'Copyright']]
-                .filter(([f]) => (this.sidHeader[f] || '').trim().length > 32)
+                .filter(([f]) => (this.sidHeader[f] || '').trim().length > COLS)
                 .map(([, label]) => label);
             note.textContent = tooLong.length
                 ? `${tooLong.join(' and ')} will not fit the 32 columns and ${tooLong.length > 1 ? 'are' : 'is'} cut short.`
@@ -5597,7 +5550,6 @@ class UIController {
         el.style.display = 'block';
     }
 
-    // Helper functions
     // The name the exported PRG gets, from the template on the Export tab.
     // Placeholders: {name} the SID's filename, {title} / {author} the metadata,
     // {index} the tune's position in a queue (2 digits), {song} the sub-tune.
@@ -5663,7 +5615,7 @@ class UIController {
             }
 
             // Errors and warnings stay put. A build failure that erases itself
-            // after five seconds is not a report - it was also the only thing
+            // after five seconds is not a report, and it may be the only thing
             // saying why nothing downloaded.
             if (type !== 'info' && type !== 'error' && type !== 'warning') {
                 this._exportStatusTimer = setTimeout(() => {
@@ -5688,7 +5640,6 @@ class UIController {
         const month = months[date.getMonth()];
         const year = date.getFullYear();
 
-        // Add ordinal suffix
         const suffix = this.getOrdinalSuffix(day);
 
         return `${day}${suffix} ${month} ${year}`;
@@ -5707,7 +5658,7 @@ class UIController {
     // showBusy(message, submessage, onCancel?): when onCancel is supplied the
     // overlay grows a Cancel button that invokes it (once) - used by the long,
     // interruptible tasks (song-length scan, spectrometer analysis). Tasks that
-    // pass no handler get the plain spinner, exactly as before.
+    // pass no handler get the plain spinner.
     showBusy(message, submessage = '', onCancel = null) {
         if (this.elements.busyOverlay) {
             this._busyOpener = document.activeElement;
@@ -5739,8 +5690,9 @@ class UIController {
     // a live region makes a screen reader unusable, so announce on a slow
     // throttle and force the milestones (start, outcome) through.
     _announceBusy(text, force = false) {
+        const ANNOUNCE_INTERVAL_MS = 10000;
         const now = Date.now();
-        if (!force && now - (this._lastBusyAnnounce || 0) < 10000) return;
+        if (!force && now - (this._lastBusyAnnounce || 0) < ANNOUNCE_INTERVAL_MS) return;
         this._lastBusyAnnounce = now;
         const el = document.getElementById('busyAnnounce');
         if (el) el.textContent = text;
@@ -5807,10 +5759,9 @@ class UIController {
 
     /**
      * The overlay's found-something line: what the job has turned up, as opposed
-     * to where it has got to. It STAYS until the job replaces it or ends - a
-     * candidate loop used to be written over the progress counter and vanish on
-     * the next tick, a few hundred milliseconds later, which read as a flicker
-     * rather than as news.
+     * to where it has got to. It STAYS until the job replaces it or ends, so a
+     * candidate loop does not vanish on the next progress tick, a few hundred
+     * milliseconds later, which reads as a flicker rather than as news.
      * @param {string} text
      * @param {'maybe'|'found'} [kind] - 'found' for something settled.
      */
@@ -5825,7 +5776,7 @@ class UIController {
      * Is the job under the overlay one that will report loop news? Only then does
      * the note line hold its space and read "Listening for the tune's loop…" while
      * it waits. Everything else the overlay covers - loading a SID, building the
-     * PRG - has no loop to listen for, and the placeholder claimed otherwise.
+     * PRG - has no loop to listen for.
      * @param {boolean} on
      */
     setBusyListening(on) {
@@ -5972,7 +5923,7 @@ class UIController {
         // Asking for the measurement outright says the same thing, and says it
         // from wherever the button was: the corner chip's restart is only ever
         // reachable with the Studio shut (the chip sits below the modals), so
-        // gating it on the Studio being open made it do nothing at all.
+        // gating it on the Studio being open would make it do nothing at all.
         if (!userAsked && (!window.studioModal || !window.studioModal.isOpen)) return;
         // Nothing an export of several tunes can do with a measurement of one of
         // them: the length, the loop and the spectrometer are all off until the
@@ -6036,8 +5987,8 @@ class UIController {
             const cancel = document.getElementById('analysisChipCancel');
             // The chip is not dismissed here: letting the aborted job settle brings
             // up its stopped state, which is where the way back in lives. Hiding it
-            // on the click left the only restart buried in the Studio's Song tab,
-            // nowhere near where the scan had been running.
+            // on the click would leave the only restart buried in the Studio's Song
+            // tab, nowhere near where the scan had been running.
             if (cancel) cancel.addEventListener('click', () => {
                 if (this.analysisRunning) this.cancelAnalysis();
                 else this._hideAnalysisChip();   // already stopped: this is a dismiss
@@ -6062,8 +6013,9 @@ class UIController {
     // region makes a screen reader unusable, so announce on a slow throttle and
     // force the final outcome through.
     _announceAnalysis(text, force = false) {
+        const ANNOUNCE_INTERVAL_MS = 10000;
         const now = Date.now();
-        if (!force && now - (this._lastAnalysisAnnounce || 0) < 10000) return;
+        if (!force && now - (this._lastAnalysisAnnounce || 0) < ANNOUNCE_INTERVAL_MS) return;
         this._lastAnalysisAnnounce = now;
         const el = document.getElementById('analysisChipAnnounce');
         if (el) el.textContent = text;
@@ -6118,7 +6070,7 @@ class UIController {
     // Call _ensureAnalysis rather than this directly - it owns the single in-flight
     // job and the abort plumbing.
     async runTuneAnalysis(opts = {}) {
-        // The scan can outlive the tune it was started for (it now runs in the
+        // The scan can outlive the tune it was started for (it runs in the
         // background). Carry the token it began with and only publish a result
         // that still belongs to the loaded SID.
         const token = this._analysisToken;
@@ -6156,8 +6108,8 @@ class UIController {
             engine: adv.bakeEngine,
             // This is a measurement, not a stream: how much of a non-looping tune
             // the spectrometer can STORE is an export-time cap (see
-            // computeBakeRates), and applying it here made every tune that plays
-            // past it look like it ended there.
+            // computeBakeRates), and applying it here would make every tune that
+            // plays past it look like it ended there.
             measureOnly: true,
         };
         try {
@@ -6283,9 +6235,9 @@ class UIController {
     // handles - the flows below drive it. Kept apart from ErrorModal (text-only body).
     // UNUSED. Kept because it is the shape a future in-flow prompt would take -
     // but if it is ever wired up it MUST be registered in studio-modal.js's
-    // modal-precedence list and given a Tab trap and focus restore, or it
-    // inherits the bug logoFitModal had: Escape closing the Studio underneath it
-    // and Tab being yanked out from behind the dialog. It builds its own element
+    // modal-precedence list and given a Tab trap and focus restore, or Escape
+    // closes the Studio underneath it and Tab is yanked out from behind the
+    // dialog. It builds its own element
     // rather than reusing #modalOverlay, so the id-based check would miss it.
     _flowModal(title) {
         const overlay = document.createElement('div');

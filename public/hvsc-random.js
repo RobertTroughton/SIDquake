@@ -13,7 +13,7 @@ window.hvscRandom = (function () {
     // be picked from the landing page without the browser module ever loading, so
     // this cannot rely on hvscBrowser's token closure and mirrors it instead (keep
     // the two in sync). When gating is disabled server-side /hvsc-token returns an
-    // empty token and sidUrl() falls back to a plain static path (prior behaviour).
+    // empty token and sidUrl() falls back to a plain static path.
     let accessToken = null;
     let accessTokenExp = 0;   // unix seconds
     let tokenPromise = null;
@@ -94,7 +94,7 @@ window.hvscRandom = (function () {
             } catch (_) { /* fall through to the full index */ }
 
             // 3. Last resort: the full index, so a deploy without the pool file
-            // still works exactly as it did before.
+            // still works.
             await loadCuratedPrefixes();
             const res = await fetch('hvsc-index.json');
             if (!res.ok) throw new Error(`HTTP ${res.status}`);

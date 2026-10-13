@@ -1,3 +1,5 @@
+// Dead: only initSelectorModal creates one, and nothing calls that - the
+// image picker is the inline preview + gallery built by createImagePreview.
 class ImageSelectorModal {
     constructor() {
         this.modal = null;
@@ -620,13 +622,10 @@ class ImagePreviewManager {
     async prepareLogoImage(config, file) {
         await this.ensureLogoFit();
         const src = await this.decodeImage(file);
-        // Sizes the C64 side isn't defined for are refused rather than cropped
-        // or resampled into something the artist didn't draw.
-        // An odd size is not a refusal any more. Throwing here happened BEFORE any
-        // state was stored, so the Adjust tool - which has a size slider and a
-        // position control and would have solved it in seconds - was unreachable
-        // for exactly the images that needed it. plan() marks these needsFit, so
-        // the user places them instead.
+        // An odd size is not refused: refusing here, before any state is
+        // stored, would make the Adjust tool - whose size slider and position
+        // control solve it in seconds - unreachable for exactly the images that
+        // need it. plan() marks these needsFit, so the user places them instead.
         const oddSize = LogoFit.sizeError(src.width, src.height);
         const band = LogoFit.bandHeight(config.charsetRows);
         // artRows: how many of the player's charsetRows the ARTWORK may use.
@@ -661,7 +660,7 @@ class ImagePreviewManager {
 
     // Put the file the exporter should read into the hidden <input type="file">.
     // Dropping onto the preview never goes through the input, so without this
-    // the export silently fell back to the visualizer's default image.
+    // the export silently falls back to the visualizer's default image.
     setInputFile(config, file) {
         const input = document.getElementById(config.id);
         if (!input || typeof DataTransfer === 'undefined') return;
@@ -776,6 +775,7 @@ class ImagePreviewManager {
         return this.galleryModal;
     }
 
+    // Dead: nothing calls this (see ImageSelectorModal).
     initSelectorModal() {
         if (!this.selectorModal) {
             this.selectorModal = new ImageSelectorModal();
@@ -845,7 +845,7 @@ class ImagePreviewManager {
         const previewFrame = wrapper.querySelector('.image-preview-frame');
 
         // Clicking the preview (or Browse) opens the native file picker; the
-        // gallery is inline below, so there's no popup selector anymore.
+        // gallery is inline below.
         previewFrame.addEventListener('click', () => fileInput.click());
         wrapper.querySelector('[data-act="browse"]').addEventListener('click', () => fileInput.click());
         if (isLogo) {
@@ -883,8 +883,8 @@ class ImagePreviewManager {
         return container;
     }
 
-    // Build the inline gallery grid on the tab (same cards/badges as the old
-    // popup gallery, minus the modal). Clicking a card loads that image.
+    // Build the inline gallery grid on the tab (same cards/badges as
+    // GalleryModal, minus the modal). Clicking a card loads that image.
     populateInlineGallery(gridEl, config, container) {
         if (!gridEl) return;
         const gallery = config.gallery || [];
@@ -929,8 +929,8 @@ class ImagePreviewManager {
     }
 
     // Gallery grids are radio groups: one tab stop for the grid, arrows to move
-    // between images, Enter/Space to choose. They were <div>s with a click
-    // handler, so picking a supplied logo was impossible without a mouse.
+    // between images, Enter/Space to choose, so a supplied logo can be picked
+    // without a mouse.
     _makeGalleryCardRadio(gridEl, card, isSelected, choose) {
         card.setAttribute('role', 'radio');
         card.setAttribute('aria-checked', isSelected ? 'true' : 'false');
@@ -1065,6 +1065,16 @@ class ImagePreviewManager {
 
             const arrayBuffer = await response.arrayBuffer();
             const fileData = new Uint8Array(arrayBuffer);
+            const assignToInput = (file) => {
+                const dataTransfer = new DataTransfer();
+                dataTransfer.items.add(file);
+                const fileInput = container.querySelector(`#${config.id}`);
+                if (fileInput) {
+                    fileInput.files = dataTransfer.files;
+                    fileInput.dataset.gallerySelected = 'true';
+                    fileInput.dataset.galleryFile = filepath;
+                }
+            };
 
             if (filepath.toLowerCase().endsWith('.png') && this.isPNGFile(fileData)) {
                 const blob = new Blob([fileData], { type: 'image/png' });
@@ -1087,30 +1097,14 @@ class ImagePreviewManager {
                 const preview = await this.createPreviewFromPNGData(
                     fit && fit.fitted ? await this.readFileAsArrayBuffer(file) : fileData);
                 img.src = preview.dataUrl;
-
-                const dataTransfer = new DataTransfer();
-                dataTransfer.items.add(file);
-                const fileInput = container.querySelector(`#${config.id}`);
-                if (fileInput) {
-                    fileInput.files = dataTransfer.files;
-                    fileInput.dataset.gallerySelected = 'true';
-                    fileInput.dataset.galleryFile = filepath;
-                }
+                assignToInput(file);
             } else {
                 const preview = await this.createPreviewFromData(fileData, name);
                 img.src = preview.dataUrl;
 
                 const blob = new Blob([fileData], { type: 'image/png' });
                 const file = new File([blob], name, { type: 'image/png' });
-
-                const dataTransfer = new DataTransfer();
-                dataTransfer.items.add(file);
-                const fileInput = container.querySelector(`#${config.id}`);
-                if (fileInput) {
-                    fileInput.files = dataTransfer.files;
-                    fileInput.dataset.gallerySelected = 'true';
-                    fileInput.dataset.galleryFile = filepath;
-                }
+                assignToInput(file);
             }
         } catch (error) {
             console.error('Error loading gallery image:', error);
@@ -1135,8 +1129,7 @@ class ImagePreviewManager {
             loadingDiv.style.display = 'flex';
 
             // A logo whose artwork sits outside the rows this visualizer shows
-            // is placed onto the screen first (logo-fit.js); one that isn't a
-            // size the C64 side is defined for is refused outright.
+            // is placed onto the screen first (logo-fit.js).
             let useFile = file, fit = null;
             if (this.isLogoInput(config)) {
                 try {

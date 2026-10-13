@@ -1,6 +1,6 @@
 window.hvscBrowser = (function () {
 
-    // HVSC is now self-hosted: raw .sid files are served statically from
+    // HVSC is self-hosted: raw .sid files are served statically from
     // /HVSC/... and the whole collection tree + metadata comes from the
     // single search index (hvsc-index.json). Browsing is therefore entirely
     // client-side — no per-folder network round-trips.
@@ -563,7 +563,7 @@ window.hvscBrowser = (function () {
     // Preload the playback engine (scripts + WASM compile + audio worklet) in
     // the background so the first tune's Play button is responsive instead of
     // waiting on a cold init. Fire-and-forget; failures are harmless because
-    // the first real playback will just initialize on demand as before.
+    // the first real playback will just initialize on demand.
     let warmupStarted = false;
     async function warmUpPlayback() {
         if (warmupStarted) return;
@@ -780,7 +780,7 @@ window.hvscBrowser = (function () {
             if (dir !== lastDir) {
                 // Walk the prefix once, registering each segment under its
                 // parent as it goes. Slicing and re-joining a segment array
-                // here used to cost more than the rest of the index load
+                // here would cost more than the rest of the index load
                 // together.
                 let node = getDir('');
                 let at = 0;
@@ -1056,9 +1056,9 @@ window.hvscBrowser = (function () {
     // Make a file/directory row keyboard-operable. Enter mirrors the mouse:
     // open a folder, select-and-preview a tune, and — pressed again on the tune
     // already selected — take it, the way a second click does.
-    // The listing is a listbox, not a pile of buttons. Every row used to be its
-    // own tab stop with no arrow keys, so reaching the Select button past 200
-    // search results meant 200 presses of Tab.
+    // The listing is a listbox, not a pile of buttons: one tab stop with arrow
+    // keys, so reaching the Select button past 200 search results is not 200
+    // presses of Tab.
     function makeRowKeyboardAccessible(item, entry) {
         item.tabIndex = -1;
         item.setAttribute('role', 'option');
@@ -1160,7 +1160,8 @@ window.hvscBrowser = (function () {
         const pathDisplay = currentPath ? '/' + currentPath : '/';
         const bar = document.getElementById('pathBar');
         if (bar) {
-            // Plain-text span on current pages; tolerate the old input too.
+            // Every page renders a <span>; the INPUT branch is dead, kept for a
+            // host page that still uses an input.
             if (bar.tagName === 'INPUT') bar.value = pathDisplay;
             else bar.textContent = pathDisplay;
         }
@@ -1216,7 +1217,7 @@ window.hvscBrowser = (function () {
 
     // Hand a chosen SID back to whoever is hosting the browser.
     //  - Standalone (the SIDquake modal): posts {type:'sid-selected'} to this
-    //    same window, which ui.js already listens for.
+    //    same window, which ui.js listens for.
     //  - Embedded (window.HVSC_EMBED set by hvsc-embed.html): posts to the
     //    parent frame using the documented embed contract, honouring the
     //    requested mode:

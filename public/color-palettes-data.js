@@ -187,9 +187,9 @@ function generateBarColumnColors(numBars, columns) {
 // Each bar is coloured by the waveform of the SID voice that claimed it -
 // the one register-level fact that actually maps to how the music sounds:
 //   triangle -> greens (soft, flutey leads)
-//   sawtooth -> reds/oranges (buzzy basses and leads)
+//   sawtooth -> greys (buzzy basses and leads)
 //   pulse    -> blues (the classic SID lead/chord voice)
-//   noise    -> greys (drums and hats)
+//   noise    -> reds (drums and hats)
 // Brightness still tracks bar height within each family.
 //
 // The player consumes a 32-byte table: 4 families x 8 luminance levels,
