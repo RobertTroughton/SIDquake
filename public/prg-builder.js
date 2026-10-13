@@ -1,6 +1,18 @@
 ﻿// prg-builder.js - Assembles C64 PRG files from SID music, a data block,
 // optional save/restore routines, and a visualizer binary with its inputs.
 
+// 6502 opcodes this file emits directly.
+const OP = Object.freeze({
+    LDA_IMM: 0xA9,
+    LDA_ZP:  0xA5,
+    LDA_ABS: 0xAD,
+    STA_ZP:  0x85,
+    STA_ABS: 0x8D,
+    JMP_ABS: 0x4C,
+    RTS:     0x60,
+    NOP:     0xEA,
+});
+
 /**
  * PRGBuilder collects independently-loaded components (each with its own
  * load address) and emits a single contiguous .prg image. Gaps between
@@ -144,13 +156,6 @@ class SIDquakePRGExporter {
     }
 
     /**
-     * Find a page-aligned location with at least routineSize free bytes that
-     * doesn't collide with any component already added to the builder, and
-     * doesn't fall inside the I/O area at $D000-$DFFF.
-     * @param {number} routineSize - Combined size of save+restore routines
-     * @returns {number} Page-aligned address suitable for the routines
-     */
-    /**
      * Choose the high byte of a 1K screen page in VIC bank 0 ($0000-$3FFF) for
      * the "Linked With" intro that doesn't collide with anything already placed
      * (most importantly a SID that loads low). Skips the zero page/stack/system
@@ -178,10 +183,17 @@ class SIDquakePRGExporter {
         return 0x04; // best effort if bank 0 is unusually full
     }
 
-    // align (default true): page-align the returned address. Most placements want
-    // this, but data read with indexed-absolute addressing (e.g. the spectrometer
-    // index stream) works at any alignment, so passing align=false lets it start
-    // right after the previous region instead of paying up to 255 bytes of pad.
+    /**
+     * Find a location with at least routineSize free bytes that doesn't collide
+     * with any component already added to the builder or a reserved range, and
+     * doesn't fall inside the I/O area at $D000-$DFFF.
+     * @param {number} routineSize - bytes needed
+     * @param {boolean} align - page-align the result (default). Data read with
+     *   indexed-absolute addressing (e.g. the spectrometer index stream) works at
+     *   any alignment, so align=false lets it start right after the previous
+     *   region instead of paying up to 255 bytes of pad.
+     * @returns {number|null} address, or null when nothing fits
+     */
     findSafeMemoryForRoutines(routineSize, sidLoadAddress, sidDataLength, reservedRanges = [], align = true) {
         const usedRanges = [];
         const alignStart = (addr) => align ? this.alignToPage(addr) : addr;
@@ -250,8 +262,8 @@ class SIDquakePRGExporter {
         }
 
         // Nothing fits. Return null so callers fail loudly (or skip a candidate
-        // bank) rather than silently overwriting code/data - the old $0900
-        // fallback landed routines on top of a low-loading tune's music.
+        // bank) rather than silently overwriting code/data such as a
+        // low-loading tune's music.
         console.warn(`Could not find ${routineSize} bytes of free RAM for save/restore routines`);
         return null;
     }
@@ -440,32 +452,22 @@ class SIDquakePRGExporter {
             .sort((a, b) => a - b);
 
         for (const addr of filtered) {
-            // Load from memory address
             if (addr < 256) {
-                code.push(0xA5); // LDA zp
-                code.push(addr);
+                code.push(OP.LDA_ZP, addr);
             } else {
-                code.push(0xAD); // LDA abs
-                code.push(addr & 0xFF);
-                code.push((addr >> 8) & 0xFF);
+                code.push(OP.LDA_ABS, addr & 0xFF, (addr >> 8) & 0xFF);
             }
 
-            // Store into restore routine (self-modifying code)
-            // Skip the LDA # opcode (1 byte) to get to the value byte
+            // Self-modifying: store into the operand of the matching LDA # in
+            // the restore routine (+1 skips its opcode byte).
             const targetAddr = restoreRoutineAddr + restoreOffset + 1;
-            code.push(0x8D); // STA abs
-            code.push(targetAddr & 0xFF);
-            code.push((targetAddr >> 8) & 0xFF);
+            code.push(OP.STA_ABS, targetAddr & 0xFF, (targetAddr >> 8) & 0xFF);
 
-            // Calculate next offset based on what the restore routine will use
-            if (addr < 256) {
-                restoreOffset += 4; // LDA # (2) + STA zp (2)
-            } else {
-                restoreOffset += 5; // LDA # (2) + STA abs (3)
-            }
+            // Step over that restore entry: LDA # (2) + STA zp (2) or STA abs (3).
+            restoreOffset += (addr < 256) ? 4 : 5;
         }
 
-        code.push(0x60); // RTS
+        code.push(OP.RTS);
         return new Uint8Array(code);
     }
 
@@ -477,22 +479,17 @@ class SIDquakePRGExporter {
             .sort((a, b) => a - b);
 
         for (const addr of filtered) {
-            // LDA immediate (value will be filled by save routine)
-            code.push(0xA9); // LDA #
-            code.push(0x00); // Placeholder value
+            // Operand is a placeholder; the save routine writes the live value.
+            code.push(OP.LDA_IMM, 0x00);
 
-            // Store to memory address
             if (addr < 256) {
-                code.push(0x85); // STA zp (2 bytes)
-                code.push(addr);
+                code.push(OP.STA_ZP, addr);
             } else {
-                code.push(0x8D); // STA abs (3 bytes)
-                code.push(addr & 0xFF);
-                code.push((addr >> 8) & 0xFF);
+                code.push(OP.STA_ABS, addr & 0xFF, (addr >> 8) & 0xFF);
             }
         }
 
-        code.push(0x60); // RTS
+        code.push(OP.RTS);
         return new Uint8Array(code);
     }
 
@@ -505,36 +502,19 @@ class SIDquakePRGExporter {
             effectiveCallsPerFrame = maxCallsPerFrame;
         }
 
-        // JMP SIDInit at $xx00
-        data[0] = 0x4C;
-        data[1] = sidInfo.initAddress & 0xFF;
-        data[2] = (sidInfo.initAddress >> 8) & 0xFF;
-
-        // JMP SIDPlay at $xx03
-        data[3] = 0x4C;
-        data[4] = sidInfo.playAddress & 0xFF;
-        data[5] = (sidInfo.playAddress >> 8) & 0xFF;
+        // $xx00-$xx0B: jump table (layout contract with SIDPlayers/INC/common.asm).
+        // $xx00 SIDInit, $xx03 SIDPlay
+        data.set([OP.JMP_ABS, sidInfo.initAddress & 0xFF, (sidInfo.initAddress >> 8) & 0xFF], 0x00);
+        data.set([OP.JMP_ABS, sidInfo.playAddress & 0xFF, (sidInfo.playAddress >> 8) & 0xFF], 0x03);
 
         if (needsSaveRestore) {
-            // JMP SaveModifiedMemory at $xx06
-            data[6] = 0x4C;
-            data[7] = saveRoutineAddr & 0xFF;
-            data[8] = (saveRoutineAddr >> 8) & 0xFF;
-
-            // JMP RestoreModifiedMemory at $xx09
-            data[9] = 0x4C;
-            data[10] = restoreRoutineAddr & 0xFF;
-            data[11] = (restoreRoutineAddr >> 8) & 0xFF;
+            // $xx06 BackupSIDMemory, $xx09 RestoreSIDMemory
+            data.set([OP.JMP_ABS, saveRoutineAddr & 0xFF, (saveRoutineAddr >> 8) & 0xFF], 0x06);
+            data.set([OP.JMP_ABS, restoreRoutineAddr & 0xFF, (restoreRoutineAddr >> 8) & 0xFF], 0x09);
         } else {
-            // RTS + NOP + NOP at $xx06 (BackupSIDMemory - never called)
-            data[6] = 0x60;  // RTS
-            data[7] = 0xEA;  // NOP
-            data[8] = 0xEA;  // NOP
-
-            // RTS + NOP + NOP at $xx09 (RestoreSIDMemory - never called)
-            data[9] = 0x60;  // RTS
-            data[10] = 0xEA; // NOP
-            data[11] = 0xEA; // NOP
+            // Players never call these without save/restore; RTS keeps them inert.
+            data.set([OP.RTS, OP.NOP, OP.NOP], 0x06);
+            data.set([OP.RTS, OP.NOP, OP.NOP], 0x09);
         }
 
         data[0x0C] = effectiveCallsPerFrame & 0xFF;
@@ -616,7 +596,7 @@ class SIDquakePRGExporter {
         data[0xD1] = (loopFrames >> 8) & 0xFF;
         data[0xD2] = (loopFrames >> 16) & 0xFF;
 
-        // ZP usage data
+        // ZP usage string at $xxE0-$xxFF
         let zpString = 'NONE';
         if (analysisResults) {
             zpString = this.formatZPUsage(analysisResults.zpAddresses);
@@ -752,9 +732,9 @@ class SIDquakePRGExporter {
                     }
                 }
 
-                // Ensure screen code is in valid range 0-95
+                // Unreachable: every branch above already yields 0-95.
                 if (screenCode < 0 || screenCode > 95) {
-                    screenCode = 32;  // Default to space if still out of range
+                    screenCode = 32;
                 }
 
                 bytes[i] = screenCode & 0xFF;
@@ -866,7 +846,6 @@ class SIDquakePRGExporter {
                     (file.type === 'image/png' || file.name.toLowerCase().endsWith('.png'))) {
                     fileData = await this.convertImagePNG(file, inputConfig);
                 }
-                // Check if this input uses PETSCII conversion
                 else if (inputConfig.convertType === 'petscii' && file.type === 'image/png') {
                     try {
                         if (typeof PETSCIIConverter === 'undefined') {
@@ -875,7 +854,6 @@ class SIDquakePRGExporter {
                         const petsciiConverter = new PETSCIIConverter();
                         await petsciiConverter.init();
 
-                        // Get background color from bgColor option if available
                         const bgColorValue = this.optionValue('bgColor');
                         const bgColor = bgColorValue !== null ? (parseInt(bgColorValue) & 0x0F) : 0;
 
@@ -885,9 +863,8 @@ class SIDquakePRGExporter {
                         throw new Error(`PETSCII conversion failed: ${petsciiError.message}`);
                     }
                 }
-                // Check if this is a PNG file that needs bitmap conversion
+                // Any other PNG: full-screen bitmap conversion.
                 else if (file.type === 'image/png' && file.name.toLowerCase().endsWith('.png')) {
-                    // Check for PNG converter availability
                     if (typeof PNGConverter === 'undefined') {
                         console.error('PNGConverter not available');
                         throw new Error('PNG converter not loaded. Please refresh the page and try again.');
@@ -908,9 +885,8 @@ class SIDquakePRGExporter {
                         const result = await converter.convertPNGToC64(file);
                         fileData = result.data;
 
-                        // Verify standard C64 bitmap structure (10003/10004 bytes, load address $6000)
-                        if ((fileData.length === 10003 || fileData.length === 10004) && fileData[0] === 0x00 && fileData[1] === 0x60) {
-                        } else {
+                        // Standard C64 bitmap: 10003/10004 bytes, load address $6000.
+                        if (!((fileData.length === 10003 || fileData.length === 10004) && fileData[0] === 0x00 && fileData[1] === 0x60)) {
                             console.warn('Unexpected C64 image format - this may cause issues');
                         }
                     } catch (pngError) {
@@ -918,7 +894,6 @@ class SIDquakePRGExporter {
                         throw new Error(`PNG conversion failed: ${pngError.message}`);
                     }
                 } else {
-                    // Handle regular binary files
                     try {
                         const arrayBuffer = await file.arrayBuffer();
                         fileData = new Uint8Array(arrayBuffer);
@@ -931,13 +906,11 @@ class SIDquakePRGExporter {
                 try {
                     const rawFileData = await config.loadDefaultFile(inputConfig.default);
 
-                    // Check if this input uses shared C64 image conversion for the default PNG
                     if (isConvertedImage(inputConfig) && inputConfig.default.toLowerCase().endsWith('.png') && rawFileData && this.isPNGFile(rawFileData)) {
                         const blob = new Blob([rawFileData], { type: 'image/png' });
                         const pngFile = new File([blob], inputConfig.default.split('/').pop(), { type: 'image/png' });
                         fileData = await this.convertImagePNG(pngFile, inputConfig);
                     }
-                    // Check if this input uses PETSCII conversion for default PNG
                     else if (inputConfig.convertType === 'petscii' && inputConfig.default.toLowerCase().endsWith('.png') && rawFileData && this.isPNGFile(rawFileData)) {
                         try {
                             if (typeof PETSCIIConverter === 'undefined') {
@@ -958,9 +931,7 @@ class SIDquakePRGExporter {
                             throw new Error(`Default PETSCII conversion failed: ${petsciiError.message}`);
                         }
                     }
-                    // Check if the default file is a PNG that needs bitmap conversion
                     else if (inputConfig.default.toLowerCase().endsWith('.png') && this.isPNGFile(rawFileData)) {
-                        // Check for PNG converter availability
                         if (typeof PNGConverter === 'undefined') {
                             console.error('PNGConverter not available');
                             throw new Error('PNG converter not loaded. Please refresh the page and try again.');
@@ -973,7 +944,6 @@ class SIDquakePRGExporter {
                         }
 
                         try {
-                            // Create a blob from the PNG data and convert it to a File-like object
                             const blob = new Blob([rawFileData], { type: 'image/png' });
                             const file = new File([blob], inputConfig.default.split('/').pop(), { type: 'image/png' });
 
@@ -982,8 +952,7 @@ class SIDquakePRGExporter {
                             const result = await converter.convertPNGToC64(file);
                             fileData = result.data;
 
-                            if ((fileData.length === 10003 || fileData.length === 10004) && fileData[0] === 0x00 && fileData[1] === 0x60) {
-                            } else {
+                            if (!((fileData.length === 10003 || fileData.length === 10004) && fileData[0] === 0x00 && fileData[1] === 0x60)) {
                                 console.warn('Default PNG conversion resulted in unexpected C64 image format');
                             }
                         } catch (pngError) {
@@ -991,7 +960,6 @@ class SIDquakePRGExporter {
                             throw new Error(`Default PNG conversion failed: ${pngError.message}`);
                         }
                     } else {
-                        // Use the raw file data for other binary files
                         fileData = rawFileData;
                     }
                 } catch (defaultError) {
@@ -1026,7 +994,6 @@ class SIDquakePRGExporter {
                         if (size === 0) continue;
                     }
 
-                    // Bounds checking
                     if (sourceOffset >= fileData.length) {
                         console.warn(`Offset ${sourceOffset} exceeds file size ${fileData.length} for component ${memConfig.name}`);
                         continue;
@@ -1151,7 +1118,6 @@ class SIDquakePRGExporter {
             data[4] === 0x0D && data[5] === 0x0A && data[6] === 0x1A && data[7] === 0x0A;
     }
 
-    // Read an editable palette from a hidden input (comma-separated 0..15
     // Option values for this export. createPRG captures them once and installs
     // the snapshot here, so a build reads a fixed set rather than whatever the
     // live DOM happens to hold at the moment each option is processed - and so
@@ -1166,13 +1132,13 @@ class SIDquakePRGExporter {
         return el ? el.value : null;
     }
 
+    // Read an editable palette from a hidden input (comma-separated 0..15
     // values maintained by the palette-editor UI). Falls back to the supplied
     // default when the control is absent (e.g. headless exports).
     readPaletteInput(inputId, fallback) {
         const value = this.optionValue(inputId);
         if (!value) return fallback;
-        const el = { value };
-        const vals = el.value.split(',')
+        const vals = value.split(',')
             .map(s => parseInt(s.trim(), 10))
             .filter(n => !isNaN(n))
             .map(n => n & 0x0F);
@@ -1204,10 +1170,8 @@ class SIDquakePRGExporter {
             return [];
         }
 
-        // Reset font case type for this export
         this.currentFontCaseType = undefined;
 
-        // Initialize sanitizer if not already done
         if (!this.sanitizer) {
             this.sanitizer = new PETSCIISanitizer();
         }
@@ -1225,10 +1189,8 @@ class SIDquakePRGExporter {
                 const fontIndex = parseInt(element.value);
                 const validIndex = !isNaN(fontIndex) ? fontIndex : (optionConfig.default ?? 0);
 
-                // Get font data from the global FONT_DATA
                 if (typeof FONT_DATA !== 'undefined') {
                     try {
-                        // Prepare fallback config using the binary
                         const fallbackConfig = {
                             binarySource: layout.binary,
                             binaryOffset: parseInt(layout.charsetAddress) - parseInt(layout.baseAddress)
@@ -1246,9 +1208,8 @@ class SIDquakePRGExporter {
 
                         if (fontData) {
                             const targetAddress = parseInt(layout.charsetAddress);
-                            // Respect charsetSize limit if specified in layout config
-                            // This prevents overwriting color tables that may be placed
-                            // immediately after the font data (e.g., RaistlinBarsWithLogo)
+                            // Clip to charsetSize so the font can't overwrite a colour
+                            // table placed right after it (e.g. RaistlinBarsWithLogo).
                             let fontDataToInject = fontData;
                             if (layout.charsetSize) {
                                 const maxSize = parseInt(layout.charsetSize);
@@ -1292,12 +1253,11 @@ class SIDquakePRGExporter {
                                 });
                             }
 
-                            // Store the font case type for text conversion
                             this.currentFontCaseType = await FONT_DATA.getFontCaseType(vizConfig.fontType, validIndex);
                         }
                     } catch (fontError) {
+                        // The binary keeps its built-in font.
                         console.warn('Failed to load font, using default:', fontError);
-                        // Continue without custom font - binary will have default
                     }
                 }
                 continue;
@@ -1308,7 +1268,6 @@ class SIDquakePRGExporter {
                 const styleIndex = parseInt(element.value);
                 const validIndex = !isNaN(styleIndex) ? styleIndex : (optionConfig.default ?? 0);
 
-                // Get bar style character data from the global BAR_STYLES_DATA
                 if (typeof BAR_STYLES_DATA !== 'undefined') {
                     const charData = BAR_STYLES_DATA.getBarStyleData(vizConfig.barStyleType, validIndex);
                     if (charData) {
@@ -1331,7 +1290,6 @@ class SIDquakePRGExporter {
                 const validEffectIndex = !isNaN(effectIndex) ? effectIndex : (optionConfig.default ?? 0);
 
                 if (typeof COLOR_PALETTES_DATA !== 'undefined') {
-                    // Inject colorEffectMode byte
                     const effectModeData = new Uint8Array(1);
                     effectModeData[0] = validEffectIndex & 0xFF;
                     optionComponents.push({
@@ -1403,7 +1361,7 @@ class SIDquakePRGExporter {
                 continue;
             }
 
-            // Handle color picker options (songNameColor, artistNameColor, bgColor)
+            // Colour pickers: songNameColor, artistNameColor, borderColor, bgColor
             if (optionConfig.type === 'colorPicker') {
                 const colorValue = parseInt(element.value);
                 const validColor = !isNaN(colorValue) ? (colorValue & 0x0F) : (optionConfig.default ?? 0);
@@ -1460,7 +1418,7 @@ class SIDquakePRGExporter {
                             name: 'bgColor_spectrometer'
                         });
                     } else if (layout.backgroundColor) {
-                        // Non-logo visualizers: write to backgroundColor as before
+                        // Non-logo visualizers: the screen background colour
                         const bgData = new Uint8Array(1);
                         bgData[0] = validColor;
                         optionComponents.push({
@@ -1492,7 +1450,6 @@ class SIDquakePRGExporter {
                         formattedDate = `${day}${suffix} ${month} ${year}`;
                     }
 
-                    // Sanitize the date string
                     const sanitized = this.sanitizer.sanitize(formattedDate, {
                         maxLength: 32,
                         padToLength: 32,
@@ -1509,8 +1466,7 @@ class SIDquakePRGExporter {
                     });
 
                 } else if (optionConfig.type === 'number' || optionConfig.type === 'select') {
-                    // Use proper null check to handle 0 values correctly
-                    // (0 is falsy in JS but is a valid color value)
+                    // isNaN, not ||: 0 is a valid value.
                     const parsedValue = parseInt(element.value);
                     const value = !isNaN(parsedValue) ? parsedValue : (optionConfig.default ?? 0);
                     const data = new Uint8Array(1);
@@ -1525,14 +1481,12 @@ class SIDquakePRGExporter {
                 } else if (optionConfig.type === 'textarea') {
                     const textValue = element.value || optionConfig.default || '';
 
-                    // Sanitize the textarea content
                     const sanitized = this.sanitizer.sanitize(textValue, {
                         maxLength: optionConfig.maxLength || 255,
                         preserveNewlines: false,  // Convert newlines to spaces for scrolltext
                         reportUnknown: true
                     });
 
-                    // Show warnings if any problematic characters were found
                     if (sanitized.hasWarnings) {
                         this.sanitizer.showWarningDialog(sanitized.warnings);
                     }
@@ -1546,10 +1500,9 @@ class SIDquakePRGExporter {
                         scrollTextStr = ' '.repeat(optionConfig.prependSpaces) + scrollTextStr;
                     }
 
-                    // Convert to PETSCII bytes - use system font mapping if no custom font
                     const petsciiData = this.sanitizer.toPETSCIIBytes(scrollTextStr, this.useSystemFontMapping);
 
-                    // Append null terminator so the C64-side scrolltext routine can detect end of string
+                    // Zero terminator: the C64 scrolltext routine stops on it.
                     const data = new Uint8Array(petsciiData.length + 1);
                     data.set(petsciiData);
                     data[data.length - 1] = 0x00;
@@ -1567,20 +1520,17 @@ class SIDquakePRGExporter {
     }
 
     stringToPETSCII(str, length) {
-        // Initialize sanitizer if not already done
         if (!this.sanitizer) {
             this.sanitizer = new PETSCIISanitizer();
         }
 
-        // Sanitize the string
         const sanitized = this.sanitizer.sanitize(str || '', {
             maxLength: length,
             padToLength: length,
             center: false,
-            reportUnknown: false  // Don't report for metadata fields
+            reportUnknown: false  // metadata fields: no warning dialog
         });
 
-        // Convert to PETSCII bytes - use system font mapping if no custom font
         return this.sanitizer.toPETSCIIBytes(sanitized.text, this.useSystemFontMapping);
     }
 
@@ -1601,7 +1551,7 @@ class SIDquakePRGExporter {
 
     // Precompute + place the baked FFT spectrometer data for the current tune.
     // Renders the tune, vector-quantizes its 40-bar FFT heights, places the
-    // codebook + index stream in free RAM, and patches the three data-block
+    // codebook + index stream in free RAM, and patches the data-block
     // config words the RaistlinBars (FFT) player reads at runtime.
     async processSpectrometerBake(vizConfig, layout, sidLoadAddress, sidDataLength, selectedSong = 0, onProgress = null, reservedRanges = [], bakeParams = null, forceLoop = false) {
         const sidBytes = this.analyzer.createModifiedSID();
@@ -1663,9 +1613,9 @@ class SIDquakePRGExporter {
         // (the player steps its high byte one page per bar); the index is read with
         // indexed-absolute addressing, so it needs no alignment. findSafeMemory avoids
         // every component already added (SID + player binary) plus, via an extra
-        // reserved range, whichever of the pair we place first. It falls back to $0900
-        // when nothing fits, so each candidate is validated and we fail loudly rather
-        // than silently overwriting code/data.
+        // reserved range, whichever of the pair we place first. Each candidate is
+        // also validated here, so we fail loudly rather than silently overwriting
+        // code/data.
         //
         // Because only one of the two needs aligning, the order changes the footprint:
         // leading with the unaligned index drops the alignment pad off the front but
@@ -2049,8 +1999,7 @@ class SIDquakePRGExporter {
     // code comes from a standalone CODE_ONLY build (`codeBin`, based at
     // codeTable.base, no graphics -> not capped below the bitmap) and the graphics
     // come from a bank4000 image (`gfxBin`, composed from the player's graphics
-    // manifest by loadGfxManifest). Code and
-    // graphics are placed INDEPENDENTLY using the two-diff table from
+    // manifest by loadGfxManifest). Code and graphics are placed INDEPENDENTLY using the two-diff table from
     // gen-reloc-codeonly.js: code refs move with the chosen page, gfx refs with the
     // chosen bank. The graphics blob is raw VIC data (the bar family bakes no address
     // pointers into it), so it needs no patching. The layout config is bank4000-
@@ -2065,8 +2014,7 @@ class SIDquakePRGExporter {
         // The table's byte offsets are only meaningful against the exact blob
         // it was generated with (they're regenerated together by the build).
         // A size mismatch means one of the two is stale - relocating anyway
-        // would patch the wrong bytes and corrupt the player code, so refuse
-        // (the caller falls back to the self-consistent fixed-bank binary).
+        // would patch the wrong bytes and corrupt the player code, so refuse.
         if (codeTable.size != null && codeBin.length !== codeTable.size) {
             throw new Error(`code blob (${codeBin.length}B) doesn't match its reloc table (${codeTable.size}B) - stale cached file?`);
         }
@@ -2252,8 +2200,8 @@ class SIDquakePRGExporter {
     // Compose a bank image from a graphics manifest (gen-gfx-manifest.js): a
     // zero-filled buffer of the declared size, with each base64 payload written
     // at its bank offset. Reservation segments (no data) stay zero - they only
-    // document extent. The result is byte-equivalent to the old GFX_DONOR bank
-    // .bin over everything the exporter reads, so it slots straight into
+    // document extent. The result is byte-equivalent to the GFX_DONOR bank
+    // image over everything the exporter reads, so it slots straight into
     // planRelocationCodeOnly as the graphics source.
     async loadGfxManifest(url) {
         // no-cache for the same reason as loadBinaryFile: the manifest is
@@ -2276,9 +2224,6 @@ class SIDquakePRGExporter {
         return img;
     }
 
-    // Relocatable export: place the SID, the relocated code + graphics blobs, and
-    // return the transformed layout. Graphics stay in a VIC bank; code goes on any
-    // free page. (Currently wired for the no-input players, e.g. RaistlinBars.)
     /**
      * Run the placement without building anything, so the page can say where a
      * tune's code and graphics will land BEFORE the user commits to an export.
@@ -2319,6 +2264,9 @@ class SIDquakePRGExporter {
         }
     }
 
+    // Relocatable export: place the SID, the relocated code + graphics blobs, and
+    // return the transformed layout. Graphics stay in a VIC bank; code goes on any
+    // free page.
     async placeRelocatedVisualizer(vizConfig, actualSidAddress, sidData) {
         const baseLayout = vizConfig.layouts[vizConfig.relocBaseLayout || 'bank4000'];
 
@@ -2341,9 +2289,9 @@ class SIDquakePRGExporter {
             // placed independently via the two-diff table (gen-reloc-codeonly.js).
             const codeTable = await (await fetch(vizConfig.relocCodeTable, { cache: 'no-cache' })).json();
             const codeBin = await this.loadBinaryFile(vizConfig.relocCodeBase);
-            // Graphics source: composed from the generated manifest. (A config
-            // may instead still name a donor bank .bin via relocBase - the
-            // pre-manifest source format.)
+            // Graphics source: composed from the generated manifest. The relocBase
+            // branch reads a donor bank .bin; no current code-only config takes it
+            // (every one ships a gfxManifest).
             const gfxBin = vizConfig.gfxManifest
                 ? await this.loadGfxManifest(vizConfig.gfxManifest)
                 : await this.loadBinaryFile(vizConfig.relocBase);
@@ -2537,7 +2485,7 @@ class SIDquakePRGExporter {
             this.builder.clear();
             this.lastBakeInfo = null;   // only set when a baked-spectrometer export runs
             this.lastMusicLoopFrames = 0;   // forced-song-loop restart (frames); 0 = off
-            this.lastLogoIsBitmap = false;  // set by convertLogoPNG when a logo converts as bitmap
+            this.lastLogoIsBitmap = false;  // set by convertImagePNG when a logo converts as bitmap
             this.convertedImageInfo.clear();
 
             const sidInfo = this.extractSIDMusicData();
@@ -2565,13 +2513,11 @@ class SIDquakePRGExporter {
                 };
             }
 
-            // Load visualizer config and select layout
             const config = new VisualizerConfig();
             const visualizerName = visualizerId || visualizerFile.replace('prg/', '').replace('.bin', '');
             const vizConfig = await config.loadConfig(visualizerName);
             const configMaxCallsPerFrame = vizConfig?.maxCallsPerFrame || null;
 
-            // Get modified addresses for layout validation
             const modifiedAddresses = this.analyzer.analysisResults?.modifiedAddresses || null;
             const modifiedCount = modifiedAddresses?.length || 0;
 
@@ -2603,9 +2549,9 @@ class SIDquakePRGExporter {
             // ship no runnable bank binary at all (code lives in the reloc blob,
             // graphics in the manifest) precisely so code size is never capped by
             // the bank layout - so a relocation failure is a real error, not a
-            // detour. It can
-            // only genuinely happen when the SID tramples every candidate VIC bank,
-            // in which case a fixed bank could not have worked either.
+            // detour. It can only genuinely happen when the SID tramples every
+            // candidate VIC bank, in which case a fixed bank could not have worked
+            // either.
             //
             // Full-binary reloc players (relocTable: ScrapColumns, SimpleRaster)
             // keep runnable bank builds and the fixed-bank fallback.
@@ -2631,9 +2577,8 @@ class SIDquakePRGExporter {
             }
 
             if (!useReloc) {
-                // Get the layout key from options (passed from UI) or select first valid one
+                // Layout key from options (passed from UI), else the first valid one
                 if (!layoutKey) {
-                    const modifiedAddresses = this.analyzer.analysisResults?.modifiedAddresses || null;
                     const validLayouts = this.selectValidLayouts(vizConfig, sidInfo.loadAddress, sidInfo.dataSize, modifiedAddresses);
                     const firstValid = validLayouts.find(l => l.valid);
                     if (!firstValid) {
@@ -2654,7 +2599,6 @@ class SIDquakePRGExporter {
                 this.lastSysAddress = visualizerLoadAddress;
                 this.lastLayoutKey = layoutKey;
 
-                // Add SID music
                 this.builder.addComponent(sidInfo.data, actualSidAddress, 'SID Music');
 
                 if (layout.binary) {
@@ -2701,8 +2645,8 @@ class SIDquakePRGExporter {
                     deferredVisualizerBinary.loadAddress, 'Visualizer Binary');
             }
 
-            // Process visualizer options BEFORE calculating save/restore addresses
-            // This ensures we know where all visualizer data is placed. Priority 2:
+            // Options go in BEFORE the save/restore placement so it can see where
+            // all visualizer data lies. Priority 2:
             // option patches are written last of all, overriding inputs and base.
             const optionComponents = await this.processVisualizerOptions(visualizerName, layoutKey, relocLayout);
             for (const component of optionComponents) {
@@ -2754,12 +2698,10 @@ class SIDquakePRGExporter {
                     { show: showSongLength, manualSeconds: manualLengthSeconds });
             }
 
-            // Check if this visualizer needs save/restore functionality
             const needsSaveRestore = vizConfig?.needsSaveRestore !== false;
 
-            // Place save/restore routines in safe memory (only if needed)
-            // The data block contains JMPs that point directly to these routines,
-            // or RTS instructions if save/restore is not needed
+            // The data block JMPs straight to these routines, or holds RTS stubs
+            // when save/restore is not needed (and no routines are placed).
             let saveRoutineAddr = 0;
             let restoreRoutineAddr = 0;
 
@@ -2774,12 +2716,10 @@ class SIDquakePRGExporter {
                     console.warn(`Save/restore may miss memory: the memory map may be incomplete for ${playTimeouts} song(s) with a play call that never returned.`);
                 }
 
-                // Calculate the routine size FIRST to know how much space we need
                 const routineSizes = this.calculateSaveRestoreSize(modifiedAddrs);
                 const totalRoutineSize = routineSizes.totalSize;
 
-                // Find a safe address that can fit the routines without overflowing
-                // (keeping clear of the intro screen page reserved above)
+                // Keep clear of the intro screen page reserved above.
                 let safeAddress = this.findSafeMemoryForRoutines(totalRoutineSize, actualSidAddress, sidInfo.data.length, [introScreenRange]);
                 if (safeAddress === null) {
                     throw new Error(
@@ -2788,24 +2728,17 @@ class SIDquakePRGExporter {
                         `Try a shorter tune, a different memory layout, or a visualizer that needs no save/restore.`);
                 }
 
-                // Generate routines to get their actual sizes
+                // Restore routine first, save routine right after it. The save
+                // routine stores into the restore routine's LDA # operands, so it
+                // is generated against the restore routine's final address.
                 const restoreRoutine = this.generateOptimizedRestoreRoutine(modifiedAddrs);
-
-                // Place restore routine first, at safe address
                 restoreRoutineAddr = safeAddress;
-
-                // Place save routine after restore routine
                 saveRoutineAddr = restoreRoutineAddr + restoreRoutine.length;
-
-                // Regenerate save routine with correct restore address
                 const finalSaveRoutine = this.generateOptimizedSaveRoutine(modifiedAddrs, restoreRoutineAddr);
 
-                // Add the actual routines - data block JMPs point directly to these
                 this.builder.addComponent(restoreRoutine, restoreRoutineAddr, 'Restore Routine');
                 this.builder.addComponent(finalSaveRoutine, saveRoutineAddr, 'Save Routine');
             }
-            // When needsSaveRestore is false, we don't add any components - the data block
-            // will contain RTS instructions directly at the save/restore entry points
 
             // The rate of the subtune being exported, which can differ from the
             // start song's.
@@ -2813,7 +2746,6 @@ class SIDquakePRGExporter {
                 || this.analyzer.analysisResults?.numCallsPerFrame || 1;
             const sidChipCount = this.analyzer.analysisResults?.sidChipCount || 1;
 
-            // The data block contains JMPs to save/restore routines, or RTS if not needed
             const dataBlock = this.generateDataBlock(
                 {
                     initAddress: actualInitAddress,
@@ -2841,7 +2773,6 @@ class SIDquakePRGExporter {
 
             this.builder.addComponent(dataBlock, dataLoadAddress, 'Data Block');
 
-            // Build PRG
             const prgData = this.builder.build();
 
             this.saveRoutineAddress = saveRoutineAddr;

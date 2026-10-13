@@ -80,7 +80,6 @@ class PETSCIISanitizer {
         const unknownChars = new Set();
         const result = [];
 
-        // Process each character
         for (let i = 0; i < text.length; i++) {
             const char = text[i];
             const code = char.charCodeAt(0);
@@ -144,7 +143,6 @@ class PETSCIISanitizer {
             sanitized += String.fromCharCode.apply(null, result.slice(i, i + CHUNK));
         }
 
-        // Report unknown characters
         if (reportUnknown && unknownChars.size > 0) {
             const charList = Array.from(unknownChars).map(c => {
                 const code = c.charCodeAt(0);
@@ -162,7 +160,6 @@ class PETSCIISanitizer {
             });
         }
 
-        // Handle length constraints
         if (maxLength && sanitized.length > maxLength) {
             sanitized = sanitized.substring(0, maxLength);
             this.warnings.push({
@@ -172,7 +169,6 @@ class PETSCIISanitizer {
             });
         }
 
-        // Handle padding
         if (padToLength && sanitized.length < padToLength) {
             if (center) {
                 const totalPadding = padToLength - sanitized.length;

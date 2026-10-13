@@ -1,10 +1,7 @@
 // c64-palette.js - the one C64 colour table.
 //
-// There were two: a muted set in ui.js that painted every swatch, colour picker
-// and palette editor, and the real VICE PAL values in petscii-converter.js that
-// the image conversion matched against. So a user chose "Red" from #753d3d and
-// shipped #813338 - which for a tool whose whole job is C64 aesthetics is the
-// wrong way round.
+// Swatches, colour pickers, palette editors and the PETSCII image conversion all
+// read this table, so the colour a user picks is the colour the export ships.
 //
 // These are the Pepto PAL values, the same set VICE ships as its default.
 // Loaded as a classic script before ui.js (see the loader in index.html).

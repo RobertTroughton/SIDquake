@@ -21,7 +21,6 @@ class PETSCIIConverter {
             lowercase: 'PNG/PETSCIICharsets/petscii-lowercase.bin'
         };
 
-        // C64 color palette (VICE PAL values)
         // Shared with every swatch the user picks from - see c64-palette.js.
         this.C64_PALETTE = window.C64_PALETTE_RGB.map(c => c.slice());
 
@@ -224,7 +223,6 @@ class PETSCIIConverter {
             await this.init();
         }
 
-        // Load the PNG image
         const imageData = await this.loadPNGImageData(pngFile);
 
         // Try both charsets and pick the one with lower total error
@@ -291,7 +289,6 @@ class PETSCIIConverter {
                     canvas.height = targetHeight;
                     const ctx = canvas.getContext('2d');
 
-                    // Fill with black first
                     ctx.fillStyle = '#000000';
                     ctx.fillRect(0, 0, targetWidth, targetHeight);
 

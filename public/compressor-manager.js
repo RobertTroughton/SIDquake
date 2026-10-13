@@ -85,8 +85,7 @@ class CompressorManager {
         // Crunching is one long synchronous call - ten seconds and more on a
         // full-RAM export - so on the page it runs in a worker and the tab stays
         // alive. Anything that stops the worker, from a browser without them to a
-        // job that dies inside one, falls through to the in-page path below,
-        // which is what this always did.
+        // job that dies inside one, falls through to the in-page path below.
         try {
             const offThread = await this._compressOffThread(data, type, uncompressedStart, executeAddress);
             if (offThread) return offThread;
@@ -172,6 +171,16 @@ class CompressorManager {
     }
 }
 
+/** `data` as a PRG image: as-is when it already starts with `loadAddress`. */
+function ensurePRGLoadAddress(data, loadAddress) {
+    if (data.length >= 2 && (data[0] | (data[1] << 8)) === loadAddress) return data;
+    const prgData = new Uint8Array(data.length + 2);
+    prgData[0] = loadAddress & 0xFF;
+    prgData[1] = (loadAddress >> 8) & 0xFF;
+    prgData.set(data, 2);
+    return prgData;
+}
+
 /**
  * TSCrunch wrapper. TSCrunch expects PRG-format input (load address as first
  * two bytes) and produces a self-extracting executable.
@@ -186,16 +195,7 @@ class TSCrunchCompressor {
         try {
             this.originalSize = data.length;
 
-            // Ensure prgData has the expected load address as its first two bytes.
-            let prgData;
-            if (data.length >= 2 && (data[0] | (data[1] << 8)) === uncompressedStart) {
-                prgData = data;
-            } else {
-                prgData = new Uint8Array(data.length + 2);
-                prgData[0] = uncompressedStart & 0xFF;
-                prgData[1] = (uncompressedStart >> 8) & 0xFF;
-                prgData.set(data, 2);
-            }
+            const prgData = ensurePRGLoadAddress(data, uncompressedStart);
 
             const options = {
                 prg: true,
@@ -258,16 +258,7 @@ class ExomizerCompressor {
     async compressPRG(data, uncompressedStart, executeAddress) {
         this.originalSize = data.length;
 
-        // Ensure prgData carries the expected load address as its first two bytes.
-        let prgData;
-        if (data.length >= 2 && (data[0] | (data[1] << 8)) === uncompressedStart) {
-            prgData = data;
-        } else {
-            prgData = new Uint8Array(data.length + 2);
-            prgData[0] = uncompressedStart & 0xFF;
-            prgData[1] = (uncompressedStart >> 8) & 0xFF;
-            prgData.set(data, 2);
-        }
+        const prgData = ensurePRGLoadAddress(data, uncompressedStart);
 
         const module = await this.createModule();
         let inPtr = 0;

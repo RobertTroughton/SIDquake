@@ -72,6 +72,7 @@ class PNGConverter {
                     []
                 );
 
+                // Dead: the stats are freed without being read back.
                 const exactPtr = this.Module._malloc(4);
                 const distancePtr = this.Module._malloc(4);
 
@@ -86,6 +87,7 @@ class PNGConverter {
                     this.Module._free(exactPtr);
                     this.Module._free(distancePtr);
                 }
+
                 // Query bitmap mode (0=multicolor, 1=hires); fall back to
                 // multicolor if the WASM export is unavailable.
                 let bitmapMode = 0;
@@ -150,7 +152,10 @@ class PNGConverter {
         return new Promise((resolve, reject) => {
             const img = new Image();
 
+            const url = URL.createObjectURL(file);
+
             img.onload = () => {
+                URL.revokeObjectURL(url);
                 try {
                     const canvas = document.createElement('canvas');
                     const ctx = canvas.getContext('2d');
@@ -170,21 +175,11 @@ class PNGConverter {
             };
 
             img.onerror = () => {
+                URL.revokeObjectURL(url);
                 reject(new Error('Failed to load PNG image'));
             };
 
-            const url = URL.createObjectURL(file);
             img.src = url;
-
-            img.onload = (originalOnLoad => function (...args) {
-                URL.revokeObjectURL(url);
-                return originalOnLoad.apply(this, args);
-            })(img.onload);
-
-            img.onerror = (originalOnError => function (...args) {
-                URL.revokeObjectURL(url);
-                return originalOnError.apply(this, args);
-            })(img.onerror);
         });
     }
 
@@ -198,6 +193,7 @@ class PNGConverter {
         return colorNames[colorIndex] || 'Unknown';
     }
 
+    // No callers: the exporter slices the blob from convertPNGToC64 instead.
     async getComponentData() {
         if (!this.initialized) {
             throw new Error('PNG converter not initialized');
@@ -234,6 +230,7 @@ class PNGConverter {
         }
     }
 
+    // No callers: each export builds a fresh converter and never tears it down.
     cleanup() {
         if (this.initialized) {
             this.Module.ccall('png_converter_cleanup', 'null', [], []);

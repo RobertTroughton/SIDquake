@@ -3,19 +3,16 @@ class TextDropZone {
         const textarea = document.getElementById(textareaId);
         if (!textarea) return;
 
-        // Create drop zone wrapper
         const wrapper = document.createElement('div');
         wrapper.className = 'text-drop-zone';
         textarea.parentNode.insertBefore(wrapper, textarea);
         wrapper.appendChild(textarea);
 
-        // Add drop indicator
         const dropIndicator = document.createElement('div');
         dropIndicator.className = 'text-drop-indicator';
         dropIndicator.innerHTML = '<i class="fas fa-file-alt"></i> Drop text file here';
         wrapper.appendChild(dropIndicator);
 
-        // Add persistent hint about drag-drop
         const dropHint = document.createElement('div');
         dropHint.className = 'text-drop-hint';
         dropHint.innerHTML = '<i class="fas fa-upload"></i> Drag & drop .txt file or type below';

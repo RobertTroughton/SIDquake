@@ -9,7 +9,7 @@
 // The work itself is compressor-manager.js, which this imports rather than
 // reimplements; it detects the worker and loads its dependencies with
 // importScripts. A browser that cannot start this worker falls back to the
-// main-thread path in the manager, which is what everyone had before.
+// main-thread path in the manager.
 
 importScripts('compressor-manager.js');
 
