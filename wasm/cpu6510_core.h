@@ -154,16 +154,17 @@ struct Core {
 
     // The undocumented read-modify-write groups (SLO, RLA, SRE, RRA, DCP, ISC)
     // share one set of addressing modes, picked by the opcode's low five bits.
-    // Sets the effective address and returns the cycle count.
+    // SLO's opcodes have the top three bits clear, so they spell those
+    // patterns. Sets the effective address and returns the cycle count.
     int ea_illegal_rmw(uint8_t op, uint16_t& a) {
         switch (op & 0x1F) {
-        case 0x07: a = ea_zp();   return 5;
-        case 0x17: a = ea_zpx();  return 6;
-        case 0x0F: a = ea_abs();  return 6;
-        case 0x1F: a = ea_absx(); return 7;
-        case 0x1B: a = ea_absy(); return 7;
-        case 0x03: a = ea_indx(); return 8;
-        default:   a = ea_indy(); return 8;
+        case SLO_ZP:   a = ea_zp();   return 5;
+        case SLO_ZPX:  a = ea_zpx();  return 6;
+        case SLO_ABS:  a = ea_abs();  return 6;
+        case SLO_ABSX: a = ea_absx(); return 7;
+        case SLO_ABSY: a = ea_absy(); return 7;
+        case SLO_INDX: a = ea_indx(); return 8;
+        default:       a = ea_indy(); return 8;
         }
     }
     void rmw_asl(uint16_t a) { uint8_t o = b.read(a); rmw_store(a, o, do_asl(o)); }
@@ -205,177 +206,177 @@ int Core<Bus>::step() {
 
     switch (op) {
     // ---- LDA ----
-    case 0xA9: b.a = fetch();               setZN(b.a); return 2;
-    case 0xA5: b.a = b.read(ea_zp());       setZN(b.a); return 3;
-    case 0xB5: b.a = b.read(ea_zpx());      setZN(b.a); return 4;
-    case 0xAD: b.a = b.read(ea_abs());      setZN(b.a); return 4;
-    case 0xBD: b.a = b.read(ea_absx());     setZN(b.a); return rd_cycles(4);
-    case 0xB9: b.a = b.read(ea_absy());     setZN(b.a); return rd_cycles(4);
-    case 0xA1: b.a = b.read(ea_indx());     setZN(b.a); return 6;
-    case 0xB1: b.a = b.read(ea_indy());     setZN(b.a); return rd_cycles(5);
+    case LDA_IMM:  b.a = fetch();               setZN(b.a); return 2;
+    case LDA_ZP:   b.a = b.read(ea_zp());       setZN(b.a); return 3;
+    case LDA_ZPX:  b.a = b.read(ea_zpx());      setZN(b.a); return 4;
+    case LDA_ABS:  b.a = b.read(ea_abs());      setZN(b.a); return 4;
+    case LDA_ABSX: b.a = b.read(ea_absx());     setZN(b.a); return rd_cycles(4);
+    case LDA_ABSY: b.a = b.read(ea_absy());     setZN(b.a); return rd_cycles(4);
+    case LDA_INDX: b.a = b.read(ea_indx());     setZN(b.a); return 6;
+    case LDA_INDY: b.a = b.read(ea_indy());     setZN(b.a); return rd_cycles(5);
 
     // ---- LDX ----
-    case 0xA2: b.x = fetch();               setZN(b.x); return 2;
-    case 0xA6: b.x = b.read(ea_zp());       setZN(b.x); return 3;
-    case 0xB6: b.x = b.read(ea_zpy());      setZN(b.x); return 4;
-    case 0xAE: b.x = b.read(ea_abs());      setZN(b.x); return 4;
-    case 0xBE: b.x = b.read(ea_absy());     setZN(b.x); return rd_cycles(4);
+    case LDX_IMM:  b.x = fetch();               setZN(b.x); return 2;
+    case LDX_ZP:   b.x = b.read(ea_zp());       setZN(b.x); return 3;
+    case LDX_ZPY:  b.x = b.read(ea_zpy());      setZN(b.x); return 4;
+    case LDX_ABS:  b.x = b.read(ea_abs());      setZN(b.x); return 4;
+    case LDX_ABSY: b.x = b.read(ea_absy());     setZN(b.x); return rd_cycles(4);
 
     // ---- LDY ----
-    case 0xA0: b.y = fetch();               setZN(b.y); return 2;
-    case 0xA4: b.y = b.read(ea_zp());       setZN(b.y); return 3;
-    case 0xB4: b.y = b.read(ea_zpx());      setZN(b.y); return 4;
-    case 0xAC: b.y = b.read(ea_abs());      setZN(b.y); return 4;
-    case 0xBC: b.y = b.read(ea_absx());     setZN(b.y); return rd_cycles(4);
+    case LDY_IMM:  b.y = fetch();               setZN(b.y); return 2;
+    case LDY_ZP:   b.y = b.read(ea_zp());       setZN(b.y); return 3;
+    case LDY_ZPX:  b.y = b.read(ea_zpx());      setZN(b.y); return 4;
+    case LDY_ABS:  b.y = b.read(ea_abs());      setZN(b.y); return 4;
+    case LDY_ABSX: b.y = b.read(ea_absx());     setZN(b.y); return rd_cycles(4);
 
     // ---- STA / STX / STY ----
-    case 0x85: b.write(ea_zp(),   b.a); return 3;
-    case 0x95: b.write(ea_zpx(),  b.a); return 4;
-    case 0x8D: b.write(ea_abs(),  b.a); return 4;
-    case 0x9D: b.write(ea_absx(), b.a); return 5;
-    case 0x99: b.write(ea_absy(), b.a); return 5;
-    case 0x81: b.write(ea_indx(), b.a); return 6;
-    case 0x91: b.write(ea_indy(), b.a); return 6;
-    case 0x86: b.write(ea_zp(),   b.x); return 3;
-    case 0x96: b.write(ea_zpy(),  b.x); return 4;
-    case 0x8E: b.write(ea_abs(),  b.x); return 4;
-    case 0x84: b.write(ea_zp(),   b.y); return 3;
-    case 0x94: b.write(ea_zpx(),  b.y); return 4;
-    case 0x8C: b.write(ea_abs(),  b.y); return 4;
+    case STA_ZP:   b.write(ea_zp(),   b.a); return 3;
+    case STA_ZPX:  b.write(ea_zpx(),  b.a); return 4;
+    case STA_ABS:  b.write(ea_abs(),  b.a); return 4;
+    case STA_ABSX: b.write(ea_absx(), b.a); return 5;
+    case STA_ABSY: b.write(ea_absy(), b.a); return 5;
+    case STA_INDX: b.write(ea_indx(), b.a); return 6;
+    case STA_INDY: b.write(ea_indy(), b.a); return 6;
+    case STX_ZP:   b.write(ea_zp(),   b.x); return 3;
+    case STX_ZPY:  b.write(ea_zpy(),  b.x); return 4;
+    case STX_ABS:  b.write(ea_abs(),  b.x); return 4;
+    case STY_ZP:   b.write(ea_zp(),   b.y); return 3;
+    case STY_ZPX:  b.write(ea_zpx(),  b.y); return 4;
+    case STY_ABS:  b.write(ea_abs(),  b.y); return 4;
 
     // ---- transfers ----
-    case 0xAA: b.x = b.a;  setZN(b.x); return 2;  // TAX
-    case 0xA8: b.y = b.a;  setZN(b.y); return 2;  // TAY
-    case 0x8A: b.a = b.x;  setZN(b.a); return 2;  // TXA
-    case 0x98: b.a = b.y;  setZN(b.a); return 2;  // TYA
-    case 0xBA: b.x = b.sp; setZN(b.x); return 2;  // TSX
-    case 0x9A: b.sp = b.x;             return 2;  // TXS
+    case TAX: b.x = b.a;  setZN(b.x); return 2;
+    case TAY: b.y = b.a;  setZN(b.y); return 2;
+    case TXA: b.a = b.x;  setZN(b.a); return 2;
+    case TYA: b.a = b.y;  setZN(b.a); return 2;
+    case TSX: b.x = b.sp; setZN(b.x); return 2;
+    case TXS: b.sp = b.x;             return 2;
 
     // ---- AND / ORA / EOR ----
-    case 0x29: b.a &= fetch();           setZN(b.a); return 2;
-    case 0x25: b.a &= b.read(ea_zp());   setZN(b.a); return 3;
-    case 0x35: b.a &= b.read(ea_zpx());  setZN(b.a); return 4;
-    case 0x2D: b.a &= b.read(ea_abs());  setZN(b.a); return 4;
-    case 0x3D: b.a &= b.read(ea_absx()); setZN(b.a); return rd_cycles(4);
-    case 0x39: b.a &= b.read(ea_absy()); setZN(b.a); return rd_cycles(4);
-    case 0x21: b.a &= b.read(ea_indx()); setZN(b.a); return 6;
-    case 0x31: b.a &= b.read(ea_indy()); setZN(b.a); return rd_cycles(5);
+    case AND_IMM:  b.a &= fetch();           setZN(b.a); return 2;
+    case AND_ZP:   b.a &= b.read(ea_zp());   setZN(b.a); return 3;
+    case AND_ZPX:  b.a &= b.read(ea_zpx());  setZN(b.a); return 4;
+    case AND_ABS:  b.a &= b.read(ea_abs());  setZN(b.a); return 4;
+    case AND_ABSX: b.a &= b.read(ea_absx()); setZN(b.a); return rd_cycles(4);
+    case AND_ABSY: b.a &= b.read(ea_absy()); setZN(b.a); return rd_cycles(4);
+    case AND_INDX: b.a &= b.read(ea_indx()); setZN(b.a); return 6;
+    case AND_INDY: b.a &= b.read(ea_indy()); setZN(b.a); return rd_cycles(5);
 
-    case 0x09: b.a |= fetch();           setZN(b.a); return 2;
-    case 0x05: b.a |= b.read(ea_zp());   setZN(b.a); return 3;
-    case 0x15: b.a |= b.read(ea_zpx());  setZN(b.a); return 4;
-    case 0x0D: b.a |= b.read(ea_abs());  setZN(b.a); return 4;
-    case 0x1D: b.a |= b.read(ea_absx()); setZN(b.a); return rd_cycles(4);
-    case 0x19: b.a |= b.read(ea_absy()); setZN(b.a); return rd_cycles(4);
-    case 0x01: b.a |= b.read(ea_indx()); setZN(b.a); return 6;
-    case 0x11: b.a |= b.read(ea_indy()); setZN(b.a); return rd_cycles(5);
+    case ORA_IMM:  b.a |= fetch();           setZN(b.a); return 2;
+    case ORA_ZP:   b.a |= b.read(ea_zp());   setZN(b.a); return 3;
+    case ORA_ZPX:  b.a |= b.read(ea_zpx());  setZN(b.a); return 4;
+    case ORA_ABS:  b.a |= b.read(ea_abs());  setZN(b.a); return 4;
+    case ORA_ABSX: b.a |= b.read(ea_absx()); setZN(b.a); return rd_cycles(4);
+    case ORA_ABSY: b.a |= b.read(ea_absy()); setZN(b.a); return rd_cycles(4);
+    case ORA_INDX: b.a |= b.read(ea_indx()); setZN(b.a); return 6;
+    case ORA_INDY: b.a |= b.read(ea_indy()); setZN(b.a); return rd_cycles(5);
 
-    case 0x49: b.a ^= fetch();           setZN(b.a); return 2;
-    case 0x45: b.a ^= b.read(ea_zp());   setZN(b.a); return 3;
-    case 0x55: b.a ^= b.read(ea_zpx());  setZN(b.a); return 4;
-    case 0x4D: b.a ^= b.read(ea_abs());  setZN(b.a); return 4;
-    case 0x5D: b.a ^= b.read(ea_absx()); setZN(b.a); return rd_cycles(4);
-    case 0x59: b.a ^= b.read(ea_absy()); setZN(b.a); return rd_cycles(4);
-    case 0x41: b.a ^= b.read(ea_indx()); setZN(b.a); return 6;
-    case 0x51: b.a ^= b.read(ea_indy()); setZN(b.a); return rd_cycles(5);
+    case EOR_IMM:  b.a ^= fetch();           setZN(b.a); return 2;
+    case EOR_ZP:   b.a ^= b.read(ea_zp());   setZN(b.a); return 3;
+    case EOR_ZPX:  b.a ^= b.read(ea_zpx());  setZN(b.a); return 4;
+    case EOR_ABS:  b.a ^= b.read(ea_abs());  setZN(b.a); return 4;
+    case EOR_ABSX: b.a ^= b.read(ea_absx()); setZN(b.a); return rd_cycles(4);
+    case EOR_ABSY: b.a ^= b.read(ea_absy()); setZN(b.a); return rd_cycles(4);
+    case EOR_INDX: b.a ^= b.read(ea_indx()); setZN(b.a); return 6;
+    case EOR_INDY: b.a ^= b.read(ea_indy()); setZN(b.a); return rd_cycles(5);
 
     // ---- ADC / SBC ----
-    case 0x69: do_adc(fetch());           return 2;
-    case 0x65: do_adc(b.read(ea_zp()));   return 3;
-    case 0x75: do_adc(b.read(ea_zpx()));  return 4;
-    case 0x6D: do_adc(b.read(ea_abs()));  return 4;
-    case 0x7D: do_adc(b.read(ea_absx())); return rd_cycles(4);
-    case 0x79: do_adc(b.read(ea_absy())); return rd_cycles(4);
-    case 0x61: do_adc(b.read(ea_indx())); return 6;
-    case 0x71: do_adc(b.read(ea_indy())); return rd_cycles(5);
+    case ADC_IMM:  do_adc(fetch());           return 2;
+    case ADC_ZP:   do_adc(b.read(ea_zp()));   return 3;
+    case ADC_ZPX:  do_adc(b.read(ea_zpx()));  return 4;
+    case ADC_ABS:  do_adc(b.read(ea_abs()));  return 4;
+    case ADC_ABSX: do_adc(b.read(ea_absx())); return rd_cycles(4);
+    case ADC_ABSY: do_adc(b.read(ea_absy())); return rd_cycles(4);
+    case ADC_INDX: do_adc(b.read(ea_indx())); return 6;
+    case ADC_INDY: do_adc(b.read(ea_indy())); return rd_cycles(5);
 
-    case 0xE9:
-    case 0xEB: do_sbc(fetch());           return 2;  // $EB is the illegal alias
-    case 0xE5: do_sbc(b.read(ea_zp()));   return 3;
-    case 0xF5: do_sbc(b.read(ea_zpx()));  return 4;
-    case 0xED: do_sbc(b.read(ea_abs()));  return 4;
-    case 0xFD: do_sbc(b.read(ea_absx())); return rd_cycles(4);
-    case 0xF9: do_sbc(b.read(ea_absy())); return rd_cycles(4);
-    case 0xE1: do_sbc(b.read(ea_indx())); return 6;
-    case 0xF1: do_sbc(b.read(ea_indy())); return rd_cycles(5);
+    case SBC_IMM:
+    case SBC_IMM_EB: do_sbc(fetch());           return 2;
+    case SBC_ZP:     do_sbc(b.read(ea_zp()));   return 3;
+    case SBC_ZPX:    do_sbc(b.read(ea_zpx()));  return 4;
+    case SBC_ABS:    do_sbc(b.read(ea_abs()));  return 4;
+    case SBC_ABSX:   do_sbc(b.read(ea_absx())); return rd_cycles(4);
+    case SBC_ABSY:   do_sbc(b.read(ea_absy())); return rd_cycles(4);
+    case SBC_INDX:   do_sbc(b.read(ea_indx())); return 6;
+    case SBC_INDY:   do_sbc(b.read(ea_indy())); return rd_cycles(5);
 
     // ---- CMP / CPX / CPY ----
-    case 0xC9: do_cmp(b.a, fetch());           return 2;
-    case 0xC5: do_cmp(b.a, b.read(ea_zp()));   return 3;
-    case 0xD5: do_cmp(b.a, b.read(ea_zpx()));  return 4;
-    case 0xCD: do_cmp(b.a, b.read(ea_abs()));  return 4;
-    case 0xDD: do_cmp(b.a, b.read(ea_absx())); return rd_cycles(4);
-    case 0xD9: do_cmp(b.a, b.read(ea_absy())); return rd_cycles(4);
-    case 0xC1: do_cmp(b.a, b.read(ea_indx())); return 6;
-    case 0xD1: do_cmp(b.a, b.read(ea_indy())); return rd_cycles(5);
-    case 0xE0: do_cmp(b.x, fetch());           return 2;
-    case 0xE4: do_cmp(b.x, b.read(ea_zp()));   return 3;
-    case 0xEC: do_cmp(b.x, b.read(ea_abs()));  return 4;
-    case 0xC0: do_cmp(b.y, fetch());           return 2;
-    case 0xC4: do_cmp(b.y, b.read(ea_zp()));   return 3;
-    case 0xCC: do_cmp(b.y, b.read(ea_abs()));  return 4;
+    case CMP_IMM:  do_cmp(b.a, fetch());           return 2;
+    case CMP_ZP:   do_cmp(b.a, b.read(ea_zp()));   return 3;
+    case CMP_ZPX:  do_cmp(b.a, b.read(ea_zpx()));  return 4;
+    case CMP_ABS:  do_cmp(b.a, b.read(ea_abs()));  return 4;
+    case CMP_ABSX: do_cmp(b.a, b.read(ea_absx())); return rd_cycles(4);
+    case CMP_ABSY: do_cmp(b.a, b.read(ea_absy())); return rd_cycles(4);
+    case CMP_INDX: do_cmp(b.a, b.read(ea_indx())); return 6;
+    case CMP_INDY: do_cmp(b.a, b.read(ea_indy())); return rd_cycles(5);
+    case CPX_IMM:  do_cmp(b.x, fetch());           return 2;
+    case CPX_ZP:   do_cmp(b.x, b.read(ea_zp()));   return 3;
+    case CPX_ABS:  do_cmp(b.x, b.read(ea_abs()));  return 4;
+    case CPY_IMM:  do_cmp(b.y, fetch());           return 2;
+    case CPY_ZP:   do_cmp(b.y, b.read(ea_zp()));   return 3;
+    case CPY_ABS:  do_cmp(b.y, b.read(ea_abs()));  return 4;
 
     // ---- BIT ----
-    case 0x24:
-    case 0x2C: {
-        uint8_t v = b.read(op == 0x24 ? ea_zp() : ea_abs());
+    case BIT_ZP:
+    case BIT_ABS: {
+        uint8_t v = b.read(op == BIT_ZP ? ea_zp() : ea_abs());
         setFlag(FLAG_Z, (b.a & v) == 0);
         setFlag(FLAG_N, (v & 0x80) != 0);
         setFlag(FLAG_V, (v & 0x40) != 0);
-        return op == 0x24 ? 3 : 4;
+        return op == BIT_ZP ? 3 : 4;
     }
 
     // ---- INC / DEC memory ----
-    case 0xE6: { uint16_t a = ea_zp();   uint8_t o = b.read(a); uint8_t v = uint8_t(o + 1); rmw_store(a, o, v); setZN(v); return 5; }
-    case 0xF6: { uint16_t a = ea_zpx();  uint8_t o = b.read(a); uint8_t v = uint8_t(o + 1); rmw_store(a, o, v); setZN(v); return 6; }
-    case 0xEE: { uint16_t a = ea_abs();  uint8_t o = b.read(a); uint8_t v = uint8_t(o + 1); rmw_store(a, o, v); setZN(v); return 6; }
-    case 0xFE: { uint16_t a = ea_absx(); uint8_t o = b.read(a); uint8_t v = uint8_t(o + 1); rmw_store(a, o, v); setZN(v); return 7; }
-    case 0xC6: { uint16_t a = ea_zp();   uint8_t o = b.read(a); uint8_t v = uint8_t(o - 1); rmw_store(a, o, v); setZN(v); return 5; }
-    case 0xD6: { uint16_t a = ea_zpx();  uint8_t o = b.read(a); uint8_t v = uint8_t(o - 1); rmw_store(a, o, v); setZN(v); return 6; }
-    case 0xCE: { uint16_t a = ea_abs();  uint8_t o = b.read(a); uint8_t v = uint8_t(o - 1); rmw_store(a, o, v); setZN(v); return 6; }
-    case 0xDE: { uint16_t a = ea_absx(); uint8_t o = b.read(a); uint8_t v = uint8_t(o - 1); rmw_store(a, o, v); setZN(v); return 7; }
+    case INC_ZP:   { uint16_t a = ea_zp();   uint8_t o = b.read(a); uint8_t v = uint8_t(o + 1); rmw_store(a, o, v); setZN(v); return 5; }
+    case INC_ZPX:  { uint16_t a = ea_zpx();  uint8_t o = b.read(a); uint8_t v = uint8_t(o + 1); rmw_store(a, o, v); setZN(v); return 6; }
+    case INC_ABS:  { uint16_t a = ea_abs();  uint8_t o = b.read(a); uint8_t v = uint8_t(o + 1); rmw_store(a, o, v); setZN(v); return 6; }
+    case INC_ABSX: { uint16_t a = ea_absx(); uint8_t o = b.read(a); uint8_t v = uint8_t(o + 1); rmw_store(a, o, v); setZN(v); return 7; }
+    case DEC_ZP:   { uint16_t a = ea_zp();   uint8_t o = b.read(a); uint8_t v = uint8_t(o - 1); rmw_store(a, o, v); setZN(v); return 5; }
+    case DEC_ZPX:  { uint16_t a = ea_zpx();  uint8_t o = b.read(a); uint8_t v = uint8_t(o - 1); rmw_store(a, o, v); setZN(v); return 6; }
+    case DEC_ABS:  { uint16_t a = ea_abs();  uint8_t o = b.read(a); uint8_t v = uint8_t(o - 1); rmw_store(a, o, v); setZN(v); return 6; }
+    case DEC_ABSX: { uint16_t a = ea_absx(); uint8_t o = b.read(a); uint8_t v = uint8_t(o - 1); rmw_store(a, o, v); setZN(v); return 7; }
 
     // ---- INX / INY / DEX / DEY ----
-    case 0xE8: b.x++; setZN(b.x); return 2;
-    case 0xC8: b.y++; setZN(b.y); return 2;
-    case 0xCA: b.x--; setZN(b.x); return 2;
-    case 0x88: b.y--; setZN(b.y); return 2;
+    case INX: b.x++; setZN(b.x); return 2;
+    case INY: b.y++; setZN(b.y); return 2;
+    case DEX: b.x--; setZN(b.x); return 2;
+    case DEY: b.y--; setZN(b.y); return 2;
 
     // ---- shifts and rotates ----
-    case 0x0A: b.a = do_asl(b.a); return 2;
-    case 0x06: rmw_asl(ea_zp());   return 5;
-    case 0x16: rmw_asl(ea_zpx());  return 6;
-    case 0x0E: rmw_asl(ea_abs());  return 6;
-    case 0x1E: rmw_asl(ea_absx()); return 7;
-    case 0x4A: b.a = do_lsr(b.a); return 2;
-    case 0x46: rmw_lsr(ea_zp());   return 5;
-    case 0x56: rmw_lsr(ea_zpx());  return 6;
-    case 0x4E: rmw_lsr(ea_abs());  return 6;
-    case 0x5E: rmw_lsr(ea_absx()); return 7;
-    case 0x2A: b.a = do_rol(b.a); return 2;
-    case 0x26: rmw_rol(ea_zp());   return 5;
-    case 0x36: rmw_rol(ea_zpx());  return 6;
-    case 0x2E: rmw_rol(ea_abs());  return 6;
-    case 0x3E: rmw_rol(ea_absx()); return 7;
-    case 0x6A: b.a = do_ror(b.a); return 2;
-    case 0x66: rmw_ror(ea_zp());   return 5;
-    case 0x76: rmw_ror(ea_zpx());  return 6;
-    case 0x6E: rmw_ror(ea_abs());  return 6;
-    case 0x7E: rmw_ror(ea_absx()); return 7;
+    case ASL_ACC:  b.a = do_asl(b.a); return 2;
+    case ASL_ZP:   rmw_asl(ea_zp());   return 5;
+    case ASL_ZPX:  rmw_asl(ea_zpx());  return 6;
+    case ASL_ABS:  rmw_asl(ea_abs());  return 6;
+    case ASL_ABSX: rmw_asl(ea_absx()); return 7;
+    case LSR_ACC:  b.a = do_lsr(b.a); return 2;
+    case LSR_ZP:   rmw_lsr(ea_zp());   return 5;
+    case LSR_ZPX:  rmw_lsr(ea_zpx());  return 6;
+    case LSR_ABS:  rmw_lsr(ea_abs());  return 6;
+    case LSR_ABSX: rmw_lsr(ea_absx()); return 7;
+    case ROL_ACC:  b.a = do_rol(b.a); return 2;
+    case ROL_ZP:   rmw_rol(ea_zp());   return 5;
+    case ROL_ZPX:  rmw_rol(ea_zpx());  return 6;
+    case ROL_ABS:  rmw_rol(ea_abs());  return 6;
+    case ROL_ABSX: rmw_rol(ea_absx()); return 7;
+    case ROR_ACC:  b.a = do_ror(b.a); return 2;
+    case ROR_ZP:   rmw_ror(ea_zp());   return 5;
+    case ROR_ZPX:  rmw_ror(ea_zpx());  return 6;
+    case ROR_ABS:  rmw_ror(ea_abs());  return 6;
+    case ROR_ABSX: rmw_ror(ea_absx()); return 7;
 
     // ---- branches ----
-    case 0x10: return branch(!testFlag(FLAG_N));  // BPL
-    case 0x30: return branch(testFlag(FLAG_N));   // BMI
-    case 0x50: return branch(!testFlag(FLAG_V));  // BVC
-    case 0x70: return branch(testFlag(FLAG_V));   // BVS
-    case 0x90: return branch(!testFlag(FLAG_C));  // BCC
-    case 0xB0: return branch(testFlag(FLAG_C));   // BCS
-    case 0xD0: return branch(!testFlag(FLAG_Z));  // BNE
-    case 0xF0: return branch(testFlag(FLAG_Z));   // BEQ
+    case BPL: return branch(!testFlag(FLAG_N));
+    case BMI: return branch(testFlag(FLAG_N));
+    case BVC: return branch(!testFlag(FLAG_V));
+    case BVS: return branch(testFlag(FLAG_V));
+    case BCC: return branch(!testFlag(FLAG_C));
+    case BCS: return branch(testFlag(FLAG_C));
+    case BNE: return branch(!testFlag(FLAG_Z));
+    case BEQ: return branch(testFlag(FLAG_Z));
 
     // ---- jumps and returns ----
-    case 0x4C: { uint16_t a = ea_abs(); b.pc = a; b.jumpTarget(a); return 3; }
-    case 0x6C: {
+    case JMP_ABS: { uint16_t a = ea_abs(); b.pc = a; b.jumpTarget(a); return 3; }
+    case JMP_IND: {
         uint16_t ptr = ea_abs();
         // 6502 JMP indirect bug: when the low byte is $FF the high byte is
         // fetched from the same page ($xx00) instead of crossing into the next.
@@ -385,7 +386,7 @@ int Core<Bus>::step() {
         b.jumpTarget(a);
         return 5;
     }
-    case 0x20: {
+    case JSR_ABS: {
         // The high operand byte is fetched after the return address is pushed,
         // so a JSR in the stack page can overwrite its own operand.
         uint8_t lo = fetch();
@@ -396,8 +397,8 @@ int Core<Bus>::step() {
         b.jumpTarget(a);
         return 6;
     }
-    case 0x60: { uint8_t lo = pull(); uint8_t hi = pull(); b.pc = uint16_t((lo | (hi << 8)) + 1); return 6; }
-    case 0x40: {
+    case RTS: { uint8_t lo = pull(); uint8_t hi = pull(); b.pc = uint16_t((lo | (hi << 8)) + 1); return 6; }
+    case RTI: {
         b.st = uint8_t(pull() | FLAG_U);
         uint8_t lo = pull();
         uint8_t hi = pull();
@@ -406,23 +407,23 @@ int Core<Bus>::step() {
     }
 
     // ---- stack ----
-    case 0x48: push(b.a); return 3;                              // PHA
-    case 0x08: push(uint8_t(b.st | FLAG_B | FLAG_U)); return 3;  // PHP
-    case 0x68: b.a = pull(); setZN(b.a); return 4;               // PLA
-    case 0x28: b.st = uint8_t(pull() | FLAG_U); return 4;        // PLP
+    case PHA: push(b.a); return 3;
+    case PHP: push(uint8_t(b.st | FLAG_B | FLAG_U)); return 3;
+    case PLA: b.a = pull(); setZN(b.a); return 4;
+    case PLP: b.st = uint8_t(pull() | FLAG_U); return 4;
 
     // ---- flags ----
-    case 0x18: setFlag(FLAG_C, false); return 2;
-    case 0x38: setFlag(FLAG_C, true);  return 2;
-    case 0x58: setFlag(FLAG_I, false); return 2;
-    case 0x78: setFlag(FLAG_I, true);  return 2;
-    case 0xD8: setFlag(FLAG_D, false); return 2;
-    case 0xF8: setFlag(FLAG_D, true);  return 2;
-    case 0xB8: setFlag(FLAG_V, false); return 2;
+    case CLC: setFlag(FLAG_C, false); return 2;
+    case SEC: setFlag(FLAG_C, true);  return 2;
+    case CLI: setFlag(FLAG_I, false); return 2;
+    case SEI: setFlag(FLAG_I, true);  return 2;
+    case CLD: setFlag(FLAG_D, false); return 2;
+    case SED: setFlag(FLAG_D, true);  return 2;
+    case CLV: setFlag(FLAG_V, false); return 2;
 
-    case 0xEA: return 2;  // NOP
+    case NOP: return 2;
 
-    case 0x00: {  // BRK
+    case BRK: {
         b.pc++;
         push(uint8_t(b.pc >> 8));
         push(uint8_t(b.pc & 0xFF));
@@ -435,21 +436,21 @@ int Core<Bus>::step() {
     // ==== illegal opcodes ===================================================
 
     // LAX - LDA + LDX
-    case 0xA7: do_lax(b.read(ea_zp()));   return 3;
-    case 0xB7: do_lax(b.read(ea_zpy()));  return 4;
-    case 0xAF: do_lax(b.read(ea_abs()));  return 4;
-    case 0xBF: do_lax(b.read(ea_absy())); return rd_cycles(4);
-    case 0xA3: do_lax(b.read(ea_indx())); return 6;
-    case 0xB3: do_lax(b.read(ea_indy())); return rd_cycles(5);
+    case LAX_ZP:   do_lax(b.read(ea_zp()));   return 3;
+    case LAX_ZPY:  do_lax(b.read(ea_zpy()));  return 4;
+    case LAX_ABS:  do_lax(b.read(ea_abs()));  return 4;
+    case LAX_ABSY: do_lax(b.read(ea_absy())); return rd_cycles(4);
+    case LAX_INDX: do_lax(b.read(ea_indx())); return 6;
+    case LAX_INDY: do_lax(b.read(ea_indy())); return rd_cycles(5);
 
     // SAX - store A & X
-    case 0x87: b.write(ea_zp(),   uint8_t(b.a & b.x)); return 3;
-    case 0x97: b.write(ea_zpy(),  uint8_t(b.a & b.x)); return 4;
-    case 0x8F: b.write(ea_abs(),  uint8_t(b.a & b.x)); return 4;
-    case 0x83: b.write(ea_indx(), uint8_t(b.a & b.x)); return 6;
+    case SAX_ZP:   b.write(ea_zp(),   uint8_t(b.a & b.x)); return 3;
+    case SAX_ZPY:  b.write(ea_zpy(),  uint8_t(b.a & b.x)); return 4;
+    case SAX_ABS:  b.write(ea_abs(),  uint8_t(b.a & b.x)); return 4;
+    case SAX_INDX: b.write(ea_indx(), uint8_t(b.a & b.x)); return 6;
 
     // DCP - DEC + CMP
-    case 0xC7: case 0xD7: case 0xCF: case 0xDF: case 0xDB: case 0xC3: case 0xD3: {
+    case DCP_ZP: case DCP_ZPX: case DCP_ABS: case DCP_ABSX: case DCP_ABSY: case DCP_INDX: case DCP_INDY: {
         uint16_t a;
         const int cyc = ea_illegal_rmw(op, a);
         uint8_t o = b.read(a);
@@ -460,7 +461,7 @@ int Core<Bus>::step() {
     }
 
     // ISC (ISB) - INC + SBC
-    case 0xE7: case 0xF7: case 0xEF: case 0xFF: case 0xFB: case 0xE3: case 0xF3: {
+    case ISC_ZP: case ISC_ZPX: case ISC_ABS: case ISC_ABSX: case ISC_ABSY: case ISC_INDX: case ISC_INDY: {
         uint16_t a;
         const int cyc = ea_illegal_rmw(op, a);
         uint8_t o = b.read(a);
@@ -471,7 +472,7 @@ int Core<Bus>::step() {
     }
 
     // SLO - ASL + ORA
-    case 0x07: case 0x17: case 0x0F: case 0x1F: case 0x1B: case 0x03: case 0x13: {
+    case SLO_ZP: case SLO_ZPX: case SLO_ABS: case SLO_ABSX: case SLO_ABSY: case SLO_INDX: case SLO_INDY: {
         uint16_t a;
         const int cyc = ea_illegal_rmw(op, a);
         uint8_t o = b.read(a);
@@ -484,7 +485,7 @@ int Core<Bus>::step() {
     }
 
     // RLA - ROL + AND
-    case 0x27: case 0x37: case 0x2F: case 0x3F: case 0x3B: case 0x23: case 0x33: {
+    case RLA_ZP: case RLA_ZPX: case RLA_ABS: case RLA_ABSX: case RLA_ABSY: case RLA_INDX: case RLA_INDY: {
         uint16_t a;
         const int cyc = ea_illegal_rmw(op, a);
         uint8_t o = b.read(a);
@@ -498,7 +499,7 @@ int Core<Bus>::step() {
     }
 
     // SRE - LSR + EOR
-    case 0x47: case 0x57: case 0x4F: case 0x5F: case 0x5B: case 0x43: case 0x53: {
+    case SRE_ZP: case SRE_ZPX: case SRE_ABS: case SRE_ABSX: case SRE_ABSY: case SRE_INDX: case SRE_INDY: {
         uint16_t a;
         const int cyc = ea_illegal_rmw(op, a);
         uint8_t o = b.read(a);
@@ -511,7 +512,7 @@ int Core<Bus>::step() {
     }
 
     // RRA - ROR + ADC
-    case 0x67: case 0x77: case 0x6F: case 0x7F: case 0x7B: case 0x63: case 0x73: {
+    case RRA_ZP: case RRA_ZPX: case RRA_ABS: case RRA_ABSX: case RRA_ABSY: case RRA_INDX: case RRA_INDY: {
         uint16_t a;
         const int cyc = ea_illegal_rmw(op, a);
         uint8_t o = b.read(a);
@@ -524,14 +525,14 @@ int Core<Bus>::step() {
     }
 
     // ANC - AND #imm, then carry from bit 7 of the result
-    case 0x0B: case 0x2B:
+    case ANC_IMM_0B: case ANC_IMM_2B:
         b.a &= fetch();
         setZN(b.a);
         setFlag(FLAG_C, (b.a & 0x80) != 0);
         return 2;
 
     // ALR - AND #imm then LSR A
-    case 0x4B:
+    case ALR_IMM:
         b.a &= fetch();
         setFlag(FLAG_C, (b.a & 1) != 0);
         b.a = uint8_t(b.a >> 1);
@@ -541,7 +542,7 @@ int Core<Bus>::step() {
     // ARR - AND #imm then ROR A; C is bit 6 of the result, V bit 6 ^ bit 5.
     // In decimal mode N, Z and V come from the rotated value and each nibble
     // of the AND result gets an ADC-style BCD fixup, which also sets C.
-    case 0x6B: {
+    case ARR_IMM: {
         uint8_t t = uint8_t(b.a & fetch());
         bool c = testFlag(FLAG_C);
         b.a = uint8_t((t >> 1) | (c ? 0x80 : 0));
@@ -561,7 +562,7 @@ int Core<Bus>::step() {
     }
 
     // AXS/SBX - X = (A & X) - imm
-    case 0xCB: {
+    case AXS_IMM: {
         uint8_t i = fetch();
         uint16_t r = uint16_t(uint16_t(b.a & b.x) - i);
         setFlag(FLAG_C, r < 0x100);
@@ -573,24 +574,24 @@ int Core<Bus>::step() {
     // LAX #imm (LXA/ATX): A = X = (A | magic) & imm. Unstable on hardware: the
     // magic constant varies between chips. $EE is the common value, and the
     // one Tom Harte's tests use.
-    case 0xAB: { uint8_t v = uint8_t((b.a | 0xEE) & fetch()); b.a = v; b.x = v; setZN(v); return 2; }
+    case LAX_IMM: { uint8_t v = uint8_t((b.a | 0xEE) & fetch()); b.a = v; b.x = v; setZN(v); return 2; }
 
     // XAA #imm (ANE): A = (A | magic) & X & imm, with the same $EE as LXA.
     // VICE and libsidplayfp use $EF for ANE, which VICE's notes say Spectipede
     // and Turrican 3 need.
-    case 0x8B: b.a = uint8_t((b.a | 0xEE) & b.x & fetch()); setZN(b.a); return 2;
+    case XAA_IMM: b.a = uint8_t((b.a | 0xEE) & b.x & fetch()); setZN(b.a); return 2;
 
     // SHA/SHX/SHY/TAS - see do_unstable_store.
-    case 0x9F: { uint16_t base = fetch16(); do_unstable_store(base, b.y, uint8_t(b.a & b.x)); return 5; }
-    case 0x93: {
+    case SHA_ABSY: { uint16_t base = fetch16(); do_unstable_store(base, b.y, uint8_t(b.a & b.x)); return 5; }
+    case SHA_INDY: {
         uint8_t z = fetch();
         uint16_t ptr = uint16_t(b.read(z) | (b.read(uint8_t(z + 1)) << 8));
         do_unstable_store(ptr, b.y, uint8_t(b.a & b.x));
         return 6;
     }
-    case 0x9E: { uint16_t base = fetch16(); do_unstable_store(base, b.y, b.x); return 5; }
-    case 0x9C: { uint16_t base = fetch16(); do_unstable_store(base, b.x, b.y); return 5; }
-    case 0x9B: {
+    case SHX_ABSY: { uint16_t base = fetch16(); do_unstable_store(base, b.y, b.x); return 5; }
+    case SHY_ABSX: { uint16_t base = fetch16(); do_unstable_store(base, b.x, b.y); return 5; }
+    case TAS_ABSY: {
         uint16_t base = fetch16();
         b.sp = uint8_t(b.a & b.x);
         do_unstable_store(base, b.y, uint8_t(b.a & b.x));
@@ -598,7 +599,7 @@ int Core<Bus>::step() {
     }
 
     // LAS/LAR - A = X = SP = mem & SP
-    case 0xBB: {
+    case LAS_ABSY: {
         uint8_t v = uint8_t(b.read(ea_absy()) & b.sp);
         b.a = v; b.x = v; b.sp = v;
         setZN(v);
@@ -607,8 +608,8 @@ int Core<Bus>::step() {
 
     // KIL/JAM - the CPU stops. Back the PC up onto the opcode so a caller that
     // reports where it stopped points at the offending byte.
-    case 0x02: case 0x12: case 0x22: case 0x32: case 0x42: case 0x52:
-    case 0x62: case 0x72: case 0x92: case 0xB2: case 0xD2: case 0xF2:
+    case JAM_02: case JAM_12: case JAM_22: case JAM_32: case JAM_42: case JAM_52:
+    case JAM_62: case JAM_72: case JAM_92: case JAM_B2: case JAM_D2: case JAM_F2:
         b.pc--;
         b.jam();
         return 2;
@@ -616,18 +617,18 @@ int Core<Bus>::step() {
     // Illegal NOPs come in four forms with different sizes, cycle counts and
     // memory access; each is decoded separately so timing and read tracking
     // stay accurate.
-    case 0x1A: case 0x3A: case 0x5A: case 0x7A: case 0xDA: case 0xFA:
-        return 2;                                                    // implied
-    case 0x80: case 0x82: case 0x89: case 0xC2: case 0xE2:
-        fetch(); return 2;                                           // #imm
-    case 0x04: case 0x44: case 0x64:
-        b.read(ea_zp()); return 3;                                   // zp
-    case 0x14: case 0x34: case 0x54: case 0x74: case 0xD4: case 0xF4:
-        b.read(ea_zpx()); return 4;                                  // zp,X
-    case 0x0C:
-        b.read(ea_abs()); return 4;                                  // abs
-    case 0x1C: case 0x3C: case 0x5C: case 0x7C: case 0xDC: case 0xFC:
-        b.read(ea_absx()); return rd_cycles(4);                      // abs,X
+    case NOP_1A: case NOP_3A: case NOP_5A: case NOP_7A: case NOP_DA: case NOP_FA:
+        return 2;
+    case NOP_IMM_80: case NOP_IMM_82: case NOP_IMM_89: case NOP_IMM_C2: case NOP_IMM_E2:
+        fetch(); return 2;
+    case NOP_ZP_04: case NOP_ZP_44: case NOP_ZP_64:
+        b.read(ea_zp()); return 3;
+    case NOP_ZPX_14: case NOP_ZPX_34: case NOP_ZPX_54: case NOP_ZPX_74: case NOP_ZPX_D4: case NOP_ZPX_F4:
+        b.read(ea_zpx()); return 4;
+    case NOP_ABS:
+        b.read(ea_abs()); return 4;
+    case NOP_ABSX_1C: case NOP_ABSX_3C: case NOP_ABSX_5C: case NOP_ABSX_7C: case NOP_ABSX_DC: case NOP_ABSX_FC:
+        b.read(ea_absx()); return rd_cycles(4);
 
     default: {
         // Unreachable: all 256 opcodes are handled above (the cross-check

@@ -1,5 +1,6 @@
-// cpu6510_wasm.cpp - 6510 emulator core with memory-access tracking.
-// Build: emcc cpu6510_wasm.cpp -O3 -s WASM=1 -s EXPORTED_FUNCTIONS='["_malloc","_free"]' -s EXPORTED_RUNTIME_METHODS='["ccall","cwrap","getValue","setValue"]' -s MODULARIZE=1 -s EXPORT_NAME='CPU6510Module' -o cpu6510.js
+// cpu6510_wasm.cpp - the analysis machine: the shared 6510 core on a bus that
+// records memory access. Built into sidquake.wasm by
+// scripts/build-sidquake-wasm.sh.
 
 #include <emscripten/emscripten.h>
 #include <cstdint>
@@ -14,7 +15,6 @@
 #include "cpu6510_api.h"
 #include "cpu6510_core.h"
 
-// Memory access tracking flags
 enum MemoryAccessFlag {
     MEM_EXECUTE = 1 << 0,
     MEM_READ = 1 << 1,
@@ -47,20 +47,17 @@ struct Analyser6510 {
     uint8_t memory[65536];
     uint8_t memoryAccess[65536];
 
-    // SID write tracking
-    uint32_t sidWrites[32];  // Count writes to each SID register
+    uint32_t sidWrites[32];  // per SID register, all chips folded together
     uint32_t totalSidWrites;
 
     // Multi-SID chip tracking: $20-byte slots, 0-31 for $D400-$D7FF and
     // 32-47 for $DE00-$DFFF (the I/O areas a second or third SID sits in)
-    bool sidChipsUsed[48];   // Track which SID chips have been written to
+    bool sidChipsUsed[48];
 
-    // Zero page write tracking
-    uint32_t zpWrites[256];   // Count writes to each zero page location
+    uint32_t zpWrites[256];
     uint32_t totalZpWrites;
 
-    // Memory write tracking
-    uint16_t lastWritePC[65536];  // Track PC that last wrote to each address
+    uint16_t lastWritePC[65536];
 
     // For pattern detection
     std::vector<uint16_t> writeSequence;
@@ -76,7 +73,7 @@ struct Analyser6510 {
     // attributed to the instruction rather than to the advanced PC.
     uint16_t instructionPC;
 
-    // Track cycles from last function execution
+    // Cycles of the last execute() call, or 0 if it did not return.
     uint32_t lastExecutionCycles;
 
     void init();
@@ -178,12 +175,10 @@ void Analyser6510::writeTracked(uint16_t address, uint8_t value) {
     memory[address] = value;
     c64io::write(memory, address, value);
 
-    // Only track if tracking is enabled
     if (trackingEnabled) {
         memoryAccess[address] |= MEM_WRITE;
         lastWritePC[address] = instructionPC;
 
-        // Track zero page writes
         if (address < 256) {
             zpWrites[address]++;
             totalZpWrites++;
@@ -198,8 +193,7 @@ void Analyser6510::writeTracked(uint16_t address, uint8_t value) {
                 sidWrites[reg]++;
                 totalSidWrites++;
 
-                // Track which SID chip is being used (each chip is $20 bytes)
-                uint8_t sidChipIndex = (address - 0xD400) >> 5;  // Divide by 32
+                uint8_t sidChipIndex = (address - 0xD400) >> 5;
                 sidChipsUsed[sidChipIndex] = true;
 
                 if (recordWrites) {
@@ -289,13 +283,11 @@ static Analyser6510 cpu;
 
 extern "C" {
 
-    // Initialize CPU
     EMSCRIPTEN_KEEPALIVE
         void cpu_init() {
         cpu.init();
     }
 
-    // Enable or disable tracking
     EMSCRIPTEN_KEEPALIVE
         void cpu_set_tracking(bool enabled) {
         cpu.trackingEnabled = enabled;
@@ -323,7 +315,6 @@ extern "C" {
         cpu.memory[address] = value;
     }
 
-    // Execute one instruction
     EMSCRIPTEN_KEEPALIVE
         void cpu_step() {
         cpu.step();
@@ -363,7 +354,6 @@ extern "C" {
         c64env::plant_kernal(cpu.memory);
     }
 
-    // Get CPU state
     EMSCRIPTEN_KEEPALIVE
         uint16_t cpu_get_pc() { return cpu.pc; }
 
@@ -403,13 +393,11 @@ extern "C" {
     EMSCRIPTEN_KEEPALIVE
         uint32_t cpu_get_last_execution_cycles() { return cpu.lastExecutionCycles; }
 
-    // Get memory access info
     EMSCRIPTEN_KEEPALIVE
         uint8_t cpu_get_memory_access(uint16_t address) {
         return cpu.memoryAccess[address];
     }
 
-    // Get SID write statistics
     EMSCRIPTEN_KEEPALIVE
         uint32_t cpu_get_sid_writes(uint8_t reg) {
         if (reg < 32) {
@@ -437,20 +425,19 @@ extern "C" {
         memset(cpu.sidChipsUsed, 0, sizeof(cpu.sidChipsUsed));
     }
 
-    // Get the number of SID chips used (based on which $20-byte groups were written to)
+    // The number of $20-byte SID slots written to.
     EMSCRIPTEN_KEEPALIVE
         uint32_t cpu_get_sid_chip_count() {
         return cpu.sidChipCount();
     }
 
-    // Get the base address of the Nth SID chip used (0-indexed)
-    // Returns 0 if index is out of range
+    // Base address of the Nth SID slot written to (0-indexed), or 0 if index
+    // is out of range.
     EMSCRIPTEN_KEEPALIVE
         uint16_t cpu_get_sid_chip_address(uint32_t index) {
         return cpu.sidChipAddress(index);
     }
 
-    // Get zero page write statistics
     EMSCRIPTEN_KEEPALIVE
         uint32_t cpu_get_zp_writes(uint8_t addr) {
         return cpu.zpWrites[addr];
@@ -461,19 +448,16 @@ extern "C" {
         return cpu.totalZpWrites;
     }
 
-    // Enable/disable write sequence recording
     EMSCRIPTEN_KEEPALIVE
         void cpu_set_record_writes(bool record) {
         cpu.setRecordWrites(record);
     }
 
-    // Get write sequence length
     EMSCRIPTEN_KEEPALIVE
         uint32_t cpu_get_write_sequence_length() {
         return cpu.writeSequence.size();
     }
 
-    // Get write sequence item
     EMSCRIPTEN_KEEPALIVE
         uint16_t cpu_get_write_sequence_item(uint32_t index) {
         if (index < cpu.writeSequence.size()) {
@@ -482,7 +466,7 @@ extern "C" {
         return 0;
     }
 
-    // Analyze memory for code vs data
+    // Bytes in [startAddr, endAddr] that were executed, and the rest.
     EMSCRIPTEN_KEEPALIVE
         void cpu_analyze_memory(uint16_t startAddr, uint16_t endAddr, uint32_t* codeBytes, uint32_t* dataBytes) {
         *codeBytes = 0;
@@ -498,7 +482,6 @@ extern "C" {
         }
     }
 
-    // Get last PC that wrote to an address
     EMSCRIPTEN_KEEPALIVE
         uint16_t cpu_get_last_write_pc(uint16_t address) {
         return cpu.lastWritePC[address];

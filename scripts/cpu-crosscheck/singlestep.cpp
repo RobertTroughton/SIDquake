@@ -61,7 +61,9 @@ static int step() {
 static bool skipOpcode(uint8_t op) {
     // JAM/KIL: the CPU halts and hammers the bus forever. The core reports the
     // halt to its bus and stops instead, so there is no final state to compare.
-    if ((op & 0x0F) == 0x02 && op != 0x82 && op != 0xA2 && op != 0xC2 && op != 0xE2)
+    using namespace cpu6510;
+    if ((op & 0x0F) == 0x02 && op != NOP_IMM_82 && op != LDX_IMM && op != NOP_IMM_C2
+        && op != NOP_IMM_E2)
         return true;
     return false;
 }

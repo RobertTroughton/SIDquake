@@ -18,6 +18,8 @@
 
 #include "cpu6510_wasm.cpp"
 
+using namespace cpu6510;
+
 extern "C" {
     // Audio core, via shim_audio.cpp.
     void aud_set_state(const uint8_t* image, uint16_t pc, uint8_t a, uint8_t x,
@@ -50,38 +52,40 @@ static inline uint32_t rnd() {
 // else, so feeding it the full 256 would abort the run. Adjust to match the
 // reference core in use.
 static const uint8_t refOpcodes[] = {
-    0xa7,0xb7,0xaf,0xa3,0xb3,
-    0x1a,0x3a,0x5a,0x7a,0xda,0xfa,
-    0x80,0x82,0x89,0xc2,0xe2,0x04,0x44,0x64,0x14,0x34,0x54,0x74,0xd4,0xf4,
-    0x0c,0x1c,0x3c,0x5c,0x7c,0xdc,0xfc,
-    0x69,0x65,0x75,0x6d,0x7d,0x79,0x61,0x71,
-    0x29,0x25,0x35,0x2d,0x3d,0x39,0x21,0x31,
-    0x0b,0x2b,
-    0x0a,0x06,0x16,0x0e,0x1e,
-    0x90,0xb0,0xf0,0x24,0x2c,0x30,0xd0,0x10,0x50,0x70,
-    0x18,0xd8,0x58,0xb8,
-    0xc9,0xc5,0xd5,0xcd,0xdd,0xd9,0xc1,0xd1,
-    0xe0,0xe4,0xec,0xc0,0xc4,0xcc,
-    0xc6,0xd6,0xce,0xde,0xca,0x88,
-    0x49,0x45,0x55,0x4d,0x5d,0x59,0x41,0x51,
-    0xe6,0xf6,0xee,0xfe,0xe8,0xc8,
-    0x20,0x4c,0x6c,
-    0xa9,0xa5,0xb5,0xad,0xbd,0xb9,0xa1,0xb1,
-    0xa2,0xa6,0xb6,0xae,0xbe,
-    0xa0,0xa4,0xb4,0xac,0xbc,
-    0x4a,0x46,0x56,0x4e,0x5e,
-    0xea,
-    0x09,0x05,0x15,0x0d,0x1d,0x19,0x01,0x11,
-    0x48,0x08,0x68,0x28,
-    0x2a,0x26,0x36,0x2e,0x3e,
-    0x6a,0x66,0x76,0x6e,0x7e,
-    0x40,0x60,
-    0xe9,0xeb,0xe5,0xf5,0xed,0xfd,0xf9,0xe1,0xf1,
-    0x38,0xf8,0x78,
-    0x85,0x95,0x8d,0x9d,0x99,0x81,0x91,
-    0x86,0x96,0x8e,
-    0x84,0x94,0x8c,
-    0xaa,0xba,0x8a,0x9a,0x98,0xa8
+    LAX_ZP, LAX_ZPY, LAX_ABS, LAX_INDX, LAX_INDY,
+    NOP_1A, NOP_3A, NOP_5A, NOP_7A, NOP_DA, NOP_FA,
+    NOP_IMM_80, NOP_IMM_82, NOP_IMM_89, NOP_IMM_C2, NOP_IMM_E2,
+    NOP_ZP_04, NOP_ZP_44, NOP_ZP_64,
+    NOP_ZPX_14, NOP_ZPX_34, NOP_ZPX_54, NOP_ZPX_74, NOP_ZPX_D4, NOP_ZPX_F4,
+    NOP_ABS, NOP_ABSX_1C, NOP_ABSX_3C, NOP_ABSX_5C, NOP_ABSX_7C, NOP_ABSX_DC, NOP_ABSX_FC,
+    ADC_IMM, ADC_ZP, ADC_ZPX, ADC_ABS, ADC_ABSX, ADC_ABSY, ADC_INDX, ADC_INDY,
+    AND_IMM, AND_ZP, AND_ZPX, AND_ABS, AND_ABSX, AND_ABSY, AND_INDX, AND_INDY,
+    ANC_IMM_0B, ANC_IMM_2B,
+    ASL_ACC, ASL_ZP, ASL_ZPX, ASL_ABS, ASL_ABSX,
+    BCC, BCS, BEQ, BIT_ZP, BIT_ABS, BMI, BNE, BPL, BVC, BVS,
+    CLC, CLD, CLI, CLV,
+    CMP_IMM, CMP_ZP, CMP_ZPX, CMP_ABS, CMP_ABSX, CMP_ABSY, CMP_INDX, CMP_INDY,
+    CPX_IMM, CPX_ZP, CPX_ABS, CPY_IMM, CPY_ZP, CPY_ABS,
+    DEC_ZP, DEC_ZPX, DEC_ABS, DEC_ABSX, DEX, DEY,
+    EOR_IMM, EOR_ZP, EOR_ZPX, EOR_ABS, EOR_ABSX, EOR_ABSY, EOR_INDX, EOR_INDY,
+    INC_ZP, INC_ZPX, INC_ABS, INC_ABSX, INX, INY,
+    JSR_ABS, JMP_ABS, JMP_IND,
+    LDA_IMM, LDA_ZP, LDA_ZPX, LDA_ABS, LDA_ABSX, LDA_ABSY, LDA_INDX, LDA_INDY,
+    LDX_IMM, LDX_ZP, LDX_ZPY, LDX_ABS, LDX_ABSY,
+    LDY_IMM, LDY_ZP, LDY_ZPX, LDY_ABS, LDY_ABSX,
+    LSR_ACC, LSR_ZP, LSR_ZPX, LSR_ABS, LSR_ABSX,
+    NOP,
+    ORA_IMM, ORA_ZP, ORA_ZPX, ORA_ABS, ORA_ABSX, ORA_ABSY, ORA_INDX, ORA_INDY,
+    PHA, PHP, PLA, PLP,
+    ROL_ACC, ROL_ZP, ROL_ZPX, ROL_ABS, ROL_ABSX,
+    ROR_ACC, ROR_ZP, ROR_ZPX, ROR_ABS, ROR_ABSX,
+    RTI, RTS,
+    SBC_IMM, SBC_IMM_EB, SBC_ZP, SBC_ZPX, SBC_ABS, SBC_ABSX, SBC_ABSY, SBC_INDX, SBC_INDY,
+    SEC, SED, SEI,
+    STA_ZP, STA_ZPX, STA_ABS, STA_ABSX, STA_ABSY, STA_INDX, STA_INDY,
+    STX_ZP, STX_ZPY, STX_ABS,
+    STY_ZP, STY_ZPX, STY_ABS,
+    TAX, TSX, TXA, TXS, TYA, TAY
 };
 static bool inRefSet[256];
 #endif
@@ -135,7 +139,7 @@ static uint8_t base[0x10000];
 static int table_check() {
     int bad = 0;
     for (int op = 0; op < 256; op++) {
-        if (op == 0x00 || (op & 0x0F) == 0x02) continue;  // terminal opcodes
+        if (op == BRK || (op & 0x0F) == 0x02) continue;  // terminal opcodes
 
         memset(cpu.memory, 0, 0x10000);
         const uint16_t startPC = 0x1000;
@@ -148,7 +152,7 @@ static int table_check() {
         // With N, V, Z and C all clear these four branches are taken, which
         // costs the base cycle plus one. A zero displacement keeps the target
         // in the same page, so no page-crossing penalty is owed on top.
-        bool branchTaken = (op == 0x10 || op == 0x50 || op == 0x90 || op == 0xD0);
+        bool branchTaken = (op == BPL || op == BVC || op == BCC || op == BNE);
         if (opcodeTable[op].mode == MODE_RELATIVE) cpu.memory[startPC + 1] = 0x00;
         cpu.cycles = 0; cpu.halted = false;
         cpu_step();
@@ -163,8 +167,8 @@ static int table_check() {
         }
         // PC only tells us the operand size for opcodes that fall through to
         // the next instruction.
-        bool controlFlow = info.mode == MODE_RELATIVE || op == 0x4C || op == 0x6C ||
-                           op == 0x20 || op == 0x40 || op == 0x60;
+        bool controlFlow = info.mode == MODE_RELATIVE || op == JMP_ABS || op == JMP_IND ||
+                           op == JSR_ABS || op == RTI || op == RTS;
         if (!controlFlow && cpu.pc != (uint16_t)(startPC + info.size)) {
             printf("  $%02X %-4s size: core=%d table=%u\n",
                    op, info.mnemonic, (int)(cpu.pc - startPC), info.size);
@@ -188,15 +192,15 @@ struct StoreVector {
 };
 static const StoreVector storeVectors[] = {
     // SHY $1080,X with X=$01: $1081, no crossing, stores Y & ($10+1).
-    {"SHY no cross",   0x9C, 0x80, 0x10, 0x00, 0x01, 0xFF, 0x1081, 0x11},
+    {"SHY no cross",   SHY_ABSX, 0x80, 0x10, 0x00, 0x01, 0xFF, 0x1081, 0x11},
     // SHY $10FF,X with X=$02: crosses into $1101, Y=$0F narrows the value to
     // $01, which then becomes the target's high byte.
-    {"SHY cross",      0x9C, 0xFF, 0x10, 0x00, 0x02, 0x0F, 0x0101, 0x01},
-    {"SHX no cross",   0x9E, 0x80, 0x10, 0x00, 0xFF, 0x01, 0x1081, 0x11},
-    {"SHX cross",      0x9E, 0xFF, 0x10, 0x00, 0x0F, 0x02, 0x0101, 0x01},
-    {"SHA no cross",   0x9F, 0x80, 0x10, 0xFF, 0xFF, 0x01, 0x1081, 0x11},
-    {"SHA cross",      0x9F, 0xFF, 0x10, 0xFF, 0x0F, 0x02, 0x0101, 0x01},
-    {"TAS cross",      0x9B, 0xFF, 0x10, 0xFF, 0x0F, 0x02, 0x0101, 0x01},
+    {"SHY cross",      SHY_ABSX, 0xFF, 0x10, 0x00, 0x02, 0x0F, 0x0101, 0x01},
+    {"SHX no cross",   SHX_ABSY, 0x80, 0x10, 0x00, 0xFF, 0x01, 0x1081, 0x11},
+    {"SHX cross",      SHX_ABSY, 0xFF, 0x10, 0x00, 0x0F, 0x02, 0x0101, 0x01},
+    {"SHA no cross",   SHA_ABSY, 0x80, 0x10, 0xFF, 0xFF, 0x01, 0x1081, 0x11},
+    {"SHA cross",      SHA_ABSY, 0xFF, 0x10, 0xFF, 0x0F, 0x02, 0x0101, 0x01},
+    {"TAS cross",      TAS_ABSY, 0xFF, 0x10, 0xFF, 0x0F, 0x02, 0x0101, 0x01},
 };
 
 static int vector_check() {
@@ -254,7 +258,7 @@ int main(int argc, char** argv) {
     for (int op = 0; op < 256; op++) {
         // BRK and the KIL opcodes are terminal by design in at least one core,
         // so a single-step comparison says nothing useful about them.
-        if (op == 0x00 || (op & 0x0F) == 0x02) continue;
+        if (op == BRK || (op & 0x0F) == 0x02) continue;
 
         rngState = 0x9E3779B97F4A7C15ull ^ (uint64_t)op * 0x100000001B3ull;
         for (int i = 0; i < 0x10000; i += 4) {
@@ -285,7 +289,7 @@ int main(int argc, char** argv) {
             }
 
             // The siddump-family reference bails out of RTS/RTI on an empty stack.
-            if ((op == 0x40 || op == 0x60) && rsp == 0xFF) rsp = 0xFE;
+            if ((op == RTI || op == RTS) && rsp == 0xFF) rsp = 0xFE;
 
             base[startPC] = (uint8_t)op;
             base[(uint16_t)(startPC + 1)] = o1;

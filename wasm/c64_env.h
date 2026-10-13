@@ -125,19 +125,26 @@ inline void plant_kernal(uint8_t* m) {
     m[0xDC04] = 0x25;
     m[0xDC05] = 0x40;
 
-    static const uint8_t exitTail[] = { 0x68, 0xA8, 0x68, 0xAA, 0x68, 0x40 };
+    using namespace cpu6510;
+
+    static const uint8_t exitTail[] = { PLA, TAY, PLA, TAX, PLA, RTI };
     memcpy(&m[0xEA31], exitTail, sizeof(exitTail));
-    m[0xEA7E] = 0xAD; m[0xEA7F] = 0x0D; m[0xEA80] = 0xDC;
+    m[0xEA7E] = LDA_ABS; m[0xEA7F] = 0x0D; m[0xEA80] = 0xDC;
     memcpy(&m[0xEA81], exitTail, sizeof(exitTail));
 
-    for (int addr = 0xFF81; addr <= 0xFFF3; addr += 3) m[addr] = 0x60;
+    for (int addr = 0xFF81; addr <= 0xFFF3; addr += 3) m[addr] = RTS;
 
+    // The B flag of the P byte the interrupt pushed tells a BRK from an IRQ.
     static const uint8_t irqEntry[] = {
-        0x48, 0x8A, 0x48, 0x98, 0x48, 0xBA, 0xBD, 0x04, 0x01, 0x29, 0x10,
-        0xF0, 0x03, 0x6C, 0x16, 0x03, 0x6C, 0x14, 0x03 };
+        PHA, TXA, PHA, TYA, PHA,
+        TSX, LDA_ABSX, 0x04, 0x01,
+        AND_IMM, 0x10,
+        BEQ, 0x03,
+        JMP_IND, 0x16, 0x03,
+        JMP_IND, 0x14, 0x03 };
     memcpy(&m[0xFF48], irqEntry, sizeof(irqEntry));
 
-    static const uint8_t nmiEntry[] = { 0x78, 0x6C, 0x18, 0x03 };
+    static const uint8_t nmiEntry[] = { SEI, JMP_IND, 0x18, 0x03 };
     memcpy(&m[NMI_ENTRY], nmiEntry, sizeof(nmiEntry));
 
     m[0xFFFA] = NMI_ENTRY & 0xFF; m[0xFFFB] = NMI_ENTRY >> 8;
@@ -211,7 +218,7 @@ CallResult call(Bus& b, uint16_t addr, uint32_t maxCycles, bool irq = false, boo
         const uint8_t opcode = b.fetch(b.pc);
         cycles += b.step();
         if (b.jammed()) break;
-        if (opcode == (irq ? 0x40 : 0x60) && (int8_t)(b.sp - startSP) >= 0) return { true, cycles };
+        if (opcode == (irq ? cpu6510::RTI : cpu6510::RTS) && (int8_t)(b.sp - startSP) >= 0) return { true, cycles };
         if (b.pc < 2 || b.pc == 0xFFFF) break;
     }
     b.sp = startSP;

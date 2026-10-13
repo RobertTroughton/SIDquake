@@ -40,7 +40,12 @@ drops it: it models no write-sensitive I/O, and counting it would double every
 read-modify-write in `sidWrites`, `zpWrites` and the shadow-register write
 sequence.
 
-All 256 opcodes are decoded, illegals included.
+All 256 opcodes are decoded, illegals included. `wasm/opcodes.h` names every
+opcode byte in `cpu6510::Opcode`: the mnemonic plus the addressing mode
+(`LDA_ABSX`, `JMP_IND`, `ASL_ACC`, bare for implied and branches), with the
+byte appended where an illegal opcode would otherwise share a name
+(`NOP_ZP_04`, `SBC_IMM_EB`, `JAM_02`). The decoder, the KERNAL stubs and the
+cross-check use these names rather than raw bytes.
 
 ## Calling into a tune
 

@@ -18,6 +18,8 @@
 #include "cpu6510_wasm.cpp"
 #include "sid_audio.cpp"
 
+using namespace cpu6510;
+
 static int failures = 0;
 
 static void check(bool ok, const char* what) {
@@ -30,28 +32,28 @@ static void check(bool ok, const char* what) {
 // Two endless loops that write SID registers, zero page, the CIA 1 timer and
 // their own operands, so every kind of tracking has something to record.
 static const uint8_t progA[] = {   // at $1000
-    0xA2, 0x00,             // LDX #0
-    0x8A,                   // loop: TXA
-    0x9D, 0x00, 0xD4,       //   STA $D400,X
-    0x95, 0x20,             //   STA $20,X
-    0x8D, 0x04, 0xDC,       //   STA $DC04
-    0xE8,                   //   INX
-    0xE0, 0x19,             //   CPX #$19
-    0xD0, 0xF3,             //   BNE loop
-    0xEE, 0x01, 0x10,       //   INC $1001
-    0x4C, 0x00, 0x10,       //   JMP $1000
+    LDX_IMM, 0x00,
+    TXA,                    // loop:
+    STA_ABSX, 0x00, 0xD4,
+    STA_ZPX, 0x20,
+    STA_ABS, 0x04, 0xDC,
+    INX,
+    CPX_IMM, 0x19,
+    BNE, 0xF3,              // to loop
+    INC_ABS, 0x01, 0x10,
+    JMP_ABS, 0x00, 0x10,
 };
 static const uint8_t progB[] = {   // at $2000
-    0xA0, 0x10,             // LDY #$10
-    0x88,                   // loop: DEY
-    0x8C, 0x18, 0xD4,       //   STY $D418
-    0x8C, 0x00, 0xD5,       //   STY $D500
-    0x84, 0x40,             //   STY $40
-    0xAD, 0x12, 0xD0,       //   LDA $D012
-    0x99, 0x00, 0x30,       //   STA $3000,Y
-    0xD0, 0xF0,             //   BNE loop
-    0xE6, 0x41,             //   INC $41
-    0x4C, 0x00, 0x20,       //   JMP $2000
+    LDY_IMM, 0x10,
+    DEY,                    // loop:
+    STY_ABS, 0x18, 0xD4,
+    STY_ABS, 0x00, 0xD5,
+    STY_ZP, 0x40,
+    LDA_ABS, 0x12, 0xD0,
+    STA_ABSY, 0x00, 0x30,
+    BNE, 0xF0,              // to loop
+    INC_ZP, 0x41,
+    JMP_ABS, 0x00, 0x20,
 };
 
 static void load(Analyser6510& c, uint16_t at, const uint8_t* code, size_t size) {
@@ -102,10 +104,10 @@ static void analyser_check() {
 
     // The call runner: a subroutine on one instance and a jam on the other.
     load(*soloA, 0x1000, progA, sizeof(progA));
-    soloA->memory[0x4000] = 0xE6; soloA->memory[0x4001] = 0x50;   // INC $50
-    soloA->memory[0x4002] = 0x60;                                 // RTS
+    soloA->memory[0x4000] = INC_ZP; soloA->memory[0x4001] = 0x50;
+    soloA->memory[0x4002] = RTS;
     memcpy(b->memory, soloA->memory, sizeof(b->memory));
-    b->memory[0x4002] = 0x02;                                     // JAM
+    b->memory[0x4002] = JAM_02;
     const int retA = soloA->execute(0x4000, 1000, false, false);
     const int retB = b->execute(0x4000, 1000, false, false);
     const int retA2 = soloA->execute(0x4000, 1000, false, false);
@@ -130,18 +132,18 @@ static std::vector<uint8_t> psid(uint8_t seed) {
     f[0x0F] = 2;            // songs
     f[0x11] = 1;            // start song
     const uint8_t code[] = {
-        0x4C, 0x06, 0x10,       // JMP init
-        0x4C, 0x0C, 0x10,       // JMP play
-        0x18,                   // init: CLC
-        0x69, seed,             //   ADC #seed
-        0x85, 0xFB,             //   STA $FB
-        0x60,                   //   RTS
-        0xE6, 0xFC,             // play: INC $FC
-        0xA5, 0xFC,             //   LDA $FC
-        0x8D, 0x00, 0xD4,       //   STA $D400
-        0x45, 0xFB,             //   EOR $FB
-        0x8D, 0x01, 0xD4,       //   STA $D401
-        0x60,                   //   RTS
+        JMP_ABS, 0x06, 0x10,    // to init
+        JMP_ABS, 0x0C, 0x10,    // to play
+        CLC,                    // init:
+        ADC_IMM, seed,
+        STA_ZP, 0xFB,
+        RTS,
+        INC_ZP, 0xFC,           // play:
+        LDA_ZP, 0xFC,
+        STA_ABS, 0x00, 0xD4,
+        EOR_ZP, 0xFB,
+        STA_ABS, 0x01, 0xD4,
+        RTS,
     };
     f.insert(f.end(), code, code + sizeof(code));
     return f;

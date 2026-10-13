@@ -23,6 +23,8 @@ Read `docs/CPU_CORES.md` before changing anything here.
 - Cycle counts are load-bearing: the analysis bus reports the per-frame cycle
   budget the exporter plans against, and the audio bus clocks the SID with them.
   Keep them in step with `opcodes.h`.
+- Write an opcode byte by its `cpu6510::Opcode` name from `opcodes.h`, never as
+  a raw hex literal.
 - `wasm/libsidplayfp/`, `wasm/resid/` and `wasm/exomizer/` are vendored; any
   local patch is minimal and recorded in that directory's README.
 - After a change: `scripts/cpu-crosscheck/run.sh` (C++ toolchain, minutes) and
