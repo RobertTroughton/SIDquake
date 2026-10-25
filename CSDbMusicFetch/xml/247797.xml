@@ -183,14 +183,14 @@ https://dirquake.c64demo.com : a tool - mostly for C64GFX.com - to quickly grab 
 <DataSize>4291</DataSize>
 </SID>
 </UsedSIDs>
-<DownloadLinks><DownloadLink><Link>https://csdb.dk/getinternalfile.php/263097/The Protector %28Mysdata2024%29.sid</Link>
-<CounterLink>https://csdb.dk/release/download.php?id=304127</CounterLink>
-<Downloads>128</Downloads>
+<DownloadLinks><DownloadLink><Link>https://csdb.dk/getinternalfile.php/263096/theprotector.prg</Link>
+<CounterLink>https://csdb.dk/release/download.php?id=304126</CounterLink>
+<Downloads>382</Downloads>
 <Status>Ok</Status>
 </DownloadLink>
-<DownloadLink><Link>https://csdb.dk/getinternalfile.php/263096/theprotector.prg</Link>
-<CounterLink>https://csdb.dk/release/download.php?id=304126</CounterLink>
-<Downloads>377</Downloads>
+<DownloadLink><Link>https://csdb.dk/getinternalfile.php/263097/The Protector %28Mysdata2024%29.sid</Link>
+<CounterLink>https://csdb.dk/release/download.php?id=304127</CounterLink>
+<Downloads>131</Downloads>
 <Status>Ok</Status>
 </DownloadLink>
 </DownloadLinks>

@@ -69,14 +69,14 @@
 <DataSize>3877</DataSize>
 </SID>
 </UsedSIDs>
-<DownloadLinks><DownloadLink><Link>https://csdb.dk/getinternalfile.php/280593/Digital_Dreams.prg</Link>
-<CounterLink>https://csdb.dk/release/download.php?id=322605</CounterLink>
-<Downloads>184</Downloads>
+<DownloadLinks><DownloadLink><Link>https://csdb.dk/getinternalfile.php/280594/Digital Dreams.sid</Link>
+<CounterLink>https://csdb.dk/release/download.php?id=322606</CounterLink>
+<Downloads>75</Downloads>
 <Status>Ok</Status>
 </DownloadLink>
-<DownloadLink><Link>https://csdb.dk/getinternalfile.php/280594/Digital Dreams.sid</Link>
-<CounterLink>https://csdb.dk/release/download.php?id=322606</CounterLink>
-<Downloads>72</Downloads>
+<DownloadLink><Link>https://csdb.dk/getinternalfile.php/280593/Digital_Dreams.prg</Link>
+<CounterLink>https://csdb.dk/release/download.php?id=322605</CounterLink>
+<Downloads>189</Downloads>
 <Status>Ok</Status>
 </DownloadLink>
 </DownloadLinks>
