@@ -95,12 +95,12 @@ Bandcamp:
 </UsedSIDs>
 <DownloadLinks><DownloadLink><Link>https://csdb.dk/getinternalfile.php/280574/Auf-Wiedersehen-Linus.prg</Link>
 <CounterLink>https://csdb.dk/release/download.php?id=322585</CounterLink>
-<Downloads>249</Downloads>
+<Downloads>253</Downloads>
 <Status>Ok</Status>
 </DownloadLink>
 <DownloadLink><Link>https://csdb.dk/getinternalfile.php/280575/Auf-Wiedersehen-Linus.sid</Link>
 <CounterLink>https://csdb.dk/release/download.php?id=322586</CounterLink>
-<Downloads>117</Downloads>
+<Downloads>120</Downloads>
 <Status>Ok</Status>
 </DownloadLink>
 </DownloadLinks>
@@ -663,18 +663,17 @@ https://www.facebook.com/Nordischsound</HandleStory>
 <CSDbEntry><Handle><ID>8374</ID>
 <Handle>Dr. Voice</Handle>
 <CurrentlyUsedHandle>true</CurrentlyUsedHandle>
-<HandleStory>I have no idea how I ended up with such a horrible handle. Guess I had a hard time thinking one hehe.</HandleStory>
 <Scener><ID>7594</ID>
 <Country>Finland</Country>
-<Handles><Handle><ID>20051</ID>
+<Handles><Handle><ID>8374</ID>
+</Handle>
+<Handle><ID>20051</ID>
 <Handle>Chaos</Handle>
 <CurrentlyUsedHandle>false</CurrentlyUsedHandle>
 <Scener><ID>7594</ID>
 </Scener>
 <FreelanceFunctions><Function>Musician</Function>
 </FreelanceFunctions>
-</Handle>
-<Handle><ID>8374</ID>
 </Handle>
 </Handles>
 </Scener>
