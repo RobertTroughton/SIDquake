@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 //
-// Phone-width layout check for the two modals a visitor has to get through:
+// Phone-width layout check for the two modals a visitor has to get through
+// (plus the HVSC embed, which carries the same footer under another name):
 // the HVSC browser and the Studio. Both used to break on a narrow viewport in
 // ways that are invisible on a desktop — a file list squeezed to zero width, a
 // modal wider than the screen with the overflow clipped and unreachable — so
@@ -160,6 +161,35 @@ async function checkHvsc(page, size) {
     await page.waitForTimeout(300);
 }
 
+// The embed (hvsc-embed.html) is what other sites frame. Its footer is
+// .status-bar, not the modal's .hvsc-modal-footer, and Select there is the
+// only way a host gets a tune out of it.
+async function checkEmbed(browser, base, size) {
+    const ctx = await browser.newContext({
+        viewport: { width: size.w, height: size.h },
+        deviceScaleFactor: 1, isMobile: true, hasTouch: true
+    });
+    const page = await ctx.newPage();
+    page.on('pageerror', e => check(false, 'page error', e.message));
+    await page.goto(base + '/hvsc-embed.html?mode=file&origin=' + encodeURIComponent(base), { waitUntil: 'load' });
+    await page.waitForSelector('#fileList .file-item', { timeout: 30000 });
+    await page.waitForTimeout(300);
+
+    const m = await page.evaluate((of) => {
+        const r = document.querySelector('.hvsc-choose-btn').getBoundingClientRect();
+        return {
+            left: Math.round(r.left), right: Math.round(r.right), h: Math.round(r.height),
+            over: new Function('sel', 'return (' + of + ')(sel)')('.embed-root')
+        };
+    }, overflowingIn.toString());
+
+    const label = `embed @${size.w}x${size.h}`;
+    check(m.left >= 0 && m.right <= size.w, label + ': Select is on screen', m.left + '..' + m.right + ' of ' + size.w);
+    check(m.h >= 44, label + ': Select is thumb-sized', 'h ' + m.h);
+    check(m.over.length === 0, label + ': nothing clipped off-screen', m.over.join(', '));
+    await ctx.close();
+}
+
 async function checkStudio(page, size) {
     await page.setInputFiles('#fileInput', SID);
     // The grid enables as soon as the SID is analysed, but picking a visualizer
@@ -269,6 +299,8 @@ async function checkStudio(page, size) {
         await checkHvsc(page, size);
         await checkStudio(page, size);
         await page.context().close();
+        await checkEmbed(browser, base, size);
+        await checkEmbed(browser, base, { w: size.h, h: size.w });
     }
 
     // Desktop keeps the side-by-side browser layout the narrow rules replace.

@@ -2048,6 +2048,11 @@
         padding: 10px 12px calc(10px + env(safe-area-inset-bottom, 0px));
     }
 
+    /* The embed's footer, which carries the same path and Select. */
+    .status-bar {
+        flex-wrap: wrap;
+    }
+
     .hvsc-path-text {
         flex: 1 0 100%;
         order: -1;
@@ -2165,6 +2170,10 @@
     .hvsc-modal-footer {
         flex-wrap: nowrap;
         padding: 6px 12px calc(6px + env(safe-area-inset-bottom, 0px));
+    }
+
+    .status-bar {
+        flex-wrap: nowrap;
     }
 
     .hvsc-path-text {
