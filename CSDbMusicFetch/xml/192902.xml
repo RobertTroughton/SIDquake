@@ -45,7 +45,7 @@
 <FoundMonth>7</FoundMonth>
 <FoundYear>2000</FoundYear>
 <Website>http://multistylelabs.bandcamp.com</Website>
-<Rating>9.29</Rating>
+<Rating>9.24</Rating>
 <Grouptypes><Grouptype>Music Group</Grouptype>
 </Grouptypes>
 <Slogan>we ar moor inteligend then yu</Slogan>
@@ -178,12 +178,12 @@ https://dirquake.c64demo.com : a tool - mostly for C64GFX.com - to quickly grab 
 </UsedSIDs>
 <DownloadLinks><DownloadLink><Link>http://csdb.dk/getinternalfile.php/200813/MCH-Monty.prg</Link>
 <CounterLink>https://csdb.dk/release/download.php?id=238578</CounterLink>
-<Downloads>731</Downloads>
+<Downloads>741</Downloads>
 <Status>Ok</Status>
 </DownloadLink>
 <DownloadLink><Link>http://csdb.dk/getinternalfile.php/200814/MCH-Monty.sid</Link>
 <CounterLink>https://csdb.dk/release/download.php?id=238579</CounterLink>
-<Downloads>336</Downloads>
+<Downloads>340</Downloads>
 <Status>Ok</Status>
 </DownloadLink>
 </DownloadLinks>

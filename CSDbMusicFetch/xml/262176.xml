@@ -38,7 +38,7 @@
 <FoundMonth>7</FoundMonth>
 <FoundYear>2000</FoundYear>
 <Website>http://multistylelabs.bandcamp.com</Website>
-<Rating>9.29</Rating>
+<Rating>9.24</Rating>
 <Grouptypes><Grouptype>Music Group</Grouptype>
 </Grouptypes>
 <Slogan>we ar moor inteligend then yu</Slogan>
@@ -95,12 +95,12 @@ Bandcamp:
 </UsedSIDs>
 <DownloadLinks><DownloadLink><Link>https://csdb.dk/getinternalfile.php/280574/Auf-Wiedersehen-Linus.prg</Link>
 <CounterLink>https://csdb.dk/release/download.php?id=322585</CounterLink>
-<Downloads>257</Downloads>
+<Downloads>265</Downloads>
 <Status>Ok</Status>
 </DownloadLink>
 <DownloadLink><Link>https://csdb.dk/getinternalfile.php/280575/Auf-Wiedersehen-Linus.sid</Link>
 <CounterLink>https://csdb.dk/release/download.php?id=322586</CounterLink>
-<Downloads>120</Downloads>
+<Downloads>127</Downloads>
 <Status>Ok</Status>
 </DownloadLink>
 </DownloadLinks>

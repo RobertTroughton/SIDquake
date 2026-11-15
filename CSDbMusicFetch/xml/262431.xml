@@ -63,12 +63,12 @@ http://www.retroperks.com</HandleStory>
 </Credits>
 <DownloadLinks><DownloadLink><Link>https://csdb.dk/getinternalfile.php/280899/separate ways.prg</Link>
 <CounterLink>https://csdb.dk/release/download.php?id=322935</CounterLink>
-<Downloads>193</Downloads>
+<Downloads>201</Downloads>
 <Status>Ok</Status>
 </DownloadLink>
 <DownloadLink><Link>https://csdb.dk/getinternalfile.php/280900/separate ways.sid</Link>
 <CounterLink>https://csdb.dk/release/download.php?id=322936</CounterLink>
-<Downloads>95</Downloads>
+<Downloads>102</Downloads>
 <Status>Ok</Status>
 </DownloadLink>
 </DownloadLinks>
@@ -266,6 +266,12 @@ https://tegperu.org/tegperu/default.jsp</Trivia>
 </Scener>
 <FreelanceFunctions><Function>Coder</Function>
 <Function>Cracker</Function>
+<Function>Hacker</Function>
+<Function>Hardware-Guru</Function>
+<Function>Importer</Function>
+<Function>Mega Swapper</Function>
+<Function>Original Supplier</Function>
+<Function>Tester</Function>
 </FreelanceFunctions>
 </Handle>
 </CSDbEntry>
