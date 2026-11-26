@@ -146,21 +146,34 @@ async function runVariant(m, name, defines, stride) {
     quiet();
 
     // A note is watched for a frame before its key lights: the first sample
-    // can't tell a note from a drum. A gated pulse note on voice 0 then lights
-    // its white key with two frames of flash (red), then the steady shade
-    // (light red); sustain $8 holds it lit while the gate stays on.
+    // can't tell a note from a drum. A gated pulse note then lights its white
+    // key in the pulse colour, green: two frames of flash (green), then the
+    // steady shade (light green); sustain $8 holds it lit while the gate stays on.
     const kE4 = expectedKey(E4);
     hold(0, { freq: noteFreq(E4), ctrl: 0x41, ad: 0x09, sr: 0x8A });
     check(level(kE4) === 0, `${name}: a note lit on its first sample, before it could be told from a drum`);
     frame();
     check(level(kE4) === 0xFF, `${name}: struck key level ${level(kE4)}, expected 255`);
-    check(colourAt(kE4, KEYS_TOP_ROW) === 0x02 && colourAt(kE4, KEYS_BOTTOM_ROW) === 0x02,
-        `${name}: struck white key colour $${colourAt(kE4, KEYS_TOP_ROW).toString(16)}, expected $2`);
+    check(colourAt(kE4, KEYS_TOP_ROW) === 0x05 && colourAt(kE4, KEYS_BOTTOM_ROW) === 0x05,
+        `${name}: struck pulse key colour $${colourAt(kE4, KEYS_TOP_ROW).toString(16)}, expected $5 (green)`);
     frame();
-    check(colourAt(kE4, KEYS_TOP_ROW) === 0x02, `${name}: white key flash lasted one frame, expected two`);
+    check(colourAt(kE4, KEYS_TOP_ROW) === 0x05, `${name}: white key flash lasted one frame, expected two`);
     frame();
-    check(colourAt(kE4, KEYS_TOP_ROW) === 0x0A && colourAt(kE4, KEYS_BOTTOM_ROW) === 0x0A,
-        `${name}: white key after its flash $${colourAt(kE4, KEYS_TOP_ROW).toString(16)}, expected $a (light red)`);
+    check(colourAt(kE4, KEYS_TOP_ROW) === 0x0D && colourAt(kE4, KEYS_BOTTOM_ROW) === 0x0D,
+        `${name}: pulse key after its flash $${colourAt(kE4, KEYS_TOP_ROW).toString(16)}, expected $d (light green)`);
+
+    // The colour is the waveform's, whichever voice plays it: sawtooth red,
+    // triangle blue, two waveforms together purple. Checked on voice 2, after
+    // the flash.
+    for (const [wave, steady, what] of [[0x20, 0x0A, 'sawtooth: light red'], [0x10, 0x0E, 'triangle: light blue'],
+        [0x50, 0x04, 'pulse+triangle: purple']]) {
+        const k = expectedKey(C4 + 7);
+        hold(2, {});
+        hold(2, { freq: noteFreq(C4 + 7), ctrl: wave | 1, sr: 0xF8 }, 4);
+        check(colourAt(k, KEYS_TOP_ROW) === steady,
+            `${name}: ${what} key $${colourAt(k, KEYS_TOP_ROW).toString(16)}, expected $${steady.toString(16)}`);
+    }
+    hold(2, {});
     for (let i = 0; i < 100; i++) frame();
     check(level(kE4) >= 112 + 8 * 9, `${name}: held key fell to ${level(kE4)} below its sustain floor`);
 
@@ -193,7 +206,7 @@ async function runVariant(m, name, defines, stride) {
     hold(1, { freq: noteFreq(A4), ctrl: 0x11, ad: 0x00, sr: 0x04 });
     check(level(kA4) === 0xFF, `${name}: arpeggio step did not strike its key`);
     check(level(kG2) > 0, `${name}: previous arpeggio key went dark in one frame`);
-    check(colourAt(kA4, KEYS_BOTTOM_ROW) === 0x05, `${name}: voice 1 key colour $${colourAt(kA4, KEYS_BOTTOM_ROW).toString(16)}, expected $5 (green)`);
+    check(colourAt(kA4, KEYS_BOTTOM_ROW) === 0x06, `${name}: triangle chord key colour $${colourAt(kA4, KEYS_BOTTOM_ROW).toString(16)}, expected $6 (blue flash)`);
 
     // A multispeed tune whose gate is only on for the first of two play calls
     // (Thanos B.'s Moonlight Sonata): the once-a-frame sample sees the hard
@@ -260,6 +273,10 @@ async function runVariant(m, name, defines, stride) {
     for (const n of [42, 38, 30, 24, 20]) hold(0, { freq: noteFreq(n), ctrl: 0x41, sr: 0x08 });
     check(lit().length === 0, `${name}: a falling kick lit keys ${lit()}`);
     check(drumColour(0) !== 0 && drumColour(39) === 0, `${name}: a falling kick did not light the low zone`);
+    // The drum zones have colours of their own: low red, mid orange, high
+    // cyan, a light flash first. Two frames on, the low zone is red.
+    frame(); frame();
+    check(drumColour(0) === 0x02, `${name}: low drum zone $${drumColour(0).toString(16)}, expected $2 (red)`);
 
     // A slide: one semitone a frame under a held gate shows only the note it
     // started on; where it comes to rest for three frames is a new note.
@@ -298,9 +315,10 @@ async function runVariant(m, name, defines, stride) {
     check(rd(L('keyFlash') + expectedKey(A4)) === 0 && rd(L('keyFlash') + expectedKey(A4 + 4)) === 0,
         `${name}: a chord note flashed again on its next time round`);
 
-    // Filter bar: voice 1 routed through the filter, cutoff high byte $80, lights
-    // 21 columns in voice 1's colour; with nothing routed, none.
+    // Filter bar: voice 1 (a sawtooth) routed through the filter, cutoff high
+    // byte $80, lights 21 columns in the sawtooth colour; nothing routed, none.
     quiet();
+    setVoice(0, { freq: noteFreq(C4), ctrl: 0x20 });
     wr(mirror + 0x16, 0x80); wr(mirror + 0x17, 0x01);
     frame();
     const fcol = (c) => rd(0xD800 + FILTER_ROW * 40 + c);

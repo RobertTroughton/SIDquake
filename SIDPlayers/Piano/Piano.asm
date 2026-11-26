@@ -26,8 +26,9 @@
 // Lit white keys are recoloured in colour RAM (the black keys are background
 // pixels cut out of the white-key characters, so a white key's cells carry
 // only that key). Lit black keys are sprites: one 6px-wide, Y-expanded sprite
-// per lit black key, up to eight. Each voice has its own colour family, and a
-// key fades from the full colour back to unlit as its envelope falls.
+// per lit black key, up to eight. A white key takes the colour of its note's
+// waveform (triangle blue, sawtooth red, pulse green, mixed purple) and fades
+// back to white as its envelope falls; a black key lights grey.
 //
 // The logo/piano split is hidden behind the same sprite curtain as
 // RaistlinBarsWithLogo (7 x-expanded sprites whose last two rows block the
@@ -599,6 +600,18 @@ AnalyzeSIDRegisters:
 	ldy voiceRegOffset, x
 	lda sidRegisterMirror + 4, y
 	sta ctrlByte
+	//; Colour family from the tonal waveform bits (triangle, sawtooth, pulse).
+	lsr
+	lsr
+	lsr
+	lsr
+	and #$07
+	sty saveY
+	tay
+	lda waveFamilyTable, y
+	sta voiceWaveFamily, x
+	ldy saveY
+	lda ctrlByte
 	and #$01
 	sta voiceGate, x
 	lda sidRegisterMirror + 5, y
@@ -648,10 +661,12 @@ AnalyzeSIDRegisters:
 !next:
 	inx
 	cpx numVoices
-	bne !voice-
+	beq !voicesRead+
+	jmp !voice-
+!voicesRead:
 
 	//; Filter bar: cutoff (high byte) as a length, when any voice of SID 1 is
-	//; routed through the filter; coloured by the lowest such voice.
+	//; routed through the filter; coloured by the lowest such voice's waveform.
 	lda #$00
 	sta filterLength
 	lda sidRegisterMirror + $17
@@ -742,7 +757,7 @@ FreqToKey:
 //; voice that last played it. While the gate is held the level is kept at
 //; least at a floor set by the voice's sustain, falling at the decay rate;
 //; after the gate drops it falls at the release rate. A white key's level
-//; picks one of four shades from the voice's colour family; black keys are
+//; picks one of four shades from its note's waveform colour; black keys are
 //; lit in grey.
 //; =============================================================================
 
@@ -1054,8 +1069,7 @@ UpdatePiano:
 	lsr
 	lsr
 	lsr
-	ldy keyVoice, x
-	ora voiceFamily, y
+	ora keyFamily, x
 	tay
 	lda keyFlash, x
 	beq !steady+
@@ -1120,7 +1134,7 @@ UpdatePiano:
 	jmp !key-
 !keysDone:
 
-	//; Drum bar: each zone in its drummer's colour, flash then fade.
+	//; Drum bar: each zone in its own colour, flash then fade.
 	ldx #DRUM_ZONES - 1
 !drum:
 	lda drumLevel, x
@@ -1131,8 +1145,7 @@ UpdatePiano:
 	lsr
 	lsr
 	lsr
-	ldy drumVoice, x
-	ora voiceFamily, y
+	ora drumZoneFamily, x
 	tay
 	lda drumFlash, x
 	beq !drumSteady+
@@ -1165,7 +1178,7 @@ UpdatePiano:
 	ldy filterLength
 	beq !filterColour+
 	ldy filterVoice
-	lda voiceFamily, y
+	lda voiceWaveFamily, y
 	ora #$03
 	tay
 	lda blackShades, y
@@ -1202,14 +1215,13 @@ DrumHit:
 	sta drumLevel, y
 	lda #FLASH_FRAMES
 	sta drumFlash, y
-	txa
-	sta drumVoice, y
 	lda #ST_DRUM
 	sta voiceState, x
 	ldy #$ff
 	jmp LiftVoice
 
-//; Strike key Y for voice X: full level, flash, owned by the voice.
+//; Strike key Y for voice X: full level, flash, owned by the voice, in the
+//; colour of the voice's waveform now.
 //; Preserves X and Y.
 StrikeKey:
 	lda #$ff
@@ -1218,6 +1230,8 @@ StrikeKey:
 	sta keyFlash, y
 	txa
 	sta keyVoice, y
+	lda voiceWaveFamily, x
+	sta keyFamily, y
 	rts
 
 //; Voice X moves to key Y: every other key it still holds lets go, fading
@@ -1284,7 +1298,6 @@ InitPiano:
 	lda #$00
 	sta drumLevel, x
 	sta drumFlash, x
-	sta drumVoice, x
 	lda pianoBgColor
 	sta prevDrumColour, x
 	dex
@@ -1337,14 +1350,21 @@ envelopeFall:			.fill 16, ceil(255 / max(8, min(40, round(envelopeMs.get(i) / 20
 //; Level a held key keeps for a sustain nibble (0 = none, so it decays out).
 sustainFloor:			.fill 16, i == 0 ? 0 : 112 + i * 9
 
-//; Shades per voice family, dimmest lit (level 1..63) to brightest (192..255).
-//; White keys fade back towards white; black keys towards dark. Families:
-//; red, green, blue, orange, purple, cyan; voices 7-12 reuse them.
-//; A struck key shows its family's flash colour for FLASH_FRAMES first: the
-//; strong colour on a white key, which then settles to the lighter shade, and
-//; the light colour on a black key, which then settles to the stronger one
-//; (white would merge with the white keys beside it).
-voiceFamily:			.fill MAX_VOICES, mod(i, 6) * 4
+//; Colour families (x4 into the shade tables): red, green, blue, orange,
+//; purple, cyan. Shades run dimmest lit (level 1..63) to brightest (192..255);
+//; white keys fade back towards white, the bars on the dark background
+//; towards dark. A struck key shows its family's flash colour for
+//; FLASH_FRAMES first: the strong colour on a white key, which then settles
+//; to the lighter shade; the light colour on a bar.
+//;
+//; A key's family is its note's waveform - the closest the SID has to an
+//; instrument - so the same sound has the same colour on any voice. Indexed
+//; by the control register's triangle/sawtooth/pulse bits: triangle blue,
+//; sawtooth red, pulse green, any two or three together purple.
+waveFamilyTable:		.byte 2 * 4, 2 * 4, 0 * 4, 4 * 4, 1 * 4, 4 * 4, 4 * 4, 4 * 4
+//; The drum bar's zones have their own: low (kicks) red, mid orange, high
+//; (hi-hats) cyan.
+drumZoneFamily:			.byte 0 * 4, 3 * 4, 5 * 4
 whiteShades:			.byte $0f, $0a, $0a, $0a
 						.byte $0f, $0d, $0d, $0d
 						.byte $0f, $0e, $0e, $0e
@@ -1366,7 +1386,7 @@ blackFlash:				.fill 4, $0a
 //; Lit black keys are grey whichever voice plays them: flash light grey
 //; (BLACK_KEY_FLASH), then mid grey, dark grey as they fade.
 blackKeyShades:			.byte $0b, $0c, $0c, $0c
-//; The drum and filter bars, on the dark background, in the voice's colours.
+//; The drum and filter bars, on the dark background.
 blackShades:			.byte $09, $02, $02, $02
 						.byte $0b, $05, $05, $05
 						.byte $06, $0e, $0e, $0e
@@ -1404,6 +1424,7 @@ voiceSR:				.fill MAX_VOICES, 0
 prevKey:				.fill MAX_VOICES, $ff
 prevGate:				.fill MAX_VOICES, 0
 voiceNoise:				.fill MAX_VOICES, 0
+voiceWaveFamily:		.fill MAX_VOICES, 0		//; colour family (x4) of its waveform now
 voiceZone:				.fill MAX_VOICES, 0
 prevNoise:				.fill MAX_VOICES, 0
 voiceState:				.fill MAX_VOICES, ST_IDLE
@@ -1420,7 +1441,6 @@ liftKeep:				.byte 0
 
 drumLevel:				.fill DRUM_ZONES, 0
 drumFlash:				.fill DRUM_ZONES, 0
-drumVoice:				.fill DRUM_ZONES, 0
 prevDrumColour:			.fill DRUM_ZONES, 0
 drumThreshold1:			.byte DEFAULT_DRUM_SPLIT_1
 drumThreshold2:			.byte DEFAULT_DRUM_SPLIT_2
@@ -1435,6 +1455,7 @@ keyFall:				.fill NUM_KEYS, 0
 keyVoice:				.fill NUM_KEYS, 0
 prevShade:				.fill NUM_KEYS, WHITE_UNLIT
 keyFlash:				.fill NUM_KEYS, 0	//; frames of strike flash left
+keyFamily:				.fill NUM_KEYS, 0	//; colour family (x4) of the note that lit it
 
 keySpriteX:				.fill NUM_KEY_SPRITES, 0
 keySpriteColour:		.fill NUM_KEY_SPRITES, 0

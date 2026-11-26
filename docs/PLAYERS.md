@@ -62,7 +62,10 @@ pitches: tunes pitch their noise anywhere from `$05` to `$FF`.
   keyboard. Noise is a drum, with a zone from its frequency; the test bit, an
   empty waveform and a zero frequency are silent. It also reads SID 1's filter:
   the cutoff high byte sets the filter bar's length when a voice is routed
-  through the filter, coloured by the lowest such voice.
+  through the filter, coloured by the lowest such voice's waveform. Each
+  voice's waveform bits also give its colour: triangle blue, sawtooth red,
+  pulse green, two or three together purple. The waveform is the closest the
+  SID has to an instrument, so the same sound keeps its colour on any voice.
 - `UpdatePiano` decides what is a key press. Each voice is idle, watching the
   start of a note, playing a note, or playing a drum.
   - A start: a gate rising, sounding again after a silent sample (a hard
@@ -92,10 +95,11 @@ pitches: tunes pitch their noise anywhere from `$05` to `$FF`.
 - Per key there is a level: a strike sets it full; while the gate is held,
   sustain sets a floor and the decay nibble the fall, after it the release
   nibble (both held to 8..40 frames). On a white key the level picks one of
-  four shades from the voice's colour family, after two frames of the
-  family's strong colour as a strike flash. Black keys are lit in grey
-  whichever voice plays them: a light grey flash, then mid grey, dark grey as
-  they fade. The drum and filter bars use the voice's colours.
+  four shades of the waveform colour the note was struck with, after two
+  frames of its strong colour as a strike flash. Black keys are lit in grey
+  whichever waveform plays them: a light grey flash, then mid grey, dark grey
+  as they fade. The drum bar's zones have colours of their own (low red, mid
+  orange, high cyan).
 - White keys are lit in colour RAM. The black keys are cut-outs in the white-key
   characters, so a lit black key is a 6px Y-expanded sprite (up to eight at
   once); the split IRQ turns the curtain sprites into these once the curtain
