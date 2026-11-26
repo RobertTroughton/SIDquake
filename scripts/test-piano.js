@@ -15,7 +15,11 @@
 //                        black key gets a sprite at the right X, a released
 //                        note fades back to unlit, a new note on a held gate
 //                        strikes again, and so does a note whose gate opened
-//                        and closed between two frames' samples
+//                        and closed between two frames' samples; a voice
+//                        moving on lets its old key fade; noise lights the
+//                        drum bar instead of a key, a slide shows only its
+//                        first note, a chord keeps its keys lit, and the
+//                        filter cutoff sets the filter bar's length
 //   piano-range.js       the exporter's choice of the keyboard's leftmost C
 //
 // Both register-mirror layouts are covered: 25 bytes per chip (realtime build)
@@ -30,7 +34,7 @@ const fs = require('fs'), os = require('os'), path = require('path');
 const ROOT = path.join(__dirname, '..');
 const BASE = 0x1000;                // data block; code at BASE + $100
 const NUM_KEYS = 68;
-const KEYS_TOP_ROW = 19, KEYS_BOTTOM_ROW = 24;
+const DRUM_ROW = 17, KEYS_TOP_ROW = 18, KEYS_BOTTOM_ROW = 23, FILTER_ROW = 24;
 const PAL_CLOCK = 985248;
 
 function assemble(defines) {
@@ -203,9 +207,9 @@ async function runVariant(m, name, defines, stride) {
     frame();
     check(level(kE3) < 0xFF, `${name}: a ringing note with the gate off was struck again`);
 
-    // One voice is one finger: moving on lifts the key it left within three
-    // frames, whatever that note's release, even across the hard restart's
-    // silent frame. A key another voice is holding stays down.
+    // One voice is one finger: moving on lets the key it left fade out over
+    // about 10 frames, whatever that note's release, even across the hard
+    // restart's silent frame. A key another voice is holding stays down.
     const kD4 = expectedKey(12 * 4 + 2), kF4 = expectedKey(12 * 4 + 5), kG4 = expectedKey(12 * 4 + 7);
     for (let v = 0; v < 6; v++) setVoice(v, {});
     for (let i = 0; i < 45; i++) frame();
@@ -215,13 +219,72 @@ async function runVariant(m, name, defines, stride) {
     frame();
     setVoice(0, { freq: noteFreq(12 * 4 + 5), ctrl: 0x40, sr: 0x0E });
     for (let i = 0; i < 3; i++) frame();
-    check(level(kD4) === 0, `${name}: the key a voice left is still lit after 3 frames (level ${level(kD4)})`);
+    check(level(kD4) > 0, `${name}: the key a voice left went dark within 3 frames`);
+    for (let i = 0; i < 9; i++) frame();
+    check(level(kD4) === 0, `${name}: the key a voice left is still lit after 12 frames (level ${level(kD4)})`);
     check(level(kF4) > 0, `${name}: the key the voice moved to went dark`);
     setVoice(1, { freq: noteFreq(12 * 4 + 5), ctrl: 0x41, sr: 0x8E });
     frame();
     setVoice(0, { freq: noteFreq(12 * 4 + 7), ctrl: 0x40, sr: 0x0E });
     for (let i = 0; i < 3; i++) frame();
     check(level(kF4) > 0 && level(kG4) > 0, `${name}: a key held by another voice was lifted`);
+
+    const quiet = () => { for (let v = 0; v < 6; v++) setVoice(v, {}); for (let i = 0; i < 45; i++) frame(); };
+    const lit = () => { const out = []; for (let k = 0; k < NUM_KEYS; k++) if (level(k)) out.push(k); return out; };
+    const drumColour = (col) => rd(0xD800 + DRUM_ROW * 40 + col);
+
+    // A drum: noise (low pitch, so the low third of the drum bar), then the
+    // falling pulse body under the same gate. No key lights; the low zone
+    // flashes and fades, the others stay dark. The next gated note is a note.
+    quiet();
+    setVoice(2, { freq: 0x3000, ctrl: 0x81, sr: 0x08 });
+    frame();
+    check(drumColour(0) !== 0 && drumColour(12) === drumColour(0), `${name}: drum hit did not light the low zone (col 0 $${drumColour(0).toString(16)})`);
+    check(drumColour(13) === 0 && drumColour(14) === 0 && drumColour(39) === 0, `${name}: a low drum lit another zone`);
+    for (const f of [0x1800, 0x1400, 0x1000, 0x0c00]) { setVoice(2, { freq: f, ctrl: 0x41, sr: 0x08 }); frame(); }
+    check(lit().length === 0, `${name}: a drum's pulse body lit keys ${lit()}`);
+    for (let i = 0; i < 12; i++) frame();
+    check(drumColour(0) === 0, `${name}: drum zone still lit 16 frames after the hit`);
+    setVoice(2, { freq: 0x0c00, ctrl: 0x40 }); frame();
+    setVoice(2, { freq: noteFreq(A4), ctrl: 0x41, sr: 0x88 }); frame();
+    check(level(kA4) === 0xFF, `${name}: a gated note after a drum was not struck`);
+    setVoice(2, { freq: 0xFF00, ctrl: 0x81 }); frame();
+    check(drumColour(39) !== 0 && drumColour(27) !== 0 && drumColour(0) === 0, `${name}: a high drum did not light (only) the high zone`);
+
+    // A slide: one semitone a frame under a held gate shows only the note it
+    // started on; where it comes to rest for three frames is a new note.
+    quiet();
+    const C4 = 12 * 4;
+    setVoice(0, { freq: noteFreq(C4), ctrl: 0x41, sr: 0xF8 }); frame();
+    for (let n = C4 + 1; n <= C4 + 5; n++) { setVoice(0, { freq: noteFreq(n), ctrl: 0x41, sr: 0xF8 }); frame(); }
+    check(lit().length === 1 && lit()[0] === expectedKey(C4), `${name}: a slide lit keys ${lit()}, expected only its first note`);
+    frame();
+    check(level(expectedKey(C4 + 5)) === 0, `${name}: a slide's resting note was struck after two frames`);
+    frame();
+    check(level(expectedKey(C4 + 5)) === 0xFF, `${name}: a slide's resting note was not struck after three frames`);
+
+    // A chord: an arpeggio cycling A-C#-E under a held gate keeps all three lit,
+    // and only flashes a key the first time round.
+    quiet();
+    const chord = [A4, A4 + 4, A4 + 7];
+    for (let round = 0; round < 4; round++) {
+        for (const n of chord) { setVoice(1, { freq: noteFreq(n), ctrl: 0x41, sr: 0xA4 }); frame(); }
+    }
+    check(chord.every(n => level(expectedKey(n)) > 0), `${name}: an arpeggio's chord did not stay lit (${lit()})`);
+    check(rd(L('keyFlash') + expectedKey(A4)) === 0 && rd(L('keyFlash') + expectedKey(A4 + 4)) === 0,
+        `${name}: a chord note flashed again on its next time round`);
+
+    // Filter bar: voice 1 routed through the filter, cutoff high byte $80, lights
+    // 21 columns in voice 1's colour; with nothing routed, none.
+    quiet();
+    wr(mirror + 0x16, 0x80); wr(mirror + 0x17, 0x01);
+    frame();
+    const fcol = (c) => rd(0xD800 + FILTER_ROW * 40 + c);
+    check(fcol(0) === 0x02 && fcol(20) === 0x02 && fcol(21) === 0,
+        `${name}: filter bar cols 0/20/21 $${fcol(0).toString(16)}/$${fcol(20).toString(16)}/$${fcol(21).toString(16)}, expected $2/$2/$0`);
+    wr(mirror + 0x17, 0x00);
+    frame();
+    check(fcol(0) === 0, `${name}: filter bar lit with nothing routed through the filter`);
 
     // Silence everything: no sprite stays on.
     for (let v = 0; v < 6; v++) setVoice(v, {});
@@ -236,7 +299,7 @@ async function runVariant(m, name, defines, stride) {
 // scans to an answer.
 async function checkRange(m) {
     const failsBefore = failures;
-    const { countStrikes, bestLowNote, freqToNote, analyzePianoRange, PIANO_LOW_NOTES } =
+    const { countStrikes, bestLowNote, freqToNote, analyzePianoRange, drumSplit, PIANO_LOW_NOTES } =
         await import('file://' + path.join(ROOT, 'public/piano-range.js'));
     const silent = { freq: 0, ctrl: 0 };
 
@@ -259,6 +322,20 @@ async function checkRange(m) {
     low[5] = 10; low[40] = 10;                       // F0, E3
     check(bestLowNote(low).lowNote === 0, `range: a deep bass starts at C0 (got ${bestLowNote(low).lowNote})`);
     check(bestLowNote(new Array(96).fill(0)).lowNote === 12, 'range: no notes keeps C1');
+
+    // Drum split: three pitches land one per third; two, the outer thirds;
+    // more, split at the widest gaps; none, the player's defaults.
+    const zone = (hi, [t1, t2]) => (hi >= t1) + (hi >= t2);
+    const split = (pitches) => drumSplit(new Map(pitches.map(p => [p, 1])));
+    const three = split([0xC4, 0xDD, 0xFF]);
+    check([0xC4, 0xDD, 0xFF].map(p => zone(p, three)).join() === '0,1,2', `range: three drum pitches split ${three}`);
+    const two = split([0x31, 0x57]);
+    check(zone(0x31, two) === 0 && zone(0x57, two) === 2, `range: two drum pitches split ${two}`);
+    const many = split([0x05, 0x06, 0x07, 0x1D, 0x1F, 0x9C]);
+    check([0x05, 0x07, 0x1D, 0x1F, 0x9C].map(p => zone(p, many)).join() === '0,0,1,1,2', `range: six drum pitches split ${many}`);
+    check(split([]).join() === '0,0', 'range: no drums leaves the defaults');
+    const drumSamples = [[{ freq: 0x3000, ctrl: 0x81 }], [{ freq: 0x1000, ctrl: 0x41 }], [{ freq: 0x0800, ctrl: 0x41 }]];
+    check(countStrikes(drumSamples, 1).every(h => h === 0), 'range: a drum\'s pitched body counted as notes');
 
     const sidBytes = new Uint8Array(fs.readFileSync(path.join(ROOT, 'SID/6r6-axelf.sid')));
     const h = Buffer.from(sidBytes), dataOffset = h.readUInt16BE(6);

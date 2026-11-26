@@ -5,7 +5,7 @@
     "PianoShadow"
   ],
   "base": "0x4000",
-  "size": "0x3F30",
+  "size": "0x3F40",
   "segments": [
     {
       "name": "Data Block",
@@ -49,8 +49,8 @@
     {
       "name": "Piano Chars",
       "addr": "0x7F00",
-      "size": "0x0030",
-      "data": "/v7+/v7+/v4eHh4eHh4eHvj4+Pj4+Pj4GBgYGBgYGBj+/v7+/v7+/v7+/v7+/nwA"
+      "size": "0x0040",
+      "data": "/v7+/v7+/v4eHh4eHh4eHvj4+Pj4+Pj4GBgYGBgYGBj+/v7+/v7+/v7+/v7+/nwAAAAAAP///wAA////AAAAAA=="
     }
   ]
 }

@@ -5,10 +5,12 @@
 //
 // Screen layout (char rows):
 //    0-10  logo (10 art rows + 1 clear row that hides the raster split)
-//   13-14  song name, 1x2 font, centred
-//   16-17  elapsed time, and "/" + song length when the analysis found one
-//   19-24  keyboard: 40 white keys, C to G across 5 octaves and a fifth;
+//   12-13  song name, 1x2 font, centred
+//   15-16  elapsed time, and "/" + song length when the analysis found one
+//      17  drum bar: low, mid and high thirds light on drum hits
+//   18-23  keyboard: 40 white keys, C to G across 5 octaves and a fifth;
 //          the black keys are the top 4 of its 6 rows
+//      24  filter bar: the filter cutoff as a length
 //
 // Which keys are down comes from the SID registers, read the same two ways
 // the bar players read them: the realtime build peeks a second play call with
@@ -16,7 +18,10 @@
 // build (-define SPECTROMETER_SHADOW) reads the mirror the tune's own
 // repointed stores fill. Each voice's frequency becomes a note by binary
 // search of a PAL semitone-boundary table; gate, sustain, decay and release
-// decide how long the key stays lit and how bright it is.
+// decide how long the key stays lit and how bright it is. Not every pitch is
+// a key press: noise is a drum and goes to the drum bar, a pitch that steps
+// under a held gate is a chord (kept lit together) when it jumps three
+// semitones or more and a slide (not shown) when it moves less.
 //
 // Lit white keys are recoloured in colour RAM (the black keys are background
 // pixels cut out of the white-key characters, so a white key's cells carry
@@ -37,7 +42,7 @@
 //   $3000-$33FF  screen (logo rows injected at export) + sprite pointers
 //   $3400-$35B7  logo colour data on load (copied to $D800 at init)
 //   $3800-$3EFF  1x2 font (injected at export)
-//   $3F00-$3F2F  piano characters (224-229)
+//   $3F00-$3F3F  piano characters (224-231)
 // =============================================================================
 
 .var LOAD_ADDRESS                   = cmdLineVars.get("loadAddress").asNumber()
@@ -84,6 +89,8 @@ pianoBgColor:
     .fill $74 - $6E, $00                // $70-$73: logo mode + $d022-$d024 (common.asm)
 pianoLowNote:
     .byte $00                           // $74: leftmost C's note number + 1 (C0 = note 0), picked at export; 0 = C1
+pianoDrumSplit:
+    .byte $00, $00                      // $75/$76: noise frequency high bytes splitting low/mid/high drums, measured at export; 0 = $40/$A0
     .fill DATA_ADDRESS + $100 - *, $00
 
 * = CODE_ADDRESS "Main Code"
@@ -105,11 +112,13 @@ pianoLowNote:
 //; =============================================================================
 
 .const LOGO_HEIGHT						= 11
-.const SONG_TITLE_LINE					= 13
-.const TIMER_LINE						= 16
-.const KEYS_TOP_ROW						= 19
+.const SONG_TITLE_LINE					= 12
+.const TIMER_LINE						= 15
+.const DRUM_ROW							= 17
+.const KEYS_TOP_ROW						= 18
 .const BLACK_KEY_ROWS					= 4		//; 2/3 of the keyboard's height
-.const KEYS_BOTTOM_ROW					= 24
+.const KEYS_BOTTOM_ROW					= 23
+.const FILTER_ROW						= 24
 
 .const NUM_WHITE_KEYS					= 40
 .const NUM_KEYS							= 68	//; C..G over 5 octaves + 7 semitones
@@ -117,7 +126,12 @@ pianoLowNote:
 .const MAX_VOICES						= 12	//; 4 SID chips
 .const NUM_KEY_SPRITES					= 8
 .const FLASH_FRAMES						= 2		//; a struck key shows its flash colour this long
-.const LIFT_FALL						= 128	//; a lifted key is unlit two frames after the voice moves on
+.const LIFT_FALL						= 26	//; a key its voice has left fades over 10 frames
+.const LEGATO_FRAMES					= 3		//; a small pitch step held this long is a new note, not a slide
+.const DRUM_ZONES						= 3
+.const DRUM_FALL						= 22	//; a drum zone fades over 12 frames
+.const DEFAULT_DRUM_SPLIT_1				= $40
+.const DEFAULT_DRUM_SPLIT_2				= $a0
 
 .const SCREEN_BANK						= 12	//; +$3000
 .const CHARSET_BANK						= 7		//; +$3800
@@ -140,6 +154,8 @@ pianoLowNote:
 .const CHAR_BLACK_ROW					= PIANO_CHARS + 0	//; +variant (0..3)
 .const CHAR_WHITE						= PIANO_CHARS + 4
 .const CHAR_WHITE_BOTTOM				= PIANO_CHARS + 5
+.const CHAR_DRUM_BAR					= PIANO_CHARS + 6
+.const CHAR_FILTER_BAR					= PIANO_CHARS + 7
 
 .const WHITE_UNLIT						= $01
 
@@ -387,6 +403,15 @@ DrawScreens:
 	.for (var row = KEYS_TOP_ROW; row <= KEYS_BOTTOM_ROW; row++) {
 		sta $d800 + (row * 40), y
 	}
+
+	//; The two bars start unlit: their colour is the background.
+	lda #CHAR_FILTER_BAR
+	sta SCREEN_ADDRESS + (FILTER_ROW * 40), y
+	lda #CHAR_DRUM_BAR
+	sta SCREEN_ADDRESS + (DRUM_ROW * 40), y
+	lda pianoBgColor
+	sta $d800 + (DRUM_ROW * 40), y
+	sta $d800 + (FILTER_ROW * 40), y
 	dey
 	bpl !keys-
 	rts
@@ -563,30 +588,50 @@ AnalyzeSIDRegisters:
 	sta numVoices
 	ldx #$00
 !voice:
+	lda #$00
+	sta voiceNoise, x
 	ldy voiceRegOffset, x
 	lda sidRegisterMirror + 4, y
 	sta ctrlByte
+	and #$01
+	sta voiceGate, x
+	lda sidRegisterMirror + 5, y
+	sta voiceAD, x
+	lda sidRegisterMirror + 6, y
+	sta voiceSR, x
+	lda sidRegisterMirror + 0, y
+	sta freqLo
+	lda sidRegisterMirror + 1, y
+	sta freqHi
+	lda ctrlByte
 	and #$08
 	bne !silent+
 	lda ctrlByte
 	and #$f0
 	beq !silent+
-	cmp #$80
-	beq !silent+
-	lda sidRegisterMirror + 0, y
-	sta freqLo
-	lda sidRegisterMirror + 1, y
-	sta freqHi
+	bpl !tonal+
+
+	//; Noise: a drum. Its pitch picks the low, mid or high drum zone against
+	//; the two thresholds the exporter measured for this tune.
+	lda #$01
+	sta voiceNoise, x
+	ldy #$00
+	lda freqHi
+	cmp drumThreshold1
+	bcc !zone+
+	iny
+	cmp drumThreshold2
+	bcc !zone+
+	iny
+!zone:
+	tya
+	sta voiceZone, x
+	jmp !silent+
+
+!tonal:
+	lda freqHi
 	ora freqLo
 	beq !silent+
-
-	lda sidRegisterMirror + 5, y
-	sta voiceAD, x
-	lda sidRegisterMirror + 6, y
-	sta voiceSR, x
-	lda ctrlByte
-	and #$01
-	sta voiceGate, x
 	jsr FreqToKey
 	sta voiceKey, x
 	jmp !next+
@@ -598,6 +643,31 @@ AnalyzeSIDRegisters:
 	inx
 	cpx numVoices
 	bne !voice-
+
+	//; Filter bar: cutoff (high byte) as a length, when any voice of SID 1 is
+	//; routed through the filter; coloured by the lowest such voice.
+	lda #$00
+	sta filterLength
+	lda sidRegisterMirror + $17
+	and #$07
+	beq !noFilter+
+	ldx #$00
+	lsr
+	bcs !routed+
+	inx
+	lsr
+	bcs !routed+
+	inx
+!routed:
+	stx filterVoice
+	lda sidRegisterMirror + $16
+	lsr
+	lsr
+	lsr
+	tax
+	lda filterLengthTable, x
+	sta filterLength
+!noFilter:
 	rts
 
 //; freqHi/freqLo -> A = key index 0..NUM_KEYS-1, folded by octaves into the
@@ -675,57 +745,159 @@ UpdatePiano:
 	dex
 	bpl !fall-
 
+	ldx #DRUM_ZONES - 1
+!drumFall:
+	lda drumFlash, x
+	beq !noDrumFlash+
+	dec drumFlash, x
+!noDrumFlash:
+	lda drumLevel, x
+	sec
+	sbc #DRUM_FALL
+	bcs !drumStore+
+	lda #$00
+!drumStore:
+	sta drumLevel, x
+	dex
+	bpl !drumFall-
+
 	ldx #$00
 !voice:
-	ldy voiceKey, x
-	bpl !playing+
-	lda #$00
+	lda voiceNoise, x
+	beq !notDrum+
+
+	//; Noise is a drum: it lights its zone of the drum bar, never a key. A hit
+	//; is noise starting, or its gate opening again.
+	lda prevNoise, x
+	beq !hit+
+	lda voiceGate, x
+	beq !drumHeld+
+	lda prevGate, x
+	bne !drumHeld+
+!hit:
+	ldy voiceZone, x
+	lda #$ff
+	sta drumLevel, y
+	lda #FLASH_FRAMES
+	sta drumFlash, y
+	txa
+	sta drumVoice, y
+!drumHeld:
+	lda #$01
+	sta drumMode, x
+	sta prevNoise, x
+	lda voiceGate, x
 	sta prevGate, x
 	lda #$ff
 	sta prevKey, x
 	jmp !nextVoice+
 
-!playing:
-	//; One voice is one finger: landing on a new key lifts the one it was
-	//; on, unless another voice has taken that key since.
-	tya
-	cmp lastKey, x
-	beq !sameKey+
-	lda lastKey, x
-	bmi !noLift+
-	sty saveY
-	tay
-	txa
-	cmp keyVoice, y
-	bne !notMine+
-	lda keyFall, y
-	cmp #LIFT_FALL
-	bcs !notMine+
-	lda #LIFT_FALL
-	sta keyFall, y
-!notMine:
-	ldy saveY
-!noLift:
-	tya
-	sta lastKey, x
-!sameKey:
-	txa
-	sta keyVoice, y
+!notDrum:
+	sta prevNoise, x
+	ldy voiceKey, x
+	bpl !tonal+
+	sta prevGate, x
+	sta drumMode, x
+	lda #$ff
+	sta prevKey, x
+	sta pendingKey, x
+	jmp !nextVoice+
+
+!tonal:
+	lda voiceGate, x
+	beq !gateOff+
+	lda prevGate, x
+	beq !newNote+
+	lda drumMode, x
+	bne !tail+
+	lda prevKey, x
+	bmi !newNote+
 	tya
 	cmp prevKey, x
-	bne !strike+
-	lda voiceGate, x
-	beq !released+
-	lda prevGate, x
-	bne !held+
-!strike:
+	beq !steady+
+
+	//; The pitch moved under a held gate. Three semitones or more is another
+	//; note of a chord (an arpeggio): light it beside the others. Less is a
+	//; slide or vibrato: keep showing the note it started on, unless the pitch
+	//; then stays put (a legato note; see !steady).
+	sec
+	sbc prevKey, x
+	bcs !distance+
+	eor #$ff
+	adc #$01
+!distance:
+	cmp #3
+	bcc !glide+
 	lda #$ff
-	sta keyLevel, y
-	lda #FLASH_FRAMES
-	sta keyFlash, y
+	sta pendingKey, x
+	txa
+	cmp keyVoice, y
+	bne !chordStrike+
+	lda keyLevel, y
+	bne !envelope+
+!chordStrike:
+	jsr StrikeKey
+	jmp !envelope+
+
+!glide:
+	tya
+	sta pendingKey, x
+	lda #$00
+	sta pendingAge, x
+	ldy shownKey, x
+	jmp !envelope+
+
+!steady:
+	cmp pendingKey, x
+	bne !envelope+
+	inc pendingAge, x
+	lda pendingAge, x
+	cmp #LEGATO_FRAMES - 1
+	bcs !newNote+
+	ldy shownKey, x
+	jmp !envelope+
+
+!gateOff:
+	lda drumMode, x
+	bne !tail+
+	lda prevKey, x
+	bmi !newNote+
+	tya
+	cmp prevKey, x
+	bne !newNote+
+	jmp !envelope+
+
+	//; The pitched body of a drum (noise, then a falling pulse): not a note.
+!tail:
+	tya
+	sta prevKey, x
+	lda voiceGate, x
+	sta prevGate, x
+	jmp !nextVoice+
+
+	//; A new note: the voice's other keys let go, this one is struck.
+!newNote:
+	lda #$00
+	sta drumMode, x
+	lda #$ff
+	sta pendingKey, x
+	jsr LiftVoice
+	jsr StrikeKey
+	tya
+	sta shownKey, x
+
+	//; Envelope for the key the voice is showing, if it still owns it: held,
+	//; a sustain floor and the decay rate; released, the release rate.
+!envelope:
+	tya
+	bmi !envDone+
+	txa
+	cmp keyVoice, y
+	bne !envDone+
+	lda keyLevel, y
+	beq !envDone+
 	lda voiceGate, x
 	beq !released+
-!held:
 	lda voiceSR, x
 	lsr
 	lsr
@@ -741,7 +913,6 @@ UpdatePiano:
 !noFloor:
 	lda voiceAD, x
 	jmp !setFall+
-
 !released:
 	lda voiceSR, x
 !setFall:
@@ -751,11 +922,11 @@ UpdatePiano:
 	lda envelopeFall, y
 	ldy saveY
 	sta keyFall, y
-
+!envDone:
+	lda voiceKey, x
+	sta prevKey, x
 	lda voiceGate, x
 	sta prevGate, x
-	tya
-	sta prevKey, x
 !nextVoice:
 	inx
 	cpx numVoices
@@ -837,6 +1008,114 @@ UpdatePiano:
 	bmi !keysDone+
 	jmp !key-
 !keysDone:
+
+	//; Drum bar: each zone in its drummer's colour, flash then fade.
+	ldx #DRUM_ZONES - 1
+!drum:
+	lda drumLevel, x
+	beq !drumOff+
+	lsr
+	lsr
+	lsr
+	lsr
+	lsr
+	lsr
+	ldy drumVoice, x
+	ora voiceFamily, y
+	tay
+	lda drumFlash, x
+	beq !drumSteady+
+	lda blackFlash, y
+	jmp !drumColour+
+!drumSteady:
+	lda blackShades, y
+	jmp !drumColour+
+!drumOff:
+	lda pianoBgColor
+!drumColour:
+	cmp prevDrumColour, x
+	beq !nextDrum+
+	sta prevDrumColour, x
+	ldy drumZoneFirst, x
+	sty zoneFirst
+	ldy drumZoneLast, x
+!col:
+	sta $d800 + (DRUM_ROW * 40), y
+	dey
+	bmi !nextDrum+
+	cpy zoneFirst
+	bcs !col-
+!nextDrum:
+	dex
+	bpl !drum-
+
+	//; Filter bar: lit from the left for the cutoff's length.
+	lda #$00
+	ldy filterLength
+	beq !filterColour+
+	ldy filterVoice
+	lda voiceFamily, y
+	ora #$03
+	tay
+	lda blackShades, y
+!filterColour:
+	cmp prevFilterColour
+	bne !drawFilter+
+	lda filterLength
+	cmp prevFilterLength
+	beq !filterDone+
+	lda prevFilterColour
+!drawFilter:
+	sta prevFilterColour
+	lda filterLength
+	sta prevFilterLength
+	ldy #NUM_WHITE_KEYS - 1
+!fcol:
+	lda pianoBgColor
+	cpy filterLength
+	bcs !fput+
+	lda prevFilterColour
+!fput:
+	sta $d800 + (FILTER_ROW * 40), y
+	dey
+	bpl !fcol-
+!filterDone:
+	rts
+
+//; Strike key Y for voice X: full level, flash, owned by the voice.
+//; Preserves X and Y.
+StrikeKey:
+	lda #$ff
+	sta keyLevel, y
+	lda #FLASH_FRAMES
+	sta keyFlash, y
+	txa
+	sta keyVoice, y
+	rts
+
+//; Voice X moves to key Y: every other key it still holds lets go, fading
+//; over LIFT_FALL. Preserves X and Y.
+LiftVoice:
+	stx liftVoice
+	sty liftKeep
+	ldy #NUM_KEYS - 1
+!loop:
+	lda keyLevel, y
+	beq !next+
+	lda keyVoice, y
+	cmp liftVoice
+	bne !next+
+	cpy liftKeep
+	beq !next+
+	lda keyFall, y
+	cmp #LIFT_FALL
+	bcs !next+
+	lda #LIFT_FALL
+	sta keyFall, y
+!next:
+	dey
+	bpl !loop-
+	ldy liftKeep
 	rts
 
 InitPiano:
@@ -864,11 +1143,40 @@ InitPiano:
 	lda #$ff
 	sta voiceKey, x
 	sta prevKey, x
-	sta lastKey, x
+	sta pendingKey, x
+	sta shownKey, x
 	lda #$00
 	sta prevGate, x
+	sta prevNoise, x
+	sta drumMode, x
 	dex
 	bpl !loop-
+
+	ldx #DRUM_ZONES - 1
+!loop:
+	lda #$00
+	sta drumLevel, x
+	sta drumFlash, x
+	sta drumVoice, x
+	lda pianoBgColor
+	sta prevDrumColour, x
+	dex
+	bpl !loop-
+	lda #$00
+	sta filterLength
+	sta prevFilterLength
+	sta prevFilterColour
+
+	lda pianoDrumSplit
+	bne !split1+
+	lda #DEFAULT_DRUM_SPLIT_1
+!split1:
+	sta drumThreshold1
+	lda pianoDrumSplit + 1
+	bne !split2+
+	lda #DEFAULT_DRUM_SPLIT_2
+!split2:
+	sta drumThreshold2
 
 	lda #$00
 	sta keySpriteEnable
@@ -885,15 +1193,20 @@ LogoD011Table:			.byte $3b, $3b, $1b, $1b, $5b
 LogoD016Table:			.byte $18, $08, $08, $18, $08
 CurtainXTable:			.byte 24, 72, 120, 168, 216, 264 - 256, 312 - 256
 bitTable:				.byte $01, $02, $04, $08, $10, $20, $40, $80
+//; Drum bar zones (columns), a blank column between each.
+drumZoneFirst:			.byte 0, 14, 27
+drumZoneLast:			.byte 12, 25, 39
+//; Filter cutoff high byte / 8 -> lit columns (1..40).
+filterLengthTable:		.fill 32, round((i + 1) * 40 / 32)
 
 voicesForChips:			.byte 3, 3, 6, 9, 12
 voiceRegOffset:			.fill MAX_VOICES, floor(i / 3) * SIDMIRROR_CHIP_STRIDE + mod(i, 3) * 7
 
 //; Per-frame level fall for a decay/release nibble: the SID's envelope time
-//; (6 ms .. 24 s) in frames, held to 4..40 frames so a short note still shows
+//; (6 ms .. 24 s) in frames, held to 8..40 frames so a short note still shows
 //; and a long release doesn't leave a key lit for seconds.
 .var envelopeMs = List().add(6, 24, 48, 72, 114, 168, 204, 240, 300, 750, 1500, 2400, 3000, 9000, 15000, 24000)
-envelopeFall:			.fill 16, ceil(255 / max(4, min(40, round(envelopeMs.get(i) / 20))))
+envelopeFall:			.fill 16, ceil(255 / max(8, min(40, round(envelopeMs.get(i) / 20))))
 //; Level a held key keeps for a sustain nibble (0 = none, so it decays out).
 sustainFloor:			.fill 16, i == 0 ? 0 : 112 + i * 9
 
@@ -959,7 +1272,27 @@ voiceAD:				.fill MAX_VOICES, 0
 voiceSR:				.fill MAX_VOICES, 0
 prevKey:				.fill MAX_VOICES, $ff
 prevGate:				.fill MAX_VOICES, 0
-lastKey:				.fill MAX_VOICES, $ff	//; the key each voice last played, kept through silence
+voiceNoise:				.fill MAX_VOICES, 0
+voiceZone:				.fill MAX_VOICES, 0
+prevNoise:				.fill MAX_VOICES, 0
+drumMode:				.fill MAX_VOICES, 0		//; in a note that began as a drum
+shownKey:				.fill MAX_VOICES, $ff	//; the key showing the voice's current note
+pendingKey:				.fill MAX_VOICES, $ff	//; a small pitch step waiting to prove itself a note
+pendingAge:				.fill MAX_VOICES, 0
+liftVoice:				.byte 0
+liftKeep:				.byte 0
+
+drumLevel:				.fill DRUM_ZONES, 0
+drumFlash:				.fill DRUM_ZONES, 0
+drumVoice:				.fill DRUM_ZONES, 0
+prevDrumColour:			.fill DRUM_ZONES, 0
+drumThreshold1:			.byte DEFAULT_DRUM_SPLIT_1
+drumThreshold2:			.byte DEFAULT_DRUM_SPLIT_2
+zoneFirst:				.byte 0
+filterLength:			.byte 0
+filterVoice:			.byte 0
+prevFilterLength:		.byte 0
+prevFilterColour:		.byte 0
 
 keyLevel:				.fill NUM_KEYS, 0
 keyFall:				.fill NUM_KEYS, 0
@@ -1011,6 +1344,12 @@ keySpriteEnable:		.byte 0
 	.fill 8, %11111110					//; CHAR_WHITE
 	.fill 6, %11111110					//; CHAR_WHITE_BOTTOM: rounded front edge
 	.byte %01111100, %00000000
+	.fill 4, $00						//; CHAR_DRUM_BAR: 3px, 1px above the keys
+	.fill 3, $ff
+	.byte $00
+	.byte $00							//; CHAR_FILTER_BAR: 3px, 1px below the keys
+	.fill 3, $ff
+	.fill 4, $00
 
 * = BITMAP_ADDRESS "Bitmap"
 	.fill LOGO_HEIGHT * 40 * 8, $00
