@@ -1572,6 +1572,43 @@ async function loadSid(page, file) {
             early.secondOk === true && afterScan && afterScan.analysed === true && afterScan.forced > 0
             && afterScan.hasLength === 1, JSON.stringify(afterScan));
 
+        // --- the length notices stand out, and go with their tune -------------
+        // "Export again to include the song length" is about the tune it was
+        // measured for. Another tune loaded must take it away, not leave it
+        // advising an export of the wrong file. While it shows it has to be
+        // hard to miss: its own style, and the Generate button asking again.
+        const stale = await browser.newPage({ viewport: { width: 1400, height: 900 } });
+        try {
+            await stale.goto(base, { waitUntil: 'load' });
+            await stale.waitForFunction(() => !!window.uiController, null, { timeout: 20000 });
+            await loadSid(stale, 'Flex-Lundia.sid');
+            await stale.waitForFunction(() => window.studioModal?.isOpen, null, { timeout: 60000 });
+            const shown = await stale.evaluate(() => {
+                const ui = window.uiController;
+                ui.showLengthNotice('Measuring has finished. Export again to include the song '
+                    + 'length in the file.', { nudge: true });
+                const st = document.getElementById('exportStatus');
+                return {
+                    visible: st.classList.contains('visible'),
+                    notice: st.classList.contains('notice'),
+                    nudged: document.getElementById('exportPRGButton').classList.contains('nudge'),
+                };
+            });
+            await loadSid(stale, 'JCH-Crystalline.sid');
+            await stale.waitForFunction(() => window.uiController.currentFileName === 'JCH-Crystalline.sid',
+                null, { timeout: 60000 });
+            const gone = await stale.evaluate(() => ({
+                visible: document.getElementById('exportStatus').classList.contains('visible'),
+                text: document.getElementById('exportStatus').textContent,
+                nudged: document.getElementById('exportPRGButton').classList.contains('nudge'),
+            }));
+            check('The length notice has its own, louder style', shown.visible && shown.notice, JSON.stringify(shown));
+            check('...and the Generate button asks to be pressed again', shown.nudged, JSON.stringify(shown));
+            check('Loading another tune takes the notice away', !gone.visible && !gone.nudged, JSON.stringify(gone));
+        } finally {
+            await stale.close();
+        }
+
         // --- the collection index says how far along it is ---------------------
         // 7.5 MB behind a bare spinner is a page that looks stuck rather than
         // busy, so hold the response back and read what the list says.

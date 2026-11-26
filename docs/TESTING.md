@@ -77,7 +77,7 @@ isn't a dependency (`npm install --no-save playwright`):
 |---|---|
 | `scripts/mobile-layout-check.js` | HVSC and Studio modals at phone widths, and the HVSC embed's Select staying on screen in portrait and landscape |
 | `scripts/logo-drop-check.js` | picking a logo lands in the input the exporter reads |
-| `scripts/studio-smoke-check.js` | load a SID -> Studio -> background analysis -> export manifest, and the sticky visualizer choice; an export mid-scan leaves the length and loop out, one after the scan includes them |
+| `scripts/studio-smoke-check.js` | load a SID -> Studio -> background analysis -> export manifest, and the sticky visualizer choice; an export mid-scan leaves the length and loop out, one after the scan includes them; the length notice's style, the Generate nudge, and both going away when another tune loads |
 | `scripts/device-check.js` | a device matrix from iPhone to 2560px desktop: horizontal scrolling, clipped content, tap target and text sizes, contrast, how many HVSC rows fit |
 | `scripts/hvsc-deeplink-check.js` | a `?tune=` link arrives loaded and described, in either index/share-meta order and when the quick play fails; builds its own one-tune mirror |
 | `scripts/player-check.js` | a rejected file leaves the previous tune loaded, Load then Play initialises the C64 once, a chip change restarts on that chip, Play after Pause resumes, the clock trails the engine by what is queued, the VU answer stays with its tune, a play-address-0 tune is refused at export |

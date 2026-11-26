@@ -484,6 +484,10 @@
     font-size: 0.8em;
 }
 
+.studio-foot .export-status.notice {
+    font-size: 0.9em;
+}
+
 .studio-foot .export-button {
     margin-left: auto;
     flex: 0 0 auto;
