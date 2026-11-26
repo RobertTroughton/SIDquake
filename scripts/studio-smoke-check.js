@@ -1639,10 +1639,12 @@ async function loadSid(page, file) {
                     const r = c.getBoundingClientRect();
                     return `${Math.round(r.x)},${Math.round(r.y)},${Math.round(r.height)}`;
                 }).join(' ');
+                const hint = document.getElementById('studioLengthHint');
                 const read = () => ({
                     shown: !!el && !el.hidden,
                     done: !!el && el.classList.contains('is-done'),
-                    text: el ? el.textContent.trim() : '',
+                    text: document.getElementById('studioLengthText')?.textContent.trim() || '',
+                    hint: !!hint && !el.hidden && getComputedStyle(hint).display !== 'none' ? hint.textContent.trim() : '',
                     button: at(),
                 });
                 for (let i = 0; i < 600 && ui.analysisRunning; i++) await sleep(100);
@@ -1682,9 +1684,11 @@ async function loadSid(page, file) {
             check('While measuring, the footer says so beside Generate',
                 meter.busy && meter.busy.shown && !meter.busy.done && /measur|analys/i.test(meter.busy.text),
                 JSON.stringify(meter.busy));
+            check('...and says why waiting is worth it',
+                meter.busy && /song length/i.test(meter.busy.hint), JSON.stringify(meter.busy));
             check('When it lands, it says the length was calculated',
-                meter.landed && meter.landed.shown && meter.landed.done && /1:00/.test(meter.landed.text),
-                JSON.stringify(meter.landed));
+                meter.landed && meter.landed.shown && meter.landed.done && /1:00/.test(meter.landed.text)
+                && !meter.landed.hint, JSON.stringify(meter.landed));
             check('...and then fades away', meter.later && !meter.later.shown, JSON.stringify(meter.later));
             check('It floats: nothing in the footer moves while it comes and goes',
                 meter.busy && meter.landed && meter.later

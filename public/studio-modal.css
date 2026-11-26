@@ -521,6 +521,29 @@
     display: none;
 }
 
+.studio-length-lines {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+}
+
+.studio-length-text,
+.studio-length-hint {
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+/* Why waiting is worth it - only while there is something to wait for. */
+.studio-length-hint {
+    font-size: 0.9em;
+    color: var(--text-secondary);
+}
+
+.studio-length.is-done .studio-length-hint,
+.studio-length.is-failed .studio-length-hint {
+    display: none;
+}
+
 .studio-length-spinner {
     flex: 0 0 auto;
     width: 12px;

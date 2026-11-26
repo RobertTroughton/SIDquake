@@ -35,7 +35,8 @@ The page-level controllers. Layout rules for small screens and touch are in
   gates; footer carries a one-line summary + the Generate button. Generate is
   never disabled by the background scan. While it runs, a popup floating
   just above Generate shows it (`studioLength`, out of the footer's flow so it
-  shifts nothing: busy, then a pulse and "Song length calculated: M:SS", held
+  shifts nothing: busy, with "Wait to include the song length." under it,
+  then a pulse and "Song length calculated: M:SS", held
   2.5 s and faded out), because the page's corner chip sits under the Studio;
   the manifest says a
   live-method export leaves the song length and forced loop out (and that the
