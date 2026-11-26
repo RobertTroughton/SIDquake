@@ -52,7 +52,7 @@
         {
           "name": "Graphics: piano chars",
           "off": "0x1100",
-          "len": "0x0030"
+          "len": "0x0040"
         }
       ],
       "pianoLowNoteAddress": "0x4074",
@@ -64,7 +64,8 @@
       "bakedHasLengthAddress": "0x405F",
       "bakedLoopEndMinAddress": "0x404C",
       "bakedLoopEndSecAddress": "0x404D",
-      "bakedLoopEndFrameRemAddress": "0x404E"
+      "bakedLoopEndFrameRemAddress": "0x404E",
+      "pianoDrumSplitAddress": "0x4075"
     }
   },
   "inputs": [
