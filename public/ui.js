@@ -1136,6 +1136,8 @@ class UIController {
             // not land on this one: bump the token first, then stop it.
             this._analysisToken++;
             this.cancelAnalysis();
+            // Whatever the last export said was about the previous tune.
+            this.clearExportStatus();
             this._hideAnalysisChip();
             // Stopping the previous tune's scan is not a decision about this one.
             this._analysisCancelled = false;
@@ -1371,6 +1373,7 @@ class UIController {
     _songChoiceChanged() {
         this._analysisToken++;
         this.cancelAnalysis();
+        this.clearExportStatus();
         this._hideAnalysisChip();
         this.tuneAnalysis = null;
         this._analysisCancelled = false;
@@ -4360,6 +4363,7 @@ class UIController {
         // The queue needs to know how each build went; this method reports
         // everything through the UI and returns nothing.
         this._lastExportOk = false;
+        this.elements.exportPRGButton?.classList.remove('nudge');
         if (!this.selectedVisualizer) {
             this.showExportStatus('Choose what people will see first — pick one on the Visualizer tab.', 'error');
             return;
@@ -4663,9 +4667,9 @@ class UIController {
                 // Remembered against this tune, so the scan landing can say the
                 // next export will be different.
                 this._exportedBeforeLength = this._analysisToken;
-                this.showExportStatus('Exported without the song length or a forced loop, because '
+                this.showLengthNotice('Exported without the song length or a forced loop, because '
                     + 'the tune is still being measured. Export again after measuring finishes to '
-                    + 'include them.', 'info');
+                    + 'include them.');
             }
             const wanted = this.getAdvancedSettings().preferredGfxBank;
             if (wanted && this.prgExporter.lastGfxBankPreferenceHonoured === false) {
@@ -5617,12 +5621,38 @@ class UIController {
             // Errors and warnings stay put. A build failure that erases itself
             // after five seconds is not a report, and it may be the only thing
             // saying why nothing downloaded.
-            if (type !== 'info' && type !== 'error' && type !== 'warning') {
+            if (type !== 'info' && type !== 'notice' && type !== 'error' && type !== 'warning') {
                 this._exportStatusTimer = setTimeout(() => {
                     status.classList.remove('visible');
                 }, 5000);
             }
         }
+    }
+
+    /**
+     * A notice about the song length the last export left out: louder than an
+     * 'info' status, because acting on it means exporting again. `nudge` also
+     * marks the Generate button until it is next pressed.
+     */
+    showLengthNotice(message, { nudge = false } = {}) {
+        this.showExportStatus(message, 'notice');
+        this.elements.exportPRGButton?.classList.toggle('nudge', nudge);
+    }
+
+    /** Take down the export status (and the Generate nudge): it described the
+     *  previous tune or tune choice. */
+    clearExportStatus() {
+        this._exportedBeforeLength = null;
+        if (this._exportStatusTimer) {
+            clearTimeout(this._exportStatusTimer);
+            this._exportStatusTimer = null;
+        }
+        const status = this.elements.exportStatus;
+        if (status) {
+            status.classList.remove('visible');
+            status.textContent = '';
+        }
+        this.elements.exportPRGButton?.classList.remove('nudge');
     }
 
     formatHex(value, digits) {
@@ -5955,8 +5985,8 @@ class UIController {
             // A file exported while this ran went out without what it found.
             const a = this.tuneAnalysis;
             if (this._exportedBeforeLength === token && a && (a.looped || a.fadedOut)) {
-                this.showExportStatus('Measuring has finished. Export again to include the song '
-                    + 'length in the file.', 'info');
+                this.showLengthNotice('Measuring has finished. Export again to include the song '
+                    + 'length in the file.', { nudge: true });
             }
             if (this._exportedBeforeLength === token) this._exportedBeforeLength = null;
         });

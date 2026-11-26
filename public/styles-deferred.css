@@ -386,6 +386,44 @@
     border: 1px solid rgba(96, 165, 250, 0.3);
 }
 
+/* Something the user has to act on (export again for the song length): it
+   must not read as routine, so it is stronger than 'info' and pulses as it
+   arrives. */
+.export-status.notice {
+    background: rgba(232, 168, 56, 0.18);
+    color: var(--text-primary);
+    border: 1px solid var(--warning);
+    border-left-width: 4px;
+    font-weight: 600;
+    animation: export-notice-in 0.7s ease-out 3;
+}
+
+@keyframes export-notice-in {
+    0% { box-shadow: 0 0 0 0 rgba(232, 168, 56, 0.7); }
+    100% { box-shadow: 0 0 0 10px rgba(232, 168, 56, 0); }
+}
+
+/* Generate, asking to be pressed again once the length is known. */
+.export-button.nudge {
+    animation: export-nudge 1.6s ease-in-out infinite;
+}
+
+@keyframes export-nudge {
+    0%, 100% { box-shadow: 0 0 0 0 rgba(232, 168, 56, 0); }
+    50% { box-shadow: 0 0 0 4px rgba(232, 168, 56, 0.6); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .export-status.notice {
+        animation: none;
+    }
+
+    .export-button.nudge {
+        animation: none;
+        box-shadow: 0 0 0 3px rgba(232, 168, 56, 0.6);
+    }
+}
+
 /* ==========================================================================
    Error Message
    ========================================================================== */

@@ -98,7 +98,11 @@ Driven from `ui.js`; the results land on the Studio's Song tab.
   it is still running goes ahead without it: no length (running clock, no
   total) and no forced loop, exactly as if nothing had been resolved. The scan
   carries on, and an export after it lands includes both; the Song tab, the
-  manifest and the export status say so. Two cases still wait for the scan: the
+  manifest and the export status say so. The export status uses its louder
+  `notice` style for both "exported without the length" and "measuring has
+  finished, export again", and the second also makes the Generate button
+  pulse until it is pressed; loading another tune or changing the tune choice
+  takes both away (`showLengthNotice` / `clearExportStatus` in `ui.js`). Two cases still wait for the scan: the
   baked Spectrometer, whose stream is cut from the scan's own render, and a
   queue run, which has nobody to export again. With no background scan running
   (the quick path outside the Studio, or no Worker), the export measures under
