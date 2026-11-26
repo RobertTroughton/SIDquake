@@ -42,7 +42,12 @@ visualizer features.
 and a clear row, sprite curtain), the song name and under it the clock
 (`INC/timer.asm`, centred, with "/MM:SS" when the length is known) in the 1x2
 font, and a 40-white-key keyboard six rows tall with black keys the top four
-(C1 to G6, or C2 to G7 with the Keyboard Range option, data block `$74`). It reads the SID through the same register mirror as the bar players,
+(68 keys from a C to the G five octaves and a fifth above). The exporter picks
+that C per tune (`public/piano-range.js`, via `processPianoRange` in
+`prg-builder.js`): it steps the tune on the analyser, counts the strikes the
+player would show and takes the start (C1, C2, C0 or C3, in that order of
+preference on a tie) that leaves the most of them unfolded. It writes the
+note + 1 to data block `$74`; 0 means C1. It reads the SID through the same register mirror as the bar players,
 so it ships two builds: realtime (second play call under save/restore) and
 `SPECTROMETER_SHADOW`. No baked variant: an FFT cannot tell which key a voice
 is on.
@@ -51,8 +56,12 @@ is on.
   search of a PAL semitone-boundary table and folds it by octaves onto the
   keyboard. Noise-only voices (drums), the test bit and an empty waveform read
   as silent.
-- Per key, `UpdatePiano` keeps a level: a gate rising or a held gate moving to
-  a new key strikes it, sustain sets a floor while the gate is held, and the
+- Per key, `UpdatePiano` keeps a level: a gate rising, or a voice landing on a
+  different key than last frame (or sounding again after a silent frame),
+  strikes it. The second rule is for multispeed tunes whose gate opens and
+  closes between two of the player's once-a-frame samples (Moonlight Sonata by
+  Thanos B. gates for one of its two calls a frame): the new note, or the hard
+  restart before it, is all the analysis sees. Then sustain sets a floor while the gate is held, and the
   decay or release nibble sets how fast it falls (held to 4..40 frames). The
   level picks one of four shades from the voice's colour family.
 - White keys are lit in colour RAM. The black keys are cut-outs in the white-key

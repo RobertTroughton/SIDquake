@@ -83,7 +83,7 @@ pianoBgColor:
     .byte $00                           // $6D: background below the logo
     .fill $74 - $6E, $00                // $70-$73: logo mode + $d022-$d024 (common.asm)
 pianoLowNote:
-    .byte $00                           // $74: note number of the leftmost C (C0 = 0); 0 = C1
+    .byte $00                           // $74: leftmost C's note number + 1 (C0 = note 0), picked at export; 0 = C1
     .fill DATA_ADDRESS + $100 - *, $00
 
 * = CODE_ADDRESS "Main Code"
@@ -644,8 +644,11 @@ FreqToKey:
 //; =============================================================================
 //; PIANO STATE + DRAWING (once per frame)
 //; Each key has a level (0 = up, 255 = just struck), a per-frame fall and the
-//; voice that last played it. A gate rising, or the gated note moving to a
-//; new key, strikes the key; while the gate is held the level is kept at
+//; voice that last played it. A gate rising strikes the key, and so does a
+//; voice landing on a different key than last frame (or sounding again after
+//; a silent frame) with or without its gate: a multispeed tune can open and
+//; close a gate between two frames' samples, and then the new note, or the
+//; hard restart before it, is all the analysis sees. While the gate is held the level is kept at
 //; least at a floor set by the voice's sustain, falling at the decay rate;
 //; after the gate drops it falls at the release rate. The level picks one of
 //; four shades from the voice's colour family.
@@ -679,17 +682,18 @@ UpdatePiano:
 !playing:
 	txa
 	sta keyVoice, y
-	lda voiceGate, x
-	beq !released+
-
-	lda prevGate, x
-	beq !strike+
 	tya
 	cmp prevKey, x
-	beq !held+
+	bne !strike+
+	lda voiceGate, x
+	beq !released+
+	lda prevGate, x
+	bne !held+
 !strike:
 	lda #$ff
 	sta keyLevel, y
+	lda voiceGate, x
+	beq !released+
 !held:
 	lda voiceSR, x
 	lsr
@@ -790,11 +794,12 @@ UpdatePiano:
 	rts
 
 InitPiano:
-	lda pianoLowNote
+	ldx pianoLowNote
 	bne !set+
-	lda #DEFAULT_LOW_NOTE
+	ldx #DEFAULT_LOW_NOTE + 1
 !set:
-	sta lowNote
+	dex
+	stx lowNote
 
 	ldx #NUM_KEYS - 1
 !loop:

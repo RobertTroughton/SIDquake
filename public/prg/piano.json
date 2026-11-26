@@ -157,23 +157,6 @@
       "default": 0
     },
     {
-      "id": "keyRange",
-      "label": "Keyboard Range",
-      "type": "select",
-      "default": 12,
-      "values": [
-        {
-          "value": 12,
-          "label": "C1 to G6 (default)"
-        },
-        {
-          "value": 24,
-          "label": "C2 to G7 (for high tunes)"
-        }
-      ],
-      "dataField": "pianoLowNoteAddress"
-    },
-    {
       "id": "songNameColor",
       "label": "Song Name Colour",
       "type": "colorPicker",

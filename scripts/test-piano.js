@@ -14,7 +14,9 @@
 //   UpdatePiano          a gated note lights its key in its voice's colour, a
 //                        black key gets a sprite at the right X, a released
 //                        note fades back to unlit, a new note on a held gate
-//                        strikes again
+//                        strikes again, and so does a note whose gate opened
+//                        and closed between two frames' samples
+//   piano-range.js       the exporter's choice of the keyboard's leftmost C
 //
 // Both register-mirror layouts are covered: 25 bytes per chip (realtime build)
 // and $20 per chip (SPECTROMETER_SHADOW).
@@ -177,6 +179,22 @@ async function runVariant(m, name, defines, stride) {
     check(level(kG2) > 0, `${name}: previous arpeggio key went dark in one frame`);
     check(colourAt(kA4, KEYS_BOTTOM_ROW) === 0x05, `${name}: voice 1 key colour $${colourAt(kA4, KEYS_BOTTOM_ROW).toString(16)}, expected $5 (green)`);
 
+    // A multispeed tune whose gate is only on for the first of two play calls
+    // (6r6/Thanos B.'s Moonlight Sonata): the once-a-frame sample sees the hard
+    // restart (test bit), then the new note with its gate already off. The key
+    // must still be struck, and a different note with the gate off strikes too.
+    const kC3 = expectedKey(12 * 3), kE3 = expectedKey(12 * 3 + 4);
+    setVoice(2, { freq: noteFreq(12 * 3), ctrl: 0x09, ad: 0x0F, sr: 0x0F });
+    frame();
+    setVoice(2, { freq: noteFreq(12 * 3), ctrl: 0x40, ad: 0x00, sr: 0xEA });
+    frame();
+    check(level(kC3) === 0xFF, `${name}: note after a hard restart, gate already off: level ${level(kC3)}, expected 255`);
+    setVoice(2, { freq: noteFreq(12 * 3 + 4), ctrl: 0x40, ad: 0x00, sr: 0xEA });
+    frame();
+    check(level(kE3) === 0xFF, `${name}: new note with the gate off: level ${level(kE3)}, expected 255`);
+    frame();
+    check(level(kE3) < 0xFF, `${name}: a ringing note with the gate off was struck again`);
+
     // Silence everything: no sprite stays on.
     for (let v = 0; v < 6; v++) setVoice(v, {});
     for (let i = 0; i < 45; i++) frame();
@@ -185,10 +203,51 @@ async function runVariant(m, name, defines, stride) {
     if (failures === failsBefore) console.log(`  ok  ${name}: ${notesChecked} frequencies, gate/release/arpeggio/sprites`);
 }
 
+// The exporter's range pick (public/piano-range.js): the strike rule matches
+// the player's, the window with the most unfolded strikes wins, and a real tune
+// scans to an answer.
+async function checkRange(m) {
+    const failsBefore = failures;
+    const { countStrikes, bestLowNote, freqToNote, analyzePianoRange, PIANO_LOW_NOTES } =
+        await import('file://' + path.join(ROOT, 'public/piano-range.js'));
+    const silent = { freq: 0, ctrl: 0 };
+
+    for (let n = 0; n < 95; n++) check(freqToNote(noteFreq(n)) === n, `range: freqToNote(note ${n})`);
+
+    // Gate pulse, hard restart, same note again, a new note with the gate off,
+    // then that note ringing: three strikes.
+    const C3 = noteFreq(36), E3 = noteFreq(40);
+    const hits = countStrikes([
+        [{ freq: C3, ctrl: 0x41 }], [{ freq: C3, ctrl: 0x40 }], [{ freq: C3, ctrl: 0x09 }],
+        [{ freq: C3, ctrl: 0x40 }], [{ freq: E3, ctrl: 0x40 }], [{ freq: E3, ctrl: 0x40 }],
+        [{ freq: E3, ctrl: 0x81 }], [silent]], 1);
+    check(hits[36] === 2 && hits[40] === 1 && hits.reduce((a, b) => a + b) === 3,
+        `range: strikes counted ${JSON.stringify(hits.map((h, i) => h ? i + ':' + h : '').filter(Boolean))}`);
+
+    const high = new Array(96).fill(0);
+    high[30] = 5; high[80] = 10; high[90] = 10;      // F#2, G#6, F#7
+    check(bestLowNote(high).lowNote === 24, `range: a high tune starts at C2 (got ${bestLowNote(high).lowNote})`);
+    const low = new Array(96).fill(0);
+    low[5] = 10; low[40] = 10;                       // F0, E3
+    check(bestLowNote(low).lowNote === 0, `range: a deep bass starts at C0 (got ${bestLowNote(low).lowNote})`);
+    check(bestLowNote(new Array(96).fill(0)).lowNote === 12, 'range: no notes keeps C1');
+
+    const sidBytes = new Uint8Array(fs.readFileSync(path.join(ROOT, 'SID/6r6-axelf.sid')));
+    const h = Buffer.from(sidBytes), dataOffset = h.readUInt16BE(6);
+    const res = analyzePianoRange(m, sidBytes, {
+        initAddress: h.readUInt16BE(10), playAddress: h.readUInt16BE(12),
+        loadAddress: h.readUInt16BE(8) || h.readUInt16LE(dataOffset) });
+    check(PIANO_LOW_NOTES.includes(res.lowNote) && res.strikes > 100 && res.onKeyboard > res.strikes * 0.9,
+        `range: Axel F scans to a keyboard (${JSON.stringify(res)})`);
+
+    if (failures === failsBefore) console.log(`  ok  range pick: Axel F starts on note ${res.lowNote}, ${res.onKeyboard}/${res.strikes} strikes on their own keys`);
+}
+
 async function main() {
     const m = await loadCpu();
     await runVariant(m, 'realtime', [], 25);
     await runVariant(m, 'shadow', ['SPECTROMETER_SHADOW'], 0x20);
+    await checkRange(m);
     console.log(failures === 0 ? 'PASS' : `FAIL: ${failures} failure(s)`);
     process.exit(failures === 0 ? 0 : 1);
 }

@@ -1852,6 +1852,27 @@ class SIDquakePRGExporter {
             `$${mirrorPage.toString(16)}, order@${layout.shadowOrderAddress}`);
     }
 
+    // Piano player: scan the tune's notes and write the keyboard's leftmost C
+    // (as note + 1; the player reads 0 as its C1 default) to the data block.
+    async processPianoRange(layout, header, selectedSong = 0) {
+        const sidBytes = this.analyzer.createModifiedSID();
+        if (!sidBytes) throw new Error('Piano: could not obtain SID data for the current tune');
+        const { analyzePianoRange } = await import((window.cacheBust || (s => s))('./piano-range.js'));
+        const chips = this.analyzer.analysisResults?.sidChipAddresses;
+        const res = analyzePianoRange(this.analyzer.Module, sidBytes, {
+            initAddress: header.initAddress,
+            playAddress: header.playAddress,
+            loadAddress: header.loadAddress,
+            subtune: selectedSong,
+            chipAddresses: chips && chips.length ? chips.slice(0, 4) : [0xD400],
+        });
+        this.builder.addComponent(new Uint8Array([res.lowNote + 1]), parseInt(layout.pianoLowNoteAddress), 'Piano Range');
+        const names = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
+        const top = res.lowNote + 67;
+        console.log(`Piano: keyboard ${names[res.lowNote % 12]}${res.lowNote / 12 | 0}-` +
+            `${names[top % 12]}${top / 12 | 0}, ${res.onKeyboard} of ${res.strikes} key strikes unfolded`);
+    }
+
     // Pure relocation planner (no side effects) - testable in isolation. Given the
     // base image + reloc table + where the SID sits, decide a graphics VIC bank and
     // a code page, relocate the image (code refs by the code delta, gfx refs by the
@@ -2630,6 +2651,12 @@ class SIDquakePRGExporter {
             // player's mirror page and bake the canonical replay order.
             if (vizConfig?.spectrometerShadow) {
                 await this.processSpectrometerShadow(vizConfig, layout, sidInfo, header, selectedSong);
+            }
+
+            // Piano: start the keyboard on the C that shows the most of the
+            // tune's notes on their own keys.
+            if (layout.pianoLowNoteAddress) {
+                await this.processPianoRange(layout, header, selectedSong);
             }
 
             // Process additional visualizer inputs. Priority 1: a user input (e.g.
