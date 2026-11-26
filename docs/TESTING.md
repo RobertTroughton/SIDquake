@@ -105,6 +105,10 @@ band and hides anything that goes wrong at its bottom edge.
 
 ## Slow checks to run by hand
 
+- `scripts/piano-write-timing.js <export.prg>` after changing when the Piano
+  player writes its keyboard: runs the export in VICE with watchpoints on the
+  keyboard's colour and screen RAM and reports the raster line of each write;
+  any on lines 187-250 (while the keyboard is drawn) fails it.
 - `scripts/piano-lit-count.js <tune.sid> [callsPerFrame] [frames]` after
   changing when the Piano player strikes or lifts a key: plays the tune and
   feeds each frame to the assembled player, then reports how many keys are lit

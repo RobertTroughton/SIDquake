@@ -112,6 +112,20 @@ pitches: tunes pitch their noise anywhere from `$05` to `$FF`.
   has passed, and `MusicFrameHandler` turns them back in the bottom border.
   The drum bar is characters whose colour RAM is the background when unlit;
   the filter bar's colour RAM holds its colour and its characters its width.
+- Nothing in `UpdatePiano` writes to the screen. It runs after the frame's
+  music (two play calls in the realtime build, more nesting into it on a
+  multispeed tune), and writing colour RAM there tore the keyboard: measured
+  in VICE, the old writes landed anywhere from line 49 to 183, the drum bar
+  starting at 187, and the split's copy of the black-key sprites at line 136
+  could catch them half-updated. It now queues changed white keys, the drum
+  zones' and filter bar's colours, the filter bar's characters and the
+  black-key sprites; `ApplyPiano`, from the split IRQ once the curtain has
+  passed (line 139), writes them in the order the beam will draw them, and
+  only when `UpdatePiano` has finished (`pianoReady`) - a frame that is not
+  ready keeps the last picture rather than show half of one. The writes now
+  land on lines 140-153. `UpdatePiano` also works only on the keys that are
+  lit or fading (`activeKeys`), not all 68: 1,900 cycles on average, 4,100 at
+  most, against 6,700 and 10,400 before.
 
 `scripts/test-piano.js` (in `npm test`) runs these routines in the 6510
 emulator; `scripts/piano-lit-count.js` reports how many keys a tune keeps lit.

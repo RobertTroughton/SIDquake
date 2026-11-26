@@ -490,6 +490,10 @@ PianoSplitIRQ:
 
 	WaitUntilRasterLine(SPLIT_RASTERLINE + 1)
 
+	lda pianoReady
+	beq !keepShown+
+	jsr ApplyPiano
+!keepShown:
 	lda #$00
 	sta $d01d
 	lda #$ff
@@ -766,8 +770,20 @@ FreqToKey:
 //; =============================================================================
 
 UpdatePiano:
-	ldx #NUM_KEYS - 1
+	//; Nothing below writes to the screen: it works out what should change and
+	//; ApplyPiano (from the split IRQ, in the gap above the keyboard) puts it
+	//; there. pianoReady is clear while this runs, so a split that lands in the
+	//; middle of it applies nothing rather than half a frame.
+	lda #$00
+	sta pianoReady
+
+	//; Only the keys on the active list (lit, or fading back) need any work:
+	//; a handful, against 68 keys.
+	ldy activeCount
+	beq !fallDone+
 !fall:
+	dey
+	ldx activeKeys, y
 	lda keyFlash, x
 	beq !noFlash+
 	dec keyFlash, x
@@ -781,8 +797,9 @@ UpdatePiano:
 !store:
 	sta keyLevel, x
 !nextFall:
-	dex
-	bpl !fall-
+	cpy #$00
+	bne !fall-
+!fallDone:
 
 	ldx #DRUM_ZONES - 1
 !drumFall:
@@ -1056,15 +1073,22 @@ UpdatePiano:
 	jmp !voice-
 !voicesDone:
 
-	//; Draw: white keys into colour RAM when their shade changes, lit black
-	//; keys into the sprite list the split IRQ applies.
+	//; Draw: white keys whose shade changes onto the dirty list, lit black
+	//; keys into the pending sprite list; ApplyPiano writes both.
 	lda #$00
-	sta keySpriteEnable
-	sta keySpriteMSB
+	sta pendingSpriteEnable
+	sta pendingSpriteMSB
 	sta spriteSlot
 
-	ldx #NUM_KEYS - 1
+	lda activeCount
+	sta renderIndex
 !key:
+	dec renderIndex
+	bpl !nextActive+
+	jmp !keysDone+
+!nextActive:
+	ldy renderIndex
+	ldx activeKeys, y
 	lda keyLevel, x
 	beq !unlit+
 	lsr
@@ -1101,10 +1125,14 @@ UpdatePiano:
 	cmp prevShade, x
 	beq !nextKey+
 	sta prevShade, x
-	ldy keyColumnTable, x
-	.for (var row = KEYS_TOP_ROW; row <= KEYS_BOTTOM_ROW; row++) {
-		sta $d800 + (row * 40), y
-	}
+	//; Onto the dirty list once, however many frames pass before it is applied.
+	lda keyDirty, x
+	bne !nextKey+
+	inc keyDirty, x
+	txa
+	ldy dirtyCount
+	sta dirtyKeys, y
+	inc dirtyCount
 	jmp !nextKey+
 
 !blackLit:
@@ -1113,23 +1141,32 @@ UpdatePiano:
 	ldy spriteSlot
 	cpy #NUM_KEY_SPRITES
 	bcs !nextKey+
-	sta keySpriteColour, y
+	sta pendingSpriteColour, y
 	lda keySpriteXLo, x
-	sta keySpriteX, y
+	sta pendingSpriteX, y
 	lda keySpriteXHi, x
 	beq !noMSB+
 	lda bitTable, y
-	ora keySpriteMSB
-	sta keySpriteMSB
+	ora pendingSpriteMSB
+	sta pendingSpriteMSB
 !noMSB:
 	lda bitTable, y
-	ora keySpriteEnable
-	sta keySpriteEnable
+	ora pendingSpriteEnable
+	sta pendingSpriteEnable
 	inc spriteSlot
 
 !nextKey:
-	dex
-	bmi !keysDone+
+	//; A key that has gone out (and, if white, has its unlit shade queued)
+	//; leaves the list: the last entry moves into its place.
+	lda keyLevel, x
+	bne !keep+
+	sta keyActive, x
+	dec activeCount
+	ldx activeCount
+	lda activeKeys, x
+	ldy renderIndex
+	sta activeKeys, y
+!keep:
 	jmp !key-
 !keysDone:
 
@@ -1156,19 +1193,7 @@ UpdatePiano:
 !drumOff:
 	lda pianoBgColor
 !drumColour:
-	cmp prevDrumColour, x
-	beq !nextDrum+
-	sta prevDrumColour, x
-	ldy drumZoneFirst, x
-	sty zoneFirst
-	ldy drumZoneLast, x
-!col:
-	sta $d800 + (DRUM_ROW * 40), y
-	dey
-	bmi !nextDrum+
-	cpy zoneFirst
-	bcs !col-
-!nextDrum:
+	sta pendingDrumColour, x
 	dex
 	bpl !drum-
 
@@ -1197,11 +1222,6 @@ UpdatePiano:
 	sta prevFilterColour
 	ldy #FILTER_COLOUR_HOLD
 	sty filterColourHold
-	ldy #NUM_WHITE_KEYS - 1
-!fcol:
-	sta $d800 + (FILTER_ROW * 40), y
-	dey
-	bpl !fcol-
 !filterEase:
 	lda filterTarget
 	cmp filterWidth
@@ -1246,40 +1266,126 @@ UpdatePiano:
 	and #$07
 	sta filterPart
 	ldx #$00
+	ldy #19
 !fhalf:
 	cpx filterFull
 	bcs !notFull+
 	lda #CHAR_FILTER_BAR
-	sta SCREEN_ADDRESS + (FILTER_ROW * 40) + 20, x
-	jmp !leftFull+
+	sta filterChars + 20, x
+	sta filterChars, y
+	jmp !fnext+
 !notFull:
 	bne !fempty+
-	ldy filterPart
+	lda filterPart
 	beq !fempty+
+	sty saveY
+	tay
 	lda filterRightChar - 1, y
-	sta SCREEN_ADDRESS + (FILTER_ROW * 40) + 20, x
+	sta filterChar
 	lda filterLeftChar - 1, y
-	jmp !leftPut+
+	ldy saveY
+	sta filterChars, y
+	lda filterChar
+	sta filterChars + 20, x
+	jmp !fnext+
 !fempty:
 	lda #CHAR_FILTER_EMPTY
-	sta SCREEN_ADDRESS + (FILTER_ROW * 40) + 20, x
-	jmp !leftPut+
-!leftFull:
-	lda #CHAR_FILTER_BAR
-!leftPut:
-	//; mirror: column 19 - x
-	sta filterChar
-	stx filterCol
-	lda #19
-	sec
-	sbc filterCol
-	tay
-	lda filterChar
-	sta SCREEN_ADDRESS + (FILTER_ROW * 40), y
+	sta filterChars + 20, x
+	sta filterChars, y
+!fnext:
+	dey
 	inx
 	cpx #20
 	bne !fhalf-
+	inc filterCharsDirty
 !filterDone:
+	lda #$01
+	sta pianoReady
+	rts
+
+//; Put what UpdatePiano worked out onto the screen. Called from the split IRQ
+//; once the curtain has passed (line SPLIT_RASTERLINE + 1), only when
+//; UpdatePiano has finished (pianoReady), and done in the order the beam will
+//; draw it - drum bar, keys, filter bar - in the 48 lines before it reaches the
+//; drum bar. Writing colour RAM and the filter characters while the VIC is
+//; drawing them tore the keyboard: UpdatePiano runs after the frame's music,
+//; and with the realtime analysis' second play call and any multispeed calls
+//; nesting into it, it can still be running when the keyboard is on screen.
+ApplyPiano:
+	ldx #DRUM_ZONES - 1
+!zone:
+	lda pendingDrumColour, x
+	cmp shownDrumColour, x
+	beq !nextZone+
+	sta shownDrumColour, x
+	ldy drumZoneFirst, x
+	sty zoneFirst
+	ldy drumZoneLast, x
+!col:
+	sta $d800 + (DRUM_ROW * 40), y
+	dey
+	bmi !nextZone+
+	cpy zoneFirst
+	bcs !col-
+!nextZone:
+	dex
+	bpl !zone-
+
+	ldx dirtyCount
+	beq !keysDone+
+!dirty:
+	dex
+	ldy dirtyKeys, x
+	lda #$00
+	sta keyDirty, y
+	lda prevShade, y
+	sta applyShade
+	lda keyColumnTable, y
+	tay
+	lda applyShade
+	.for (var row = KEYS_TOP_ROW; row <= KEYS_BOTTOM_ROW; row++) {
+		sta $d800 + (row * 40), y
+	}
+	cpx #$00
+	bne !dirty-
+	stx dirtyCount
+!keysDone:
+
+	lda prevFilterColour
+	cmp shownFilterColour
+	beq !filterChars+
+	sta shownFilterColour
+	ldy #NUM_WHITE_KEYS - 1
+!fcol:
+	sta $d800 + (FILTER_ROW * 40), y
+	dey
+	bpl !fcol-
+!filterChars:
+	lda filterCharsDirty
+	beq !spritesIn+
+	ldy #NUM_WHITE_KEYS - 1
+!fchar:
+	lda filterChars, y
+	sta SCREEN_ADDRESS + (FILTER_ROW * 40), y
+	dey
+	bpl !fchar-
+	lda #$00
+	sta filterCharsDirty
+!spritesIn:
+	ldx #NUM_KEY_SPRITES - 1
+!spr:
+	lda pendingSpriteX, x
+	sta keySpriteX, x
+	lda pendingSpriteColour, x
+	sta keySpriteColour, x
+	dex
+	bpl !spr-
+	lda pendingSpriteMSB
+	sta keySpriteMSB
+	lda pendingSpriteEnable
+	sta keySpriteEnable
+	lda #$00
+	sta pianoReady
 	rts
 
 //; Voice X's note turned out to be a drum: light its drum zone (attackZone),
@@ -1308,6 +1414,17 @@ StrikeKey:
 	sta keyVoice, y
 	lda voiceWaveFamily, x
 	sta keyFamily, y
+	lda keyActive, y
+	bne !listed+
+	lda #$01
+	sta keyActive, y
+	stx strikeVoice
+	ldx activeCount
+	tya
+	sta activeKeys, x
+	inc activeCount
+	ldx strikeVoice
+!listed:
 	rts
 
 //; Voice X moves to key Y: every other key it still holds lets go, fading
@@ -1315,23 +1432,28 @@ StrikeKey:
 LiftVoice:
 	stx liftVoice
 	sty liftKeep
-	ldy #NUM_KEYS - 1
+	ldy activeCount
+	beq !done+
 !loop:
-	lda keyLevel, y
+	dey
+	ldx activeKeys, y
+	lda keyLevel, x
 	beq !next+
-	lda keyVoice, y
+	lda keyVoice, x
 	cmp liftVoice
 	bne !next+
-	cpy liftKeep
+	cpx liftKeep
 	beq !next+
-	lda keyFall, y
+	lda keyFall, x
 	cmp #LIFT_FALL
 	bcs !next+
 	lda #LIFT_FALL
-	sta keyFall, y
+	sta keyFall, x
 !next:
-	dey
-	bpl !loop-
+	cpy #$00
+	bne !loop-
+!done:
+	ldx liftVoice
 	ldy liftKeep
 	rts
 
@@ -1352,8 +1474,13 @@ InitPiano:
 	sta keyFlash, x
 	lda #WHITE_UNLIT
 	sta prevShade, x
+	lda #$00
+	sta keyDirty, x
+	sta keyActive, x
 	dex
 	bpl !loop-
+	lda #$00
+	sta activeCount
 
 	ldx #MAX_VOICES - 1
 !loop:
@@ -1375,7 +1502,7 @@ InitPiano:
 	sta drumLevel, x
 	sta drumFlash, x
 	lda pianoBgColor
-	sta prevDrumColour, x
+	sta shownDrumColour, x
 	dex
 	bpl !loop-
 	lda #$00
@@ -1384,6 +1511,11 @@ InitPiano:
 	sta prevFilterWidth
 	lda pianoBgColor
 	sta prevFilterColour
+	sta shownFilterColour
+	lda #$00
+	sta dirtyCount
+	sta filterCharsDirty
+	sta pianoReady
 
 	lda pianoDrumSplit
 	bne !split1+
@@ -1527,7 +1659,8 @@ liftKeep:				.byte 0
 
 drumLevel:				.fill DRUM_ZONES, 0
 drumFlash:				.fill DRUM_ZONES, 0
-prevDrumColour:			.fill DRUM_ZONES, 0
+pendingDrumColour:		.fill DRUM_ZONES, 0	//; what UpdatePiano wants each zone to be
+shownDrumColour:		.fill DRUM_ZONES, 0	//; what ApplyPiano last wrote
 drumThreshold1:			.byte DEFAULT_DRUM_SPLIT_1
 drumThreshold2:			.byte DEFAULT_DRUM_SPLIT_2
 zoneFirst:				.byte 0
@@ -1539,7 +1672,9 @@ filterColourHold:		.byte 0
 filterFull:				.byte 0
 filterPart:				.byte 0
 filterChar:				.byte 0
-filterCol:				.byte 0
+filterChars:			.fill NUM_WHITE_KEYS, CHAR_FILTER_EMPTY	//; the filter row, waiting for ApplyPiano
+filterCharsDirty:		.byte 0
+shownFilterColour:		.byte 0
 filterVoice:			.byte 0
 prevFilterColour:		.byte 0
 
@@ -1548,9 +1683,23 @@ keyFall:				.fill NUM_KEYS, 0
 keyVoice:				.fill NUM_KEYS, 0
 prevShade:				.fill NUM_KEYS, WHITE_UNLIT
 keyFlash:				.fill NUM_KEYS, 0	//; frames of strike flash left
+keyDirty:				.fill NUM_KEYS, 0	//; on dirtyKeys, waiting for ApplyPiano
+keyActive:				.fill NUM_KEYS, 0	//; on activeKeys
+activeKeys:				.fill NUM_KEYS, 0	//; keys lit or fading back: the only ones worked on
+activeCount:			.byte 0
+renderIndex:			.byte 0
+strikeVoice:			.byte 0
+dirtyKeys:				.fill NUM_WHITE_KEYS, 0
+dirtyCount:				.byte 0
+applyShade:				.byte 0
+pianoReady:				.byte 0		//; UpdatePiano finished; ApplyPiano may take it
 keyFamily:				.fill NUM_KEYS, 0	//; colour family (x4) of the note that lit it
 
-keySpriteX:				.fill NUM_KEY_SPRITES, 0
+pendingSpriteX:			.fill NUM_KEY_SPRITES, 0	//; UpdatePiano's black keys...
+pendingSpriteColour:	.fill NUM_KEY_SPRITES, 0
+pendingSpriteMSB:		.byte 0
+pendingSpriteEnable:	.byte 0
+keySpriteX:				.fill NUM_KEY_SPRITES, 0	//; ...and the ones on screen
 keySpriteColour:		.fill NUM_KEY_SPRITES, 0
 keySpriteMSB:			.byte 0
 keySpriteEnable:		.byte 0

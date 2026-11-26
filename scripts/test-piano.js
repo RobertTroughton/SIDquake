@@ -123,7 +123,20 @@ async function runVariant(m, name, defines, stride) {
         wr(o + 0, freq & 0xFF); wr(o + 1, freq >> 8);
         wr(o + 4, ctrl); wr(o + 5, ad); wr(o + 6, sr);
     };
-    const frame = () => { call('AnalyzeSIDRegisters'); call('UpdatePiano'); };
+    // One frame as the player runs it: the analysis and UpdatePiano after the
+    // music, then the split IRQ's ApplyPiano once UpdatePiano has finished.
+    const frame = () => {
+        call('AnalyzeSIDRegisters'); call('UpdatePiano');
+        if (rd(L('pianoReady'))) call('ApplyPiano');
+    };
+    // The screen the VIC draws the keyboard from: colour RAM rows 17-24 and
+    // screen rows 17-24 (gfxBank 1, so the screen is at $7000).
+    const keyboardSnapshot = () => {
+        const out = [];
+        for (let a = 0xD800 + DRUM_ROW * 40; a < 0xD800 + (FILTER_ROW + 1) * 40; a++) out.push(rd(a));
+        for (let a = 0x7000 + DRUM_ROW * 40; a < 0x7000 + (FILTER_ROW + 1) * 40; a++) out.push(rd(a));
+        return out.join();
+    };
     const level = (k) => rd(L('keyLevel') + k);
     const colourAt = (k, row) => rd(0xD800 + row * 40 + column(k));
     for (let v = 0; v < 6; v++) setVoice(v, {});
@@ -361,6 +374,41 @@ async function runVariant(m, name, defines, stride) {
     for (let i = 0; i < 60; i++) frame();
     check(rd(L('filterWidth')) === 0 && fchar(20) === EMPTY && fchar(19) === EMPTY,
         `${name}: filter bar still ${rd(L('filterWidth'))}px with nothing routed through the filter`);
+
+    // Tearing: UpdatePiano runs after the frame's music and can still be
+    // running while the VIC draws the keyboard, so it must not write to the
+    // screen at all. It only works out what changes; ApplyPiano writes it,
+    // from the split IRQ in the gap above the keyboard, and only once
+    // UpdatePiano has finished. Busy notes, a drum and a moving filter bar:
+    quiet();
+    wr(mirror + 0x16, 0x40); wr(mirror + 0x17, 0x01);
+    let untouched = true, applied = false, spritesHeld = true;
+    for (let i = 0; i < 30; i++) {
+        setVoice(0, { freq: noteFreq(C4 + (i % 7)), ctrl: (i % 3) ? 0x41 : 0x40, sr: 0xF8 });
+        setVoice(1, { freq: noteFreq(A4 + 2 * (i % 4)), ctrl: 0x11, sr: 0xA4 });
+        setVoice(2, i % 6 === 0 ? { freq: 0x3000, ctrl: 0x81 } : { freq: noteFreq(Cs3 + (i % 5)), ctrl: 0x21, sr: 0xF8 });
+        wr(mirror + 0x16, (i * 37) & 0xFF);
+        const before = keyboardSnapshot(), sprites = rd(L('keySpriteEnable'));
+        call('AnalyzeSIDRegisters'); call('UpdatePiano');
+        if (keyboardSnapshot() !== before) untouched = false;
+        if (rd(L('keySpriteEnable')) !== sprites) spritesHeld = false;
+        call('ApplyPiano');
+        if (keyboardSnapshot() !== before) applied = true;
+    }
+    check(untouched, `${name}: UpdatePiano wrote to the keyboard's colour RAM or screen`);
+    check(spritesHeld, `${name}: UpdatePiano changed the sprites the split IRQ shows`);
+    check(applied, `${name}: ApplyPiano never changed the keyboard`);
+    // ApplyPiano with UpdatePiano unfinished (pianoReady clear) is not called
+    // by the split IRQ; the dirty list it would apply is kept for next time.
+    setVoice(0, { freq: noteFreq(C4), ctrl: 0x41, sr: 0xF8 });
+    call('AnalyzeSIDRegisters'); call('UpdatePiano');
+    const pending = rd(L('dirtyCount'));
+    wr(L('pianoReady'), 0);
+    call('AnalyzeSIDRegisters'); call('UpdatePiano');
+    check(rd(L('dirtyCount')) >= pending, `${name}: a skipped apply lost changes (${pending} then ${rd(L('dirtyCount'))})`);
+    call('ApplyPiano');
+    check(rd(L('dirtyCount')) === 0, `${name}: ApplyPiano left ${rd(L('dirtyCount'))} keys unwritten`);
+    wr(mirror + 0x17, 0x00);
 
     // Silence everything: no sprite stays on.
     quiet();
