@@ -1624,6 +1624,11 @@ async function loadSid(page, file) {
             // The measuring shows beside Generate, where the Studio's user is
             // looking (the page's corner chip sits under the Studio): busy while
             // it runs, then a pulse and the result, which fades after a moment.
+            // A one-tune file: a file of several is not measured until it is
+            // locked to one, and Crystalline holds several.
+            await loadSid(stale, 'Flex-Lundia.sid');
+            await stale.waitForFunction(() => window.uiController.currentFileName === 'Flex-Lundia.sid'
+                && !!window.uiController.selectedVisualizer, null, { timeout: 60000 });
             const meter = await stale.evaluate(async () => {
                 const ui = window.uiController;
                 const sleep = (ms) => new Promise(r => setTimeout(r, ms));
@@ -1655,6 +1660,7 @@ async function loadSid(page, file) {
                     for (let i = 0; i < 100 && !ui.analysisRunning; i++) await sleep(50);
                     await sleep(100);
                     out.busy = read();
+                    if (!release) { out.busy.error = 'no scan started'; return out; }
                     release();
                     for (let i = 0; i < 100 && ui.analysisRunning; i++) await sleep(50);
                     await sleep(100);
