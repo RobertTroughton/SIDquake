@@ -48,8 +48,9 @@ class UIController {
         // A file holding several tunes, exported as one of them: the C64's tune
         // keys are taken away and in return the export gets a song length, the
         // forced loop and the spectrometer, all of which describe one tune.
-        // Per-SID, so it never carries into the next file (see processFile).
-        this._singleSongLock = false;
+        // On by default, since most exports want the length; per-SID, so it
+        // never carries into the next file (see processFile).
+        this._singleSongLock = true;
         // Whether the loaded tune is invisible to the live bar methods, and which
         // tune that answer belongs to (an _analysisToken). See checkVuVisibility.
         this._vuBlind = null;
@@ -1076,7 +1077,7 @@ class UIController {
             this._scanWindowOverride = 0;
             // Whether to export one tune out of several is about the file in
             // hand, not the next one.
-            this._singleSongLock = false;
+            this._singleSongLock = true;
             // New SID: the forced-loop decision belongs to the previous tune.
             this._loopChoiceTouched = false;
             this._loopChoiceAsked = false;
@@ -1133,18 +1134,18 @@ class UIController {
                 ? this._chosenSubtune : this.sidHeader.startSong;
             mount.innerHTML = `
             <div id="songSelectorContainer" class="export-option song-selector-container">
-                <label for="songSelector">Which tune to use:</label>
+                <label for="songSelector">Tune</label>
                 <select id="songSelector">
                     ${Array.from({ length: Math.min(songs, 256) }, (_, i) => i + 1)
                     .map(num => `<option value="${num}" ${num === startOn ? 'selected' : ''}>
-                        Tune ${num} of ${songs}${num === this.sidHeader.startSong ? ' (the usual one)' : ''}
+                        ${num} of ${songs}${num === this.sidHeader.startSong ? ' (default)' : ''}
                     </option>`).join('')}
                 </select>
+                <label class="single-song-lock" for="singleSongLock">
+                    <input type="checkbox" id="singleSongLock"${this._singleSongLock ? ' checked' : ''}>
+                    <span>Only this tune</span>
+                </label>
             </div>
-            <label class="single-song-lock" for="singleSongLock">
-                <input type="checkbox" id="singleSongLock"${this._singleSongLock ? ' checked' : ''}>
-                <span>Export just this tune</span>
-            </label>
             <p class="option-hint" id="singleSongLockNote"></p>`;
             this._syncSingleSongLock();
             const lock = document.getElementById('singleSongLock');
@@ -1173,12 +1174,8 @@ class UIController {
         if (noteMount && this.sidHeader && this.sidHeader.songs > 1) {
             noteMount.innerHTML = `
             <div id="fftMultiSongNote" style="display:none;margin-top:8px;padding:8px 10px;border:1px solid rgba(255,183,77,.4);border-radius:6px;background:rgba(255,183,77,.08);font-size:12px;line-height:1.4">
-                <b style="color:#ffb74d">This file holds several tunes.</b> The best-looking bars are worked
-                out in advance, and that can only be done for one of them. Tick
-                <b>Export just this tune</b> on the Song tab and the spectrometer, the play-time
-                clock and the song length all apply to the tune chosen there — at the cost of the
-                C64's tune keys, which stop working.
-                To keep every tune, pick one of the live methods on the Bars tab instead.
+                The Spectrometer needs a single tune: tick <b>Only this tune</b> on the Song tab,
+                or pick a live method.
             </div>`;
         }
         this.updateMultiSongNote();
@@ -1235,12 +1232,10 @@ class UIController {
     _syncSingleSongLock() {
         const note = document.getElementById('singleSongLockNote');
         if (!note) return;
+        const songs = this.sidHeader?.songs || 0;
         note.textContent = this._singleSongLock
-            ? 'The program plays only the tune above. Its tune keys do nothing, and the '
-              + 'play-time clock, the song length and the Spectrometer all describe that tune.'
-            : 'Every tune stays in the program, switchable on the C64 — so there is no one '
-              + 'song length to show, and the Spectrometer (which is worked out in advance '
-              + 'for a single tune) is unavailable.';
+            ? `Untick to keep all ${songs} tunes, switchable on the C64.`
+            : `All ${songs} tunes kept, so no song length or Spectrometer.`;
     }
 
     // The chosen tune, or whether there is one at all, decides what a measurement
@@ -1519,9 +1514,9 @@ class UIController {
         if (requiredSid > maxSid) return { ok: false, reason: maxSid === 1 ? 'single-SID only' : `needs ≤${maxSid} SID chips` };
         // The spectrometer's bars are worked out in advance from one tune, so a
         // file still being exported as several has nothing it can describe. The
-        // Song tab's "Export just this tune" is the way in.
+        // Song tab's "Only this tune" is the way in.
         if (variant?.dataSource === 'fft' && this.multiSongExport()) {
-            return { ok: false, reason: 'several tunes in this file — tick “Export just this tune” on the Song tab' };
+            return { ok: false, reason: 'all tunes kept — tick “Only this tune” on the Song tab' };
         }
         return { ok: true };
     }
@@ -4238,15 +4233,14 @@ class UIController {
 
         // The FFT stream is baked from one tune, so a file still being exported as
         // several of them has nothing the spectrometer can describe. The way out is
-        // the Song tab's "Export just this tune", which is also what buys the clock
+        // the Song tab's "Only this tune", which is also what buys the clock
         // and the song length - so send the user there rather than refusing flatly.
         const multiSong = this.multiSongExport();
         const isFFT = this.selectedVisualizer.dataSource === 'fft';
         const needsTuneAnalysis = this.visualizerNeedsTuneAnalysis();
         if (multiSong && isFFT) {
-            this.showExportStatus('This file holds several tunes, and the Spectrometer is worked out '
-                + 'for one. Tick "Export just this tune" on the Song tab, or pick a live method '
-                + 'on the Bars tab.', 'error');
+            this.showExportStatus('The Spectrometer needs a single tune: tick "Only this tune" '
+                + 'on the Song tab, or pick a live method.', 'error');
             const lock = document.getElementById('singleSongLock');
             // Take the user to the thing they have to answer, and put focus on it -
             // a highlight on a tab they cannot see says nothing.
@@ -4792,10 +4786,8 @@ class UIController {
             text = 'Load a SID first.';
             enabled = false;
         } else if (multiSong) {
-            text = 'Several tunes in this file — the C64 shows a running clock with no total ' +
-                'length, because there is no one tune to measure, and forced looping applies ' +
-                'to exports of a single tune. Tick "Export just this tune" above for the ' +
-                'length, the forced loop and the Spectrometer.';
+            text = 'All tunes kept, so there is no single length or loop. Tick "Only this tune" ' +
+                'above to get them.';
             enabled = false;
         } else if (scanning) {
             text = 'Measuring the song length — playing the tune through to find where it ' +

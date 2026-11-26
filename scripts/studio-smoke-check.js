@@ -1565,8 +1565,7 @@ async function loadSid(page, file) {
             // The measuring shows beside Generate, where the Studio's user is
             // looking (the page's corner chip sits under the Studio): busy while
             // it runs, then a pulse and the result, which fades after a moment.
-            // A one-tune file: a file of several is not measured until it is
-            // locked to one, and Crystalline holds several.
+            // A one-tune file, so nothing here hangs on which tune is measured.
             await loadSid(stale, 'Flex-Lundia.sid');
             await stale.waitForFunction(() => window.uiController.currentFileName === 'Flex-Lundia.sid'
                 && !!window.uiController.selectedVisualizer, null, { timeout: 60000 });
@@ -1672,9 +1671,9 @@ async function loadSid(page, file) {
         }
 
         // --- a file of several tunes, exported as one of them ------------------
-        // Everything that can only describe one tune - the song length, the forced
-        // loop, the Spectrometer - is off while the export still holds several,
-        // and comes back when the Song tab locks it to the tune chosen there.
+        // The export starts locked to one tune, so the song length, the forced
+        // loop and the Spectrometer are on offer; unlocking it on the Song tab to
+        // keep every tune turns all three off, and locking it again brings them back.
         const many = await browser.newPage({ viewport: { width: 1400, height: 900 } });
         try {
             const errs = [];
@@ -1699,28 +1698,37 @@ async function loadSid(page, file) {
                 });
                 const sel = document.getElementById('songSelector');
                 const lock = document.getElementById('singleSongLock');
+                const settle = () => new Promise(r => setTimeout(r, 300));
+                const lockedByDefault = lock.checked === true;
+                const initial = read();
+                lock.checked = false;
+                lock.dispatchEvent(new Event('change', { bubbles: true }));
+                await settle();
                 const before = read();
                 lock.checked = true;
                 lock.dispatchEvent(new Event('change', { bubbles: true }));
-                await new Promise(r => setTimeout(r, 300));
+                await settle();
                 return {
                     options: sel ? sel.options.length : 0,
                     chosen: sel ? sel.value : '',
-                    lockedByDefault: lock.checked === false,
+                    lockedByDefault, initial,
                     before, after: read(),
                 };
             });
             check('A file of several tunes offers which one to use',
                 state.options === 5 && state.chosen === '5', JSON.stringify(state.options));
-            check('It is not locked to one of them by default', state.before.several === true);
-            check('So the song length is off, and says why',
-                !state.before.lengthRow && /several tunes|multi/i.test(state.before.status),
+            check('It is locked to one of them by default',
+                state.lockedByDefault && state.initial.several === false && state.initial.lengthRow,
+                JSON.stringify(state.initial.status.slice(0, 70)));
+            check('Keeping every tune turns the song length off, and says why',
+                state.before.several === true && !state.before.lengthRow
+                && /all tunes kept/i.test(state.before.status),
                 state.before.status.slice(0, 70));
             check('And the Spectrometer says what it needs rather than failing at export',
                 state.before.spectrometer.ok === false
-                && /Export just this tune/i.test(state.before.spectrometer.reason || ''),
+                && /Only this tune/i.test(state.before.spectrometer.reason || ''),
                 state.before.spectrometer.reason);
-            check('Locking it to one tune brings the length back',
+            check('Locking it to one tune again brings the length back',
                 state.after.several === false && state.after.lengthRow,
                 JSON.stringify(state.after.status.slice(0, 70)));
             check('...and puts the Spectrometer back on offer',

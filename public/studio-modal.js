@@ -585,11 +585,12 @@ class StudioModal {
             'ok', 'inc', 'visualizer'));
 
         const songSel = document.getElementById('songSelector');
-        let tune = songSel ? `tune ${songSel.value} of ${header.songs}` :
-            (header.songs > 1 ? `tune ${header.startSong} of ${header.songs}` : null);
+        const pick = songSel ? songSel.value : header.startSong;
         // A locked export carries that one tune and nothing else, which changes
         // what the program does on the C64 - so the manifest says so.
-        if (tune && !this.ui.multiSongExport()) tune += ', on its own';
+        const tune = header.songs <= 1 ? null
+            : this.ui.multiSongExport() ? `all ${header.songs} tunes, starts on ${pick}`
+            : `tune ${pick} of ${header.songs} only`;
         rows.push(this.manifestRow('Music',
             `${header.name || 'Unknown'} — ${header.author || 'Unknown'}${tune ? ' (' + tune + ')' : ''}`,
             'ok', 'inc', 'song'));
@@ -605,7 +606,11 @@ class StudioModal {
         const lmmss = s => ui._mmss(s);
         // Song length: what the C64 will actually show, since it can be measured,
         // typed, still being measured, or deliberately left off.
-        if (header.songs <= 1) {
+        const oneTune = !ui.multiSongExport();
+        if (!oneTune && needsTuneAnalysis) {
+            rows.push(this.manifestRow('Song length', `none · all ${header.songs} tunes kept`, 'off', 'skip', 'song'));
+        }
+        if (oneTune) {
             const manual = ui.manualSongLengthSeconds ? ui.manualSongLengthSeconds() : 0;
             if (!needsTuneAnalysis) {
                 rows.push(this.manifestRow('Song length', 'not used by this player', 'off', 'skip', 'song'));
@@ -634,7 +639,7 @@ class StudioModal {
             }
         }
 
-        if (header.songs <= 1 && needsTuneAnalysis) {
+        if (oneTune && needsTuneAnalysis) {
             if (la && la.looped) {
                 rows.push(this.manifestRow('Song loop', `loops naturally at ${lmmss(la.storedSeconds)}`, 'ok', 'inc', 'song'));
             } else if (la && la.fadedOut) {
@@ -691,7 +696,7 @@ class StudioModal {
         if (viz.dataSource === 'fft' && config?.spectrometerBake) {
             if (ui.multiSongExport()) {
                 rows.push(this.manifestRow('FFT bake',
-                    'this file holds several tunes: tick “Export just this tune” on the Song tab',
+                    'needs one tune: tick “Only this tune” on the Song tab',
                     'action needed', 'warn', 'song'));
             } else {
                 const a = ui.tuneAnalysis;

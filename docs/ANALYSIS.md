@@ -129,8 +129,9 @@ Driven from `ui.js`; the results land on the Studio's Song tab.
 - Files holding several tunes (`multiSongExport`): everything that can only
   describe one tune — the song length, the forced loop, the baked spectrometer
   — is off while the export still holds all of them, and the scan does not run
-  at all. The Song tab's "Export just this tune" locks the export to the tune
-  chosen there: the data block reports one song, which takes the C64's tune
+  at all. The Song tab's "Only this tune" (ticked by default for every new
+  file) locks the export to the tune chosen there; unticking it keeps every
+  tune. Locked, the data block reports one song, which takes the C64's tune
   keys out (`INC/keyboard.asm` reads `NumSongs`), and the measurement,
   the bake and the length all describe that tune. `exportSubtuneIndex()` is
   the one place that says which tune that is

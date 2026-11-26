@@ -703,7 +703,11 @@ details[open].panel > summary h2::after {
 
 /* Song Selector */
 .song-selector-container {
-    margin-bottom: var(--space-md);
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px 16px;
+    margin-bottom: var(--space-sm);
     padding: var(--space-md);
     background: var(--bg-elevated);
     border-radius: var(--radius-sm);
@@ -726,7 +730,6 @@ details[open].panel > summary h2::after {
     border: 1px solid var(--border);
     border-radius: var(--radius-sm);
     color: var(--text-primary);
-    min-width: 200px;
     cursor: pointer;
     transition: all var(--transition-fast);
 }
@@ -740,14 +743,21 @@ details[open].panel > summary h2::after {
     box-shadow: 0 0 0 2px var(--accent-dim);
 }
 
-/* "Export just this tune": what turns a file of several tunes into a one-tune
-   program, and with it the song length, the forced loop and the Spectrometer. */
-.single-song-lock {
+/* "Only this tune": what turns a file of several tunes into a one-tune
+   program, and with it the song length, the forced loop and the Spectrometer.
+   Sits in the selector row, so it undoes that row's label styling. */
+.song-selector-container .single-song-lock {
     display: flex;
     align-items: center;
     gap: 8px;
+    margin-right: 0;
     cursor: pointer;
     color: var(--text-primary);
+    font-family: inherit;
+    font-weight: normal;
+    font-size: inherit;
+    text-transform: none;
+    letter-spacing: normal;
 }
 
 .single-song-lock input[aria-invalid="true"] {
