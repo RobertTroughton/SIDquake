@@ -25,8 +25,8 @@ node_modules/
 # (npm run extract-hvsc). Keep this folder locally for offline dev + index builds.
 /public/HVSC/
 
-# Per-composer SEO pages + sitemap: generated from hvsc-index.json at build
-# (npm run build-seo-pages). Derived output, not committed.
+# Output of the old per-composer page build, kept ignored so a stale local
+# copy can't slip into a commit.
 /public/music/
 /public/sitemap.xml
 

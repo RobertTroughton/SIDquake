@@ -1579,8 +1579,9 @@ window.hvscBrowser = (function () {
             if (currentSelection && !currentSelection.isDirectory) updateInfoPanel(currentSelection);
         },
         cancel: cancel,
-        // Share the (large) parsed index with other modules (hvsc-random.js)
-        // so they don't fetch and parse a second multi-MB copy.
+        // Share the (large) parsed index with other modules so they don't fetch
+        // and parse a second multi-MB copy. No caller since hvsc-random.js was
+        // removed.
         getIndexPromise: () => (searchIndex ? Promise.resolve(searchIndex) : searchIndexPromise)
     };
 })();

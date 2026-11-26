@@ -184,7 +184,7 @@ touching the 6510 decoder or a bus adapter.
 `public/fonts/sidquake-icons.woff2`, `public/prg/*-code.bin`,
 `*.codereloc.json`, `*.reloc.json`, `*.gfx.json`, the fixed-bank `*.bin`,
 `public/*.wasm` and their emscripten JS glue (`sidquake.js`, `sidplayfp.js`,
-`exomizer.js`), `public/hvsc-random-pool.json` and `SIDPlayers/INC/FreqTable*.bin`.
+`exomizer.js`) and `SIDPlayers/INC/FreqTable*.bin`.
 Regenerate rather than patch.
 
 **Gotchas that cross areas**

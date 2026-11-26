@@ -126,7 +126,6 @@ class UIController {
             uploadSection: document.getElementById('uploadSection'),
             uploadBtn: document.getElementById('uploadBtn'),
             hvscBtn: document.getElementById('hvscBtn'),
-            randomBtn: document.getElementById('randomBtn'),
             hvscSelected: document.getElementById('hvscSelected'),
             selectedFile: document.getElementById('selectedFile'),
 
@@ -186,10 +185,6 @@ class UIController {
 
         this.elements.hvscBtn.addEventListener('click', () => {
             this.openHVSCBrowser();
-        });
-
-        this.elements.randomBtn.addEventListener('click', () => {
-            this.selectRandomSID();
         });
 
         this.elements.uploadSection.addEventListener('click', () => {
@@ -399,47 +394,6 @@ class UIController {
         } else if (!e.shiftKey && active === last) {
             e.preventDefault();
             first.focus();
-        }
-    }
-
-    async selectRandomSID() {
-        // Cancellable: this fetches a pool file and then a tune, and a phone on a
-        // slow connection should not be stuck behind an overlay with no way out.
-        const randomAc = new AbortController();
-        this.showBusy('Finding Random SID', 'Exploring HVSC collection...', () => randomAc.abort());
-
-        try {
-            await window.loadScript('hvsc-random.js');
-
-            const result = await window.hvscRandom.selectRandomSID(5, (message) => {
-                this.updateBusy('Finding Random SID', message);
-            });
-
-            this.hideBusy();
-
-            this.elements.hvscSelected.style.display = 'block';
-            this.elements.selectedFile.textContent = result.name;
-
-            this.showModal('Downloading SID from HVSC...', true);
-
-            const response = await fetch(result.url, { signal: randomAc.signal });
-
-            if (!response.ok) {
-                throw new Error('Failed to download SID file');
-            }
-
-            const blob = await response.blob();
-            const file = new File([blob], result.name, { type: 'application/octet-stream' });
-
-            await this.processFile(file, { autoplay: true });
-
-        } catch (error) {
-            this.hideBusy();
-            // A user cancel is not a failure - say nothing and leave them where
-            // they were.
-            if (error && error.name === 'AbortError') return;
-            console.error('Error selecting random SID:', error);
-            this.showModal('Failed to select random SID: ' + error.message, false);
         }
     }
 
@@ -972,9 +926,10 @@ class UIController {
         try { this.downloadFile(data, filename); } finally { this._fileSink = sink; }
     }
 
-    // opts.autoplay: the tune arrived unheard and unasked-for (Random SID), so
-    // start it playing rather than making the user hunt for the play button
-    // under whatever opened on top.
+    // opts.autoplay: the tune arrived unheard and unasked-for, so start it
+    // playing rather than making the user hunt for the play button under
+    // whatever opened on top. Dead for now: no caller passes it since the
+    // Random SID button was removed.
     async processFile(file, opts = {}) {
         if (!file.name.toLowerCase().endsWith('.sid')) {
             this.showModal('Please select a valid SID file', false);

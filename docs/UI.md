@@ -5,7 +5,7 @@ The page-level controllers. Layout rules for small screens and touch are in
 
 **`ui.js`** - Main application controller
 - `UIController` class orchestrating the entire UI
-- SID file loading (drag-drop, file picker, HVSC, random)
+- SID file loading (drag-drop, file picker, HVSC)
   (`processFile`): the file is parsed first, and only an accepted one switches
   the page, player and scan over to it; a rejected file leaves the previous
   tune loaded

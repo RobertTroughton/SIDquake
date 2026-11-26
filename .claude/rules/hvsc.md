@@ -4,9 +4,7 @@ paths:
   - "netlify/**"
   - "tools/**"
   - "scripts/extract-hvsc.js"
-  - "scripts/build-seo-pages.js"
   - "scripts/build-share-meta.js"
-  - "scripts/build-random-pool.js"
   - "scripts/build-index-split.js"
 ---
 
@@ -19,5 +17,5 @@ Read `docs/HVSC.md`, and `docs/EMBED.md` for the widget's options.
   three together.
 - Every embed option must be documented in `docs/EMBED.md` and reach the widget
   (`scripts/embed-options-check.js`).
-- `public/HVSC/`, `public/music/`, `public/share-meta/`, the sitemap and the
+- `public/HVSC/`, `public/share-meta/` and the
   lite index/STIL split are derived and gitignored; don't commit them.

@@ -203,7 +203,7 @@ class SIDPlayer {
     }
 
     // opts.autoplay: start as soon as the tune is ready. Only pass it from a
-    // path the user actually clicked (Random SID, an HVSC pick) - the browser's
+    // path the user actually clicked (an HVSC pick) - the browser's
     // autoplay policy needs that gesture, and starting sound unasked otherwise
     // is rude.
     // opts.subtune: which tune of a multi-tune file to start on, 1-based, when

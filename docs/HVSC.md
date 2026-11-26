@@ -30,10 +30,6 @@ version is whatever we ship.
   they are set, so nothing an embedder passes reaches the page as raw CSS
 - `scripts/embed-options-check.js` drives every option in a real browser
 
-**`hvsc-random.js`** - Random SID picker
-- `window.hvscRandom`: Picks a random tune from the index
-- Optional `hvsc-random.json` (path prefixes) biases the pick to curated areas
-
 **Data & tooling (not served / built ahead of time):**
 - `hvsc-data/*.7z` - committed HVSC archive (the raw files aren't committed)
 - `scripts/extract-hvsc.js` - extracts the archive into `public/HVSC/`
@@ -50,8 +46,7 @@ version is whatever we ship.
   shards built by `scripts/build-share-meta.js`.
 
 **Site build (`npm run build`):** extract the archive, then generate the
-per-composer SEO pages + sitemap, the share-meta shards, the random pool
-(`hvsc-random-pool.json`) and the index/STIL split
+share-meta shards and the index/STIL split
 (`hvsc-index-lite.json`, `hvsc-stil.json`). All of it is derived from the
 committed archive and index.
 

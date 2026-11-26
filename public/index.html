@@ -141,8 +141,8 @@
                 <!-- Drag & Drop Area -->
                 <div class="upload-section" id="uploadSection">
                     <div class="upload-icon"><i class="fas fa-file-upload"></i></div>
-                    <div class="upload-text">Drop your SID tune here</div>
-                    <div class="upload-subtext">or use the buttons below</div>
+                    <div class="upload-text">Drop a SID file here</div>
+                    <div class="upload-subtext">or pick one of 61,000 C64 tunes from the HVSC</div>
                 </div>
 
                 <!-- Upload Buttons -->
@@ -151,13 +151,9 @@
                         <i class="fas fa-folder-open"></i>
                         <span>Upload SID</span>
                     </button>
-                    <button class="upload-btn" id="hvscBtn">
+                    <button class="upload-btn hvsc-btn" id="hvscBtn">
                         <i class="fas fa-music"></i>
-                        <span>Browse 61,000 C64 tunes</span>
-                    </button>
-                    <button class="upload-btn random-btn" id="randomBtn">
-                        <i class="fas fa-random"></i>
-                        <span>Random SID</span>
+                        <span>Browse the HVSC</span>
                     </button>
                 </div>
 
@@ -188,11 +184,6 @@
                 </div>
 
                 <!-- HVSC Selected File Display (hidden by default) -->
-                <p class="upload-browse-more">
-                    Just here to listen? <a href="/music/">Browse SID music by composer</a>,
-                    or press Random SID above.
-                </p>
-
                 <div class="hvsc-selected" id="hvscSelected" style="display: none;">
                     <span class="selected-label">Selected:</span>
                     <span class="selected-file" id="selectedFile"></span>
@@ -1600,7 +1591,6 @@
                 });
             }
             hold('hvscBtn', function (ui) { ui.openHVSCBrowser(); });
-            hold('randomBtn', function (ui) { ui.selectRandomSID(); });
 
             var tries = 0;
             (function wait() {

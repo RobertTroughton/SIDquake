@@ -420,13 +420,13 @@ body.file-dragging::after {
     filter: brightness(0.9);
 }
 
-.upload-btn.random-btn {
+.upload-btn.hvsc-btn {
     border-color: var(--accent-secondary);
     color: var(--accent-secondary);
     background: transparent;
 }
 
-.upload-btn.random-btn:hover {
+.upload-btn.hvsc-btn:hover {
     background: var(--accent-secondary);
     color: var(--bg-primary);
     border-color: var(--accent-secondary);
@@ -1596,19 +1596,6 @@ details[open].panel > summary h2::after {
     height: 1em;
     vertical-align: -0.125em;
     display: inline-block;
-}
-
-/* The composer archive at /music/ is the site's whole listener-facing surface,
-   and its only link from here used to be fifteen words at the end of a credits
-   paragraph on the About tab. */
-.upload-browse-more {
-    margin-top: var(--space-md);
-    color: var(--text-muted);
-    font-size: 0.85em;
-}
-
-.upload-browse-more a {
-    color: var(--text-accent);
 }
 
 /* An off switch for the drifting notes, next to the other footer links. */
