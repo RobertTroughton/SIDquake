@@ -1592,6 +1592,11 @@ async function loadSid(page, file) {
                 // checked here is the indicator, driven by the stub below.
                 ui.cancelAnalysis();
                 for (let i = 0; i < 600 && ui.analysisRunning; i++) await sleep(100);
+                // The footer summary's text sets where the nav buttons sit, so the
+                // first snapshot waits for it; otherwise its arrival reads as the
+                // indicator moving them.
+                const sum = document.getElementById('studioFootSum');
+                for (let i = 0; i < 100 && sum && !sum.textContent.trim(); i++) await sleep(50);
                 const fade = {
                     looped: false, fadedOut: true, truncated: false, loopStart: 1500,
                     numKeyframes: 1500, keyframeHz: 25, frameHz: 50, isNtsc: 0,
