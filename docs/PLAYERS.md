@@ -63,29 +63,39 @@ pitches: tunes pitch their noise anywhere from `$05` to `$FF`.
   empty waveform and a zero frequency are silent. It also reads SID 1's filter:
   the cutoff high byte sets the filter bar's length when a voice is routed
   through the filter, coloured by the lowest such voice.
-- `UpdatePiano` decides what is a key press. Only some pitch changes are:
-  - A new note: a gate rising, a note after a silent frame (a hard restart),
-    or a different note with the gate off. The last two are for multispeed
-    tunes whose gate opens and closes between two of the player's once-a-frame
-    samples (Moonlight Sonata by Thanos B. gates for one of its two calls a
-    frame). The voice's other keys let go, fading over 10 frames: one voice is
-    one finger.
-  - A chord tone: the pitch jumps three semitones or more under a held gate
-    (an arpeggio). It lights beside the others, which stay lit while the gate
-    is held; a revisited key is refreshed without flashing again.
-  - A slide or vibrato: smaller steps under a held gate. Not shown; the key
-    stays on the note the slide started from. If the pitch then rests on one
-    note for three frames, that is a legato note and strikes.
-  - A drum: noise. It lights its zone of the drum bar (in the voice's colours,
-    flash then a 12-frame fade), and the pitched body that follows under the
-    same gate (a kick's falling pulse) is not a note.
+- `UpdatePiano` decides what is a key press. Each voice is idle, watching the
+  start of a note, playing a note, or playing a drum.
+  - A start: a gate rising, sounding again after a silent sample (a hard
+    restart), noise starting, or during a note a different pitch with the gate
+    off. The last is for multispeed tunes whose gate opens and closes between
+    two of the player's once-a-frame samples (Moonlight Sonata by Thanos B.
+    gates for one of its two calls a frame).
+  - The start is watched before anything lights, because a note's first
+    samples are often not its note: Bitgang (Magnar Harestad) opens every note
+    with a frame of noise, GP All Stars' lead with noise and an octave drop,
+    and GP All Stars' kicks are a pitch falling fast with no noise at all.
+    Noise for a second sample, or noise then silence, is a snare or hi-hat;
+    a pitch falling two semitones or more twice running is a kick or tom.
+    Either lights the drum bar (its zone from the noise pitch, a kick in the
+    low zone), and the pitch after it is ignored until the next start. A pitch
+    that holds for a sample is a note, and so is anything still undecided
+    after three samples with no noise. A plain note lights one frame after it
+    starts, which in the realtime build (its analysis runs a play call ahead
+    of the sound) lands it in step. A new note's voice lets go of its other
+    keys, fading over 10 frames: one voice is one finger.
+  - During a note, a jump of three semitones or more under a held gate is a
+    chord tone (an arpeggio). It lights beside the others, which stay lit
+    while the gate is held; a revisited key is refreshed without flashing
+    again. Smaller steps are a slide or vibrato: not shown, the key stays on
+    the note being shown (and keeps its sustain), unless the pitch then rests
+    on one note for three samples, a legato note.
 - Per key there is a level: a strike sets it full; while the gate is held,
   sustain sets a floor and the decay nibble the fall, after it the release
-  nibble (both held to 8..40 frames). The level picks one of four shades from
-  the voice's colour family. A strike first shows the family's flash colour
-  for two frames: the strong colour on a white key (which then settles to the
-  lighter shade) and the light colour on a black key (which then settles to
-  the stronger one; white would merge with the white keys beside it).
+  nibble (both held to 8..40 frames). On a white key the level picks one of
+  four shades from the voice's colour family, after two frames of the
+  family's strong colour as a strike flash. Black keys are lit in grey
+  whichever voice plays them: a light grey flash, then mid grey, dark grey as
+  they fade. The drum and filter bars use the voice's colours.
 - White keys are lit in colour RAM. The black keys are cut-outs in the white-key
   characters, so a lit black key is a 6px Y-expanded sprite (up to eight at
   once); the split IRQ turns the curtain sprites into these once the curtain

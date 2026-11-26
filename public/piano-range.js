@@ -34,45 +34,76 @@ export function freqToNote(freq) {
     return Math.max(0, Math.min(95, n));
 }
 
-// Strike counts per note (0..95) from a sequence of per-sample voice states
-// ({ freq, ctrl } per voice), following the player's rules. Test-bit,
-// no-waveform and zero-frequency voices are silent. Noise is a drum: it counts
-// a drum hit (by frequency high byte) when it starts or its gate reopens, and
-// the pitched body that follows under the same gate is not a note. A tonal
-// strike is a gate rising, a note after silence, a new note with the gate off,
-// or a jump of three semitones or more under a held gate (a chord tone);
-// smaller steps under a held gate are slides and count nothing.
+// Strike counts per note (0..95) and noise-drum hits (by frequency high byte)
+// from a sequence of per-sample voice states ({ freq, ctrl } per voice),
+// following the player's rules (SIDPlayers/Piano/Piano.asm UpdatePiano).
+// Test-bit, no-waveform and zero-frequency voices are silent. A note or drum
+// starts on a gate rising, on sounding again after silence, on noise starting,
+// or, during a note, on a different pitch with the gate off. Its first samples
+// decide what it is: noise for two samples, or noise and then silence, is a
+// noise drum; a pitch falling two semitones or more twice running is a kick
+// (no noise pitch to count); a pitch that holds for a sample is a note, and so
+// is anything still undecided after ATTACK_SAMPLES without noise. During a
+// note, a jump of three semitones or more under a held gate is another chord
+// tone; smaller steps are slides or vibrato and count nothing.
 export function countStrikes(samples, voices) {
     return scanVoices(samples, voices).hits;
 }
 
+const ATTACK_SAMPLES = 3;
+
 function scanVoices(samples, voices) {
     const hits = new Array(96).fill(0);
     const drumHits = new Map();
-    const prev = Array.from({ length: voices }, () => ({ note: -1, gate: 0, noise: false, drum: false }));
+    const hitDrum = (hi) => drumHits.set(hi, (drumHits.get(hi) || 0) + 1);
+    const prev = Array.from({ length: voices }, () => ({
+        note: -1, gate: 0, noise: false, state: 'idle',
+        age: 0, noiseCount: 0, falls: 0, attackNote: -1, noiseHi: 0,
+    }));
     for (const sample of samples) {
         for (let v = 0; v < voices; v++) {
             const { freq, ctrl } = sample[v];
             const p = prev[v];
             const wave = ctrl & CTRL_WAVEFORMS, gate = ctrl & CTRL_GATE;
-            if ((ctrl & CTRL_TEST) || !wave) {
-                Object.assign(p, { note: -1, gate: 0, noise: false, drum: false });
+            const noise = !(ctrl & CTRL_TEST) && !!(wave & CTRL_NOISE);
+            const silent = !noise && ((ctrl & CTRL_TEST) || !wave || !freq);
+            const note = noise || silent ? -1 : freqToNote(freq);
+            const record = () => { p.note = note; p.gate = silent ? 0 : gate; p.noise = noise; };
+
+            if (silent) {
+                if (p.state === 'attack' && p.noiseCount) hitDrum(p.noiseHi);
+                p.state = 'idle';
+                record();
                 continue;
             }
-            if (wave & CTRL_NOISE) {
-                if (!p.noise || (gate && !p.gate)) drumHits.set(freq >> 8, (drumHits.get(freq >> 8) || 0) + 1);
-                Object.assign(p, { note: -1, gate, noise: true, drum: true });
+            const start = (gate && !p.gate)
+                || (p.note < 0 && !p.noise)
+                || (noise && !p.noise && p.state !== 'attack')
+                || (p.state === 'note' && !gate && !noise && note !== p.note);
+            if (start) {
+                Object.assign(p, { state: 'attack', age: 0, falls: 0, attackNote: note, noiseCount: noise ? 1 : 0 });
+                if (noise) p.noiseHi = freq >> 8;
+                record();
                 continue;
             }
-            p.noise = false;
-            if (!freq) { Object.assign(p, { note: -1, gate: 0, drum: false }); continue; }
-            const note = freqToNote(freq);
-            const rose = gate && !p.gate;
-            if (p.drum && !rose) { p.note = note; p.gate = gate; continue; }
-            let strike = rose || p.note < 0 || (!gate && note !== p.note);
-            if (!strike && gate && note !== p.note && Math.abs(note - p.note) >= 3) strike = true;
-            if (strike) { hits[note]++; p.drum = false; }
-            p.note = note; p.gate = gate;
+            if (p.state === 'attack') {
+                p.age++;
+                if (noise) {
+                    if (++p.noiseCount >= 2) { hitDrum(p.noiseHi); p.state = 'drum'; }
+                } else if (p.attackNote >= 0 && note === p.attackNote) {
+                    hits[note]++; p.state = 'note';
+                } else {
+                    if (p.attackNote >= 0 && note + 2 <= p.attackNote && ++p.falls >= 2) { p.state = 'drum'; }
+                    p.attackNote = note;
+                }
+                if (p.state === 'attack' && p.age >= ATTACK_SAMPLES) {
+                    if (p.noiseCount) { hitDrum(p.noiseHi); p.state = 'drum'; }
+                    else if (note >= 0) { hits[note]++; p.state = 'note'; }
+                }
+            } else if (p.state === 'note' && note !== p.note && Math.abs(note - p.note) >= 3) {
+                hits[note]++;
+            }
+            record();
         }
     }
     return { hits, drumHits };

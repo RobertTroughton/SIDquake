@@ -128,6 +128,11 @@ pianoDrumSplit:
 .const FLASH_FRAMES						= 2		//; a struck key shows its flash colour this long
 .const LIFT_FALL						= 26	//; a key its voice has left fades over 10 frames
 .const LEGATO_FRAMES					= 3		//; a small pitch step held this long is a new note, not a slide
+.const ATTACK_FRAMES					= 3		//; longest a note's start is watched before deciding
+.const ST_IDLE							= 0		//; voice states (voiceState)
+.const ST_ATTACK						= 1		//; a note or drum has started: watching it
+.const ST_NOTE							= 2		//; a note: its key is lit
+.const ST_DRUM							= 3		//; a drum: its pitch is ignored until the next start
 .const DRUM_ZONES						= 3
 .const DRUM_FALL						= 22	//; a drum zone fades over 12 frames
 .const DEFAULT_DRUM_SPLIT_1				= $40
@@ -158,6 +163,7 @@ pianoDrumSplit:
 .const CHAR_FILTER_BAR					= PIANO_CHARS + 7
 
 .const WHITE_UNLIT						= $01
+.const BLACK_KEY_FLASH					= $0f	//; lit black keys are grey (blackKeyShades)
 
 //; Sprite Y lines up with a char row at 50 + row * 8 (first text row at 51).
 .const KEY_SPRITE_Y						= 50 + (KEYS_TOP_ROW * 8)
@@ -715,15 +721,29 @@ FreqToKey:
 
 //; =============================================================================
 //; PIANO STATE + DRAWING (once per frame)
+//; Each voice is idle, watching the start of a note (ST_ATTACK), playing a
+//; note (ST_NOTE) or playing a drum (ST_DRUM). A start is a gate rising,
+//; sounding again after a silent sample (a hard restart), noise starting, or,
+//; during a note, a different pitch with the gate off: a multispeed tune can
+//; open and close a gate between two frames' samples, and then the new pitch
+//; is all the analysis sees.
+//;
+//; A start is watched before anything lights, because its first samples are
+//; often not its note: instruments open with a frame of noise or an octave
+//; jump, and kicks are a pitch falling fast with or without noise. Noise for
+//; a second sample (or noise, then silence) is a snare or hi-hat; a pitch
+//; falling two semitones or more twice running is a kick or tom (low zone);
+//; either lights the drum bar. A pitch that holds for a sample is a note, and
+//; so is anything still undecided after ATTACK_FRAMES with no noise. A plain
+//; note therefore lights one frame after it starts - which in the realtime
+//; build, whose analysis runs a play call ahead of the sound, lands it in step.
+//;
 //; Each key has a level (0 = up, 255 = just struck), a per-frame fall and the
-//; voice that last played it. A gate rising strikes the key, and so does a
-//; voice landing on a different key than last frame (or sounding again after
-//; a silent frame) with or without its gate: a multispeed tune can open and
-//; close a gate between two frames' samples, and then the new note, or the
-//; hard restart before it, is all the analysis sees. While the gate is held the level is kept at
+//; voice that last played it. While the gate is held the level is kept at
 //; least at a floor set by the voice's sustain, falling at the decay rate;
-//; after the gate drops it falls at the release rate. The level picks one of
-//; four shades from the voice's colour family.
+//; after the gate drops it falls at the release rate. A white key's level
+//; picks one of four shades from the voice's colour family; black keys are
+//; lit in grey.
 //; =============================================================================
 
 UpdatePiano:
@@ -764,62 +784,150 @@ UpdatePiano:
 	ldx #$00
 !voice:
 	lda voiceNoise, x
-	beq !notDrum+
+	bne !sounding+
+	lda voiceKey, x
+	bpl !sounding+
 
-	//; Noise is a drum: it lights its zone of the drum bar, never a key. A hit
-	//; is noise starting, or its gate opening again.
-	lda prevNoise, x
-	beq !hit+
+	//; Silent. A noise blip that ends in silence was a drum (a click or a
+	//; hi-hat).
+	lda voiceState, x
+	cmp #ST_ATTACK
+	bne !toIdle+
+	lda attackNoise, x
+	beq !toIdle+
+	jsr DrumHit
+!toIdle:
+	lda #ST_IDLE
+	sta voiceState, x
+	jmp !record+
+
+	//; Does a new note (or drum) start here? A gate rising; sounding again
+	//; after a silent sample (a hard restart); noise starting without a new
+	//; gate; or, in a note, a different pitch with the gate off - a multispeed
+	//; tune can open and close a gate between two frames' samples, and then
+	//; the new pitch (or the hard restart before it) is all the analysis sees.
+!sounding:
 	lda voiceGate, x
-	beq !drumHeld+
+	beq !noRise+
 	lda prevGate, x
-	bne !drumHeld+
-!hit:
-	ldy voiceZone, x
-	lda #$ff
-	sta drumLevel, y
-	lda #FLASH_FRAMES
-	sta drumFlash, y
-	txa
-	sta drumVoice, y
-!drumHeld:
-	lda #$01
-	sta drumMode, x
-	sta prevNoise, x
-	lda voiceGate, x
-	sta prevGate, x
-	lda #$ff
-	sta prevKey, x
-	jmp !nextVoice+
-
-!notDrum:
-	sta prevNoise, x
-	ldy voiceKey, x
-	bpl !tonal+
-	sta prevGate, x
-	sta drumMode, x
-	lda #$ff
-	sta prevKey, x
-	sta pendingKey, x
-	jmp !nextVoice+
-
-!tonal:
-	lda voiceGate, x
-	beq !gateOff+
-	lda prevGate, x
-	beq !newNote+
-	lda drumMode, x
-	bne !tail+
+	beq !start+
+!noRise:
 	lda prevKey, x
-	bmi !newNote+
+	bpl !wasSounding+
+	lda prevNoise, x
+	beq !start+
+!wasSounding:
+	lda voiceNoise, x
+	beq !notNoiseStart+
+	lda prevNoise, x
+	bne !notNoiseStart+
+	lda voiceState, x
+	cmp #ST_ATTACK
+	bne !start+
+!notNoiseStart:
+	lda voiceState, x
+	cmp #ST_NOTE
+	bne !dispatch+
+	lda voiceGate, x
+	bne !dispatch+
+	lda voiceNoise, x
+	bne !dispatch+
+	lda voiceKey, x
+	cmp prevKey, x
+	bne !start+
+!dispatch:
+	lda voiceState, x
+	cmp #ST_ATTACK
+	beq !attack+
+	cmp #ST_NOTE
+	bne !toRecord+
+	jmp !held+
+!toRecord:
+	jmp !record+
+
+	//; The start of a note or a drum: watch it for a frame or two before
+	//; showing anything (see the PIANO STATE notes above).
+!start:
+	lda #ST_ATTACK
+	sta voiceState, x
+	lda #$00
+	sta attackAge, x
+	sta attackFalls, x
+	sta attackNoise, x
+	lda voiceKey, x
+	sta attackKey, x
+	lda voiceNoise, x
+	beq !toRecord-
+	inc attackNoise, x
+	lda voiceZone, x
+	sta attackZone, x
+	jmp !record+
+
+!attack:
+	inc attackAge, x
+	lda voiceNoise, x
+	beq !attackTonal+
+	//; Noise held for a second sample: a snare or hi-hat.
+	inc attackNoise, x
+	lda attackNoise, x
+	cmp #2
+	bcc !attackTime+
+	jsr DrumHit
+	jmp !record+
+
+!attackTonal:
+	ldy voiceKey, x
+	lda attackKey, x
+	bmi !attackNext+
+	tya
+	cmp attackKey, x
+	bne !moved+
+	jmp !note+
+	//; Two falls of two semitones or more in a row: a kick or a tom, in the
+	//; drum bar's low zone.
+!moved:
+	clc
+	adc #2
+	cmp attackKey, x
+	beq !fell+
+	bcs !attackNext+
+!fell:
+	inc attackFalls, x
+	lda attackFalls, x
+	cmp #2
+	bcc !attackNext+
+	lda #$00
+	sta attackZone, x
+	jsr DrumHit
+	jmp !record+
+!attackNext:
+	tya
+	sta attackKey, x
+!attackTime:
+	lda attackAge, x
+	cmp #ATTACK_FRAMES
+	bcc !toRecord2+
+	lda attackNoise, x
+	beq !timeNote+
+	jsr DrumHit
+	jmp !record+
+!timeNote:
+	ldy voiceKey, x
+	bmi !toRecord2+
+	jmp !note+
+!toRecord2:
+	jmp !record+
+
+	//; A note, held: the pitch moving under a held gate (moves with the gate
+	//; off start new notes, above). Three semitones or more is another note
+	//; of a chord (an arpeggio): light it beside the others. Less is a slide
+	//; or vibrato: keep showing the note it started on, unless the pitch then
+	//; stays put (a legato note; see !steady).
+!held:
+	ldy voiceKey, x
 	tya
 	cmp prevKey, x
 	beq !steady+
-
-	//; The pitch moved under a held gate. Three semitones or more is another
-	//; note of a chord (an arpeggio): light it beside the others. Less is a
-	//; slide or vibrato: keep showing the note it started on, unless the pitch
-	//; then stays put (a legato note; see !steady).
 	sec
 	sbc prevKey, x
 	bcs !distance+
@@ -853,32 +961,14 @@ UpdatePiano:
 	inc pendingAge, x
 	lda pendingAge, x
 	cmp #LEGATO_FRAMES - 1
-	bcs !newNote+
+	bcs !note+
 	ldy shownKey, x
 	jmp !envelope+
 
-!gateOff:
-	lda drumMode, x
-	bne !tail+
-	lda prevKey, x
-	bmi !newNote+
-	tya
-	cmp prevKey, x
-	bne !newNote+
-	jmp !envelope+
-
-	//; The pitched body of a drum (noise, then a falling pulse): not a note.
-!tail:
-	tya
-	sta prevKey, x
-	lda voiceGate, x
-	sta prevGate, x
-	jmp !nextVoice+
-
-	//; A new note: the voice's other keys let go, this one is struck.
-!newNote:
-	lda #$00
-	sta drumMode, x
+	//; A note: the voice's other keys let go, this one (Y) is struck.
+!note:
+	lda #ST_NOTE
+	sta voiceState, x
 	lda #$ff
 	sta pendingKey, x
 	jsr LiftVoice
@@ -886,16 +976,26 @@ UpdatePiano:
 	tya
 	sta shownKey, x
 
-	//; Envelope for the key the voice is showing, if it still owns it: held,
-	//; a sustain floor and the decay rate; released, the release rate.
+	//; Envelope for the key Y if the voice owns it, else for the key it is
+	//; showing (a vibrato's neighbour is not the note): held, a sustain floor
+	//; and the decay rate; released, the release rate.
 !envelope:
 	tya
+	bmi !envDone+
+	txa
+	cmp keyVoice, y
+	bne !useShown+
+	lda keyLevel, y
+	bne !ownKey+
+!useShown:
+	ldy shownKey, x
 	bmi !envDone+
 	txa
 	cmp keyVoice, y
 	bne !envDone+
 	lda keyLevel, y
 	beq !envDone+
+!ownKey:
 	lda voiceGate, x
 	beq !released+
 	lda voiceSR, x
@@ -923,10 +1023,13 @@ UpdatePiano:
 	ldy saveY
 	sta keyFall, y
 !envDone:
+!record:
 	lda voiceKey, x
 	sta prevKey, x
 	lda voiceGate, x
 	sta prevGate, x
+	lda voiceNoise, x
+	sta prevNoise, x
 !nextVoice:
 	inx
 	cpx numVoices
@@ -961,7 +1064,7 @@ UpdatePiano:
 	lda whiteFlash, y
 	jmp !white+
 !blackFlash:
-	lda blackFlash, y
+	lda #BLACK_KEY_FLASH
 	jmp !blackColour+
 !steady:
 	lda keyIsBlack, x
@@ -984,7 +1087,15 @@ UpdatePiano:
 	jmp !nextKey+
 
 !blackLit:
-	lda blackShades, y
+	lda keyLevel, x
+	lsr
+	lsr
+	lsr
+	lsr
+	lsr
+	lsr
+	tay
+	lda blackKeyShades, y
 !blackColour:
 	ldy spriteSlot
 	cpy #NUM_KEY_SPRITES
@@ -1082,6 +1193,22 @@ UpdatePiano:
 !filterDone:
 	rts
 
+//; Voice X's note turned out to be a drum: light its drum zone (attackZone),
+//; let go of its keys, and ignore its pitch until the next note starts.
+//; Preserves X.
+DrumHit:
+	ldy attackZone, x
+	lda #$ff
+	sta drumLevel, y
+	lda #FLASH_FRAMES
+	sta drumFlash, y
+	txa
+	sta drumVoice, y
+	lda #ST_DRUM
+	sta voiceState, x
+	ldy #$ff
+	jmp LiftVoice
+
 //; Strike key Y for voice X: full level, flash, owned by the voice.
 //; Preserves X and Y.
 StrikeKey:
@@ -1148,7 +1275,7 @@ InitPiano:
 	lda #$00
 	sta prevGate, x
 	sta prevNoise, x
-	sta drumMode, x
+	sta voiceState, x
 	dex
 	bpl !loop-
 
@@ -1236,6 +1363,10 @@ blackFlash:				.fill 4, $0a
 						.fill 4, $07
 						.fill 4, $0a
 						.fill 4, $0d
+//; Lit black keys are grey whichever voice plays them: flash light grey
+//; (BLACK_KEY_FLASH), then mid grey, dark grey as they fade.
+blackKeyShades:			.byte $0b, $0c, $0c, $0c
+//; The drum and filter bars, on the dark background, in the voice's colours.
 blackShades:			.byte $09, $02, $02, $02
 						.byte $0b, $05, $05, $05
 						.byte $06, $0e, $0e, $0e
@@ -1275,7 +1406,12 @@ prevGate:				.fill MAX_VOICES, 0
 voiceNoise:				.fill MAX_VOICES, 0
 voiceZone:				.fill MAX_VOICES, 0
 prevNoise:				.fill MAX_VOICES, 0
-drumMode:				.fill MAX_VOICES, 0		//; in a note that began as a drum
+voiceState:				.fill MAX_VOICES, ST_IDLE
+attackAge:				.fill MAX_VOICES, 0		//; samples since the note started
+attackNoise:			.fill MAX_VOICES, 0		//; noise samples in it so far
+attackFalls:			.fill MAX_VOICES, 0		//; falls of two semitones or more in a row
+attackKey:				.fill MAX_VOICES, $ff	//; last tonal key in it ($ff none yet)
+attackZone:				.fill MAX_VOICES, 0		//; drum zone if it turns out a drum
 shownKey:				.fill MAX_VOICES, $ff	//; the key showing the voice's current note
 pendingKey:				.fill MAX_VOICES, $ff	//; a small pitch step waiting to prove itself a note
 pendingAge:				.fill MAX_VOICES, 0

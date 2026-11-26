@@ -4899,7 +4899,10 @@ class UIController {
         // Length controls: measuring and typing are alternatives, and neither is
         // offered when a multi-song SID rules a length out entirely.
         const show = (id, on) => { const el = document.getElementById(id); if (el) el.hidden = !on; };
-        if (!this.visualizerNeedsTuneAnalysis()) {
+        // Only a chosen player can rule the length out. The Studio opens a
+        // moment before the default one is picked, and saying "this player
+        // does not display a song length" then is wrong for nearly every pick.
+        if (this.selectedVisualizer && !this.visualizerNeedsTuneAnalysis()) {
             show('songLengthMeasure', false);
             show('songLengthStop', false);
             show('songLengthKeepLooking', false);

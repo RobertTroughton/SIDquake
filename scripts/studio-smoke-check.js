@@ -1605,6 +1605,21 @@ async function loadSid(page, file) {
             check('The length notice has its own, louder style', shown.visible && shown.notice, JSON.stringify(shown));
             check('...and the Generate button asks to be pressed again', shown.nudged, JSON.stringify(shown));
             check('Loading another tune takes the notice away', !gone.visible && !gone.nudged, JSON.stringify(gone));
+
+            // The Studio opens a moment before the default player is picked;
+            // until then the Song tab must not claim the player shows no length.
+            const unpicked = await stale.evaluate(() => {
+                const ui = window.uiController;
+                const saved = ui.selectedVisualizer;
+                ui.selectedVisualizer = null;
+                ui.updateSongLoopStatus();
+                const text = document.getElementById('songLoopStatus').textContent;
+                ui.selectedVisualizer = saved;
+                ui.updateSongLoopStatus();
+                return text;
+            });
+            check('Before a player is picked, the Song tab does not rule the length out',
+                !/does not display a song length/.test(unpicked), unpicked.slice(0, 80));
         } finally {
             await stale.close();
         }

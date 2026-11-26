@@ -127,28 +127,35 @@ async function runVariant(m, name, defines, stride) {
     const level = (k) => rd(L('keyLevel') + k);
     const colourAt = (k, row) => rd(0xD800 + row * 40 + column(k));
     for (let v = 0; v < 6; v++) setVoice(v, {});
+    const quiet = () => { for (let v = 0; v < 6; v++) setVoice(v, {}); for (let i = 0; i < 45; i++) frame(); };
+    const hold = (v, regs, n = 1) => { setVoice(v, regs); for (let i = 0; i < n; i++) frame(); };
+    const lit = () => { const out = []; for (let k = 0; k < NUM_KEYS; k++) if (level(k)) out.push(k); return out; };
+    const drumColour = (col) => rd(0xD800 + DRUM_ROW * 40 + col);
+    const drumDark = () => [0, 12, 14, 25, 27, 39].every(c => drumColour(c) === 0);
 
-    // Silence: test bit, noise only, no waveform, zero frequency.
-    const E4 = 12 * 4 + 4, A4 = 12 * 4 + 9, Cs3 = 12 * 3 + 1, G2 = 12 * 2 + 7;
+    // Silence: test bit, noise only, no waveform, zero frequency are no key.
+    const E4 = 12 * 4 + 4, A4 = 12 * 4 + 9, Cs3 = 12 * 3 + 1, G2 = 12 * 2 + 7, C4 = 12 * 4;
     for (const [what, regs] of [
         ['test bit', { freq: noteFreq(A4), ctrl: 0x49 }],
         ['noise', { freq: noteFreq(A4), ctrl: 0x81 }],
         ['no waveform', { freq: noteFreq(A4), ctrl: 0x01 }],
         ['zero frequency', { freq: 0, ctrl: 0x41 }]]) {
-        setVoice(0, regs);
-        frame();
+        hold(0, regs);
         check(rd(L('voiceKey')) === 0xFF, `${name}: ${what} reads as a key`);
     }
+    quiet();
 
-    // A gated pulse note on voice 0 lights its white key in the red family;
-    // sustain $8 holds it lit while the gate stays on.
+    // A note is watched for a frame before its key lights: the first sample
+    // can't tell a note from a drum. A gated pulse note on voice 0 then lights
+    // its white key with two frames of flash (red), then the steady shade
+    // (light red); sustain $8 holds it lit while the gate stays on.
     const kE4 = expectedKey(E4);
-    setVoice(0, { freq: noteFreq(E4), ctrl: 0x41, ad: 0x09, sr: 0x8A });
+    hold(0, { freq: noteFreq(E4), ctrl: 0x41, ad: 0x09, sr: 0x8A });
+    check(level(kE4) === 0, `${name}: a note lit on its first sample, before it could be told from a drum`);
     frame();
     check(level(kE4) === 0xFF, `${name}: struck key level ${level(kE4)}, expected 255`);
     check(colourAt(kE4, KEYS_TOP_ROW) === 0x02 && colourAt(kE4, KEYS_BOTTOM_ROW) === 0x02,
         `${name}: struck white key colour $${colourAt(kE4, KEYS_TOP_ROW).toString(16)}, expected $2`);
-    // Two frames of strike flash (red), then the steady shade (light red).
     frame();
     check(colourAt(kE4, KEYS_TOP_ROW) === 0x02, `${name}: white key flash lasted one frame, expected two`);
     frame();
@@ -157,52 +164,46 @@ async function runVariant(m, name, defines, stride) {
     for (let i = 0; i < 100; i++) frame();
     check(level(kE4) >= 112 + 8 * 9, `${name}: held key fell to ${level(kE4)} below its sustain floor`);
 
-    // Voice 3 is SID 2's first voice: a black key, drawn as sprite 0 in the
-    // orange family at the black key's X.
+    // Voice 3 is SID 2's first voice: a black key, drawn as sprite 0 at the
+    // black key's X, in grey whichever voice plays it: a light grey flash,
+    // then mid grey.
     const kCs3 = expectedKey(Cs3);
-    setVoice(3, { freq: noteFreq(Cs3), ctrl: 0x21, ad: 0x00, sr: 0xF0 });
-    frame();
+    hold(3, { freq: noteFreq(Cs3), ctrl: 0x21, ad: 0x00, sr: 0xF0 }, 2);
+    check(isBlack(kCs3), `${name}: C#3 is not a black key`);
     check(level(kCs3) === 0xFF, `${name}: SID 2 voice did not strike its key`);
     check(rd(L('keySpriteEnable')) === 0x01, `${name}: sprite enable $${rd(L('keySpriteEnable')).toString(16)}, expected $01`);
     const x = rd(L('keySpriteX')) + ((rd(L('keySpriteMSB')) & 1) << 8);
     check(x === column(kCs3) * 8 + 21, `${name}: black key sprite X ${x}, expected ${column(kCs3) * 8 + 21}`);
-    check(rd(L('keySpriteColour')) === 0x07, `${name}: struck black key colour $${rd(L('keySpriteColour')).toString(16)}, expected $7 (yellow flash)`);
+    check(rd(L('keySpriteColour')) === 0x0F, `${name}: struck black key colour $${rd(L('keySpriteColour')).toString(16)}, expected $f (light grey flash)`);
     frame(); frame();
-    check(rd(L('keySpriteColour')) === 0x08, `${name}: black key colour after its flash $${rd(L('keySpriteColour')).toString(16)}, expected $8 (orange)`);
-    check(isBlack(kCs3), `${name}: C#3 is not a black key`);
+    check(rd(L('keySpriteColour')) === 0x0C, `${name}: black key colour after its flash $${rd(L('keySpriteColour')).toString(16)}, expected $c (grey)`);
 
     // Release: gate off with release $A (1.5 s, held to 40 frames). The key is
     // still lit after a few frames and back to white within 40.
-    setVoice(0, { freq: noteFreq(E4), ctrl: 0x40, ad: 0x09, sr: 0x8A });
-    for (let i = 0; i < 5; i++) frame();
+    hold(0, { freq: noteFreq(E4), ctrl: 0x40, ad: 0x09, sr: 0x8A }, 5);
     check(level(kE4) > 0, `${name}: released key went dark after 5 frames`);
     for (let i = 0; i < 40; i++) frame();
     check(level(kE4) === 0 && colourAt(kE4, KEYS_TOP_ROW) === 0x01 && colourAt(kE4, KEYS_BOTTOM_ROW) === 0x01,
         `${name}: released key not back to white after 45 frames (level ${level(kE4)})`);
 
-    // A new note on a gate that stays on strikes again: an arpeggio lights
-    // each of its keys.
+    // A chord: a jump of three semitones or more under a held gate lights at
+    // once, beside the note before it.
     const kG2 = expectedKey(G2), kA4 = expectedKey(A4);
-    setVoice(1, { freq: noteFreq(G2), ctrl: 0x11, ad: 0x00, sr: 0x04 });
-    frame();
-    setVoice(1, { freq: noteFreq(A4), ctrl: 0x11, ad: 0x00, sr: 0x04 });
-    frame();
+    hold(1, { freq: noteFreq(G2), ctrl: 0x11, ad: 0x00, sr: 0x04 }, 2);
+    hold(1, { freq: noteFreq(A4), ctrl: 0x11, ad: 0x00, sr: 0x04 });
     check(level(kA4) === 0xFF, `${name}: arpeggio step did not strike its key`);
     check(level(kG2) > 0, `${name}: previous arpeggio key went dark in one frame`);
     check(colourAt(kA4, KEYS_BOTTOM_ROW) === 0x05, `${name}: voice 1 key colour $${colourAt(kA4, KEYS_BOTTOM_ROW).toString(16)}, expected $5 (green)`);
 
     // A multispeed tune whose gate is only on for the first of two play calls
-    // (6r6/Thanos B.'s Moonlight Sonata): the once-a-frame sample sees the hard
+    // (Thanos B.'s Moonlight Sonata): the once-a-frame sample sees the hard
     // restart (test bit), then the new note with its gate already off. The key
     // must still be struck, and a different note with the gate off strikes too.
     const kC3 = expectedKey(12 * 3), kE3 = expectedKey(12 * 3 + 4);
-    setVoice(2, { freq: noteFreq(12 * 3), ctrl: 0x09, ad: 0x0F, sr: 0x0F });
-    frame();
-    setVoice(2, { freq: noteFreq(12 * 3), ctrl: 0x40, ad: 0x00, sr: 0xEA });
-    frame();
+    hold(2, { freq: noteFreq(12 * 3), ctrl: 0x09, ad: 0x0F, sr: 0x0F });
+    hold(2, { freq: noteFreq(12 * 3), ctrl: 0x40, ad: 0x00, sr: 0xEA }, 2);
     check(level(kC3) === 0xFF, `${name}: note after a hard restart, gate already off: level ${level(kC3)}, expected 255`);
-    setVoice(2, { freq: noteFreq(12 * 3 + 4), ctrl: 0x40, ad: 0x00, sr: 0xEA });
-    frame();
+    hold(2, { freq: noteFreq(12 * 3 + 4), ctrl: 0x40, ad: 0x00, sr: 0xEA }, 2);
     check(level(kE3) === 0xFF, `${name}: new note with the gate off: level ${level(kE3)}, expected 255`);
     frame();
     check(level(kE3) < 0xFF, `${name}: a ringing note with the gate off was struck again`);
@@ -211,64 +212,87 @@ async function runVariant(m, name, defines, stride) {
     // about 10 frames, whatever that note's release, even across the hard
     // restart's silent frame. A key another voice is holding stays down.
     const kD4 = expectedKey(12 * 4 + 2), kF4 = expectedKey(12 * 4 + 5), kG4 = expectedKey(12 * 4 + 7);
-    for (let v = 0; v < 6; v++) setVoice(v, {});
-    for (let i = 0; i < 45; i++) frame();
-    setVoice(0, { freq: noteFreq(12 * 4 + 2), ctrl: 0x40, sr: 0x0E });
-    frame();
-    setVoice(0, { freq: noteFreq(12 * 4 + 2), ctrl: 0x09, sr: 0x0E });
-    frame();
-    setVoice(0, { freq: noteFreq(12 * 4 + 5), ctrl: 0x40, sr: 0x0E });
-    for (let i = 0; i < 3; i++) frame();
-    check(level(kD4) > 0, `${name}: the key a voice left went dark within 3 frames`);
-    for (let i = 0; i < 9; i++) frame();
+    quiet();
+    hold(0, { freq: noteFreq(12 * 4 + 2), ctrl: 0x40, sr: 0x0E }, 2);
+    hold(0, { freq: noteFreq(12 * 4 + 2), ctrl: 0x09, sr: 0x0E });
+    hold(0, { freq: noteFreq(12 * 4 + 5), ctrl: 0x40, sr: 0x0E }, 3);
+    check(level(kD4) > 0, `${name}: the key a voice left went dark within 2 frames`);
+    for (let i = 0; i < 10; i++) frame();
     check(level(kD4) === 0, `${name}: the key a voice left is still lit after 12 frames (level ${level(kD4)})`);
     check(level(kF4) > 0, `${name}: the key the voice moved to went dark`);
-    setVoice(1, { freq: noteFreq(12 * 4 + 5), ctrl: 0x41, sr: 0x8E });
-    frame();
-    setVoice(0, { freq: noteFreq(12 * 4 + 7), ctrl: 0x40, sr: 0x0E });
-    for (let i = 0; i < 3; i++) frame();
+    hold(1, { freq: noteFreq(12 * 4 + 5), ctrl: 0x41, sr: 0x8E }, 2);
+    hold(0, { freq: noteFreq(12 * 4 + 7), ctrl: 0x40, sr: 0x0E }, 3);
     check(level(kF4) > 0 && level(kG4) > 0, `${name}: a key held by another voice was lifted`);
 
-    const quiet = () => { for (let v = 0; v < 6; v++) setVoice(v, {}); for (let i = 0; i < 45; i++) frame(); };
-    const lit = () => { const out = []; for (let k = 0; k < NUM_KEYS; k++) if (level(k)) out.push(k); return out; };
-    const drumColour = (col) => rd(0xD800 + DRUM_ROW * 40 + col);
-
-    // A drum: noise (low pitch, so the low third of the drum bar), then the
-    // falling pulse body under the same gate. No key lights; the low zone
-    // flashes and fades, the others stay dark. The next gated note is a note.
+    // Drums. Noise held for two samples is a snare or hi-hat (low pitch, so
+    // the low third of the drum bar); no key lights, the other zones stay
+    // dark, the zone fades, and the next gated note is a note.
     quiet();
-    setVoice(2, { freq: 0x3000, ctrl: 0x81, sr: 0x08 });
-    frame();
+    hold(2, { freq: 0x3000, ctrl: 0x81, sr: 0x08 }, 2);
     check(drumColour(0) !== 0 && drumColour(12) === drumColour(0), `${name}: drum hit did not light the low zone (col 0 $${drumColour(0).toString(16)})`);
-    check(drumColour(13) === 0 && drumColour(14) === 0 && drumColour(39) === 0, `${name}: a low drum lit another zone`);
-    for (const f of [0x1800, 0x1400, 0x1000, 0x0c00]) { setVoice(2, { freq: f, ctrl: 0x41, sr: 0x08 }); frame(); }
-    check(lit().length === 0, `${name}: a drum's pulse body lit keys ${lit()}`);
+    check(drumColour(14) === 0 && drumColour(39) === 0, `${name}: a low drum lit another zone`);
+    for (const f of [0x1800, 0x1400, 0x1000, 0x0c00]) hold(2, { freq: f, ctrl: 0x41, sr: 0x08 });
+    check(lit().length === 0, `${name}: a drum's pitched body lit keys ${lit()}`);
     for (let i = 0; i < 12; i++) frame();
     check(drumColour(0) === 0, `${name}: drum zone still lit 16 frames after the hit`);
-    setVoice(2, { freq: 0x0c00, ctrl: 0x40 }); frame();
-    setVoice(2, { freq: noteFreq(A4), ctrl: 0x41, sr: 0x88 }); frame();
+    hold(2, { freq: 0x0c00, ctrl: 0x40 });
+    hold(2, { freq: noteFreq(A4), ctrl: 0x41, sr: 0x88 }, 2);
     check(level(kA4) === 0xFF, `${name}: a gated note after a drum was not struck`);
-    setVoice(2, { freq: 0xFF00, ctrl: 0x81 }); frame();
-    check(drumColour(39) !== 0 && drumColour(27) !== 0 && drumColour(0) === 0, `${name}: a high drum did not light (only) the high zone`);
+
+    // A noise blip, then silence: a click or hi-hat, here high-pitched.
+    hold(2, { freq: 0xFF00, ctrl: 0x81 });
+    hold(2, { freq: 0xFF00, ctrl: 0x08 });
+    check(drumColour(39) !== 0 && drumColour(27) !== 0 && drumColour(0) === 0, `${name}: a noise blip then silence did not light (only) the high zone`);
+
+    // One frame of noise opening a note that then holds its pitch (Magnar
+    // Harestad's Bitgang starts its notes this way, and GP All Stars its lead
+    // with an octave drop too) is the note's attack, not a drum.
+    quiet();
+    hold(2, { freq: 0xFFFF, ctrl: 0x81, sr: 0xCA });
+    hold(2, { freq: noteFreq(A4 + 12), ctrl: 0x41, sr: 0xCA });
+    hold(2, { freq: noteFreq(A4), ctrl: 0x41, sr: 0xCA }, 2);
+    check(level(kA4) === 0xFF && lit().length === 1, `${name}: a note with a noise attack lit ${lit()}, expected only its key`);
+    check(drumDark(), `${name}: a note's noise attack lit the drum bar`);
+
+    // A pitch falling two semitones or more a sample, twice, with no noise at
+    // all (GP All Stars' kicks): a kick, in the low zone, and no key.
+    quiet();
+    for (const n of [42, 38, 30, 24, 20]) hold(0, { freq: noteFreq(n), ctrl: 0x41, sr: 0x08 });
+    check(lit().length === 0, `${name}: a falling kick lit keys ${lit()}`);
+    check(drumColour(0) !== 0 && drumColour(39) === 0, `${name}: a falling kick did not light the low zone`);
 
     // A slide: one semitone a frame under a held gate shows only the note it
     // started on; where it comes to rest for three frames is a new note.
     quiet();
-    const C4 = 12 * 4;
-    setVoice(0, { freq: noteFreq(C4), ctrl: 0x41, sr: 0xF8 }); frame();
-    for (let n = C4 + 1; n <= C4 + 5; n++) { setVoice(0, { freq: noteFreq(n), ctrl: 0x41, sr: 0xF8 }); frame(); }
+    hold(0, { freq: noteFreq(C4), ctrl: 0x41, sr: 0xF8 }, 2);
+    for (let n = C4 + 1; n <= C4 + 5; n++) hold(0, { freq: noteFreq(n), ctrl: 0x41, sr: 0xF8 });
     check(lit().length === 1 && lit()[0] === expectedKey(C4), `${name}: a slide lit keys ${lit()}, expected only its first note`);
     frame();
     check(level(expectedKey(C4 + 5)) === 0, `${name}: a slide's resting note was struck after two frames`);
     frame();
     check(level(expectedKey(C4 + 5)) === 0xFF, `${name}: a slide's resting note was not struck after three frames`);
 
+    // Vibrato that crosses into the next semitone for a sample at a time
+    // (Bitgang's held chords) keeps the note's key lit at its sustain level,
+    // and lights nothing else.
+    quiet();
+    const D2 = 12 * 2 + 2;
+    hold(0, { freq: noteFreq(D2), ctrl: 0x51, sr: 0xCA }, 2);
+    let lowest = 255, others = 0;
+    for (let i = 0; i < 60; i++) {
+        hold(0, { freq: noteFreq(D2 + (i % 5 === 3 ? 1 : i % 5 === 0 ? -1 : 0)), ctrl: 0x51, sr: 0xCA });
+        lowest = Math.min(lowest, level(expectedKey(D2)));
+        others = Math.max(others, lit().length - 1);
+    }
+    check(lowest >= 112 + 12 * 9, `${name}: vibrato let the held note fall to ${lowest}`);
+    check(others === 0, `${name}: vibrato lit other keys`);
+
     // A chord: an arpeggio cycling A-C#-E under a held gate keeps all three lit,
     // and only flashes a key the first time round.
     quiet();
     const chord = [A4, A4 + 4, A4 + 7];
     for (let round = 0; round < 4; round++) {
-        for (const n of chord) { setVoice(1, { freq: noteFreq(n), ctrl: 0x41, sr: 0xA4 }); frame(); }
+        for (const n of chord) hold(1, { freq: noteFreq(n), ctrl: 0x41, sr: 0xA4 });
     }
     check(chord.every(n => level(expectedKey(n)) > 0), `${name}: an arpeggio's chord did not stay lit (${lit()})`);
     check(rd(L('keyFlash') + expectedKey(A4)) === 0 && rd(L('keyFlash') + expectedKey(A4 + 4)) === 0,
@@ -287,8 +311,7 @@ async function runVariant(m, name, defines, stride) {
     check(fcol(0) === 0, `${name}: filter bar lit with nothing routed through the filter`);
 
     // Silence everything: no sprite stays on.
-    for (let v = 0; v < 6; v++) setVoice(v, {});
-    for (let i = 0; i < 45; i++) frame();
+    quiet();
     check(rd(L('keySpriteEnable')) === 0, `${name}: a sprite is still enabled after every voice stopped`);
 
     if (failures === failsBefore) console.log(`  ok  ${name}: ${notesChecked} frequencies, gate/release/arpeggio/sprites`);
@@ -305,14 +328,16 @@ async function checkRange(m) {
 
     for (let n = 0; n < 95; n++) check(freqToNote(noteFreq(n)) === n, `range: freqToNote(note ${n})`);
 
-    // Gate pulse, hard restart, same note again, a new note with the gate off,
-    // then that note ringing: three strikes.
+    // Gate pulse (struck once its pitch holds), hard restart, the same note
+    // again for one sample only (replaced before it could hold: not shown, not
+    // counted), a new note with the gate off, that note ringing, then noise:
+    // two strikes, the same the player shows.
     const C3 = noteFreq(36), E3 = noteFreq(40);
     const hits = countStrikes([
         [{ freq: C3, ctrl: 0x41 }], [{ freq: C3, ctrl: 0x40 }], [{ freq: C3, ctrl: 0x09 }],
         [{ freq: C3, ctrl: 0x40 }], [{ freq: E3, ctrl: 0x40 }], [{ freq: E3, ctrl: 0x40 }],
         [{ freq: E3, ctrl: 0x81 }], [silent]], 1);
-    check(hits[36] === 2 && hits[40] === 1 && hits.reduce((a, b) => a + b) === 3,
+    check(hits[36] === 1 && hits[40] === 1 && hits.reduce((a, b) => a + b) === 2,
         `range: strikes counted ${JSON.stringify(hits.map((h, i) => h ? i + ':' + h : '').filter(Boolean))}`);
 
     const high = new Array(96).fill(0);
