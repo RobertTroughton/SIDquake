@@ -1587,6 +1587,10 @@ async function loadSid(page, file) {
                     hint: !!hint && !el.hidden && getComputedStyle(hint).display !== 'none' ? hint.textContent.trim() : '',
                     button: at(),
                 });
+                // The real scan of this tune can sit behind the previous tune's in
+                // the bake worker, so stop it rather than wait it out: what is
+                // checked here is the indicator, driven by the stub below.
+                ui.cancelAnalysis();
                 for (let i = 0; i < 600 && ui.analysisRunning; i++) await sleep(100);
                 const fade = {
                     looped: false, fadedOut: true, truncated: false, loopStart: 1500,
