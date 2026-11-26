@@ -725,130 +725,6 @@ class UIController {
     }
 
     // ---------------------------------------------------------------------
-    // Quick export
-    // ---------------------------------------------------------------------
-
-    // Two decisions and a button: which look, then press it. Everything the
-    // Studio offers still applies - this just sets the look and reuses the same
-    // export - but a first release should not require walking six tabs to find
-    // out that every default was already correct.
-    renderQuickExport() {
-        const box = document.getElementById('quickExport');
-        const looks = document.getElementById('quickExportLooks');
-        if (!box || !looks) return;
-        if (!this.sidHeader) { box.hidden = true; return; }
-
-        const compatible = (typeof VISUALIZERS !== 'undefined' ? VISUALIZERS : [])
-            .filter(v => !v.hidden && this.visualizerExportable(v).ok);
-        if (!compatible.length) { box.hidden = true; return; }
-
-        // A handful of clearly different looks, in the order someone would scan
-        // them - not the whole grid again. Plain text first, then the same
-        // thing with a picture, then bars, bars with a picture, and two that
-        // are neither: each step is one visible change from the one before it.
-        const QUICK_LOOKS = 6;
-        const order = ['default', 'DefaultWithLogo', 'RaistlinBars',
-            'RaistlinBarsWithLogo', 'RaistlinMirrorBars', 'MusicalBlobs'];
-        const picks = order.map(id => compatible.find(v => v.id === id)).filter(Boolean);
-        // A tune that cannot take one of them (too little room, wrong call
-        // rate) would otherwise leave a gap, so top the row back up from
-        // whatever else is exportable.
-        for (const v of compatible) {
-            if (picks.length >= QUICK_LOOKS) break;
-            if (!picks.includes(v)) picks.push(v);
-        }
-        picks.length = Math.min(picks.length, QUICK_LOOKS);
-        if (!picks.length) picks.push(compatible[0]);
-
-        const current = this.selectedVisualizer?.dataSourceGroup || this.selectedVisualizer?.id;
-        // The selected player may not be one of the few offered here. Something
-        // still has to carry the group's tab stop, or it cannot be reached by
-        // keyboard at all.
-        const marked = picks.some(v => v.id === current) ? current : null;
-        const esc = (t) => String(t).replace(/[&<>"]/g, c =>
-            ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
-        looks.innerHTML = picks.map((v, i) => {
-            const on = v.id === marked;
-            const tabbable = marked ? on : i === 0;
-            return `<button type="button" class="quick-look${on ? ' selected' : ''}"
-                     role="radio" aria-checked="${on}" tabindex="${tabbable ? 0 : -1}"
-                     data-id="${esc(v.id)}">
-                <img src="${esc(v.preview)}" alt="" aria-hidden="true">
-                <span>${esc(v.name)}</span>
-            </button>`;
-        }).join('');
-        box.hidden = false;
-        this._wireQuickExport();
-        // The bars-are-blind warning belongs to the look now selected, so it is
-        // re-decided with the row (the check itself is cached per tune).
-        this.renderVuNotes();
-    }
-
-    _wireQuickExport() {
-        const looks = document.getElementById('quickExportLooks');
-        if (looks && !looks.dataset.wired) {
-            looks.dataset.wired = '1';
-            looks.addEventListener('click', (e) => {
-                const btn = e.target.closest('.quick-look');
-                if (btn) this.quickPickLook(btn.dataset.id);
-            });
-            looks.addEventListener('keydown', (e) => {
-                const btns = [...looks.querySelectorAll('.quick-look')];
-                const here = e.target.closest('.quick-look');
-                const i = here ? btns.indexOf(here) : 0;
-                let next = null;
-                if (e.key === 'ArrowRight' || e.key === 'ArrowDown') next = btns[(i + 1) % btns.length];
-                else if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') next = btns[(i - 1 + btns.length) % btns.length];
-                else if (e.key === ' ' || e.key === 'Enter') next = here;
-                else return;
-                e.preventDefault();
-                if (next) { this.quickPickLook(next.dataset.id); next.focus(); }
-            });
-        }
-        const go = document.getElementById('quickExportBtn');
-        if (go && !go.dataset.wired) {
-            go.dataset.wired = '1';
-            go.addEventListener('click', () => this.exportPRGWithVisualizer());
-        }
-    }
-
-    async quickPickLook(id) {
-        const viz = (typeof VISUALIZERS !== 'undefined') && VISUALIZERS.find(v => v.id === id);
-        if (!viz) return;
-        await this.selectVisualizer(viz);
-        this.renderQuickExport();
-        await this.quickChooseImage();
-    }
-
-    // A look built around a picture is not finished when it is picked: without
-    // this the quick path exports the player's stock logo, which is the one
-    // image nobody wants on their release. So the gallery opens straight away
-    // for the picture slot the chosen look has.
-    //
-    // Once per look, not once per picture slot: the slot is remembered across
-    // visualizers (and across sessions), so keying on it would let the first
-    // look picked be the only one that ever asks - every other look silently
-    // inheriting whatever that one ended on. Closing the gallery is still an
-    // answer, and coming back to a look already asked about is not re-asked.
-    async quickChooseImage() {
-        try { await this._optionsReady; } catch (e) { return; }
-        const config = this.currentVisualizerConfig;
-        const mgr = window.imagePreviewManager;
-        const container = document.getElementById('studioPanels');
-        if (!config || !config.inputs || !mgr || !container) return;
-        // The look, not the variant: switching bar method is not a new picture.
-        const look = this.selectedVisualizer?.dataSourceGroup || this.selectedVisualizer?.id;
-        this._quickImageAsked = this._quickImageAsked || new Set();
-        if (!look || this._quickImageAsked.has(look)) return;
-        for (const input of config.inputs) {
-            if (!this._isImageInput(input) || !(input.gallery || []).length) continue;
-            this._quickImageAsked.add(look);
-            mgr.initGalleryModal().open(input, container);
-            return;   // one picture at a time; the rest stay on the Picture tab
-        }
-    }
-
-    // ---------------------------------------------------------------------
     // Batch queue
     // ---------------------------------------------------------------------
 
@@ -1190,7 +1066,6 @@ class UIController {
             if (openStudioBtn) openStudioBtn.style.display = '';
 
             this.showExportSection();
-            this.renderQuickExport();
 
             // Cleared for the new tune; startBackgroundAnalysis below refills it
             // while the user is choosing a visualizer.
@@ -1380,7 +1255,6 @@ class UIController {
         this._syncSingleSongLock();
         this.updateMultiSongNote();
         this.updateSongLoopStatus();
-        this.renderQuickExport();
         // Whether the spectrometer is on offer turns on this (dataSourceUsable),
         // so the method cards have to be drawn again - and a spectrometer that
         // just stopped being possible hands back to the live method that is.
@@ -1770,9 +1644,6 @@ class UIController {
             this._saveSessionMemory();
         }
 
-        // The quick path shows the same choice; keep the two from disagreeing.
-        this.renderQuickExport();
-
         this.elements.exportPRGButton.disabled = false;
 
         // The memory map reflects the last export - it's now stale for the newly
@@ -1780,9 +1651,8 @@ class UIController {
         this.clearMemoryMap();
         this.updateMultiSongNote();
 
-        // Kept so a caller that needs the rendered panels (the quick path, which
-        // opens the logo picker over them) can wait for them. Not awaited here:
-        // the rest of this method must not sit behind a config fetch.
+        // Kept so a caller that needs the rendered panels can wait for them. Not
+        // awaited here: the rest of this method must not sit behind a config fetch.
         this._optionsReady = this.loadVisualizerOptions(target);
 
         // ...but where this player WILL go can be worked out now, so say so
@@ -2943,10 +2813,7 @@ class UIController {
     }
 
     /**
-     * Show the VU-blind warning where the user actually is. The Method panel
-     * carries it for whoever opens the Studio; the quick path has no method
-     * picker, so it gets the same warning under the looks - but only while a
-     * live method is what would be exported.
+     * Show the VU-blind warning on the Studio's Method panel.
      */
     renderVuNotes() {
         const res = this._vuBlind;
@@ -2959,16 +2826,6 @@ class UIController {
         if (method) {
             method.textContent = opening && `${opening}Best looking reads the sound itself and is unaffected.`;
             method.hidden = !opening;
-        }
-        const quick = document.getElementById('quickExportWarn');
-        if (quick) {
-            // dataSource is set only on the bar players this check covers, and
-            // 'fft' is the method it does not apply to.
-            const source = this.selectedVisualizer?.dataSource;
-            const live = !!source && source !== 'fft';
-            quick.textContent = opening && `${opening}For bars that follow the sound instead, `
-                + 'choose Best looking under Method in "Change everything".';
-            quick.hidden = !opening || !live;
         }
     }
 

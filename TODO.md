@@ -189,12 +189,9 @@ loop-search window + shortest-loop threshold all sit inside a remembered
 `<details>`. Still to fold in: the memory-bank override, once
 `createLayoutSelectorHTML` is wired to a real `selectedLayoutKey`.
 
-**Neither — needs a second path. Done.** The landing card offers a quick route:
-four looks with previews, one button, a file. It sets the same selection the
-Studio does and calls the same export, so nothing is a special case; the Studio
-is now "Change everything" rather than the only way through. Still wanted: the
-previews here are stills like the grid's, so this is the other place the
-animated previews below would pay off.
+**Neither — needs a second path. Dropped.** A quick route on the landing card
+(a row of looks and one button) was built and then removed: two ways to do the
+same export was more to explain than it saved. The Studio is the only path.
 
 **Structural fixes that serve both populations:**
 
@@ -810,8 +807,7 @@ Zero ⇒ the sound comes from somewhere else entirely and the search reopens.
 Whatever the cause, the user-visible outcome (music playing, bars empty) is wrong.
 The failure is at least legible now. `analyzeVuVisibility` in
 `spectrometer-shadow-detect.js` steps the tune on the 6510, applies the player's
-own GATE/TEST/waveform test per frame, and both the method picker and the quick
-path warn when a long *leading* stretch has nothing to draw (`renderVuNotes`;
+own GATE/TEST/waveform test per frame, and the method picker warns when a long *leading* stretch has nothing to draw (`renderVuNotes`;
 worked out once per tune, since the answer is the tune's). Two things it deliberately does not key on:
 
 - **The raw count of closed-gate frames.** Gates close between notes, so it is

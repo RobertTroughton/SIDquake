@@ -438,89 +438,30 @@ async function loadSid(page, file) {
                 snapshot.fromDom === snapshot.live, JSON.stringify(snapshot));
         }
 
-        // --- the quick path ---------------------------------------------------
-        const quick = await page.evaluate(async () => {
-            window.studioModal.close();
-            await new Promise(r => setTimeout(r, 300));
-            const box = document.getElementById('quickExport');
-            const looks = [...document.querySelectorAll('.quick-look')];
-            const before = looks.filter(l => l.classList.contains('selected')).map(l => l.dataset.id);
-            // Choosing here has to move the real selection, not a parallel one.
-            const other = looks.find(l => !l.classList.contains('selected'));
-            if (other) other.click();
-            await new Promise(r => setTimeout(r, 800));
-            return {
-                shown: !box.hidden,
-                looks: looks.length,
-                tabStops: looks.filter(l => l.tabIndex === 0).length,
-                before,
-                picked: other ? other.dataset.id : null,
-                selected: window.uiController.selectedVisualizer?.dataSourceGroup
-                    || window.uiController.selectedVisualizer?.id,
-                hasButton: !!document.getElementById('quickExportBtn'),
-            };
-        });
-        check('A loaded tune offers a quick path', quick.shown && quick.looks >= 2 && quick.hasButton,
-            JSON.stringify({ shown: quick.shown, looks: quick.looks }));
-        check('Its looks are one tab stop with radio behaviour', quick.tabStops === 1,
-            `${quick.tabStops} tab stops`);
-        check('Picking one moves the real selection',
-            quick.picked === quick.selected, `${quick.picked} vs ${quick.selected}`);
-
-        // A look built around a picture has to ask for the picture: exporting the
-        // stock logo silently is the one outcome nobody wants.
-        const quickLogo = await page.evaluate(async () => {
-            const ui = window.uiController;
-            ui._imageSelectionMemory = {};
-            ui._quickImageAsked = new Set();
-            const card = [...document.querySelectorAll('.quick-look')]
-                .find(l => l.dataset.id === 'DefaultWithLogo');
-            if (!card) return { offered: false };
-            card.click();
-            await new Promise(r => setTimeout(r, 1500));
-            const modal = document.getElementById('galleryModal');
-            const open = !!modal && modal.classList.contains('visible');
-            const items = modal ? modal.querySelectorAll('.gallery-item-card').length : 0;
-            if (open) window.imagePreviewManager.initGalleryModal().close();
-            return { offered: true, open, items };
-        });
-        check('Picking a look with a logo asks which logo',
-            !quickLogo.offered || (quickLogo.open && quickLogo.items > 0), JSON.stringify(quickLogo));
-
-        // A tune the live bar methods cannot see has to say so where the choice is
-        // being made. The 6510 side of the check is covered by test-vu-visibility;
-        // this is about the warning reaching the quick path at all.
+        // A tune the live bar methods cannot see has to say so on the Method
+        // panel. The 6510 side of the check is covered by test-vu-visibility;
+        // this is about the warning reaching the page at all.
         const vuNote = await page.evaluate(async () => {
             const ui = window.uiController;
             ui._vuBlind = { leadingSeconds: 14, leadingAudible: true, frames: 1200 };
             ui._vuBlindFor = ui._analysisToken;
-            const warn = document.getElementById('quickExportWarn');
-            const pick = async (id) => {
-                await ui.selectVisualizer(VISUALIZERS.find(v => v.id === id));
-                await new Promise(r => setTimeout(r, 400));
-                return { hidden: warn.hidden, text: warn.textContent };
-            };
-            const bars = await pick('RaistlinBars');
-            const live = ui.selectedVisualizer?.dataSource;
-            ui.selectDataSource('fft');
-            ui.renderQuickExport();
-            const fft = { hidden: warn.hidden };
-            const text = await pick('default');
+            await ui.selectVisualizer(VISUALIZERS.find(v => v.id === 'RaistlinBars'));
+            await new Promise(r => setTimeout(r, 400));
+            const warn = document.getElementById('methodVuNote');
+            if (!warn) return { shown: { hidden: true, text: 'no Method panel' }, cleared: false };
+            ui.renderVuNotes();
+            const shown = { hidden: warn.hidden, text: warn.textContent };
             ui._vuBlind = null;
             ui._vuBlindFor = -1;
-            ui.renderQuickExport();
-            return { bars, live, fft, text, cleared: warn.hidden };
+            ui.renderVuNotes();
+            return { shown, cleared: warn.hidden };
         });
-        check('A tune the live bars cannot see says so on the quick path',
-            !vuNote.bars.hidden && /first 0:14/.test(vuNote.bars.text), JSON.stringify(vuNote.bars));
+        check('A tune the live bars cannot see says so on the Method panel',
+            !vuNote.shown.hidden && /first 0:14/.test(vuNote.shown.text), JSON.stringify(vuNote.shown));
         check('...and points at the method that is unaffected',
-            /best looking/i.test(vuNote.bars.text), vuNote.bars.text);
-        check('...only while a live method is what would be exported',
-            vuNote.live === 'realtime' && vuNote.fft.hidden && vuNote.text.hidden,
-            JSON.stringify({ live: vuNote.live, fft: vuNote.fft.hidden, text: vuNote.text.hidden }));
-
-        await page.evaluate(() => window.studioModal.open());
-        await page.waitForTimeout(400);
+            /best looking/i.test(vuNote.shown.text), vuNote.shown.text);
+        check('...and the warning goes when the tune is visible', vuNote.cleared,
+            JSON.stringify(vuNote));
 
         // --- fewer tabs -------------------------------------------------------
         const tabs = await page.evaluate(async () => {

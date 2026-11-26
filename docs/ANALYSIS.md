@@ -105,7 +105,7 @@ Driven from `ui.js`; the results land on the Studio's Song tab.
   takes both away (`showLengthNotice` / `clearExportStatus` in `ui.js`). Two cases still wait for the scan: the
   baked Spectrometer, whose stream is cut from the scan's own render, and a
   queue run, which has nobody to export again. With no background scan running
-  (the quick path outside the Studio, or no Worker), the export measures under
+  (no Worker), the export measures under
   its overlay as before
 - The scan itself (`spectrometer-bake-core.js` `renderAndAnalyze`) runs a
   register pre-pass first (`loop-prepass.js`): the tune's player is stepped on

@@ -11,13 +11,9 @@ The page-level controllers. Layout rules for small screens and touch are in
   tune loaded
 - Header display and metadata editing
 - Visualizer grid with selection; renders option controls into Studio tabs
-- Quick path (`renderQuickExport`): a row of looks and one Generate button
-  outside the Studio, running the same export. Picking a look built around a
-  picture opens the gallery for it, rather than exporting the player's stock
-  logo. A bar look lands on the live "VU meter · Clever" bar data (see
-  `SIDPlayers/BAR_HEIGHT_METHODS.md`); the spectrometer is a Studio choice.
-  A tune the live methods cannot see is warned about here as well as on the
-  Method panel (`renderVuNotes`)
+- The landing card's only route to an export is "Open the Studio"; a tune the
+  live bar methods cannot see is warned about on the Method panel
+  (`renderVuNotes`)
 - Song length and multi-song handling: see [`ANALYSIS.md`](ANALYSIS.md)
 - PRG export workflow with progress feedback
 - C64 color palette constants
