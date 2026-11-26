@@ -39,9 +39,10 @@ visualizer features.
 ## Piano
 
 `SIDPlayers/Piano/Piano.asm`: the RaistlinBarsWithLogo logo split (10 art rows
-and a clear row, sprite curtain), the song name in the 1x2 font, and a 40-white-key
-keyboard (C1 to G6, or C2 to G7 with the Keyboard Range option, data block
-`$74`). It reads the SID through the same register mirror as the bar players,
+and a clear row, sprite curtain), the song name and under it the clock
+(`INC/timer.asm`, centred, with "/MM:SS" when the length is known) in the 1x2
+font, and a 40-white-key keyboard six rows tall with black keys the top four
+(C1 to G6, or C2 to G7 with the Keyboard Range option, data block `$74`). It reads the SID through the same register mirror as the bar players,
 so it ships two builds: realtime (second play call under save/restore) and
 `SPECTROMETER_SHADOW`. No baked variant: an FFT cannot tell which key a voice
 is on.

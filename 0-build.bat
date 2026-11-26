@@ -47,6 +47,8 @@ echo Testing relocation tables...
 call :reloc "Default"                          scripts\gen-reloc-codeonly.js .\SIDPlayers\Default\Default.asm public\prg\default.codereloc.json --codebin public\prg\Default-code.bin
 call :reloc "DefaultWithLogo"                  scripts\gen-reloc-codeonly.js .\SIDPlayers\DefaultWithLogo\DefaultWithLogo.asm public\prg\defaultwithlogo.codereloc.json --codebin public\prg\DefaultWithLogo-code.bin
 call :reloc "MusicalBlobs"                     scripts\gen-reloc-codeonly.js .\SIDPlayers\MusicalBlobs\MusicalBlobs.asm public\prg\musicalblobs.codereloc.json --codebin public\prg\MusicalBlobs-code.bin
+call :reloc "Piano"                            scripts\gen-reloc-codeonly.js .\SIDPlayers\Piano\Piano.asm public\prg\piano.codereloc.json --codebin public\prg\Piano-code.bin
+call :reloc "PianoShadow"                      scripts\gen-reloc-codeonly.js .\SIDPlayers\Piano\Piano.asm public\prg\pianoshadow.codereloc.json --codebin public\prg\PianoShadow-code.bin -define SPECTROMETER_SHADOW
 call :reloc "RaistlinBars"                     scripts\gen-reloc-codeonly.js .\SIDPlayers\RaistlinBars\RaistlinBars.asm public\prg\raistlinbars.codereloc.json --codebin public\prg\RaistlinBars-code.bin
 call :reloc "RaistlinBarsFFT"                  scripts\gen-reloc-codeonly.js .\SIDPlayers\RaistlinBars\RaistlinBars.asm public\prg\raistlinbarsfft.codereloc.json --codebin public\prg\RaistlinBarsFFT-code.bin -define SPECTROMETER_BAKED
 call :reloc "RaistlinBarsShadow"               scripts\gen-reloc-codeonly.js .\SIDPlayers\RaistlinBars\RaistlinBars.asm public\prg\raistlinbarsshadow.codereloc.json --codebin public\prg\RaistlinBarsShadow-code.bin -define SPECTROMETER_SHADOW

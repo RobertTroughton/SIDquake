@@ -6,8 +6,9 @@
 // Screen layout (char rows):
 //    0-10  logo (10 art rows + 1 clear row that hides the raster split)
 //   13-14  song name, 1x2 font, centred
-//      17  felt strip
-//   18-24  keyboard: 40 white keys, C to G across 5 octaves and a fifth
+//   16-17  elapsed time, and "/" + song length when the analysis found one
+//   19-24  keyboard: 40 white keys, C to G across 5 octaves and a fifth;
+//          the black keys are the top 4 of its 6 rows
 //
 // Which keys are down comes from the SID registers, read the same two ways
 // the bar players read them: the realtime build peeks a second play call with
@@ -36,7 +37,7 @@
 //   $3000-$33FF  screen (logo rows injected at export) + sprite pointers
 //   $3400-$35B7  logo colour data on load (copied to $D800 at init)
 //   $3800-$3EFF  1x2 font (injected at export)
-//   $3F00-$3F57  piano characters (224-234)
+//   $3F00-$3F2F  piano characters (224-229)
 // =============================================================================
 
 .var LOAD_ADDRESS                   = cmdLineVars.get("loadAddress").asNumber()
@@ -53,7 +54,29 @@ borderColor:
     .byte $00                           // $0D: border colour
 backgroundColor:
     .byte $00                           // $0E: logo background colour (from the logo conversion)
-    .fill $6C - $0F, $00
+    .fill $4C - $0F, $00
+    //; Song length and loop point, patched at export (same offsets as the bar
+    //; players; see INC/timer.asm).
+bakedLoopEndMin:
+    .byte $00                           // $4C: loop-end (= shown length) MM - the clock wraps here
+bakedLoopEndSec:
+    .byte $00                           // $4D: loop-end SS
+bakedLoopEndFrameRem:
+    .byte $00                           // $4E: loop-end frame within that second
+bakedLoopFrameRem:
+    .byte $00                           // $4F: loop-point frame within that second
+    .fill $5B - $50, $00
+bakedLoopMin:
+    .byte $00                           // $5B: loop-point MM - the clock resets here
+bakedLoopSec:
+    .byte $00                           // $5C: loop-point SS
+bakedLenMin:
+    .byte $00                           // $5D: song length MM
+bakedLenSec:
+    .byte $00                           // $5E: song length SS
+bakedHasLength:
+    .byte $00                           // $5F: 1 when the analysis found a real length
+    .fill $6C - $60, $00
 songNameColor:
     .byte $01                           // $6C: song name colour
 pianoBgColor:
@@ -83,9 +106,9 @@ pianoLowNote:
 
 .const LOGO_HEIGHT						= 11
 .const SONG_TITLE_LINE					= 13
-.const FELT_ROW							= 17
-.const KEYS_TOP_ROW						= 18
-.const BLACK_END_ROW					= 21	//; black keys end 4px into this row
+.const TIMER_LINE						= 16
+.const KEYS_TOP_ROW						= 19
+.const BLACK_KEY_ROWS					= 4		//; 2/3 of the keyboard's height
 .const KEYS_BOTTOM_ROW					= 24
 
 .const NUM_WHITE_KEYS					= 40
@@ -113,13 +136,10 @@ pianoLowNote:
 
 .const PIANO_CHARS						= 224
 .const CHAR_BLACK_ROW					= PIANO_CHARS + 0	//; +variant (0..3)
-.const CHAR_BLACK_END					= PIANO_CHARS + 4	//; +variant (0..3)
-.const CHAR_WHITE						= PIANO_CHARS + 8
-.const CHAR_WHITE_BOTTOM				= PIANO_CHARS + 9
-.const CHAR_FELT						= PIANO_CHARS + 10
+.const CHAR_WHITE						= PIANO_CHARS + 4
+.const CHAR_WHITE_BOTTOM				= PIANO_CHARS + 5
 
 .const WHITE_UNLIT						= $01
-.const FELT_COLOUR						= $02
 
 //; Sprite Y lines up with a char row at 50 + row * 8 (first text row at 51).
 .const KEY_SPRITE_Y						= 50 + (KEYS_TOP_ROW * 8)
@@ -129,6 +149,21 @@ pianoLowNote:
 #define INCLUDE_F1_SHOWRASTERTIMINGBAR
 #define INCLUDE_SPACE_FASTFORWARD
 #define INCLUDE_MUSIC_ANALYSIS
+
+//; Clock under the song name, centred: "MM:SS/MM:SS" in cols 14-24 when the
+//; length is known, "MM:SS" alone in cols 17-21 when it is not. One screen,
+//; so both timer screens are the same.
+#define TIMER_MOVABLE
+#define TIMER_LOOP_WRAP
+.const TIMER_SCREEN0 = VIC_BANK_ADDRESS + $3000
+.const TIMER_SCREEN1 = TIMER_SCREEN0
+.const TIMER_POS = (TIMER_LINE * 40) + 14
+.const TIMER_POS_ALONE = (TIMER_LINE * 40) + 17
+.const SLASH_POS = (TIMER_LINE * 40) + 19
+.const LENGTH_POS = (TIMER_LINE * 40) + 20
+.const TIMER_COLOR = $0c
+.const LENGTH_COLOR = $0b
+.const TIMER_DOUBLE_HEIGHT = 1
 
 .const MUSIC_SYNC_LINE					= 251
 .const SPLIT_RASTERLINE					= 50 + (LOGO_HEIGHT * 8)
@@ -144,6 +179,7 @@ pianoLowNote:
 .import source "../INC/multicallirq.asm"
 .import source "../INC/stablerastersetup.asm"
 .import source "../INC/linkedwitheffect.asm"
+.import source "../INC/timer.asm"
 
 //; =============================================================================
 //; KEYBOARD GEOMETRY (assembly-time tables)
@@ -206,6 +242,16 @@ Initialize:
 	jsr DrawScreens
 	jsr InitPiano
 
+	//; The clock sits centred on its own, or shifted left of a "/MM:SS" length.
+	ldx #$01
+	lda bakedHasLength
+	beq !alone+
+	ldx #$00
+!alone:
+	stx timerAlone
+	jsr InitTimer
+	jsr DrawSongLength
+
 	jsr SetupMusic
 
 	lda BitmapScreenColour
@@ -239,6 +285,7 @@ MainLoop:
 	bne !ffCallLoop-
 
 	jsr CheckMusicLoop
+	jsr UpdateTimer
 	jsr CheckSpaceKey
 	lda FastForwardActive
 	bne !ffFrameLoop-
@@ -296,14 +343,16 @@ DrawScreens:
 	cpy #(LOGO_HEIGHT * 40) - $100
 	bne !loop-
 
-	//; Rows 11-16: blank, then the song name (already centred in 32 chars by
+	//; Rows 11-18: blank, then the song name (already centred in 32 chars by
 	//; the exporter) at cols 4-35, top half on row 13, bottom half on row 14.
-	ldy #(6 * 40) - 1
+	ldy #(4 * 40) - 1
 !clear:
 	lda #$20
 	sta SCREEN_ADDRESS + (LOGO_HEIGHT * 40), y
+	sta SCREEN_ADDRESS + ((LOGO_HEIGHT + 4) * 40), y
 	lda songNameColor
 	sta $d800 + (LOGO_HEIGHT * 40), y
+	sta $d800 + ((LOGO_HEIGHT + 4) * 40), y
 	dey
 	cpy #$ff
 	bne !clear-
@@ -320,21 +369,13 @@ DrawScreens:
 	//; Keyboard.
 	ldy #NUM_WHITE_KEYS - 1
 !keys:
-	lda #CHAR_FELT
-	sta SCREEN_ADDRESS + (FELT_ROW * 40), y
-	lda #FELT_COLOUR
-	sta $d800 + (FELT_ROW * 40), y
-
 	lda whiteVariantTable, y
 	ora #CHAR_BLACK_ROW
-	.for (var row = KEYS_TOP_ROW; row < BLACK_END_ROW; row++) {
+	.for (var row = KEYS_TOP_ROW; row < KEYS_TOP_ROW + BLACK_KEY_ROWS; row++) {
 		sta SCREEN_ADDRESS + (row * 40), y
 	}
-	clc
-	adc #CHAR_BLACK_END - CHAR_BLACK_ROW
-	sta SCREEN_ADDRESS + (BLACK_END_ROW * 40), y
 	lda #CHAR_WHITE
-	.for (var row = BLACK_END_ROW + 1; row < KEYS_BOTTOM_ROW; row++) {
+	.for (var row = KEYS_TOP_ROW + BLACK_KEY_ROWS; row < KEYS_BOTTOM_ROW; row++) {
 		sta SCREEN_ADDRESS + (row * 40), y
 	}
 	lda #CHAR_WHITE_BOTTOM
@@ -449,7 +490,61 @@ MusicCall_Other:
 	jmp JustPlayMusic
 
 FrameCall:
-	jmp UpdatePiano
+	jsr UpdatePiano
+	jmp UpdateTimer
+
+//; "/MM:SS" song length right of the clock, drawn once; nothing when no length
+//; was found. Same 1x2 digits as the clock; '/' is screen code 47.
+DrawSongLength:
+	lda bakedHasLength
+	bne !show+
+	rts
+!show:
+	lda #47
+	sta SCREEN_ADDRESS + SLASH_POS
+	ora #TIMER_BOTTOM_OFFSET
+	sta SCREEN_ADDRESS + SLASH_POS + 40
+	lda #LENGTH_COLOR
+	sta $d800 + SLASH_POS
+	sta $d800 + SLASH_POS + 40
+	lda bakedLenMin
+	jsr TimerDiv10
+	pha
+	txa
+	clc
+	adc #48
+	sta lengthChars + 0
+	pla
+	clc
+	adc #48
+	sta lengthChars + 1
+	lda #58								//; ':'
+	sta lengthChars + 2
+	lda bakedLenSec
+	jsr TimerDiv10
+	pha
+	txa
+	clc
+	adc #48
+	sta lengthChars + 3
+	pla
+	clc
+	adc #48
+	sta lengthChars + 4
+	ldx #4
+!write:
+	lda lengthChars, x
+	sta SCREEN_ADDRESS + LENGTH_POS, x
+	ora #TIMER_BOTTOM_OFFSET
+	sta SCREEN_ADDRESS + LENGTH_POS + 40, x
+	lda #LENGTH_COLOR
+	sta $d800 + LENGTH_POS, x
+	sta $d800 + LENGTH_POS + 40, x
+	dex
+	bpl !write-
+	rts
+
+lengthChars:			.fill 5, $00
 
 //; =============================================================================
 //; SID ANALYSIS
@@ -822,9 +917,9 @@ keySpriteEnable:		.byte 0
 	.byte $00
 
 * = SPRITES_ADDRESS + $40 "Key Sprite"
-	//; 6px wide, 14 rows; Y-expanded to the black keys' 28 lines.
+	//; 6px wide, 16 rows; Y-expanded to the black keys' 32 lines.
 	.for (var row = 0; row < 21; row++) {
-		.byte row < 14 ? %11111100 : $00, $00, $00
+		.byte row < BLACK_KEY_ROWS * 4 ? %11111100 : $00, $00, $00
 	}
 	.byte $00
 
@@ -842,16 +937,9 @@ keySpriteEnable:		.byte 0
 	.for (var v = 0; v < 4; v++) {
 		.fill 8, cut.get(v)
 	}
-	//; Last black-key row: the cut runs 4 lines, then the full white key.
-	.for (var v = 0; v < 4; v++) {
-		.fill 4, cut.get(v)
-		.fill 4, %11111110
-	}
 	.fill 8, %11111110					//; CHAR_WHITE
 	.fill 6, %11111110					//; CHAR_WHITE_BOTTOM: rounded front edge
 	.byte %01111100, %00000000
-	.fill 5, $00						//; CHAR_FELT: a 3px strip above the keys
-	.fill 3, $ff
 
 * = BITMAP_ADDRESS "Bitmap"
 	.fill LOGO_HEIGHT * 40 * 8, $00

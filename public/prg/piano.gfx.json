@@ -5,7 +5,7 @@
     "PianoShadow"
   ],
   "base": "0x4000",
-  "size": "0x3F58",
+  "size": "0x3F30",
   "segments": [
     {
       "name": "Data Block",
@@ -28,7 +28,7 @@
       "name": "Key Sprite",
       "addr": "0x6E40",
       "size": "0x0040",
-      "data": "/AAA/AAA/AAA/AAA/AAA/AAA/AAA/AAA/AAA/AAA/AAA/AAA/AAA/AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=="
+      "data": "/AAA/AAA/AAA/AAA/AAA/AAA/AAA/AAA/AAA/AAA/AAA/AAA/AAA/AAA/AAA/AAAAAAAAAAAAAAAAAAAAAAAAA=="
     },
     {
       "name": "Screen",
@@ -49,8 +49,8 @@
     {
       "name": "Piano Chars",
       "addr": "0x7F00",
-      "size": "0x0058",
-      "data": "/v7+/v7+/v4eHh4eHh4eHvj4+Pj4+Pj4GBgYGBgYGBj+/v7+/v7+/h4eHh7+/v7++Pj4+P7+/v4YGBgY/v7+/v7+/v7+/v7+/v7+/v7+fAAAAAAAAP///w=="
+      "size": "0x0030",
+      "data": "/v7+/v7+/v4eHh4eHh4eHvj4+Pj4+Pj4GBgYGBgYGBj+/v7+/v7+/v7+/v7+/nwA"
     }
   ]
 }

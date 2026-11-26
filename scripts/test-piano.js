@@ -28,7 +28,7 @@ const fs = require('fs'), os = require('os'), path = require('path');
 const ROOT = path.join(__dirname, '..');
 const BASE = 0x1000;                // data block; code at BASE + $100
 const NUM_KEYS = 68;
-const KEYS_TOP_ROW = 18, KEYS_BOTTOM_ROW = 24;
+const KEYS_TOP_ROW = 19, KEYS_BOTTOM_ROW = 24;
 const PAL_CLOCK = 985248;
 
 function assemble(defines) {

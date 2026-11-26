@@ -48,6 +48,12 @@ const PLAYERS = [
         alone: { poke: [[HAS_LENGTH, 0]], call: ['InitSongTimer'] }
     },
     {
+        name: 'Piano',
+        asm: 'SIDPlayers/Piano/Piano.asm',
+        withLength: { poke: [[HAS_LENGTH, 1], ['timerAlone', 0]], call: ['InitTimer', 'DrawSongLength'] },
+        alone: { poke: [[HAS_LENGTH, 0], ['timerAlone', 1]], call: ['InitTimer'] }
+    },
+    {
         name: 'RaistlinBars',
         asm: 'SIDPlayers/RaistlinBars/RaistlinBars.asm',
         // INC/timer.asm picks its column from timerAlone; the player sets that
@@ -82,6 +88,7 @@ const FAST_FORWARD = [
     { name: 'MusicalBlobs', asm: 'SIDPlayers/MusicalBlobs/MusicalBlobs.asm', tick: 'UpdateSongTimer' },
     { name: 'Default', asm: 'SIDPlayers/Default/Default.asm', tick: 'UpdateTimer' },
     { name: 'DefaultWithLogo', asm: 'SIDPlayers/DefaultWithLogo/DefaultWithLogo.asm', tick: 'UpdateTimer' },
+    { name: 'Piano', asm: 'SIDPlayers/Piano/Piano.asm', tick: 'UpdateTimer' },
     { name: 'RaistlinBars', asm: 'SIDPlayers/RaistlinBars/RaistlinBars.asm', tick: 'UpdateTimer' },
     { name: 'RaistlinBarsWithLogo', asm: 'SIDPlayers/RaistlinBarsWithLogo/RaistlinBarsWithLogo.asm', tick: 'UpdateTimer' },
     { name: 'RaistlinMirrorBars', asm: 'SIDPlayers/RaistlinMirrorBars/RaistlinMirrorBars.asm', tick: 'UpdateTimer' },

@@ -52,10 +52,19 @@
         {
           "name": "Graphics: piano chars",
           "off": "0x1100",
-          "len": "0x0058"
+          "len": "0x0030"
         }
       ],
-      "pianoLowNoteAddress": "0x4074"
+      "pianoLowNoteAddress": "0x4074",
+      "bakedLoopFrameRemAddress": "0x404F",
+      "bakedLoopMinAddress": "0x405B",
+      "bakedLoopSecAddress": "0x405C",
+      "bakedLenMinAddress": "0x405D",
+      "bakedLenSecAddress": "0x405E",
+      "bakedHasLengthAddress": "0x405F",
+      "bakedLoopEndMinAddress": "0x404C",
+      "bakedLoopEndSecAddress": "0x404D",
+      "bakedLoopEndFrameRemAddress": "0x404E"
     }
   },
   "inputs": [
