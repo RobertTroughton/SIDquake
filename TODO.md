@@ -273,8 +273,8 @@ other twenty places that needed them.
   it sat at 0% and jumped to 100%. It now says what is happening and that the
   page will pause, and yields a frame so that message is on screen before the
   freeze. A real Cancel needs `[WASM]`: chunk `sid_analyze` into resumable
-  batches with an entry point the JS side can drive frame by frame. Random SID
-  is cancellable, and the overlay is a labelled dialog that announces on a
+  batches with an entry point the JS side can drive frame by frame. The
+  overlay is a labelled dialog that announces on a
   throttle, focuses Cancel and makes the page behind `inert`.
 - **HVSC results now paint in chunks.** It is a proper listbox — roving
   tabindex, arrows, Home/End, PageUp/Down, type-ahead, announced counts — and a
@@ -404,24 +404,21 @@ a PRG.
 
 A self-hosted 61,157-tune mirror, full-collection search, a real
 libsidplayfp player with sub-tunes, STIL commentary, a spectrum visualiser,
-per-tune share URLs, edge-rendered Open Graph unfurls
-(`netlify/edge-functions/tune-og.js`) and crawlable per-composer pages
-(`scripts/build-seo-pages.js`) all already exist. They are filed under an
+per-tune share URLs and edge-rendered Open Graph unfurls
+(`netlify/edge-functions/tune-og.js`) all already exist. They are filed under an
 acronym, inside a modal, behind a button, on a page whose headline addresses
-composers. The only landing-page link to `/music/` is fifteen words at the end of
-a credits paragraph (`index.html:502`), and the "Releases" tab — the one that
+composers. The "Releases" tab — the one that
 sounds like music — is 48 screenshots linking off-site to CSDb, with nothing
 playable, despite every one of those tunes existing in the mirror.
 
 - Give the Tool tab a playable hero: a tune already loaded, big play button,
-  spectrum running (the visualiser's idle demo wave was built for this), a
-  "Shuffle" that resolves in under a second, and the search box promoted out of
-  the modal.
+  spectrum running (the visualiser's idle demo wave was built for this), and the
+  search box promoted out of the modal. (A random pick was tried and removed.)
 - Rewrite the subtitle so it doesn't tell 95% of arrivals they're in the wrong
   place. Keep both audiences in one sentence.
 - **Done:** the browser is titled "61,000 C64 tunes" with HVSC as a subtitle,
   its buttons say "Use this tune" / "Close" rather than "Select" / "Cancel", and
-  the landing page links `/music/` for people who only came to listen.
+  the landing card offers exactly two ways in: upload a SID or browse the HVSC.
 - **The Releases tab still isn't playable, and probably can't be as it stands:**
   the cards are CSDb releases, and SIDquake does not hold those tunes — HVSC
   lags new releases by months. Playing them would mean hosting the .sid
