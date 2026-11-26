@@ -1173,8 +1173,8 @@ UpdatePiano:
 	bpl !drum-
 
 	//; Filter bar: out from the middle of the screen both ways, a pixel at a
-	//; time. Its half-width eases towards the cutoff's - a quarter of the way
-	//; each frame growing, an eighth shrinking - so a cutoff jumping about
+	//; time. Its half-width eases towards the cutoff's - half the way each
+	//; frame growing, a quarter shrinking - so a cutoff jumping about
 	//; frame to frame moves it smoothly rather than flickering. Its colour is
 	//; the filtered voice's waveform while one is routed, held for at least
 	//; FILTER_COLOUR_HOLD frames once changed (tunes swap which voice, and
@@ -1210,7 +1210,6 @@ UpdatePiano:
 	sec
 	sbc filterWidth
 	lsr
-	lsr
 	bne !grow+
 	lda #$01
 !grow:
@@ -1222,7 +1221,6 @@ UpdatePiano:
 	lda filterWidth
 	sec
 	sbc filterTarget
-	lsr
 	lsr
 	lsr
 	bne !step+

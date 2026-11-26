@@ -102,7 +102,7 @@ pitches: tunes pitch their noise anywhere from `$05` to `$FF`.
   have colours of their own (low red, mid orange, high cyan).
 - The filter bar grows out from the middle of the screen both ways, a pixel at
   a time (full, partial and empty characters). Its half-width eases towards
-  the cutoff's, a quarter of the way a frame growing and an eighth shrinking,
+  the cutoff's, half the way a frame growing and a quarter shrinking,
   so a cutoff that jumps about frame to frame moves it smoothly; a new colour
   holds for at least 12 frames, because tunes swap which voice and waveform go
   through the filter every frame or two.

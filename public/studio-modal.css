@@ -455,6 +455,8 @@
     border-top: 1px solid var(--border);
     background: var(--bg-surface);
     min-width: 0;
+    /* Anchors the song-length popup above Generate. */
+    position: relative;
 }
 
 /* The per-tab summary is the first thing to go when the row is tight: the
@@ -488,35 +490,35 @@
     font-size: 0.9em;
 }
 
-/* The song-length scan, beside Generate: busy while it runs, then a pulse
-   and the result, which fades out. */
+/* The song-length scan: a popup floating just above Generate, out of the
+   footer's flow, so its coming and going moves nothing. Busy while it runs,
+   then a pulse and the result, which fades out. */
 .studio-foot .studio-length {
+    position: absolute;
+    right: 18px;
+    bottom: calc(100% + 8px);
+    z-index: 5;
     display: flex;
     align-items: center;
     gap: 8px;
-    flex: 0 1 auto;
-    min-width: 0;
-    padding: 4px 10px;
+    max-width: calc(100% - 36px);
+    padding: 6px 12px;
+    background: var(--bg-elevated);
     border: 1px solid var(--border-light);
     border-left: 3px solid var(--accent);
     border-radius: var(--radius-sm);
+    box-shadow: var(--shadow-lg);
     font-size: 0.8em;
     color: var(--text-primary);
     white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    pointer-events: none;
     transition: opacity 0.8s ease;
 }
 
 .studio-foot .studio-length[hidden] {
     display: none;
-}
-
-/* Right up against Generate: the free space goes to its left, not between. */
-.studio-foot .studio-length:not([hidden]) {
-    margin-left: auto;
-}
-
-.studio-foot .studio-length:not([hidden]) + .export-button {
-    margin-left: 0;
 }
 
 .studio-length-spinner {

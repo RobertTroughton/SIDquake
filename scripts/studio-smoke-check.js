@@ -1633,10 +1633,17 @@ async function loadSid(page, file) {
                 const ui = window.uiController;
                 const sleep = (ms) => new Promise(r => setTimeout(r, ms));
                 const el = document.getElementById('studioLength');
+                // Where everything else in the footer sits, and how tall it is.
+                const foot = document.querySelector('.studio-foot');
+                const at = () => [foot, ...foot.children].filter(c => c !== el).map(c => {
+                    const r = c.getBoundingClientRect();
+                    return `${Math.round(r.x)},${Math.round(r.y)},${Math.round(r.height)}`;
+                }).join(' ');
                 const read = () => ({
                     shown: !!el && !el.hidden,
                     done: !!el && el.classList.contains('is-done'),
                     text: el ? el.textContent.trim() : '',
+                    button: at(),
                 });
                 for (let i = 0; i < 600 && ui.analysisRunning; i++) await sleep(100);
                 const fade = {
@@ -1679,6 +1686,10 @@ async function loadSid(page, file) {
                 meter.landed && meter.landed.shown && meter.landed.done && /1:00/.test(meter.landed.text),
                 JSON.stringify(meter.landed));
             check('...and then fades away', meter.later && !meter.later.shown, JSON.stringify(meter.later));
+            check('It floats: nothing in the footer moves while it comes and goes',
+                meter.busy && meter.landed && meter.later
+                && meter.busy.button === meter.later.button && meter.landed.button === meter.later.button,
+                [meter.busy?.button, meter.landed?.button, meter.later?.button].join(' / '));
         } finally {
             await stale.close();
         }
