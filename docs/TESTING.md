@@ -105,6 +105,11 @@ band and hides anything that goes wrong at its bottom edge.
 
 ## Slow checks to run by hand
 
+- `scripts/vice-play-rate.js <export.prg> --play=XXXX [--skip=N] [--calls=500]`
+  when a tune sounds slow in an export: runs it in VICE, breaks on the play
+  address and reports play calls per raster frame (2 for a realtime-analysis
+  visualiser on a single-speed tune: the play and the peek). Fewer means the
+  frame call's overload guard (`INC/multicallirq.asm`) dropped frames.
 - `scripts/piano-write-timing.js <export.prg>` after changing when the Piano
   player writes its keyboard: runs the export in VICE with watchpoints on the
   keyboard's colour and screen RAM and reports the raster line of each write;
