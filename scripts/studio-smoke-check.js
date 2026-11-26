@@ -1653,6 +1653,9 @@ async function loadSid(page, file) {
             await many.waitForFunction(() => !!window.uiController, null, { timeout: 20000 });
             await loadSid(many, 'charlesdeenen-mrheli-multisong.sid');
             await many.waitForFunction(() => window.studioModal?.isOpen, null, { timeout: 60000 });
+            // The Studio opens before the default player is chosen, and until it
+            // is the Song tab describes no player at all. Read it once one is.
+            await many.waitForFunction(() => !!window.uiController.selectedVisualizer, null, { timeout: 60000 });
             await many.evaluate(() => window.studioModal.activate('song'));
 
             const state = await many.evaluate(async () => {
