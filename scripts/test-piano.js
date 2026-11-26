@@ -195,6 +195,26 @@ async function runVariant(m, name, defines, stride) {
     frame();
     check(level(kE3) < 0xFF, `${name}: a ringing note with the gate off was struck again`);
 
+    // One voice is one finger: moving on lifts the key it left within three
+    // frames, whatever that note's release, even across the hard restart's
+    // silent frame. A key another voice is holding stays down.
+    const kD4 = expectedKey(12 * 4 + 2), kF4 = expectedKey(12 * 4 + 5), kG4 = expectedKey(12 * 4 + 7);
+    for (let v = 0; v < 6; v++) setVoice(v, {});
+    for (let i = 0; i < 45; i++) frame();
+    setVoice(0, { freq: noteFreq(12 * 4 + 2), ctrl: 0x40, sr: 0x0E });
+    frame();
+    setVoice(0, { freq: noteFreq(12 * 4 + 2), ctrl: 0x09, sr: 0x0E });
+    frame();
+    setVoice(0, { freq: noteFreq(12 * 4 + 5), ctrl: 0x40, sr: 0x0E });
+    for (let i = 0; i < 3; i++) frame();
+    check(level(kD4) === 0, `${name}: the key a voice left is still lit after 3 frames (level ${level(kD4)})`);
+    check(level(kF4) > 0, `${name}: the key the voice moved to went dark`);
+    setVoice(1, { freq: noteFreq(12 * 4 + 5), ctrl: 0x41, sr: 0x8E });
+    frame();
+    setVoice(0, { freq: noteFreq(12 * 4 + 7), ctrl: 0x40, sr: 0x0E });
+    for (let i = 0; i < 3; i++) frame();
+    check(level(kF4) > 0 && level(kG4) > 0, `${name}: a key held by another voice was lifted`);
+
     // Silence everything: no sprite stays on.
     for (let v = 0; v < 6; v++) setVoice(v, {});
     for (let i = 0; i < 45; i++) frame();

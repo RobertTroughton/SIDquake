@@ -105,6 +105,11 @@ band and hides anything that goes wrong at its bottom edge.
 
 ## Slow checks to run by hand
 
+- `scripts/piano-lit-count.js <tune.sid> [callsPerFrame] [frames]` after
+  changing when the Piano player strikes or lifts a key: plays the tune and
+  feeds each frame to the assembled player, then reports how many keys are lit
+  on average and at most.
+
 - `scripts/native-check/run.sh [--valgrind] [resid|sidplayfp]` builds the
   engines natively under ASan/UBSan or valgrind and checks a render does not
   depend on what played before it; for bugs the WASM heap hides. See its

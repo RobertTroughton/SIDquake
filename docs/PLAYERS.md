@@ -61,7 +61,10 @@ is on.
   strikes it. The second rule is for multispeed tunes whose gate opens and
   closes between two of the player's once-a-frame samples (Moonlight Sonata by
   Thanos B. gates for one of its two calls a frame): the new note, or the hard
-  restart before it, is all the analysis sees. Then sustain sets a floor while the gate is held, and the
+  restart before it, is all the analysis sees. One voice is one finger:
+  landing on a new key lifts the one it left (unlit two frames later) unless
+  another voice has taken it, so a long release doesn't leave a trail of lit
+  keys behind a run of notes. Then sustain sets a floor while the gate is held, and the
   decay or release nibble sets how fast it falls (held to 4..40 frames). The
   level picks one of four shades from the voice's colour family.
 - White keys are lit in colour RAM. The black keys are cut-outs in the white-key

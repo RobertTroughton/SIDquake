@@ -116,6 +116,7 @@ pianoLowNote:
 .const DEFAULT_LOW_NOTE					= 12	//; C1
 .const MAX_VOICES						= 12	//; 4 SID chips
 .const NUM_KEY_SPRITES					= 8
+.const LIFT_FALL						= 128	//; a lifted key is unlit two frames after the voice moves on
 
 .const SCREEN_BANK						= 12	//; +$3000
 .const CHARSET_BANK						= 7		//; +$3800
@@ -680,6 +681,29 @@ UpdatePiano:
 	jmp !nextVoice+
 
 !playing:
+	//; One voice is one finger: landing on a new key lifts the one it was
+	//; on, unless another voice has taken that key since.
+	tya
+	cmp lastKey, x
+	beq !sameKey+
+	lda lastKey, x
+	bmi !noLift+
+	sty saveY
+	tay
+	txa
+	cmp keyVoice, y
+	bne !notMine+
+	lda keyFall, y
+	cmp #LIFT_FALL
+	bcs !notMine+
+	lda #LIFT_FALL
+	sta keyFall, y
+!notMine:
+	ldy saveY
+!noLift:
+	tya
+	sta lastKey, x
+!sameKey:
 	txa
 	sta keyVoice, y
 	tya
@@ -728,7 +752,9 @@ UpdatePiano:
 !nextVoice:
 	inx
 	cpx numVoices
-	bne !voice-
+	beq !voicesDone+
+	jmp !voice-
+!voicesDone:
 
 	//; Draw: white keys into colour RAM when their shade changes, lit black
 	//; keys into the sprite list the split IRQ applies.
@@ -817,6 +843,7 @@ InitPiano:
 	lda #$ff
 	sta voiceKey, x
 	sta prevKey, x
+	sta lastKey, x
 	lda #$00
 	sta prevGate, x
 	dex
@@ -895,6 +922,7 @@ voiceAD:				.fill MAX_VOICES, 0
 voiceSR:				.fill MAX_VOICES, 0
 prevKey:				.fill MAX_VOICES, $ff
 prevGate:				.fill MAX_VOICES, 0
+lastKey:				.fill MAX_VOICES, $ff	//; the key each voice last played, kept through silence
 
 keyLevel:				.fill NUM_KEYS, 0
 keyFall:				.fill NUM_KEYS, 0
