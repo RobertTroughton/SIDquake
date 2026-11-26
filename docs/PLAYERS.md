@@ -66,7 +66,11 @@ is on.
   another voice has taken it, so a long release doesn't leave a trail of lit
   keys behind a run of notes. Then sustain sets a floor while the gate is held, and the
   decay or release nibble sets how fast it falls (held to 4..40 frames). The
-  level picks one of four shades from the voice's colour family.
+  level picks one of four shades from the voice's colour family. A strike
+  first shows the family's flash colour for two frames: the strong colour on
+  a white key (which then settles to the lighter shade) and the light colour
+  on a black key (which then settles to the stronger one; white would merge
+  with the white keys beside it).
 - White keys are lit in colour RAM. The black keys are cut-outs in the white-key
   characters, so a lit black key is a 6px Y-expanded sprite (up to eight at
   once); the split IRQ turns the curtain sprites into these once the curtain

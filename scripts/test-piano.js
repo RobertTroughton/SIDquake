@@ -144,6 +144,12 @@ async function runVariant(m, name, defines, stride) {
     check(level(kE4) === 0xFF, `${name}: struck key level ${level(kE4)}, expected 255`);
     check(colourAt(kE4, KEYS_TOP_ROW) === 0x02 && colourAt(kE4, KEYS_BOTTOM_ROW) === 0x02,
         `${name}: struck white key colour $${colourAt(kE4, KEYS_TOP_ROW).toString(16)}, expected $2`);
+    // Two frames of strike flash (red), then the steady shade (light red).
+    frame();
+    check(colourAt(kE4, KEYS_TOP_ROW) === 0x02, `${name}: white key flash lasted one frame, expected two`);
+    frame();
+    check(colourAt(kE4, KEYS_TOP_ROW) === 0x0A && colourAt(kE4, KEYS_BOTTOM_ROW) === 0x0A,
+        `${name}: white key after its flash $${colourAt(kE4, KEYS_TOP_ROW).toString(16)}, expected $a (light red)`);
     for (let i = 0; i < 100; i++) frame();
     check(level(kE4) >= 112 + 8 * 9, `${name}: held key fell to ${level(kE4)} below its sustain floor`);
 
@@ -156,7 +162,9 @@ async function runVariant(m, name, defines, stride) {
     check(rd(L('keySpriteEnable')) === 0x01, `${name}: sprite enable $${rd(L('keySpriteEnable')).toString(16)}, expected $01`);
     const x = rd(L('keySpriteX')) + ((rd(L('keySpriteMSB')) & 1) << 8);
     check(x === column(kCs3) * 8 + 21, `${name}: black key sprite X ${x}, expected ${column(kCs3) * 8 + 21}`);
-    check(rd(L('keySpriteColour')) === 0x07, `${name}: black key colour $${rd(L('keySpriteColour')).toString(16)}, expected $7`);
+    check(rd(L('keySpriteColour')) === 0x07, `${name}: struck black key colour $${rd(L('keySpriteColour')).toString(16)}, expected $7 (yellow flash)`);
+    frame(); frame();
+    check(rd(L('keySpriteColour')) === 0x08, `${name}: black key colour after its flash $${rd(L('keySpriteColour')).toString(16)}, expected $8 (orange)`);
     check(isBlack(kCs3), `${name}: C#3 is not a black key`);
 
     // Release: gate off with release $A (1.5 s, held to 40 frames). The key is
