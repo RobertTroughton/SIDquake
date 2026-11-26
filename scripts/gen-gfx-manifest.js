@@ -64,6 +64,8 @@ const VARIANTS = [
     { name: 'Default', asm: 'SIDPlayers/Default/Default.asm', defines: [] },
     { name: 'DefaultWithLogo', asm: 'SIDPlayers/DefaultWithLogo/DefaultWithLogo.asm', defines: [] },
     { name: 'MusicalBlobs', asm: 'SIDPlayers/MusicalBlobs/MusicalBlobs.asm', defines: [] },
+    { name: 'Piano', asm: 'SIDPlayers/Piano/Piano.asm', defines: [] },
+    { name: 'PianoShadow', asm: 'SIDPlayers/Piano/Piano.asm', defines: ['SPECTROMETER_SHADOW'] },
     { name: 'RaistlinBars', asm: 'SIDPlayers/RaistlinBars/RaistlinBars.asm', defines: [] },
     { name: 'RaistlinBarsFFT', asm: 'SIDPlayers/RaistlinBars/RaistlinBars.asm', defines: ['SPECTROMETER_BAKED'] },
     { name: 'RaistlinBarsShadow', asm: 'SIDPlayers/RaistlinBars/RaistlinBars.asm', defines: ['SPECTROMETER_SHADOW'] },

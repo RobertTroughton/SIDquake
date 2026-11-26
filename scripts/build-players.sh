@@ -64,6 +64,8 @@ CO=scripts/gen-reloc-codeonly.js
 reloc Default                          $CO SIDPlayers/Default/Default.asm                                     $OUT/default.codereloc.json                          --codebin $OUT/Default-code.bin
 reloc DefaultWithLogo                  $CO SIDPlayers/DefaultWithLogo/DefaultWithLogo.asm                     $OUT/defaultwithlogo.codereloc.json                  --codebin $OUT/DefaultWithLogo-code.bin
 reloc MusicalBlobs                     $CO SIDPlayers/MusicalBlobs/MusicalBlobs.asm                           $OUT/musicalblobs.codereloc.json                     --codebin $OUT/MusicalBlobs-code.bin
+reloc Piano                            $CO SIDPlayers/Piano/Piano.asm                                         $OUT/piano.codereloc.json                            --codebin $OUT/Piano-code.bin
+reloc PianoShadow                      $CO SIDPlayers/Piano/Piano.asm                                         $OUT/pianoshadow.codereloc.json                      --codebin $OUT/PianoShadow-code.bin                      -define SPECTROMETER_SHADOW
 reloc RaistlinBars                     $CO SIDPlayers/RaistlinBars/RaistlinBars.asm                           $OUT/raistlinbars.codereloc.json                     --codebin $OUT/RaistlinBars-code.bin
 reloc RaistlinBarsFFT                  $CO SIDPlayers/RaistlinBars/RaistlinBars.asm                           $OUT/raistlinbarsfft.codereloc.json                  --codebin $OUT/RaistlinBarsFFT-code.bin                  -define SPECTROMETER_BAKED
 reloc RaistlinBarsShadow               $CO SIDPlayers/RaistlinBars/RaistlinBars.asm                           $OUT/raistlinbarsshadow.codereloc.json               --codebin $OUT/RaistlinBarsShadow-code.bin               -define SPECTROMETER_SHADOW

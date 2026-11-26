@@ -36,6 +36,32 @@ hooks) and `FrameCall` (once-per-frame display work), which keeps all
 players structurally alike and is the first step toward mix-and-match
 visualizer features.
 
+## Piano
+
+`SIDPlayers/Piano/Piano.asm`: the RaistlinBarsWithLogo logo split (10 art rows
+and a clear row, sprite curtain), the song name in the 1x2 font, and a 40-white-key
+keyboard (C1 to G6, or C2 to G7 with the Keyboard Range option, data block
+`$74`). It reads the SID through the same register mirror as the bar players,
+so it ships two builds: realtime (second play call under save/restore) and
+`SPECTROMETER_SHADOW`. No baked variant: an FFT cannot tell which key a voice
+is on.
+
+- Per voice, `AnalyzeSIDRegisters` turns the frequency into a note by binary
+  search of a PAL semitone-boundary table and folds it by octaves onto the
+  keyboard. Noise-only voices (drums), the test bit and an empty waveform read
+  as silent.
+- Per key, `UpdatePiano` keeps a level: a gate rising or a held gate moving to
+  a new key strikes it, sustain sets a floor while the gate is held, and the
+  decay or release nibble sets how fast it falls (held to 4..40 frames). The
+  level picks one of four shades from the voice's colour family.
+- White keys are lit in colour RAM. The black keys are cut-outs in the white-key
+  characters, so a lit black key is a 6px Y-expanded sprite (up to eight at
+  once); the split IRQ turns the curtain sprites into these once the curtain
+  has passed, and `MusicFrameHandler` turns them back in the bottom border.
+
+`scripts/test-piano.js` (in `npm test`) runs these routines in the 6510
+emulator.
+
 ## Rules that bite
 
 - `INC/common.asm` holds the **data-block layout**, a contract with

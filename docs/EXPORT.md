@@ -33,7 +33,7 @@ The data block the exporter writes (`generateDataBlock()`) is a contract with
 
 **Player binaries** (`public/prg/*.bin`) - two kinds:
 - Players with a CODE_ONLY reloc blob (`relocCodeBase`: Default,
-  DefaultWithLogo, the four bar players, MusicalBlobs) ship their runtime
+  DefaultWithLogo, the four bar players, MusicalBlobs, Piano) ship their runtime
   code ONLY as the relocatable `*-code.bin` blob - any size, placed on any
   free page at export time. Their VIC assets come from a **graphics
   manifest** (`public/prg/<player>.gfx.json`, config field `gfxManifest`):

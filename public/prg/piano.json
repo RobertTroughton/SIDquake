@@ -1,0 +1,191 @@
+{
+  "name": "Piano",
+  "version": "1.0",
+  "maxCallsPerFrame": 8,
+  "needsSaveRestore": true,
+  "fontType": "1x2",
+  "layouts": {
+    "bank4000": {
+      "baseAddress": "0x4000",
+      "size": "0x4000",
+      "dataAddress": "0x4000",
+      "sysAddress": "0x4100",
+      "binaryDataStart": "0x4000",
+      "binaryDataEnd": "0x7FFF",
+      "borderColor": "0x400D",
+      "backgroundColor": "0x400E",
+      "charsetAddress": "0x7800",
+      "charsetSize": "0x700",
+      "graphicsBase": "0x6E00",
+      "relocSplit": "0x6000",
+      "songNameColorAddress": "0x406C",
+      "spectrometerBgColorAddress": "0x406D",
+      "saveRestoreLocation": "before",
+      "saveRestoreEndAddress": "0x4000",
+      "saveRestoreMaxSize": "0x3800",
+      "graphicsSegments": [
+        {
+          "name": "Graphics: sprites (curtain)",
+          "off": "0x0000",
+          "len": "0x0040"
+        },
+        {
+          "name": "Graphics: sprites (black key)",
+          "off": "0x0040",
+          "len": "0x0040"
+        },
+        {
+          "name": "Graphics: screen RAM + sprite pointers",
+          "off": "0x0200",
+          "len": "0x0400"
+        },
+        {
+          "name": "Graphics: logo colour data \u2192 $D800",
+          "off": "0x0600",
+          "len": "0x01B8"
+        },
+        {
+          "name": "Graphics: charset",
+          "off": "0x0A00",
+          "len": "0x0700"
+        },
+        {
+          "name": "Graphics: piano chars",
+          "off": "0x1100",
+          "len": "0x0058"
+        }
+      ],
+      "pianoLowNoteAddress": "0x4074"
+    }
+  },
+  "inputs": [
+    {
+      "id": "bitmap-input",
+      "label": "Logo",
+      "type": "file",
+      "accept": ".png",
+      "required": false,
+      "default": "PNG/Logos/0-default.png",
+      "description": "320x200 or 384x272 PNG; artwork sits in the top 10 char rows (80px); the 11th is left clear of the split below the logo. Charset-friendly images export as a charset (smaller); anything else falls back to bitmap.",
+      "galleryFiles": [
+        "prg/galleries/logos.json"
+      ],
+      "gallery": [
+        {
+          "name": "Maniacs (by Peter van Triel)",
+          "file": "PNG/Logos/petervantriel-maniacs.png"
+        }
+      ],
+      "memory": {
+        "bank4000": [
+          {
+            "name": "bitmap",
+            "sourceOffset": "0x0002",
+            "targetAddress": "0x6000",
+            "size": "0xDC0"
+          },
+          {
+            "name": "screen",
+            "sourceOffset": "0x1F42",
+            "targetAddress": "0x7000",
+            "size": "0x01B8"
+          },
+          {
+            "name": "color",
+            "sourceOffset": "0x232A",
+            "targetAddress": "0x7400",
+            "size": "0x01B8"
+          },
+          {
+            "name": "background",
+            "sourceOffset": "0x2712",
+            "targetAddress": "0x400E",
+            "size": "0x0001"
+          },
+          {
+            "name": "bitmapMode",
+            "sourceOffset": "0x2713",
+            "targetAddress": "0x4070",
+            "size": "0x0001"
+          },
+          {
+            "name": "d022",
+            "sourceOffset": "0x2714",
+            "targetAddress": "0x4071",
+            "size": "0x0001"
+          },
+          {
+            "name": "d023",
+            "sourceOffset": "0x2715",
+            "targetAddress": "0x4072",
+            "size": "0x0001"
+          },
+          {
+            "name": "d024",
+            "sourceOffset": "0x2716",
+            "targetAddress": "0x4073",
+            "size": "0x0001"
+          }
+        ]
+      },
+      "convertType": "logo",
+      "charsetModes": [
+        "hires",
+        "mixed",
+        "ecm",
+        "bitmap"
+      ],
+      "charsetRows": 11,
+      "artRows": 10,
+      "charsetMaxChars": 256
+    }
+  ],
+  "options": [
+    {
+      "id": "font",
+      "label": "Font",
+      "type": "fontSelector",
+      "default": 0
+    },
+    {
+      "id": "keyRange",
+      "label": "Keyboard Range",
+      "type": "select",
+      "default": 12,
+      "values": [
+        {
+          "value": 12,
+          "label": "C1 to G6 (default)"
+        },
+        {
+          "value": 24,
+          "label": "C2 to G7 (for high tunes)"
+        }
+      ],
+      "dataField": "pianoLowNoteAddress"
+    },
+    {
+      "id": "songNameColor",
+      "label": "Song Name Colour",
+      "type": "colorPicker",
+      "default": 1
+    },
+    {
+      "id": "bgColor",
+      "label": "Screen Colour",
+      "type": "colorPicker",
+      "default": 0
+    },
+    {
+      "id": "borderColor",
+      "label": "Border Colour",
+      "type": "colorPicker",
+      "default": 0
+    }
+  ],
+  "relocatable": true,
+  "gfxManifest": "prg/piano.gfx.json",
+  "relocBaseLayout": "bank4000",
+  "relocCodeBase": "prg/Piano-code.bin",
+  "relocCodeTable": "prg/piano.codereloc.json"
+}

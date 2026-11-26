@@ -8,6 +8,8 @@ the exporter must agree byte-for-byte:
 
 - `scripts/test-baked-decoder.js`: baked FFT stream.
 - `scripts/test-shadow-replay.js`: shadow-register replay order.
+- `scripts/test-piano.js`: the Piano player's note mapping, envelope and key
+  drawing, run from the assembled player in both register-mirror layouts.
 - `scripts/test-timer-layout.js`: calls each assembled player's timer routines
   and diffs memory to check where the play-time clock lands.
 

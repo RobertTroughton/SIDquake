@@ -119,6 +119,21 @@ const VISUALIZERS = [
         config: 'prg/musicalblobs.json'
     },
     {
+        id: 'Piano',
+        name: 'Piano',
+        sceneName: 'Piano',
+        description: 'A keyboard that plays the tune, one colour per voice, beneath your own logo.',
+        preview: 'prg/piano.png',
+        config: 'prg/piano.json'
+    },
+    {
+        id: 'PianoShadow',
+        name: 'Piano (Shadow)',
+        description: 'Piano keys via the shadow-register method',
+        preview: 'prg/piano.png',
+        config: 'prg/pianoshadow.json'
+    },
+    {
         id: 'SimpleBitmapWithScroller',
         name: 'Full-screen picture',
         sceneName: 'Simple Bitmap',
@@ -156,6 +171,7 @@ const VISUALIZERS = [
         'RaistlinBars': { realtime: 'RaistlinBars', shadow: 'RaistlinBarsShadow', fft: 'RaistlinBarsFFT' },
         'RaistlinBarsWithLogo': { realtime: 'RaistlinBarsWithLogo', shadow: 'RaistlinBarsShadowWithLogo', fft: 'RaistlinBarsFFTWithLogo' },
         'RaistlinMirrorBars': { realtime: 'RaistlinMirrorBars', shadow: 'RaistlinMirrorBarsShadow', fft: 'RaistlinMirrorBarsFFT' },
+        'Piano': { realtime: 'Piano', shadow: 'PianoShadow' },
         'RaistlinMirrorBarsWithLogo': { realtime: 'RaistlinMirrorBarsWithLogo', shadow: 'RaistlinMirrorBarsShadowWithLogo', fft: 'RaistlinMirrorBarsFFTWithLogo' },
     };
     const byId = Object.fromEntries(VISUALIZERS.map(v => [v.id, v]));
