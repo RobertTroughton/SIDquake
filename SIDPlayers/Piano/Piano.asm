@@ -43,7 +43,7 @@
 //   $3000-$33FF  screen (logo rows injected at export) + sprite pointers
 //   $3400-$35B7  logo colour data on load (copied to $D800 at init)
 //   $3800-$3EFF  1x2 font (injected at export)
-//   $3F00-$3F3F  piano characters (224-231)
+//   $3F00-$3FBF  piano characters (224-247)
 // =============================================================================
 
 .var LOAD_ADDRESS                   = cmdLineVars.get("loadAddress").asNumber()
@@ -136,6 +136,7 @@ pianoDrumSplit:
 .const ST_DRUM							= 3		//; a drum: its pitch is ignored until the next start
 .const DRUM_ZONES						= 3
 .const DRUM_FALL						= 22	//; a drum zone fades over 12 frames
+.const FILTER_COLOUR_HOLD				= 12	//; frames the filter bar keeps a new colour
 .const DEFAULT_DRUM_SPLIT_1				= $40
 .const DEFAULT_DRUM_SPLIT_2				= $a0
 
@@ -161,10 +162,12 @@ pianoDrumSplit:
 .const CHAR_WHITE						= PIANO_CHARS + 4
 .const CHAR_WHITE_BOTTOM				= PIANO_CHARS + 5
 .const CHAR_DRUM_BAR					= PIANO_CHARS + 6
-.const CHAR_FILTER_BAR					= PIANO_CHARS + 7
+.const CHAR_FILTER_BAR					= PIANO_CHARS + 7	//; full; then 7 growing right, 7 growing left
+.const CHAR_FILTER_RIGHT				= PIANO_CHARS + 8	//; +n-1: the left n pixels
+.const CHAR_FILTER_LEFT					= PIANO_CHARS + 15	//; +n-1: the right n pixels
+.const CHAR_FILTER_EMPTY				= PIANO_CHARS + 22
 
 .const WHITE_UNLIT						= $01
-.const BLACK_KEY_FLASH					= $0f	//; lit black keys are grey (blackKeyShades)
 
 //; Sprite Y lines up with a char row at 50 + row * 8 (first text row at 51).
 .const KEY_SPRITE_Y						= 50 + (KEYS_TOP_ROW * 8)
@@ -411,8 +414,9 @@ DrawScreens:
 		sta $d800 + (row * 40), y
 	}
 
-	//; The two bars start unlit: their colour is the background.
-	lda #CHAR_FILTER_BAR
+	//; The two bars start unlit: the drum bar's colour is the background, the
+	//; filter bar is empty characters.
+	lda #CHAR_FILTER_EMPTY
 	sta SCREEN_ADDRESS + (FILTER_ROW * 40), y
 	lda #CHAR_DRUM_BAR
 	sta SCREEN_ADDRESS + (DRUM_ROW * 40), y
@@ -665,10 +669,10 @@ AnalyzeSIDRegisters:
 	jmp !voice-
 !voicesRead:
 
-	//; Filter bar: cutoff (high byte) as a length, when any voice of SID 1 is
+	//; Filter bar: cutoff (high byte) as a width, when any voice of SID 1 is
 	//; routed through the filter; coloured by the lowest such voice's waveform.
 	lda #$00
-	sta filterLength
+	sta filterTarget
 	lda sidRegisterMirror + $17
 	and #$07
 	beq !noFilter+
@@ -686,8 +690,8 @@ AnalyzeSIDRegisters:
 	lsr
 	lsr
 	tax
-	lda filterLengthTable, x
-	sta filterLength
+	lda filterTargetTable, x
+	sta filterTarget
 !noFilter:
 	rts
 
@@ -1078,7 +1082,10 @@ UpdatePiano:
 	lda whiteFlash, y
 	jmp !white+
 !blackFlash:
-	lda #BLACK_KEY_FLASH
+	tya
+	ora #$03
+	tay
+	lda whiteShades, y
 	jmp !blackColour+
 !steady:
 	lda keyIsBlack, x
@@ -1101,14 +1108,6 @@ UpdatePiano:
 	jmp !nextKey+
 
 !blackLit:
-	lda keyLevel, x
-	lsr
-	lsr
-	lsr
-	lsr
-	lsr
-	lsr
-	tay
 	lda blackKeyShades, y
 !blackColour:
 	ldy spriteSlot
@@ -1173,36 +1172,115 @@ UpdatePiano:
 	dex
 	bpl !drum-
 
-	//; Filter bar: lit from the left for the cutoff's length.
-	lda #$00
-	ldy filterLength
-	beq !filterColour+
+	//; Filter bar: out from the middle of the screen both ways, a pixel at a
+	//; time. Its half-width eases towards the cutoff's - a quarter of the way
+	//; each frame growing, an eighth shrinking - so a cutoff jumping about
+	//; frame to frame moves it smoothly rather than flickering. Its colour is
+	//; the filtered voice's waveform while one is routed, held for at least
+	//; FILTER_COLOUR_HOLD frames once changed (tunes swap which voice, and
+	//; which waveform, goes through the filter every frame or two); shrinking
+	//; away, it keeps the last.
+	lda filterColourHold
+	beq !colourFree+
+	dec filterColourHold
+	jmp !filterEase+
+!colourFree:
+	lda filterTarget
+	beq !filterEase+
 	ldy filterVoice
 	lda voiceWaveFamily, y
 	ora #$03
 	tay
 	lda blackShades, y
-!filterColour:
 	cmp prevFilterColour
-	bne !drawFilter+
-	lda filterLength
-	cmp prevFilterLength
-	beq !filterDone+
-	lda prevFilterColour
-!drawFilter:
+	beq !filterEase+
 	sta prevFilterColour
-	lda filterLength
-	sta prevFilterLength
+	ldy #FILTER_COLOUR_HOLD
+	sty filterColourHold
 	ldy #NUM_WHITE_KEYS - 1
 !fcol:
-	lda pianoBgColor
-	cpy filterLength
-	bcs !fput+
-	lda prevFilterColour
-!fput:
 	sta $d800 + (FILTER_ROW * 40), y
 	dey
 	bpl !fcol-
+!filterEase:
+	lda filterTarget
+	cmp filterWidth
+	beq !filterDraw+
+	bcc !shrink+
+	sec
+	sbc filterWidth
+	lsr
+	lsr
+	bne !grow+
+	lda #$01
+!grow:
+	clc
+	adc filterWidth
+	sta filterWidth
+	jmp !filterDraw+
+!shrink:
+	lda filterWidth
+	sec
+	sbc filterTarget
+	lsr
+	lsr
+	lsr
+	bne !step+
+	lda #$01
+!step:
+	sta filterStep
+	lda filterWidth
+	sec
+	sbc filterStep
+	sta filterWidth
+!filterDraw:
+	lda filterWidth
+	cmp prevFilterWidth
+	beq !filterDone+
+	sta prevFilterWidth
+	//; Half-width w: w/8 full characters out from the centre each side, then
+	//; one with the remaining w%8 pixels, then empty.
+	lsr
+	lsr
+	lsr
+	sta filterFull
+	lda filterWidth
+	and #$07
+	sta filterPart
+	ldx #$00
+!fhalf:
+	cpx filterFull
+	bcs !notFull+
+	lda #CHAR_FILTER_BAR
+	sta SCREEN_ADDRESS + (FILTER_ROW * 40) + 20, x
+	jmp !leftFull+
+!notFull:
+	bne !fempty+
+	ldy filterPart
+	beq !fempty+
+	lda filterRightChar - 1, y
+	sta SCREEN_ADDRESS + (FILTER_ROW * 40) + 20, x
+	lda filterLeftChar - 1, y
+	jmp !leftPut+
+!fempty:
+	lda #CHAR_FILTER_EMPTY
+	sta SCREEN_ADDRESS + (FILTER_ROW * 40) + 20, x
+	jmp !leftPut+
+!leftFull:
+	lda #CHAR_FILTER_BAR
+!leftPut:
+	//; mirror: column 19 - x
+	sta filterChar
+	stx filterCol
+	lda #19
+	sec
+	sbc filterCol
+	tay
+	lda filterChar
+	sta SCREEN_ADDRESS + (FILTER_ROW * 40), y
+	inx
+	cpx #20
+	bne !fhalf-
 !filterDone:
 	rts
 
@@ -1303,8 +1381,10 @@ InitPiano:
 	dex
 	bpl !loop-
 	lda #$00
-	sta filterLength
-	sta prevFilterLength
+	sta filterTarget
+	sta filterWidth
+	sta prevFilterWidth
+	lda pianoBgColor
 	sta prevFilterColour
 
 	lda pianoDrumSplit
@@ -1333,11 +1413,13 @@ LogoD011Table:			.byte $3b, $3b, $1b, $1b, $5b
 LogoD016Table:			.byte $18, $08, $08, $18, $08
 CurtainXTable:			.byte 24, 72, 120, 168, 216, 264 - 256, 312 - 256
 bitTable:				.byte $01, $02, $04, $08, $10, $20, $40, $80
+filterRightChar:		.fill 7, CHAR_FILTER_RIGHT + i
+filterLeftChar:			.fill 7, CHAR_FILTER_LEFT + i
 //; Drum bar zones (columns), a blank column between each.
 drumZoneFirst:			.byte 0, 14, 27
 drumZoneLast:			.byte 12, 25, 39
-//; Filter cutoff high byte / 8 -> lit columns (1..40).
-filterLengthTable:		.fill 32, round((i + 1) * 40 / 32)
+//; Filter cutoff high byte / 8 -> the bar's half-width in pixels (5..160).
+filterTargetTable:		.fill 32, (i + 1) * 5
 
 voicesForChips:			.byte 3, 3, 6, 9, 12
 voiceRegOffset:			.fill MAX_VOICES, floor(i / 3) * SIDMIRROR_CHIP_STRIDE + mod(i, 3) * 7
@@ -1383,9 +1465,15 @@ blackFlash:				.fill 4, $0a
 						.fill 4, $07
 						.fill 4, $0a
 						.fill 4, $0d
-//; Lit black keys are grey whichever voice plays them: flash light grey
-//; (BLACK_KEY_FLASH), then mid grey, dark grey as they fade.
-blackKeyShades:			.byte $0b, $0c, $0c, $0c
+//; Lit black keys: the darker version of their family's colour (a white key
+//; is light green, a black key green), fading to a dark shade. Their flash is
+//; the white keys' steady shade.
+blackKeyShades:			.byte $09, $02, $02, $02
+						.byte $0b, $05, $05, $05
+						.byte $0b, $06, $06, $06
+						.byte $09, $09, $09, $09
+						.byte $0b, $04, $04, $04
+						.byte $0b, $0e, $0e, $0e
 //; The drum and filter bars, on the dark background.
 blackShades:			.byte $09, $02, $02, $02
 						.byte $0b, $05, $05, $05
@@ -1445,9 +1533,16 @@ prevDrumColour:			.fill DRUM_ZONES, 0
 drumThreshold1:			.byte DEFAULT_DRUM_SPLIT_1
 drumThreshold2:			.byte DEFAULT_DRUM_SPLIT_2
 zoneFirst:				.byte 0
-filterLength:			.byte 0
+filterTarget:			.byte 0		//; half-width the cutoff asks for (pixels)
+filterWidth:			.byte 0		//; half-width shown, easing towards it
+prevFilterWidth:		.byte 0
+filterStep:				.byte 0
+filterColourHold:		.byte 0
+filterFull:				.byte 0
+filterPart:				.byte 0
+filterChar:				.byte 0
+filterCol:				.byte 0
 filterVoice:			.byte 0
-prevFilterLength:		.byte 0
 prevFilterColour:		.byte 0
 
 keyLevel:				.fill NUM_KEYS, 0
@@ -1507,6 +1602,17 @@ keySpriteEnable:		.byte 0
 	.byte $00							//; CHAR_FILTER_BAR: 3px, 1px below the keys
 	.fill 3, $ff
 	.fill 4, $00
+	.for (var n = 1; n < 8; n++) {		//; CHAR_FILTER_RIGHT: the left n pixels
+		.byte $00
+		.fill 3, ($ff << (8 - n)) & $ff
+		.fill 4, $00
+	}
+	.for (var n = 1; n < 8; n++) {		//; CHAR_FILTER_LEFT: the right n pixels
+		.byte $00
+		.fill 3, (1 << n) - 1
+		.fill 4, $00
+	}
+	.fill 8, $00						//; CHAR_FILTER_EMPTY
 
 * = BITMAP_ADDRESS "Bitmap"
 	.fill LOGO_HEIGHT * 40 * 8, $00

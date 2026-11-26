@@ -61,7 +61,7 @@ pitches: tunes pitch their noise anywhere from `$05` to `$FF`.
   search of a PAL semitone-boundary table and folds it by octaves onto the
   keyboard. Noise is a drum, with a zone from its frequency; the test bit, an
   empty waveform and a zero frequency are silent. It also reads SID 1's filter:
-  the cutoff high byte sets the filter bar's length when a voice is routed
+  the cutoff high byte sets the filter bar's width when a voice is routed
   through the filter, coloured by the lowest such voice's waveform. Each
   voice's waveform bits also give its colour: triangle blue, sawtooth red,
   pulse green, two or three together purple. The waveform is the closest the
@@ -96,15 +96,22 @@ pitches: tunes pitch their noise anywhere from `$05` to `$FF`.
   sustain sets a floor and the decay nibble the fall, after it the release
   nibble (both held to 8..40 frames). On a white key the level picks one of
   four shades of the waveform colour the note was struck with, after two
-  frames of its strong colour as a strike flash. Black keys are lit in grey
-  whichever waveform plays them: a light grey flash, then mid grey, dark grey
-  as they fade. The drum bar's zones have colours of their own (low red, mid
-  orange, high cyan).
+  frames of its strong colour as a strike flash. A black key takes the darker
+  version of the same colour (a pulse note: light green on a white key, green
+  on a black one), flashing the white keys' shade first. The drum bar's zones
+  have colours of their own (low red, mid orange, high cyan).
+- The filter bar grows out from the middle of the screen both ways, a pixel at
+  a time (full, partial and empty characters). Its half-width eases towards
+  the cutoff's, a quarter of the way a frame growing and an eighth shrinking,
+  so a cutoff that jumps about frame to frame moves it smoothly; a new colour
+  holds for at least 12 frames, because tunes swap which voice and waveform go
+  through the filter every frame or two.
 - White keys are lit in colour RAM. The black keys are cut-outs in the white-key
   characters, so a lit black key is a 6px Y-expanded sprite (up to eight at
   once); the split IRQ turns the curtain sprites into these once the curtain
   has passed, and `MusicFrameHandler` turns them back in the bottom border.
-  The two bars are characters whose colour RAM is the background when unlit.
+  The drum bar is characters whose colour RAM is the background when unlit;
+  the filter bar's colour RAM holds its colour and its characters its width.
 
 `scripts/test-piano.js` (in `npm test`) runs these routines in the 6510
 emulator; `scripts/piano-lit-count.js` reports how many keys a tune keeps lit.

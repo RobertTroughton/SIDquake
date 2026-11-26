@@ -178,8 +178,9 @@ async function runVariant(m, name, defines, stride) {
     check(level(kE4) >= 112 + 8 * 9, `${name}: held key fell to ${level(kE4)} below its sustain floor`);
 
     // Voice 3 is SID 2's first voice: a black key, drawn as sprite 0 at the
-    // black key's X, in grey whichever voice plays it: a light grey flash,
-    // then mid grey.
+    // black key's X. A black key is the darker version of its waveform's
+    // colour (a white key's steady shade): this sawtooth flashes light red,
+    // the white-key shade, then settles to red.
     const kCs3 = expectedKey(Cs3);
     hold(3, { freq: noteFreq(Cs3), ctrl: 0x21, ad: 0x00, sr: 0xF0 }, 2);
     check(isBlack(kCs3), `${name}: C#3 is not a black key`);
@@ -187,9 +188,9 @@ async function runVariant(m, name, defines, stride) {
     check(rd(L('keySpriteEnable')) === 0x01, `${name}: sprite enable $${rd(L('keySpriteEnable')).toString(16)}, expected $01`);
     const x = rd(L('keySpriteX')) + ((rd(L('keySpriteMSB')) & 1) << 8);
     check(x === column(kCs3) * 8 + 21, `${name}: black key sprite X ${x}, expected ${column(kCs3) * 8 + 21}`);
-    check(rd(L('keySpriteColour')) === 0x0F, `${name}: struck black key colour $${rd(L('keySpriteColour')).toString(16)}, expected $f (light grey flash)`);
+    check(rd(L('keySpriteColour')) === 0x0A, `${name}: struck black key colour $${rd(L('keySpriteColour')).toString(16)}, expected $a (light red flash)`);
     frame(); frame();
-    check(rd(L('keySpriteColour')) === 0x0C, `${name}: black key colour after its flash $${rd(L('keySpriteColour')).toString(16)}, expected $c (grey)`);
+    check(rd(L('keySpriteColour')) === 0x02, `${name}: black key colour after its flash $${rd(L('keySpriteColour')).toString(16)}, expected $2 (red)`);
 
     // Release: gate off with release $A (1.5 s, held to 40 frames). The key is
     // still lit after a few frames and back to white within 40.
@@ -316,17 +317,50 @@ async function runVariant(m, name, defines, stride) {
         `${name}: a chord note flashed again on its next time round`);
 
     // Filter bar: voice 1 (a sawtooth) routed through the filter, cutoff high
-    // byte $80, lights 21 columns in the sawtooth colour; nothing routed, none.
+    // byte $80. The bar grows out from the middle of the screen both ways, a
+    // pixel at a time, to 85px each side (10 full characters and 5px), in the
+    // sawtooth colour - easing in rather than jumping there in a frame. With
+    // nothing routed it eases back to nothing.
+    // Characters (see Piano.asm): full 231, partial 232-238 growing right
+    // from the left edge (1-7px), 239-245 growing left from the right edge,
+    // empty 246.
+    const FULL = 231, RIGHT = 231, LEFT = 238, EMPTY = 246;
+    const screen = 0x4000 + 0x3000 + FILTER_ROW * 40;           // gfxBank 1
+    const fchar = (c) => rd(screen + c);
+    const fcol = (c) => rd(0xD800 + FILTER_ROW * 40 + c);
     quiet();
     setVoice(0, { freq: noteFreq(C4), ctrl: 0x20 });
     wr(mirror + 0x16, 0x80); wr(mirror + 0x17, 0x01);
     frame();
-    const fcol = (c) => rd(0xD800 + FILTER_ROW * 40 + c);
-    check(fcol(0) === 0x02 && fcol(20) === 0x02 && fcol(21) === 0,
-        `${name}: filter bar cols 0/20/21 $${fcol(0).toString(16)}/$${fcol(20).toString(16)}/$${fcol(21).toString(16)}, expected $2/$2/$0`);
+    const first = rd(L('filterWidth'));
+    check(first > 0 && first < 85, `${name}: filter bar width ${first}px after one frame, expected part way to 85`);
+    for (let i = 0; i < 40; i++) frame();
+    check(rd(L('filterWidth')) === 85, `${name}: filter bar settled at ${rd(L('filterWidth'))}px, expected 85`);
+    const right = [], left = [];
+    for (let i = 0; i < 12; i++) { right.push(fchar(20 + i)); left.push(fchar(19 - i)); }
+    const want = (partial) => [...Array(10).fill(FULL), partial + 5, EMPTY];
+    check(right.join() === want(RIGHT).join(), `${name}: filter bar right half ${right}, expected ${want(RIGHT)}`);
+    check(left.join() === want(LEFT).join(), `${name}: filter bar left half ${left}, expected ${want(LEFT)}`);
+    check(fcol(20) === 0x02 && fcol(19) === 0x02, `${name}: filter bar colour $${fcol(20).toString(16)}, expected $2 (sawtooth red)`);
+    // A new waveform through the filter changes the colour, but a changed
+    // colour holds for 12 frames before the next change: tunes swap what goes
+    // through the filter every frame or two.
+    setVoice(0, { freq: noteFreq(C4), ctrl: 0x10 });
+    frame();
+    const swapped = fcol(20);
+    setVoice(0, { freq: noteFreq(C4), ctrl: 0x40 });
+    frame();
+    check(swapped === 0x0E && fcol(20) === 0x0E, `${name}: filter bar colour $${swapped.toString(16)} then $${fcol(20).toString(16)}, expected $e (triangle) held a frame later`);
+    for (let i = 0; i < 12; i++) frame();
+    check(fcol(20) === 0x05, `${name}: filter bar colour $${fcol(20).toString(16)} after the hold, expected $5 (pulse)`);
+    setVoice(0, { freq: noteFreq(C4), ctrl: 0x20 });
+    for (let i = 0; i < 13; i++) frame();
     wr(mirror + 0x17, 0x00);
     frame();
-    check(fcol(0) === 0, `${name}: filter bar lit with nothing routed through the filter`);
+    check(rd(L('filterWidth')) > 0, `${name}: filter bar vanished in one frame instead of easing out`);
+    for (let i = 0; i < 60; i++) frame();
+    check(rd(L('filterWidth')) === 0 && fchar(20) === EMPTY && fchar(19) === EMPTY,
+        `${name}: filter bar still ${rd(L('filterWidth'))}px with nothing routed through the filter`);
 
     // Silence everything: no sprite stays on.
     quiet();

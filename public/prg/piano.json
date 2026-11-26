@@ -52,7 +52,7 @@
         {
           "name": "Graphics: piano chars",
           "off": "0x1100",
-          "len": "0x0040"
+          "len": "0x00B8"
         }
       ],
       "pianoLowNoteAddress": "0x4074",

@@ -6007,6 +6007,7 @@ class UIController {
     }
 
     _showAnalysisChip(text) {
+        this._showStudioLength(text);
         const chip = document.getElementById('analysisChip');
         if (!chip) return;
         chip.hidden = false;
@@ -6074,6 +6075,8 @@ class UIController {
                 : 'Couldn\'t work out the song length';
         }
         if (label) label.textContent = msg;
+        this._finishStudioLength(a ? msg.replace(/^Song length /, 'Song length calculated: ')
+            .replace(/ — (loops|fades out)$/, ' ($1)') : msg, !!a);
         this._announceAnalysis(msg, true);
         // A scan the user stopped is the one outcome they may want to take back, so
         // the chip stays until it is dismissed or the offer is taken. Every other
@@ -6085,7 +6088,44 @@ class UIController {
         if (!undoable) this._analysisChipTimer = setTimeout(() => this._hideAnalysisChip(), 8000);
     }
 
+    // The same scan, beside the Studio's Generate button: the page's chip sits
+    // under the Studio, so while the Studio is open this is the only sign the
+    // length is still being worked out. Busy while it runs; when it lands it
+    // pulses, says what it found, holds a moment and fades out.
+    _showStudioLength(text) {
+        const el = document.getElementById('studioLength');
+        if (!el) return;
+        clearTimeout(this._studioLengthTimer);
+        el.hidden = false;
+        el.classList.remove('is-done', 'is-failed', 'is-fading');
+        const label = document.getElementById('studioLengthText');
+        if (label) label.textContent = text.replace(/^Analysing tune/, 'Measuring song length');
+    }
+
+    _finishStudioLength(text, ok) {
+        const el = document.getElementById('studioLength');
+        if (!el || el.hidden) return;
+        el.classList.add(ok ? 'is-done' : 'is-failed');
+        const label = document.getElementById('studioLengthText');
+        if (label) label.textContent = text;
+        clearTimeout(this._studioLengthTimer);
+        const HOLD_MS = 2500, FADE_MS = 800;
+        this._studioLengthTimer = setTimeout(() => {
+            el.classList.add('is-fading');
+            this._studioLengthTimer = setTimeout(() => this._hideStudioLength(), FADE_MS);
+        }, HOLD_MS);
+    }
+
+    _hideStudioLength() {
+        clearTimeout(this._studioLengthTimer);
+        const el = document.getElementById('studioLength');
+        if (!el) return;
+        el.hidden = true;
+        el.classList.remove('is-done', 'is-failed', 'is-fading');
+    }
+
     _hideAnalysisChip() {
+        this._hideStudioLength();
         clearTimeout(this._analysisChipTimer);
         const restart = document.getElementById('analysisChipRestart');
         if (restart) restart.hidden = true;

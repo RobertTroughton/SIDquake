@@ -33,7 +33,10 @@ The page-level controllers. Layout rules for small screens and touch are in
   the DOM by id
 - Export tab renders a live include/skip manifest mirroring the builder's
   gates; footer carries a one-line summary + the Generate button. Generate is
-  never disabled by the background scan: while it runs, the manifest says a
+  never disabled by the background scan. While it runs, the footer shows it
+  beside Generate (`studioLength`: busy, then a pulse and "Song length
+  calculated: M:SS", held 2.5 s and faded out), because the page's corner
+  chip sits under the Studio; the manifest says a
   live-method export leaves the song length and forced loop out (and that the
   Spectrometer waits); see [`ANALYSIS.md`](ANALYSIS.md)
 - Under 720px it goes fullscreen and drops the rail entirely: the footer's

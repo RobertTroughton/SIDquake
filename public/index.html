@@ -506,6 +506,13 @@
             <div class="studio-foot-sum" id="studioFootSum"></div>
             <div class="export-status" id="exportStatus" role="status" aria-live="polite"></div>
             <div class="studio-nav-btns" id="studioNavBtns"></div>
+            <!-- The song-length scan, beside Generate: the page's own analysis
+                 chip sits under the Studio. Announced through that chip's live
+                 region, so this copy is not read out twice. -->
+            <div class="studio-length" id="studioLength" aria-hidden="true" hidden>
+                <span class="studio-length-spinner"></span>
+                <span class="studio-length-text" id="studioLengthText"></span>
+            </div>
             <button class="export-button" id="exportPRGButton" disabled>
                 <i class="fas fa-download"></i> Make my C64 program
             </button>

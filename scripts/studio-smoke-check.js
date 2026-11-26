@@ -1620,6 +1620,59 @@ async function loadSid(page, file) {
             });
             check('Before a player is picked, the Song tab does not rule the length out',
                 !/does not display a song length/.test(unpicked), unpicked.slice(0, 80));
+
+            // The measuring shows beside Generate, where the Studio's user is
+            // looking (the page's corner chip sits under the Studio): busy while
+            // it runs, then a pulse and the result, which fades after a moment.
+            const meter = await stale.evaluate(async () => {
+                const ui = window.uiController;
+                const sleep = (ms) => new Promise(r => setTimeout(r, ms));
+                const el = document.getElementById('studioLength');
+                const read = () => ({
+                    shown: !!el && !el.hidden,
+                    done: !!el && el.classList.contains('is-done'),
+                    text: el ? el.textContent.trim() : '',
+                });
+                for (let i = 0; i < 600 && ui.analysisRunning; i++) await sleep(100);
+                const fade = {
+                    looped: false, fadedOut: true, truncated: false, loopStart: 1500,
+                    numKeyframes: 1500, keyframeHz: 25, frameHz: 50, isNtsc: 0,
+                    storedSeconds: 60, loopStartSeconds: 60, analyzedSeconds: 80,
+                };
+                let release = null;
+                const realRun = ui.runTuneAnalysis;
+                ui.runTuneAnalysis = async () => {
+                    ui.tuneAnalysis = null;
+                    await new Promise(r => { release = r; });
+                    ui.tuneAnalysis = fade;
+                    return fade;
+                };
+                const out = {};
+                try {
+                    ui.tuneAnalysis = null;
+                    ui._analysisCancelled = false;
+                    await ui.startBackgroundAnalysis({ userAsked: true });
+                    for (let i = 0; i < 100 && !ui.analysisRunning; i++) await sleep(50);
+                    await sleep(100);
+                    out.busy = read();
+                    release();
+                    for (let i = 0; i < 100 && ui.analysisRunning; i++) await sleep(50);
+                    await sleep(100);
+                    out.landed = read();
+                    await sleep(5000);
+                    out.later = read();
+                } finally {
+                    ui.runTuneAnalysis = realRun;
+                }
+                return out;
+            });
+            check('While measuring, the footer says so beside Generate',
+                meter.busy && meter.busy.shown && !meter.busy.done && /measur|analys/i.test(meter.busy.text),
+                JSON.stringify(meter.busy));
+            check('When it lands, it says the length was calculated',
+                meter.landed && meter.landed.shown && meter.landed.done && /1:00/.test(meter.landed.text),
+                JSON.stringify(meter.landed));
+            check('...and then fades away', meter.later && !meter.later.shown, JSON.stringify(meter.later));
         } finally {
             await stale.close();
         }

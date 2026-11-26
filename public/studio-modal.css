@@ -488,6 +488,81 @@
     font-size: 0.9em;
 }
 
+/* The song-length scan, beside Generate: busy while it runs, then a pulse
+   and the result, which fades out. */
+.studio-foot .studio-length {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex: 0 1 auto;
+    min-width: 0;
+    padding: 4px 10px;
+    border: 1px solid var(--border-light);
+    border-left: 3px solid var(--accent);
+    border-radius: var(--radius-sm);
+    font-size: 0.8em;
+    color: var(--text-primary);
+    white-space: nowrap;
+    transition: opacity 0.8s ease;
+}
+
+.studio-foot .studio-length[hidden] {
+    display: none;
+}
+
+/* Right up against Generate: the free space goes to its left, not between. */
+.studio-foot .studio-length:not([hidden]) {
+    margin-left: auto;
+}
+
+.studio-foot .studio-length:not([hidden]) + .export-button {
+    margin-left: 0;
+}
+
+.studio-length-spinner {
+    flex: 0 0 auto;
+    width: 12px;
+    height: 12px;
+    border: 2px solid var(--border-light);
+    border-top-color: var(--accent);
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+}
+
+.studio-length.is-done,
+.studio-length.is-failed {
+    border-left-color: var(--success);
+}
+
+.studio-length.is-failed {
+    border-left-color: var(--text-muted);
+}
+
+.studio-length.is-done .studio-length-spinner,
+.studio-length.is-failed .studio-length-spinner {
+    display: none;
+}
+
+.studio-length.is-done {
+    animation: studio-length-done 0.6s ease-out 2;
+}
+
+@keyframes studio-length-done {
+    0% { box-shadow: 0 0 0 0 rgba(52, 211, 153, 0.7); }
+    100% { box-shadow: 0 0 0 10px rgba(52, 211, 153, 0); }
+}
+
+.studio-length.is-fading {
+    opacity: 0;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .studio-length-spinner,
+    .studio-length.is-done {
+        animation: none;
+    }
+}
+
 .studio-foot .export-button {
     margin-left: auto;
     flex: 0 0 auto;
