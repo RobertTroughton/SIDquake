@@ -116,6 +116,7 @@ pianoLowNote:
 .const DEFAULT_LOW_NOTE					= 12	//; C1
 .const MAX_VOICES						= 12	//; 4 SID chips
 .const NUM_KEY_SPRITES					= 8
+.const FLASH_FRAMES						= 2		//; a struck key shows its flash colour this long
 .const LIFT_FALL						= 128	//; a lifted key is unlit two frames after the voice moves on
 
 .const SCREEN_BANK						= 12	//; +$3000
@@ -658,6 +659,10 @@ FreqToKey:
 UpdatePiano:
 	ldx #NUM_KEYS - 1
 !fall:
+	lda keyFlash, x
+	beq !noFlash+
+	dec keyFlash, x
+!noFlash:
 	lda keyLevel, x
 	beq !nextFall+
 	sec
@@ -716,6 +721,8 @@ UpdatePiano:
 !strike:
 	lda #$ff
 	sta keyLevel, y
+	lda #FLASH_FRAMES
+	sta keyFlash, y
 	lda voiceGate, x
 	beq !released+
 !held:
@@ -776,6 +783,16 @@ UpdatePiano:
 	ldy keyVoice, x
 	ora voiceFamily, y
 	tay
+	lda keyFlash, x
+	beq !steady+
+	lda keyIsBlack, x
+	bne !blackFlash+
+	lda whiteFlash, y
+	jmp !white+
+!blackFlash:
+	lda blackFlash, y
+	jmp !blackColour+
+!steady:
 	lda keyIsBlack, x
 	bne !blackLit+
 	lda whiteShades, y
@@ -797,6 +814,7 @@ UpdatePiano:
 
 !blackLit:
 	lda blackShades, y
+!blackColour:
 	ldy spriteSlot
 	cpy #NUM_KEY_SPRITES
 	bcs !nextKey+
@@ -816,7 +834,9 @@ UpdatePiano:
 
 !nextKey:
 	dex
-	bpl !key-
+	bmi !keysDone+
+	jmp !key-
+!keysDone:
 	rts
 
 InitPiano:
@@ -833,6 +853,7 @@ InitPiano:
 	sta keyLevel, x
 	sta keyFall, x
 	sta keyVoice, x
+	sta keyFlash, x
 	lda #WHITE_UNLIT
 	sta prevShade, x
 	dex
@@ -879,19 +900,35 @@ sustainFloor:			.fill 16, i == 0 ? 0 : 112 + i * 9
 //; Shades per voice family, dimmest lit (level 1..63) to brightest (192..255).
 //; White keys fade back towards white; black keys towards dark. Families:
 //; red, green, blue, orange, purple, cyan; voices 7-12 reuse them.
+//; A struck key shows its family's flash colour for FLASH_FRAMES first: the
+//; strong colour on a white key, which then settles to the lighter shade, and
+//; the light colour on a black key, which then settles to the stronger one
+//; (white would merge with the white keys beside it).
 voiceFamily:			.fill MAX_VOICES, mod(i, 6) * 4
-whiteShades:			.byte $0f, $0a, $02, $02
-						.byte $0f, $0d, $05, $05
-						.byte $0f, $0e, $06, $06
-						.byte $0f, $07, $08, $08
-						.byte $0f, $0a, $04, $04
-						.byte $0f, $03, $0e, $0e
-blackShades:			.byte $09, $02, $0a, $0a
-						.byte $0b, $05, $0d, $0d
-						.byte $0b, $06, $0e, $0e
-						.byte $09, $08, $07, $07
-						.byte $06, $04, $04, $0a
-						.byte $0b, $0e, $03, $03
+whiteShades:			.byte $0f, $0a, $0a, $0a
+						.byte $0f, $0d, $0d, $0d
+						.byte $0f, $0e, $0e, $0e
+						.byte $0f, $08, $08, $08
+						.byte $0f, $04, $04, $04
+						.byte $0f, $03, $03, $03
+whiteFlash:				.fill 4, $02
+						.fill 4, $05
+						.fill 4, $06
+						.fill 4, $09
+						.fill 4, $06
+						.fill 4, $0e
+blackFlash:				.fill 4, $0a
+						.fill 4, $0d
+						.fill 4, $03
+						.fill 4, $07
+						.fill 4, $0a
+						.fill 4, $0d
+blackShades:			.byte $09, $02, $02, $02
+						.byte $0b, $05, $05, $05
+						.byte $06, $0e, $0e, $0e
+						.byte $09, $08, $08, $08
+						.byte $06, $04, $04, $04
+						.byte $0b, $03, $03, $03
 
 noteThresholdLo:		.fill 128, <noteThreshold(i)
 noteThresholdHi:		.fill 128, >noteThreshold(i)
@@ -928,6 +965,7 @@ keyLevel:				.fill NUM_KEYS, 0
 keyFall:				.fill NUM_KEYS, 0
 keyVoice:				.fill NUM_KEYS, 0
 prevShade:				.fill NUM_KEYS, WHITE_UNLIT
+keyFlash:				.fill NUM_KEYS, 0	//; frames of strike flash left
 
 keySpriteX:				.fill NUM_KEY_SPRITES, 0
 keySpriteColour:		.fill NUM_KEY_SPRITES, 0
